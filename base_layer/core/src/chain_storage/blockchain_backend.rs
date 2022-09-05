@@ -194,4 +194,5 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
 
     fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
+    fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
 }

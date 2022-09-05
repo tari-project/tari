@@ -266,7 +266,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
-    make_async_fn!(fetch_active_validator_nodes(height:u64) -> Vec<ActiveValidatorNode>, "fetch_active_validator_nodes");
+    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<ActiveValidatorNode>, "fetch_active_validator_nodes");
+
+    make_async_fn!(fetch_committee(height: u64, shard: [u8;32]) -> Vec<ActiveValidatorNode>, "fetch_committee");
 
     make_async_fn!(get_validator_nodes_mr() -> Vec<u8>, "get_validator_nodes_mr");
 }

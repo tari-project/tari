@@ -51,6 +51,7 @@ use crate::{
     },
     chain_storage::{
         create_lmdb_database,
+        ActiveValidatorNode,
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -418,6 +419,10 @@ impl BlockchainBackend for TempDatabase {
         height: u64,
     ) -> Result<Vec<crate::chain_storage::ActiveValidatorNode>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+    }
+
+    fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_committee(height, shard)
     }
 }
 

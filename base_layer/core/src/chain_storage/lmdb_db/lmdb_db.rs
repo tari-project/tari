@@ -42,6 +42,7 @@ use tari_utilities::{
     ByteArray,
 };
 
+use super::{key_prefix_cursor::KeyPrefixCursor, lmdb::lmdb_get_prefix_cursor};
 use crate::{
     blocks::{
         Block,
@@ -2406,6 +2407,69 @@ impl BlockchainBackend for LMDBDatabase {
                 None
             }
         })
+    }
+
+    fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        // TODO: I'm not sure how effective this is compared to getting all and selecting by yourself. Also if there is
+        // less validator nodes than committee size this gets weird.
+        let txn = self.read_transaction()?;
+        let mut cursor: KeyPrefixCursor<ActiveValidatorNode> =
+            lmdb_get_prefix_cursor(&txn, &self.validator_nodes, &shard)?;
+        let mut result = vec![];
+        let committee_half_size = 5u64;
+        let mut size = 0u64;
+        // Right side of the committee
+        while let Some((_, val)) = cursor.next()? {
+            if val.from_height <= height && height <= val.to_height {
+                result.push(val);
+                size += 1;
+                if size == committee_half_size {
+                    break;
+                }
+            }
+        }
+        // Check if it wraps around
+        if size < committee_half_size {
+            let mut cursor: KeyPrefixCursor<ActiveValidatorNode> =
+                lmdb_get_prefix_cursor(&txn, &self.validator_nodes, &[0; 32])?;
+            while let Some((_, val)) = cursor.next()? {
+                if val.from_height <= height && height <= val.to_height {
+                    result.push(val);
+                    size += 1;
+                    if size == committee_half_size {
+                        break;
+                    }
+                }
+            }
+        }
+        let mut cursor: KeyPrefixCursor<ActiveValidatorNode> =
+            lmdb_get_prefix_cursor(&txn, &self.validator_nodes, &shard)?;
+        let mut size = 0u64;
+        // Left side of the committee
+        while let Some((_, val)) = cursor.prev()? {
+            if val.from_height <= height && height <= val.to_height {
+                result.push(val);
+                size += 1;
+                if size == committee_half_size {
+                    break;
+                }
+            }
+        }
+        // Check if it wraps around
+        if size < committee_half_size {
+            let mut cursor: KeyPrefixCursor<ActiveValidatorNode> =
+                lmdb_get_prefix_cursor(&txn, &self.validator_nodes, &[255; 32])?;
+            while let Some((_, val)) = cursor.prev()? {
+                if val.from_height <= height && height <= val.to_height {
+                    result.push(val);
+                    size += 1;
+                    if size == committee_half_size {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
 }
 

@@ -282,7 +282,22 @@ impl LocalNodeCommsInterface {
             .call(NodeCommsRequest::FetchValidatorNodesKeys { height })
             .await??
         {
-            NodeCommsResponse::FetchValidatorNodesKeysResponse(active_validator_nodes) => Ok(active_validator_nodes),
+            NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_committee(
+        &mut self,
+        height: u64,
+        shard: [u8; 32],
+    ) -> Result<Vec<ActiveValidatorNode>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchCommittee { height, shard })
+            .await??
+        {
+            NodeCommsResponse::FetchCommitteeResponse(validator_node) => Ok(validator_node),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

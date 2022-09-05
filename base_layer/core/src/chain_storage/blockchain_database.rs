@@ -1169,6 +1169,11 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height)
     }
+
+    pub fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_committee(height, shard)
+    }
 }
 
 fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
