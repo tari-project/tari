@@ -980,7 +980,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature
-            .ok_or(Status::invalid_argument("Validator node signature is missing!"))?
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .unwrap();
 

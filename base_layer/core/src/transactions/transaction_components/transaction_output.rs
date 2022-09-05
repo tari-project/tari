@@ -221,7 +221,7 @@ impl TransactionOutput {
                 .features
                 .validator_node_signature
                 .clone()
-                .ok_or_else(|| TransactionError::MissingValidatorNodeSignature)?;
+                .ok_or(TransactionError::MissingValidatorNodeSignature)?;
             if !signature.verify_challenge(public_key, &[0]) {
                 return Err(TransactionError::InvalidSignatureError(
                     "Validator node signature is not valid!".to_string(),

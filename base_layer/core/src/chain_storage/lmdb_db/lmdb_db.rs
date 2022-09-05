@@ -1274,7 +1274,7 @@ impl LMDBDatabase {
             {
                 if let Some(validator_node_public_key) = &features.validator_node_public_key {
                     let read_txn = self.read_transaction()?;
-                    let shard_key = self.get_vn_mapping(&read_txn, &validator_node_public_key)?;
+                    let shard_key = self.get_vn_mapping(&read_txn, validator_node_public_key)?;
                     self.delete_validator_node(txn, validator_node_public_key, &shard_key)?;
                 }
             }
@@ -1577,8 +1577,8 @@ impl LMDBDatabase {
     }
 
     fn get_vn_mapping(&self, txn: &ReadTransaction<'_>, public_key: &PublicKey) -> Result<[u8; 32], ChainStorageError> {
-        let x: ActiveValidatorNode = lmdb_get(&txn, &self.validator_nodes, &public_key.to_vec())?.unwrap();
-        Ok(x.shard_key.clone())
+        let x: ActiveValidatorNode = lmdb_get(txn, &self.validator_nodes, &public_key.to_vec())?.unwrap();
+        Ok(x.shard_key)
     }
 
     fn delete_validator_node(

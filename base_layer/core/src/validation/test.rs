@@ -113,7 +113,8 @@ mod header_validators {
 
         let genesis = db.fetch_chain_header(0).unwrap();
 
-        let mut header = BlockHeader::from_previous(genesis.header());
+        let mut header =
+            BlockHeader::from_previous(genesis.header(), genesis.header().validator_node_merkle_root.clone());
         header.version = u16::MAX;
 
         let validator = HeaderValidator::new(consensus_manager.clone());
@@ -201,7 +202,7 @@ fn chain_balance_validation() {
         .build()
         .unwrap();
 
-    let mut header1 = BlockHeader::from_previous(genesis.header());
+    let mut header1 = BlockHeader::from_previous(genesis.header(), genesis.header().validator_node_merkle_root.clone());
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
@@ -253,7 +254,7 @@ fn chain_balance_validation() {
         .build()
         .unwrap();
 
-    let mut header2 = BlockHeader::from_previous(header1.header());
+    let mut header2 = BlockHeader::from_previous(header1.header(), header1.header().validator_node_merkle_root.clone());
     header2.kernel_mmr_size += 1;
     header2.output_mmr_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
@@ -375,7 +376,7 @@ fn chain_balance_validation_burned() {
         .build()
         .unwrap();
     burned_sum = &burned_sum + kernel2.get_burn_commitment().unwrap();
-    let mut header1 = BlockHeader::from_previous(genesis.header());
+    let mut header1 = BlockHeader::from_previous(genesis.header(), genesis.header().validator_node_merkle_root.clone());
     header1.kernel_mmr_size += 2;
     header1.output_mmr_size += 2;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(

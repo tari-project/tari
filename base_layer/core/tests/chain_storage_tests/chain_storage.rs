@@ -36,7 +36,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
-    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,
@@ -89,7 +89,10 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let mut header1 = BlockHeader::from_previous(genesis_block.header());
+    let mut header1 = BlockHeader::from_previous(
+        genesis_block.header(),
+        genesis_block.header().validator_node_merkle_root.clone(),
+    );
 
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
@@ -97,7 +100,7 @@ fn insert_and_fetch_header() {
     let chain1 = create_chain_header(header1.clone(), genesis_block.accumulated_data());
 
     store.insert_valid_headers(vec![chain1.clone()]).unwrap();
-    let mut header2 = BlockHeader::from_previous(&header1);
+    let mut header2 = BlockHeader::from_previous(&header1, header1.validator_node_merkle_root.clone());
     header2.kernel_mmr_size += 2;
     header2.output_mmr_size += 2;
     let chain2 = create_chain_header(header2.clone(), chain1.accumulated_data());
@@ -1529,7 +1532,6 @@ fn orphan_cleanup_on_reorg() {
 fn orphan_cleanup_delete_all_orphans() {
     let path = create_temporary_data_path();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -1543,7 +1545,8 @@ fn orphan_cleanup_delete_all_orphans() {
     };
     // Test cleanup during runtime
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(network).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
@@ -1596,13 +1599,14 @@ fn orphan_cleanup_delete_all_orphans() {
 
     // Test orphans are present on open
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
             validators.clone(),
             config,
-            DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
+            DifficultyCalculator::new(consensus_manager, Default::default()),
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 5);
@@ -1610,7 +1614,8 @@ fn orphan_cleanup_delete_all_orphans() {
 
     // Test orphans cleanup on open
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         config.cleanup_orphans_at_startup = true;
         let store = BlockchainDatabase::new(
             db,

@@ -367,7 +367,7 @@ mod test {
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let h2 = BlockHeader::from_previous(&h1);
+        let h2 = BlockHeader::from_previous(&h1, h1.validator_node_merkle_root.clone());
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");

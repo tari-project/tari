@@ -23,7 +23,7 @@
 use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
-    consensus::ConsensusManagerBuilder,
+    consensus::{ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::create_test_db,
     tx,
 };
@@ -69,17 +69,18 @@ fn lmdb_file_lock() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
 
-        match create_lmdb_database(&temp_path, LMDBConfig::default()) {
+        match create_lmdb_database(&temp_path, LMDBConfig::default(), consensus_manager.clone()) {
             Err(ChainStorageError::CannotAcquireFileLock) => {},
             _ => panic!("Should not be able to make this db"),
         }
 
         drop(db);
 
-        let _db2 =
-            create_lmdb_database(&temp_path, LMDBConfig::default()).expect("Should be able to make a new lmdb now");
+        let _db2 = create_lmdb_database(&temp_path, LMDBConfig::default(), consensus_manager)
+            .expect("Should be able to make a new lmdb now");
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files

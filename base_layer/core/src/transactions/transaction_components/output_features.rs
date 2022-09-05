@@ -238,6 +238,8 @@ mod test {
                     .try_into()
                     .unwrap(),
             })),
+            validator_node_public_key: None,
+            validator_node_signature: None,
         }
     }
 

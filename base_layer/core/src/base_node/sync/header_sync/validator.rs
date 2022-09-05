@@ -261,7 +261,7 @@ mod test {
         let (validator, db) = setup();
         let mut tip = db.fetch_tip_header().await.unwrap();
         for _ in 0..n {
-            let mut header = BlockHeader::from_previous(tip.header());
+            let mut header = BlockHeader::from_previous(tip.header(), tip.header().validator_node_merkle_root.clone());
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_mmr_size += 1;
@@ -316,11 +316,11 @@ mod test {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
-            let next = BlockHeader::from_previous(tip.header());
+            let next = BlockHeader::from_previous(tip.header(), tip.header().validator_node_merkle_root.clone());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
-            let next = BlockHeader::from_previous(tip.header());
+            let next = BlockHeader::from_previous(tip.header(), tip.header().validator_node_merkle_root.clone());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }
@@ -329,7 +329,7 @@ mod test {
         async fn it_fails_if_height_is_not_serial() {
             let (mut validator, _, tip) = setup_with_headers(2).await;
             validator.initialize_state(tip.hash()).await.unwrap();
-            let mut next = BlockHeader::from_previous(tip.header());
+            let mut next = BlockHeader::from_previous(tip.header(), tip.header().validator_node_merkle_root.clone());
             next.height = 10;
             let err = validator.validate(next).unwrap_err();
             unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);
