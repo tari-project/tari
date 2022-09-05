@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
@@ -68,6 +68,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 pub struct OutputManagerSqliteDatabase {
     database_connection: WalletDbConnection,
     cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
+    encumber_lock: Arc<Mutex<()>>,
 }
 
 impl OutputManagerSqliteDatabase {
@@ -75,6 +76,7 @@ impl OutputManagerSqliteDatabase {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
+            encumber_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -661,8 +663,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        // We need to ensure that this whole encumber operation happens inside of a mutex to ensure thread safety as the
+        // transaction first check checks if it can encumber then encumbers them.
+        let _guard = self
+            .encumber_lock
+            .lock()
+            .map_err(|e| OutputManagerStorageError::UnexpectedResult(format!("Encumber lock poisoned: {}", e)))?;
 
         let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
+
         for i in outputs_to_send {
             let output = OutputSql::find_by_commitment_and_cancelled(i.commitment.as_bytes(), false, &conn)?;
             if output.status != (OutputStatus::Unspent as i32) {
@@ -714,6 +723,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
+        // We need to ensure that this whole encumber operation happens inside of a mutex to ensure thread safety as the
+        // transaction first check checks if it can encumber then encumbers them.
+        let _guard = self
+            .encumber_lock
+            .lock()
+            .map_err(|e| OutputManagerStorageError::UnexpectedResult(format!("Encumber lock poisoned: {}", e)))?;
         let outputs_to_be_received =
             OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::ShortTermEncumberedToBeReceived, &conn)?;
         for o in &outputs_to_be_received {
