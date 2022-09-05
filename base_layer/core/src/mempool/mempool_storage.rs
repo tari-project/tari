@@ -112,6 +112,10 @@ impl MempoolStorage {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
+            Err(ValidationError::DuplicateKernelError(msg)) => {
+                warn!(target: LOG_TARGET, "Validation failed due to duplicate kernel: {}", msg);
+                Ok(TxStorageResponse::NotStoredConsensus)
+            },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
                 Ok(TxStorageResponse::NotStored)
