@@ -189,6 +189,7 @@ class WalletProcess {
       let args = [
         "build",
         "--release",
+        "--locked",
         "--bin",
         "tari_console_wallet",
         "-Z",
