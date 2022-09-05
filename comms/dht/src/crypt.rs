@@ -47,7 +47,7 @@ use crate::{
     comms_dht_hash_domain_key_message,
     comms_dht_hash_domain_key_signature,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
-    outbound::DhtOutboundError,
+    error::DhtEncryptError,
     version::DhtProtocolVersion,
 };
 
@@ -69,10 +69,10 @@ pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPubli
     output
 }
 
-fn pad_message_to_base_length_multiple(message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+fn pad_message_to_base_length_multiple(message: &[u8]) -> Result<Vec<u8>, DhtEncryptError> {
     // We require a 32-bit length representation, and also don't want to overflow after including this encoding
     if message.len() > ((u32::max_value() - (size_of::<u32>() as u32)) as usize) {
-        return Err(DhtOutboundError::PaddingError("Message is too long".to_string()));
+        return Err(DhtEncryptError::PaddingError("Message is too long".to_string()));
     }
     let message_length = message.len();
     let encoded_length = (message_length as u32).to_le_bytes();
@@ -93,20 +93,20 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Result<Vec<u8>, DhtOut
     Ok(padded_message)
 }
 
-fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8>, DhtEncryptError> {
     // NOTE: This function can return errors relating to message length
     // It is important not to leak error types to an adversary, or to have timing differences
 
     // The padded message must be long enough to extract the encoded message length
     if padded_message.len() < size_of::<u32>() {
-        return Err(DhtOutboundError::PaddingError(
+        return Err(DhtEncryptError::PaddingError(
             "Padded message is not long enough for length extraction".to_string(),
         ));
     }
 
     // The padded message must be a multiple of the base length
     if (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
-        return Err(DhtOutboundError::PaddingError(
+        return Err(DhtEncryptError::PaddingError(
             "Padded message must be a multiple of the base length".to_string(),
         ));
     }
@@ -119,9 +119,9 @@ fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8
     // The padded message is too short for the decoded length
     let end = message_length
         .checked_add(size_of::<u32>())
-        .ok_or_else(|| DhtOutboundError::PaddingError("Claimed unpadded message length is too large".to_string()))?;
+        .ok_or_else(|| DhtEncryptError::PaddingError("Claimed unpadded message length is too large".to_string()))?;
     if end > padded_message.len() {
-        return Err(DhtOutboundError::CipherError(
+        return Err(DhtEncryptError::CipherError(
             "Claimed unpadded message length is too large".to_string(),
         ));
     }
@@ -150,11 +150,9 @@ pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> Authe
 }
 
 /// Decrypts cipher text using ChaCha20 stream cipher given the cipher key and cipher text with integral nonce.
-pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtEncryptError> {
     if cipher_text.len() < size_of::<Nonce>() {
-        return Err(DhtOutboundError::CipherError(
-            "Cipher text is not long enough to include nonce".to_string(),
-        ));
+        return Err(DhtEncryptError::InvalidDecryptionNonceNotIncluded);
     }
 
     let (nonce, cipher_text) = cipher_text.split_at(size_of::<Nonce>());
@@ -172,7 +170,7 @@ pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, Dh
 pub fn decrypt_with_chacha20_poly1305(
     cipher_key: &AuthenticatedCipherKey,
     cipher_signature: &[u8],
-) -> Result<Vec<u8>, DhtOutboundError> {
+) -> Result<Vec<u8>, DhtEncryptError> {
     let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
 
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
@@ -180,13 +178,13 @@ pub fn decrypt_with_chacha20_poly1305(
     let cipher = ChaCha20Poly1305::new(&cipher_key.0);
     let decrypted_signature = cipher
         .decrypt(nonce_ga, cipher_signature)
-        .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated decryption failed")))?;
+        .map_err(|_| DhtEncryptError::InvalidAuthenticatedDecryption)?;
 
     Ok(decrypted_signature)
 }
 
 /// Encrypt the plain text using the ChaCha20 stream cipher
-pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Result<Vec<u8>, DhtEncryptError> {
     // pad plain_text to avoid message length leaks
     let plain_text = pad_message_to_base_length_multiple(plain_text)?;
 
@@ -212,7 +210,7 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Result<Vec<u8>, Dht
 pub fn encrypt_with_chacha20_poly1305(
     cipher_key: &AuthenticatedCipherKey,
     signature: &[u8],
-) -> Result<Vec<u8>, DhtOutboundError> {
+) -> Result<Vec<u8>, DhtEncryptError> {
     let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
 
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
@@ -221,7 +219,7 @@ pub fn encrypt_with_chacha20_poly1305(
     // length of encrypted equals signature.len() + 16 (the latter being the tag size for ChaCha20-poly1305)
     let encrypted = cipher
         .encrypt(nonce_ga, signature)
-        .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated encryption failed")))?;
+        .map_err(|_| DhtEncryptError::CipherError(String::from("Authenticated encryption failed")))?;
 
     Ok(encrypted)
 }
@@ -326,7 +324,7 @@ mod test {
 
         let encrypted = cipher
             .encrypt(nonce_ga, signature)
-            .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated encryption failed")))
+            .map_err(|_| DhtEncryptError::CipherError(String::from("Authenticated encryption failed")))
             .unwrap();
 
         assert_eq!(encrypted.len(), n + 16);
@@ -353,7 +351,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
@@ -373,7 +371,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
@@ -395,7 +393,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&other_key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
