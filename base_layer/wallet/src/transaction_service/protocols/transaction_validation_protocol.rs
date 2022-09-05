@@ -112,7 +112,6 @@ where
         let unconfirmed_transactions = self
             .db
             .fetch_unconfirmed_transactions_info()
-            .await
             .for_protocol(self.operation_id)
             .unwrap();
 
@@ -216,7 +215,7 @@ where
             self.operation_id
         );
         let op_id = self.operation_id;
-        while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().await.for_protocol(op_id)? {
+        while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().for_protocol(op_id)? {
             let mined_height = last_mined_transaction
                 .mined_height
                 .ok_or_else(|| {
@@ -414,7 +413,6 @@ where
                 num_confirmations >= self.config.num_confirmations_required,
                 status.is_faux(),
             )
-            .await
             .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
@@ -488,12 +486,10 @@ where
                 num_confirmations >= self.config.num_confirmations_required,
                 false,
             )
-            .await
             .for_protocol(self.operation_id)?;
 
         self.db
             .abandon_coinbase_transaction(tx_id)
-            .await
             .for_protocol(self.operation_id)?;
 
         self.publish_event(TransactionEvent::TransactionCancelled(
@@ -510,7 +506,6 @@ where
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)
-            .await
             .for_protocol(self.operation_id)?;
 
         if *status == TransactionStatus::Coinbase {

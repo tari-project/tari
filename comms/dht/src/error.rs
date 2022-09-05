@@ -20,26 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! DHT middleware layers for inbound messages.
+use thiserror::Error;
 
-mod decryption;
-pub use decryption::DecryptionLayer;
-
-mod deserialize;
-pub use deserialize::DeserializeLayer;
-
-mod dht_handler;
-pub use dht_handler::DhtHandlerLayer;
-
-mod forward;
-pub use forward::ForwardLayer;
-
-mod metrics;
-pub use metrics::MetricsLayer;
-
-mod error;
-pub use error::DhtInboundError;
-
-mod message;
-
-pub use message::{DecryptedDhtMessage, DhtInboundMessage};
+#[derive(Debug, Error)]
+pub enum DhtEncryptError {
+    #[error("Message body invalid")]
+    InvalidMessageBody,
+    #[error("Invalid decryption, nonce not included")]
+    InvalidDecryptionNonceNotIncluded,
+    #[error("Invalid authenticated decryption")]
+    InvalidAuthenticatedDecryption,
+    #[error("Cipher error: `{0}`")]
+    CipherError(String),
+    #[error("Padding error: `{0}`")]
+    PaddingError(String),
+}

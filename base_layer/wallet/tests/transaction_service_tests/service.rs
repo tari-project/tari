@@ -3328,8 +3328,8 @@ async fn test_coinbase_generation_and_monitoring() {
     );
 
     // Now we will test validation where tx1 will not be found but tx2b will be unconfirmed, then confirmed.
-    let tx1 = db.get_completed_transaction(tx_id1).await.unwrap();
-    let tx2b = db.get_completed_transaction(tx_id2b).await.unwrap();
+    let tx1 = db.get_completed_transaction(tx_id1).unwrap();
+    let tx2b = db.get_completed_transaction(tx_id2b).unwrap();
 
     let mut block_headers = HashMap::new();
     for i in 0..=4 {
@@ -5072,7 +5072,10 @@ async fn transaction_service_tx_broadcast() {
 
     let tx1_fee = alice_completed_tx1.fee;
 
-    assert_eq!(alice_completed_tx1.status, TransactionStatus::Completed);
+    assert!(
+        alice_completed_tx1.status == TransactionStatus::Completed ||
+            alice_completed_tx1.status == TransactionStatus::Broadcast
+    );
 
     let _transactions = alice_ts_interface
         .base_node_rpc_mock_state
@@ -5173,7 +5176,10 @@ async fn transaction_service_tx_broadcast() {
         .remove(&tx_id2)
         .expect("Transaction must be in collection");
 
-    assert_eq!(alice_completed_tx2.status, TransactionStatus::Completed);
+    assert!(
+        alice_completed_tx2.status == TransactionStatus::Completed ||
+            alice_completed_tx2.status == TransactionStatus::Broadcast
+    );
 
     let _transactions = alice_ts_interface
         .base_node_rpc_mock_state
@@ -5309,13 +5315,15 @@ async fn broadcast_all_completed_transactions_on_startup() {
         .wallet_connectivity_service_mock
         .set_base_node(alice_ts_interface.base_node_identity.to_peer());
 
+    // Note: The event stream has to be assigned before the broadcast protocol is restarted otherwise the events will be
+    // dropped
+    let mut event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
     assert!(alice_ts_interface
         .transaction_service_handle
         .restart_broadcast_protocols()
         .await
         .is_ok());
 
-    let mut event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
     let delay = sleep(Duration::from_secs(60));
     tokio::pin!(delay);
     let mut found1 = false;

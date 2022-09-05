@@ -1448,7 +1448,7 @@ where
         for o in uo {
             utxos_total_value += o.unblinded_output.value;
 
-            error!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
+            trace!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
@@ -1469,7 +1469,7 @@ where
                 total_output_metadata_byte_size + default_metadata_size,
             );
 
-            error!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
+            trace!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;
