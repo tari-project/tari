@@ -29,7 +29,7 @@ use std::{
 use log::*;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::BlockHash,
+    types::{BlockHash, Signature},
 };
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
@@ -51,6 +51,7 @@ use crate::{
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
+            models::TxCancellationReason,
             sqlite_db::UnconfirmedTransactionInfo,
         },
     },
@@ -67,9 +68,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
-use tari_common_types::types::Signature;
-
-use crate::transaction_service::storage::models::TxCancellationReason;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
@@ -504,10 +502,6 @@ where
         tx_id: TxId,
         status: &TransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
-        self.db
-            .set_transaction_as_unmined(tx_id)
-            .for_protocol(self.operation_id)?;
-
         if *status == TransactionStatus::Coinbase {
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
@@ -519,6 +513,10 @@ where
                 );
             };
         }
+
+        self.db
+            .set_transaction_as_unmined(tx_id)
+            .for_protocol(self.operation_id)?;
 
         self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
         Ok(())

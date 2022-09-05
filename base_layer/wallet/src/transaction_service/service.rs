@@ -2180,9 +2180,12 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        if !self.connectivity().is_base_node_set() {
-            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
-        }
+        let current_base_node = self
+            .resources
+            .connectivity
+            .get_current_base_node_id()
+            .ok_or(TransactionServiceError::NoBaseNodeKeysProvided)?;
+
         trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OperationId::new_random();
 
@@ -2195,7 +2198,29 @@ where
             self.resources.output_manager_service.clone(),
         );
 
-        let join_handle = tokio::spawn(protocol.execute());
+        let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
+
+        let join_handle = tokio::spawn(async move {
+            let exec_fut = protocol.execute();
+            tokio::pin!(exec_fut);
+            loop {
+                tokio::select! {
+                    result = &mut exec_fut => {
+                       return result;
+                    },
+                    _ = base_node_watch.changed() => {
+                         if let Some(peer) = base_node_watch.borrow().as_ref() {
+                            if peer.node_id != current_base_node {
+                                debug!(target: LOG_TARGET, "Base node changed, exiting transaction validation protocol");
+                                return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::BaseNodeChanged {
+                                    task_name: "transaction validation_protocol",
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        });
         join_handles.push(join_handle);
 
         Ok(id)
