@@ -679,7 +679,7 @@ where
                 self.process_body(request_id, deadline, body).await?;
             },
             Err(err) => {
-                error!(
+                debug!(
                     target: LOG_TARGET,
                     "{} Service returned an error: {}", self.logging_context_string, err
                 );
