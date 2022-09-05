@@ -95,7 +95,7 @@ use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
 
 pub mod support;
-use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
+use tari_wallet::output_manager_service::{storage::database::OutputManagerDatabase, UtxoSelectionCriteria};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -274,6 +274,7 @@ async fn test_wallet() {
         .send_transaction(
             bob_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(5),
             "".to_string(),
@@ -589,6 +590,7 @@ async fn test_store_and_forward_send_tx() {
         .send_transaction(
             carol_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(3),
             "Store and Forward!".to_string(),

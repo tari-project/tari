@@ -573,6 +573,7 @@ where
             TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 message,
@@ -581,6 +582,7 @@ where
                 self.send_transaction(
                     dest_pubkey,
                     amount,
+                    selection_criteria,
                     *output_features,
                     fee_per_gram,
                     message,
@@ -595,6 +597,7 @@ where
             TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 message,
@@ -602,6 +605,7 @@ where
                 .send_one_sided_transaction(
                     dest_pubkey,
                     amount,
+                    selection_criteria,
                     *output_features,
                     fee_per_gram,
                     message,
@@ -612,6 +616,7 @@ where
             TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 message,
@@ -619,6 +624,7 @@ where
                 .send_one_sided_to_stealth_address_transaction(
                     dest_pubkey,
                     amount,
+                    selection_criteria,
                     *output_features,
                     fee_per_gram,
                     message,
@@ -628,24 +634,36 @@ where
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::BurnTari {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 message,
             } => self
-                .burn_tari(amount, fee_per_gram, message, transaction_broadcast_join_handles)
+                .burn_tari(
+                    amount,
+                    selection_criteria,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
-            TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
-                Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
-                    self.send_sha_atomic_swap_transaction(
-                        dest_pubkey,
-                        amount,
-                        fee_per_gram,
-                        message,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?,
-                ))
-            },
+            TransactionServiceRequest::SendShaAtomicSwapTransaction(
+                dest_pubkey,
+                amount,
+                selection_criteria,
+                fee_per_gram,
+                message,
+            ) => Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
+                self.send_sha_atomic_swap_transaction(
+                    dest_pubkey,
+                    amount,
+                    selection_criteria,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await?,
+            )),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .await
@@ -869,6 +887,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -895,8 +914,7 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    // TODO: allow customization of selected inputs and outputs
-                    UtxoSelectionCriteria::default(),
+                    selection_criteria,
                     output_features,
                     fee_per_gram,
                     None,
@@ -976,6 +994,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1011,7 +1030,7 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 OutputFeatures::default(),
                 fee_per_gram,
                 TransactionMetadata::default(),
@@ -1156,6 +1175,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -1172,7 +1192,7 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 TransactionMetadata::default(),
@@ -1290,6 +1310,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -1306,6 +1327,7 @@ where
         self.send_one_sided_or_stealth(
             dest_pubkey.clone(),
             amount,
+            selection_criteria,
             output_features,
             fee_per_gram,
             message,
@@ -1322,6 +1344,7 @@ where
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1337,7 +1360,7 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 tx_meta,
@@ -1435,6 +1458,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -1461,6 +1485,7 @@ where
         self.send_one_sided_or_stealth(
             dest_pubkey,
             amount,
+            selection_criteria,
             output_features,
             fee_per_gram,
             message,

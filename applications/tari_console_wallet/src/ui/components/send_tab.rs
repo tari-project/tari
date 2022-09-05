@@ -4,6 +4,7 @@
 use log::*;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
+use tari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -268,6 +269,7 @@ impl SendTab {
                                     match Handle::current().block_on(app_state.send_one_sided_transaction(
                                         self.to_field.clone(),
                                         amount.into(),
+                                        UtxoSelectionCriteria::default(),
                                         fee_per_gram,
                                         self.message_field.clone(),
                                         tx,
@@ -286,6 +288,7 @@ impl SendTab {
                                         app_state.send_one_sided_to_stealth_address_transaction(
                                             self.to_field.clone(),
                                             amount.into(),
+                                            UtxoSelectionCriteria::default(),
                                             fee_per_gram,
                                             self.message_field.clone(),
                                             tx,
@@ -305,6 +308,7 @@ impl SendTab {
                                     match Handle::current().block_on(app_state.send_transaction(
                                         self.to_field.clone(),
                                         amount.into(),
+                                        UtxoSelectionCriteria::default(),
                                         fee_per_gram,
                                         self.message_field.clone(),
                                         tx,

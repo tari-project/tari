@@ -22,7 +22,10 @@
 
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
-use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle};
+use tari_wallet::{
+    output_manager_service::UtxoSelectionCriteria,
+    transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
+};
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{state::UiTransactionSendStatus, UiError};
@@ -32,6 +35,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 pub async fn send_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroTari,
@@ -42,7 +46,14 @@ pub async fn send_transaction_task(
     let mut event_stream = transaction_service_handle.get_event_stream();
     let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
-        .send_transaction(public_key, amount, output_features, fee_per_gram, message)
+        .send_transaction(
+            public_key,
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+        )
         .await
     {
         Err(e) => {
@@ -100,6 +111,7 @@ pub async fn send_transaction_task(
 pub async fn send_one_sided_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroTari,
@@ -109,7 +121,14 @@ pub async fn send_one_sided_transaction_task(
     let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
-        .send_one_sided_transaction(public_key, amount, output_features, fee_per_gram, message)
+        .send_one_sided_transaction(
+            public_key,
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+        )
         .await
     {
         Err(e) => {
@@ -146,6 +165,7 @@ pub async fn send_one_sided_transaction_task(
 pub async fn send_one_sided_to_stealth_address_transaction(
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroTari,
@@ -155,7 +175,14 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
-        .send_one_sided_to_stealth_address_transaction(dest_pubkey, amount, output_features, fee_per_gram, message)
+        .send_one_sided_to_stealth_address_transaction(
+            dest_pubkey,
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+        )
         .await
     {
         Err(e) => {

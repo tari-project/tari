@@ -88,7 +88,7 @@ use tari_core::transactions::{
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::models::{self, WalletTransaction},
@@ -301,6 +301,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .send_sha_atomic_swap_transaction(
                 address.clone(),
                 message.amount.into(),
+                UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 message.message,
             )
@@ -478,6 +479,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -488,6 +490,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -498,6 +501,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_to_stealth_address_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -546,7 +550,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Tari", message.amount);
         let response = match transaction_service
-            .burn_tari(message.amount.into(), message.fee_per_gram.into(), message.message)
+            .burn_tari(
+                message.amount.into(),
+                UtxoSelectionCriteria::default(),
+                message.fee_per_gram.into(),
+                message.message,
+            )
             .await
         {
             Ok(tx_id) => {

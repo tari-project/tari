@@ -522,6 +522,7 @@ async fn manage_single_transaction() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
             "".to_string()
@@ -535,6 +536,7 @@ async fn manage_single_transaction() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
             message,
@@ -641,6 +643,7 @@ async fn single_transaction_to_self() {
         .send_transaction(
             alice_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
             message.clone(),
@@ -724,6 +727,7 @@ async fn send_one_sided_transaction_to_other() {
         .send_one_sided_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
             message.clone(),
@@ -849,6 +853,7 @@ async fn recover_one_sided_transaction() {
         .send_one_sided_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
             message.clone(),
@@ -940,7 +945,13 @@ async fn test_htlc_send_and_claim() {
     let mut alice_ts_clone = alice_ts.clone();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
     let (tx_id, pre_image, output) = alice_ts_clone
-        .send_sha_atomic_swap_transaction(bob_pubkey, value, 20.into(), message.clone())
+        .send_sha_atomic_swap_transaction(
+            bob_pubkey,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            message.clone(),
+        )
         .await
         .expect("Alice sending HTLC transaction");
 
@@ -1049,6 +1060,7 @@ async fn send_one_sided_transaction_to_self() {
         .send_one_sided_transaction(
             alice_node_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
             message.clone(),
@@ -1187,6 +1199,7 @@ async fn manage_multiple_transactions() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_b_1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "a to b 1".to_string(),
@@ -1199,6 +1212,7 @@ async fn manage_multiple_transactions() {
         .send_transaction(
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "a to c 1".to_string(),
@@ -1213,6 +1227,7 @@ async fn manage_multiple_transactions() {
         .send_transaction(
             alice_node_identity.public_key().clone(),
             value_b_to_a_1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "b to a 1".to_string(),
@@ -1223,6 +1238,7 @@ async fn manage_multiple_transactions() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_b_2,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "a to b 2".to_string(),
@@ -1349,6 +1365,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             MicroTari::from(5000),
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "".to_string(),
@@ -1732,6 +1749,7 @@ async fn discovery_async_return_test() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_c_1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "Discovery Tx!".to_string(),
@@ -1768,6 +1786,7 @@ async fn discovery_async_return_test() {
         .send_transaction(
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
             "Discovery Tx2!".to_string(),
@@ -2037,6 +2056,7 @@ async fn test_transaction_cancellation() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -2358,6 +2378,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -2542,6 +2563,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -2674,6 +2696,7 @@ async fn test_tx_direct_send_behaviour() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message1".to_string(),
@@ -2717,6 +2740,7 @@ async fn test_tx_direct_send_behaviour() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message2".to_string(),
@@ -2765,6 +2789,7 @@ async fn test_tx_direct_send_behaviour() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message3".to_string(),
@@ -2813,6 +2838,7 @@ async fn test_tx_direct_send_behaviour() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message4".to_string(),
@@ -4054,6 +4080,7 @@ async fn test_transaction_resending() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -4541,6 +4568,7 @@ async fn test_replying_to_cancelled_tx() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -4663,6 +4691,7 @@ async fn test_transaction_timeout_cancellation() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20 * uT,
             "Testing Message".to_string(),
@@ -4917,6 +4946,7 @@ async fn transaction_service_tx_broadcast() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent1,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
@@ -4977,6 +5007,7 @@ async fn transaction_service_tx_broadcast() {
         .send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent2,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20 * uT,
             "Testing Message2".to_string(),
