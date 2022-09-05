@@ -1,0 +1,147 @@
+---
+name: Integration tests
+
+'on':
+  push:
+    paths-ignore:
+      - '**/*.md'
+    branches:
+      - 'ci-*'
+  schedule:
+    - cron: '0 2 * * *'   # daily @ 02h00
+    - cron: '0 12 * * 6'  # weekly - Saturday @ noon
+  workflow_dispatch:
+
+env:
+  toolchain: nightly-2022-05-01
+  # space seperated string list
+  build_binaries: "tari_base_node tari_console_wallet tari_merge_mining_proxy tari_miner"
+
+jobs:
+  long-running:
+    name: Cucumber tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Envs setup for ${{ env.CI_RUN }}
+        id: envs_setup
+        shell: bash
+        run: |
+          VAPPS_STRING="${{ env.build_binaries }}"
+          VAPPS_ARRAY=(${VAPPS_STRING})
+          for i in "${!VAPPS_ARRAY[@]}"; do
+            if [ "${VAPPS_ARRAY[$i]:0:5}" = "tari_" ] ; then
+              VAPPS_TARGET_BINS="${VAPPS_TARGET_BINS} --bin ${VAPPS_ARRAY[$i]}"
+            fi
+          done
+          echo "TARGET_BINS=${VAPPS_TARGET_BINS}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" == "schedule" ] ; then
+            if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
+              echo "CI_RUN=non-critical" >> $GITHUB_ENV
+            elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
+              echo "CI_RUN=long-running" >> $GITHUB_ENV
+            fi
+          else
+            echo "CI_RUN=non-critical" >> $GITHUB_ENV
+          fi
+
+      - name: Install ubuntu dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Setup rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+          toolchain: ${{ env.toolchain }}
+          override: true
+
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build binaries
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: >
+            --release
+            --locked
+            ${{ env.TARGET_BINS }}
+
+      - name: Build ffi
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: >
+            --release
+            --locked
+            --package tari_wallet_ffi
+
+      - name: CI folder prep
+        shell: bash
+        working-directory: integration_tests
+        run: |
+          mkdir -p cucumber_output
+          mkdir -p temp/reports
+          mkdir -p temp/out
+          cd ../target/release/
+          cp -v ${{ env.build_binaries }} integration_tests/temp/out
+          cd $GITHUB_WORKSPACE/integration_tests/temp/out
+          shasum -a 256 ${{ env.build_binaries }} > integration_tests.sha256sums
+          cat integration_tests.sha256sums
+          ls -alht
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: integration_tests/package-lock.json
+
+      - name: Run npm ci and lint
+        shell: bash
+        working-directory: integration_tests
+        run: |
+          node -v
+          npm install
+          npm run check-fmt
+          npm run lint
+          npm ci
+          cd ../clients/base_node_grpc_client
+          npm install
+          cd ../wallet_grpc_client
+          npm install
+          npm ci
+
+      - name: Run ${{ env.CI_RUN }} integration tests
+        continue-on-error: true
+        shell: bash
+        working-directory: integration_tests
+        run: |
+          node_modules/.bin/cucumber-js --profile "${{ env.CI_RUN }}" \
+            --tags "not @wallet-ffi" --format json:cucumber_output/tests.cucumber \
+            --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
+
+      - name: Generate report
+        continue-on-error: true
+        if: always()
+        shell: bash
+        working-directory: integration_tests
+        run: node ./generate_report.js
+
+      - name: Store ${{ env.CI_RUN }} test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: ${{ env.CI_RUN }} test results
+          path: |
+            integration_tests/cucumber_output
+            integration_tests/temp/reports
+            integration_tests/temp/out
