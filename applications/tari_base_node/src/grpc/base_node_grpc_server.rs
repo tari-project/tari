@@ -1586,11 +1586,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetCommittee");
         let mut handler = self.node_service.clone();
-        let response = handler.get_committee(height, shard).await.map_err(|e| {
-            error!(target: LOG_TARGET, "Error {}", e);
-            report_error(report_error_flag, Status::internal(e.to_string()))
-        })?;
-        Ok(Response::new(response))
+        let response = handler
+            .get_committee(request.height, request.shard_key.try_into().unwrap())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error {}", e);
+                report_error(report_error_flag, Status::internal(e.to_string()))
+            })?
+            .iter()
+            .map(|a| a.shard_key.to_vec())
+            .collect();
+        Ok(Response::new(tari_rpc::GetCommitteeResponse { public_key: response }))
     }
 
     async fn get_active_validator_nodes(
