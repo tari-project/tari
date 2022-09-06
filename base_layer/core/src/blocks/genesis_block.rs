@@ -162,6 +162,7 @@ fn get_igor_genesis_block_raw() -> Block {
     let genesis = DateTime::parse_from_rfc2822("08 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
+    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
     Block {
         header: BlockHeader {
             version: 0,
@@ -188,7 +189,7 @@ fn get_igor_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_merkle_root: vec![0; 32],
+            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
         },
         body,
     }

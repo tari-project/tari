@@ -57,6 +57,7 @@ use crate::{
     blocks::BlocksHashDomain,
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+    ValidatorNodeMmr,
 };
 
 #[derive(Debug, Error)]
@@ -117,6 +118,7 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// Create a new, default header with the given version.
     pub fn new(blockchain_version: u16) -> BlockHeader {
+        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         BlockHeader {
             version: blockchain_version,
             height: 0,
@@ -132,7 +134,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vec![0; 32],
+            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
         }
     }
 
