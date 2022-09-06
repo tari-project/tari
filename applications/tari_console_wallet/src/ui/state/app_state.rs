@@ -434,6 +434,7 @@ impl AppState {
                 .completed_txs
                 .iter()
                 .filter(|tx| !matches!(tx.cancelled, Some(TxCancellationReason::AbandonedCoinbase)))
+                .filter(|tx| !matches!(tx.status, TransactionStatus::Coinbase))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()

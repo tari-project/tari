@@ -3126,7 +3126,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1
+        MicroTari::from(0)
     );
 
     // Create a second coinbase txn at the first block height, with same output hash as the previous one
@@ -3154,7 +3154,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1
+        MicroTari::from(0)
     );
 
     // Create another coinbase Txn at the same block height; the previous one should not be cancelled
@@ -3181,7 +3181,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2 + reward2
+        MicroTari::from(0)
     );
 
     // Create a third coinbase Txn at the second block height; all the three should be valid
@@ -3208,7 +3208,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2 + reward2 + fees3 + reward3
+        MicroTari::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3263,7 +3263,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1
+        MicroTari::from(0)
     );
 
     // Create another coinbase Txn at the next block height
@@ -3290,7 +3290,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2 + reward2
+        MicroTari::from(0)
     );
 
     // Take out a second one at the second height which should not overwrite the initial one
@@ -3317,7 +3317,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2b + reward2 + fees2 + reward2
+        MicroTari::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3515,7 +3515,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1
+        MicroTari::from(0)
     );
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
@@ -3549,7 +3549,7 @@ async fn test_coinbase_abandoned() {
         .get_balance()
         .await
         .unwrap();
-    assert_eq!(balance.pending_incoming_balance, fees1 + reward1);
+    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
 
     let validation_id = alice_ts_interface
         .transaction_service_handle
@@ -3644,7 +3644,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees2 + reward2
+        MicroTari::from(0)
     );
 
     let transaction_query_batch_responses = vec![
@@ -3963,14 +3963,12 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
 
-    let expected_pending_incoming_balance = fees1 + reward1;
     assert_eq!(transactions.len(), 1);
     let mut amount = MicroTari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
-    assert_eq!(amount, expected_pending_incoming_balance);
-    // balance should be fees1 + reward1, not double
+    assert_eq!(amount, fees1 + reward1);
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -3978,7 +3976,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        expected_pending_incoming_balance
+        MicroTari::from(0)
     );
 
     // a requested coinbase transaction for the same height but new amount should be different
@@ -3994,13 +3992,12 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .get_completed_transactions()
         .await
         .unwrap();
-    let expected_pending_incoming_balance = fees1 + reward1 + fees2 + reward2;
     assert_eq!(transactions.len(), 2);
     let mut amount = MicroTari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
-    assert_eq!(amount, expected_pending_incoming_balance);
+    assert_eq!(amount, fees1 + reward1 + fees2 + reward2);
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -4008,7 +4005,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        expected_pending_incoming_balance
+        MicroTari::from(0)
     );
 
     // a requested coinbase transaction for a new height should be different
@@ -4024,13 +4021,12 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .get_completed_transactions()
         .await
         .unwrap();
-    let expected_pending_incoming_balance = fees1 + reward1 + 2 * (fees2 + reward2);
     assert_eq!(transactions.len(), 3);
     let mut amount = MicroTari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
-    assert_eq!(amount, expected_pending_incoming_balance);
+    assert_eq!(amount, fees1 + reward1 + fees2 + reward2 + fees2 + reward2);
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -4038,7 +4034,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        expected_pending_incoming_balance
+        MicroTari::from(0)
     );
 }
 

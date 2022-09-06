@@ -461,7 +461,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::styled("(C)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" cancel selected pending Txs "));
         span_vec.push(Span::styled("(A)", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" show/hide abandoned coinbases "));
+        span_vec.push(Span::raw(" show/hide mining "));
         span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" rebroadcast Txs "));
         span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
