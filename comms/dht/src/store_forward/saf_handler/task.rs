@@ -437,7 +437,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 ))
             })
             .transpose()?
-            .unwrap_or(chrono::MIN_DATETIME);
+            .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
         if stored_at > Utc::now() {
             return Err(StoreAndForwardError::StoredAtWasInFuture);
