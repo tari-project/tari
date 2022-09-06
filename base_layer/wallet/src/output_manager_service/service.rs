@@ -1134,56 +1134,9 @@ where
             )?)
         }
 
-        // let mut change_keys = None;
-        //
-        // let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
-        // let change_value = total.saturating_sub(fee);
-        // if change_value > 0.into() {
-        //     let (spending_key, script_private_key) = self
-        //         .resources
-        //         .master_key_manager
-        //         .get_next_spend_and_script_key()
-        //         .await?;
-        //     change_keys = Some((spending_key.clone(), script_private_key.clone()));
-        //     builder.with_change_secret(spending_key);
-        //     builder.with_rewindable_outputs(&self.resources.rewind_data.clone());
-        //     builder.with_change_script(
-        //         script!(Nop),
-        //         inputs!(PublicKey::from_secret_key(&script_private_key)),
-        //         script_private_key,
-        //     );
-        // }
-
         let mut stp = builder
             .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        // if let Some((spending_key, script_private_key)) = change_keys {
-        //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
-        //     //     OutputManagerError::BuildError(
-        //     //         "There should be a change script offset public key available".to_string(),
-        //     //     )
-        //     // })?;
-        //
-        //     let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-        //     let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-        //
-        //     let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
-        //     let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
-        //
-        //     let mut output_builder = UnblindedOutputBuilder::new(stp.get_change_amount()?, spending_key)
-        //         .with_script(script!(Nop))
-        //         .with_input_data(inputs!(PublicKey::from_secret_key(&script_private_key)))
-        //         .with_script_private_key(script_private_key);
-        //
-        //     output_builder.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
-        //     output_builder.sign_as_sender(&sender_offset_private_key)?;
-        //
-
-        //     let change_output =
-        //         DbUnblindedOutput::from_unblinded_output(output_builder.try_build()?, &self.resources.factories)?;
-        //
-        //     db_outputs.push(change_output);
-        // }
 
         if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
