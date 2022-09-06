@@ -531,7 +531,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            3: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
