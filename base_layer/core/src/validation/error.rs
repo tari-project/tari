@@ -113,6 +113,8 @@ pub enum ValidationError {
     },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
+    #[error("Duplicate kernel Error: {0}")]
+    DuplicateKernelError(String),
     #[error("Covenant failed to validate: {0}")]
     CovenantError(#[from] CovenantError),
     #[error("Invalid or unsupported blockchain version {version}")]

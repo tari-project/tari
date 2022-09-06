@@ -353,7 +353,13 @@ async fn fee_estimate() {
     let fee_per_gram = MicroTari::from(1);
     let fee = oms
         .output_manager_handle
-        .fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1)
+        .fee_estimate(
+            MicroTari::from(100),
+            UtxoSelectionCriteria::default(),
+            fee_per_gram,
+            1,
+            1,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -365,7 +371,13 @@ async fn fee_estimate() {
     for outputs in 1..5 {
         let fee = oms
             .output_manager_handle
-            .fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs)
+            .fee_estimate(
+                MicroTari::from(100),
+                UtxoSelectionCriteria::default(),
+                fee_per_gram,
+                1,
+                outputs,
+            )
             .await
             .unwrap();
 
@@ -384,7 +396,13 @@ async fn fee_estimate() {
     // not enough funds
     let err = oms
         .output_manager_handle
-        .fee_estimate(MicroTari::from(2750), fee_per_gram, 1, 1)
+        .fee_estimate(
+            MicroTari::from(2750),
+            UtxoSelectionCriteria::default(),
+            fee_per_gram,
+            1,
+            1,
+        )
         .await
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
@@ -468,7 +486,10 @@ async fn test_utxo_selection_no_chain_metadata() {
     }
 
     // test that we can get a fee estimate with no chain metadata
-    let fee = oms.fee_estimate(amount, fee_per_gram, 1, 2).await.unwrap();
+    let fee = oms
+        .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
+        .await
+        .unwrap();
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_metadata_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
@@ -477,14 +498,17 @@ async fn test_utxo_selection_no_chain_metadata() {
     // so instead of returning "not enough funds".to_string(), return "funds pending"
     let spendable_amount = (3..=10).sum::<u64>() * amount;
     let err = oms
-        .fee_estimate(spendable_amount, fee_per_gram, 1, 2)
+        .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::FundsPending));
 
     // test not enough funds
     let broke_amount = spendable_amount + MicroTari::from(2000);
-    let err = oms.fee_estimate(broke_amount, fee_per_gram, 1, 2).await.unwrap_err();
+    let err = oms
+        .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
+        .await
+        .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // coin split uses the "Largest" selection strategy
@@ -559,7 +583,10 @@ async fn test_utxo_selection_with_chain_metadata() {
     assert_eq!(utxos.len(), 10);
 
     // test fee estimates
-    let fee = oms.fee_estimate(amount, fee_per_gram, 1, 2).await.unwrap();
+    let fee = oms
+        .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
+        .await
+        .unwrap();
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_metadata_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
@@ -567,7 +594,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // even though we have utxos for the fee, they can't be spent because they are not mature yet
     let spendable_amount = (1..=6).sum::<u64>() * amount;
     let err = oms
-        .fee_estimate(spendable_amount, fee_per_gram, 1, 2)
+        .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));

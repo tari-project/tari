@@ -279,7 +279,7 @@ where
             OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                utxo_selection,
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 tx_meta,
@@ -291,7 +291,7 @@ where
                 .prepare_transaction_to_send(
                     tx_id,
                     amount,
-                    utxo_selection,
+                    selection_criteria,
                     fee_per_gram,
                     tx_meta,
                     message,
@@ -305,7 +305,7 @@ where
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
-                utxo_selection,
+                selection_criteria,
                 output_features,
                 fee_per_gram,
                 lock_height,
@@ -314,7 +314,7 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    utxo_selection,
+                    selection_criteria,
                     *output_features,
                     fee_per_gram,
                     lock_height,
@@ -324,11 +324,12 @@ where
                 .map(OutputManagerResponse::PayToSelfTransaction),
             OutputManagerRequest::FeeEstimate {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
             } => self
-                .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
+                .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
             OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
@@ -445,10 +446,10 @@ where
             OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                input_selection,
+                selection_criteria,
             } => {
                 let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(outputs, fee_per_gram, input_selection)
+                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram)
                     .await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
                     transaction: Box::new(transaction),
@@ -809,6 +810,7 @@ where
     async fn fee_estimate(
         &mut self,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         num_kernels: usize,
         num_outputs: usize,
@@ -836,10 +838,10 @@ where
         let utxo_selection = self
             .select_utxos(
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 num_outputs,
                 metadata_byte_size * num_outputs,
-                UtxoSelectionCriteria::default(),
             )
             .await?;
 
@@ -858,7 +860,7 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        utxo_selection: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         tx_meta: TransactionMetadata,
         message: String,
@@ -871,7 +873,7 @@ where
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. UTXO Selection: {}. Fee per gram: {}. ",
             amount,
-            utxo_selection,
+            selection_criteria,
             fee_per_gram,
         );
         let metadata_byte_size = self
@@ -885,7 +887,7 @@ where
             );
 
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, utxo_selection)
+            .select_utxos(amount, selection_criteria, fee_per_gram, 1, metadata_byte_size)
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1051,8 +1053,8 @@ where
     async fn create_pay_to_self_containing_outputs(
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
-        fee_per_gram: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
@@ -1069,10 +1071,10 @@ where
         let input_selection = self
             .select_utxos(
                 total_value,
+                selection_criteria,
                 fee_per_gram,
                 outputs.len(),
                 metadata_byte_size,
-                selection_criteria,
             )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
@@ -1208,7 +1210,7 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        utxo_selection: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -1227,7 +1229,7 @@ where
             );
 
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, utxo_selection)
+            .select_utxos(amount, selection_criteria, fee_per_gram, 1, metadata_byte_size)
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1387,10 +1389,10 @@ where
     async fn select_utxos(
         &mut self,
         amount: MicroTari,
+        mut selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         num_outputs: usize,
         total_output_metadata_byte_size: usize,
-        mut selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1644,10 +1646,10 @@ where
                 let selection = self
                     .select_utxos(
                         amount_per_split * MicroTari(number_of_splits as u64),
+                        UtxoSelectionCriteria::largest_first(),
                         fee_per_gram,
                         number_of_splits,
                         self.default_metadata_size() * number_of_splits,
-                        UtxoSelectionCriteria::largest_first(),
                     )
                     .await?;
 
