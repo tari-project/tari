@@ -161,6 +161,7 @@ where T: for<'a> Deserialize<'a> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use tari_utilities::hex::Hex;
     use wasm_bindgen_test::*;
