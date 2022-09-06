@@ -483,6 +483,29 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    pub fn find_by_commitments_excluding_status(
+        commitments: Vec<&[u8]>,
+        status: OutputStatus,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::commitment.eq_any(commitments))
+            .filter(outputs::status.ne(status as i32))
+            .load(conn)?)
+    }
+
+    pub fn update_by_commitments(
+        commitments: Vec<&[u8]>,
+        updated_output: UpdateOutput,
+        conn: &SqliteConnection,
+    ) -> Result<usize, OutputManagerStorageError> {
+        Ok(
+            diesel::update(outputs::table.filter(outputs::commitment.eq_any(commitments)))
+                .set(UpdateOutputSql::from(updated_output))
+                .execute(conn)?,
+        )
+    }
+
     pub fn find_by_commitment_and_cancelled(
         commitment: &[u8],
         cancelled: bool,
