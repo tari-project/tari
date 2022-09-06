@@ -91,6 +91,9 @@ pub use dht::{Dht, DhtInitializationError};
 mod discovery;
 pub use discovery::{DhtDiscoveryError, DhtDiscoveryRequester};
 
+mod error;
+pub use error::DhtEncryptError;
+
 mod network_discovery;
 pub use network_discovery::NetworkDiscoveryConfig;
 

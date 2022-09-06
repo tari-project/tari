@@ -26,10 +26,15 @@ use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
-use crate::outbound::{message::SendFailure, DhtOutboundRequest};
+use crate::{
+    error::DhtEncryptError,
+    outbound::{message::SendFailure, DhtOutboundRequest},
+};
 
 #[derive(Debug, Error)]
 pub enum DhtOutboundError {
+    #[error("DhtEncryptError: {0}")]
+    DhtEncryptError(#[from] DhtEncryptError),
     #[error("`Failed to send: {0}")]
     SendError(#[from] SendError<DhtOutboundRequest>),
     #[error("MessageSerializationError: {0}")]
