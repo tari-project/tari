@@ -94,6 +94,8 @@ pub enum OutputManagerError {
     ServiceError(String),
     #[error("Base node is not synced")]
     BaseNodeNotSynced,
+    #[error("Base node changed")]
+    BaseNodeChanged,
     #[error("Invalid Sender Message Type")]
     InvalidSenderMessage,
     #[error("Coinbase build error: `{0}`")]

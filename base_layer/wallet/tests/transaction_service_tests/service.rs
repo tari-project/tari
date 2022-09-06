@@ -292,7 +292,7 @@ async fn setup_transaction_service_no_comms(
 
     mock_rpc_server.serve();
 
-    let wallet_connectivity_service_mock = create_wallet_connectivity_mock();
+    let mut wallet_connectivity_service_mock = create_wallet_connectivity_mock();
 
     let mut rpc_server_connection = mock_rpc_server
         .create_connection(base_node_identity.to_peer(), protocol_name.into())
@@ -300,6 +300,8 @@ async fn setup_transaction_service_no_comms(
 
     wallet_connectivity_service_mock
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut rpc_server_connection).await);
+    wallet_connectivity_service_mock.set_base_node(base_node_identity.to_peer());
+    wallet_connectivity_service_mock.base_node_changed().await;
 
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
 
@@ -478,7 +480,7 @@ async fn manage_single_transaction() {
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
         factories.clone(),
@@ -489,13 +491,11 @@ async fn manage_single_transaction() {
     )
     .await;
 
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
-
     let mut alice_event_stream = alice_ts.get_event_stream();
 
     sleep(Duration::from_secs(2)).await;
 
-    let (mut bob_ts, mut bob_oms, bob_comms, mut bob_connectivity) = setup_transaction_service(
+    let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity) = setup_transaction_service(
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         factories.clone(),
@@ -505,7 +505,6 @@ async fn manage_single_transaction() {
         shutdown.to_signal(),
     )
     .await;
-    bob_connectivity.set_base_node(base_node_identity.to_peer());
 
     let mut bob_event_stream = bob_ts.get_event_stream();
 
@@ -620,7 +619,7 @@ async fn single_transaction_to_self() {
     let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
         factories.clone(),
@@ -630,8 +629,6 @@ async fn single_transaction_to_self() {
         shutdown.to_signal(),
     )
     .await;
-
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
 
     let initial_wallet_value = 25000.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment).await;
@@ -700,7 +697,7 @@ async fn send_one_sided_transaction_to_other() {
     let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
         factories.clone(),
@@ -712,8 +709,6 @@ async fn send_one_sided_transaction_to_other() {
     .await;
 
     let mut alice_event_stream = alice_ts.get_event_stream();
-
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
 
     let initial_wallet_value = 25000.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment).await;
@@ -807,7 +802,7 @@ async fn recover_one_sided_transaction() {
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path2.clone()));
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
         factories.clone(),
@@ -838,8 +833,6 @@ async fn recover_one_sided_transaction() {
     };
     let mut cloned_bob_oms = bob_oms.clone();
     cloned_bob_oms.add_known_script(known_script).await.unwrap();
-
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
 
     let initial_wallet_value = 25000.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment).await;
@@ -913,7 +906,7 @@ async fn test_htlc_send_and_claim() {
     let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
         factories.clone(),
@@ -932,8 +925,6 @@ async fn test_htlc_send_and_claim() {
     );
 
     let mut alice_event_stream = alice_ts.get_event_stream();
-
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
 
     let initial_wallet_value = 25000.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment).await;
@@ -1035,7 +1026,7 @@ async fn send_one_sided_transaction_to_self() {
     let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
-    let (alice_ts, alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (alice_ts, alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
         factories.clone(),
@@ -1045,8 +1036,6 @@ async fn send_one_sided_transaction_to_self() {
         shutdown.to_signal(),
     )
     .await;
-
-    alice_connectivity.set_base_node(base_node_identity.to_peer());
 
     let initial_wallet_value = 2500.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment).await;
@@ -1078,7 +1067,6 @@ async fn send_one_sided_transaction_to_self() {
 
 #[tokio::test]
 async fn manage_multiple_transactions() {
-    env_logger::init();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -3323,11 +3311,6 @@ async fn test_coinbase_generation_and_monitoring() {
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
     assert!(transactions.values().any(|tx| tx.amount == fees2b + reward2));
 
-    // Start the transaction protocols
-    alice_ts_interface
-        .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
-
     let delay = sleep(Duration::from_secs(30));
     tokio::pin!(delay);
     let mut count = 0usize;
@@ -3399,10 +3382,6 @@ async fn test_coinbase_generation_and_monitoring() {
     alice_ts_interface
         .base_node_rpc_mock_state
         .set_transaction_query_batch_responses(batch_query_response);
-
-    alice_ts_interface
-        .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
 
     alice_ts_interface
         .transaction_service_handle
@@ -3538,11 +3517,6 @@ async fn test_coinbase_abandoned() {
     alice_ts_interface
         .base_node_rpc_mock_state
         .set_transaction_query_batch_responses(batch_query_response);
-
-    // Start the transaction protocols
-    alice_ts_interface
-        .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
 
     let balance = alice_ts_interface
         .output_manager_service_handle
@@ -5331,16 +5305,6 @@ async fn broadcast_all_completed_transactions_on_startup() {
             height_of_longest_chain: 0,
             mined_timestamp: None,
         });
-
-    assert!(alice_ts_interface
-        .transaction_service_handle
-        .restart_broadcast_protocols()
-        .await
-        .is_err());
-
-    alice_ts_interface
-        .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
 
     // Note: The event stream has to be assigned before the broadcast protocol is restarted otherwise the events will be
     // dropped

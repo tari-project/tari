@@ -146,17 +146,20 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let wallet_connectivity_mock = create_wallet_connectivity_mock();
+    let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
     // let (connectivity, connectivity_mock) = create_connectivity_mock();
     // let connectivity_mock_state = connectivity_mock.get_shared_state();
     // task::spawn(connectivity_mock.run());
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity_mock.base_node_changed().await;
 
     let service = BaseNodeWalletRpcMockService::new();
     let rpc_service_state = service.get_state();
 
     let server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = server.as_protocol_name();
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let mut mock_server = MockRpcServer::new(server, server_node_identity.clone());
     mock_server.serve();
@@ -1301,7 +1304,6 @@ async fn test_txo_validation() {
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
-    oms.wallet_connectivity_mock.notify_base_node_set(oms.node_id.to_peer());
     // Now we add the connection
     let mut connection = oms
         .mock_rpc_service
@@ -1852,7 +1854,6 @@ async fn test_txo_revalidation() {
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
-    oms.wallet_connectivity_mock.notify_base_node_set(oms.node_id.to_peer());
     // Now we add the connection
     let mut connection = oms
         .mock_rpc_service

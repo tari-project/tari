@@ -534,11 +534,13 @@ where
     }
 
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        if !self.resources.connectivity.is_base_node_set() {
-            return Err(OutputManagerError::NoBaseNodeKeysProvided);
-        }
+        let current_base_node = self
+            .resources
+            .connectivity
+            .get_current_base_node_id()
+            .ok_or(OutputManagerError::NoBaseNodeKeysProvided)?;
         let id = OsRng.next_u64();
-        let utxo_validation = TxoValidationTask::new(
+        let txo_validation = TxoValidationTask::new(
             id,
             self.resources.db.clone(),
             self.resources.connectivity.clone(),
@@ -546,28 +548,56 @@ where
             self.resources.config.clone(),
         );
 
-        let shutdown = self.resources.shutdown_signal.clone();
+        let mut shutdown = self.resources.shutdown_signal.clone();
+        let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         tokio::spawn(async move {
-            match utxo_validation.execute(shutdown).await {
-                Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "UTXO Validation Protocol (Id: {}) completed successfully", id
-                    );
-                },
-                Err(OutputManagerProtocolError { id, error }) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
-                    );
-                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Error sending event because there are no subscribers: {:?}", e
-                        );
+            let exec_fut = txo_validation.execute();
+            tokio::pin!(exec_fut);
+            loop {
+                tokio::select! {
+                    result = &mut exec_fut => {
+                        match result {
+                            Ok(id) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "UTXO Validation Protocol (Id: {}) completed successfully", id
+                                );
+                                return;
+                            },
+                            Err(OutputManagerProtocolError { id, error }) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                                );
+                                if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Error sending event because there are no subscribers: {:?}", e
+                                    );
+                                }
+
+                                return;
+                            },
+                        }
+                    },
+                    _ = shutdown.wait() => {
+                        debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system is shutting down", id);
+                        return;
+                    },
+                    _ = base_node_watch.changed() => {
+                        if let Some(peer) = base_node_watch.borrow().as_ref() {
+                            if peer.node_id != current_base_node {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "TXO Validation Protocol (Id: {}) cancelled because base node changed", id
+                                );
+                                return;
+                            }
+                        }
+
                     }
-                },
+                }
             }
         });
         Ok(id)

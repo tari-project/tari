@@ -69,6 +69,11 @@ impl WalletConnectivityMock {
         self.base_node_watch.send(Some(base_node_peer));
     }
 
+    pub async fn base_node_changed(&mut self) -> Option<Peer> {
+        self.base_node_watch.changed().await;
+        self.base_node_watch.borrow().as_ref().cloned()
+    }
+
     pub fn send_shutdown(&self) {
         self.base_node_wallet_rpc_client.send(None);
         self.base_node_sync_rpc_client.send(None);
