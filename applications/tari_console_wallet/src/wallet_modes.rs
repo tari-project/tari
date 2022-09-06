@@ -176,7 +176,10 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                         commands.push(sub_command);
                     }
                 },
-                Err(e) => return Err(ExitError::new(ExitCode::CommandError, e.to_string())),
+                Err(e) => {
+                    println!("\nError! parsing '{}' ({})\n", command, e);
+                    return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
+                },
             }
         }
     }
