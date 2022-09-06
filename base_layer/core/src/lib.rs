@@ -68,9 +68,8 @@ pub mod large_ints {
 }
 
 pub use large_ints::{U256, U512};
-
 #[cfg(feature = "base_node")]
-mod domain_hash {
+mod domain_hashing {
     use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
     use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
 
@@ -112,4 +111,4 @@ mod domain_hash {
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 }
 #[cfg(feature = "base_node")]
-pub use domain_hash::*;
+pub use domain_hashing::*;

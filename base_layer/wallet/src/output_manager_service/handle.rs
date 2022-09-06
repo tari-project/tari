@@ -22,7 +22,7 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc};
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, HashOutput, PublicKey},
@@ -78,7 +78,7 @@ pub enum OutputManagerRequest {
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        utxo_selection: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         tx_meta: TransactionMetadata,
@@ -90,7 +90,7 @@ pub enum OutputManagerRequest {
     CreatePayToSelfTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        utxo_selection: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -99,7 +99,7 @@ pub enum OutputManagerRequest {
     CreatePayToSelfWithOutputs {
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        input_selection: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
@@ -116,10 +116,11 @@ pub enum OutputManagerRequest {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     },
-    ApplyEncryption(Box<Aes256Gcm>),
+    ApplyEncryption(Box<XChaCha20Poly1305>),
     RemoveEncryption,
     FeeEstimate {
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         num_kernels: usize,
         num_outputs: usize,
@@ -197,13 +198,14 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
             } => write!(
                 f,
-                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
-                amount, fee_per_gram, num_kernels, num_outputs
+                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {}, selection_criteria: {:?})",
+                amount, fee_per_gram, num_kernels, num_outputs, selection_criteria
             ),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
@@ -545,7 +547,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                utxo_selection,
+                selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 tx_meta,
@@ -566,6 +568,7 @@ impl OutputManagerHandle {
     pub async fn fee_estimate(
         &mut self,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         num_kernels: usize,
         num_outputs: usize,
@@ -574,6 +577,7 @@ impl OutputManagerHandle {
             .handle
             .call(OutputManagerRequest::FeeEstimate {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
@@ -769,7 +773,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), OutputManagerError> {
+    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ApplyEncryption(Box::new(cipher)))
@@ -833,7 +837,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                input_selection,
+                selection_criteria: input_selection,
             })
             .await??
         {
@@ -857,7 +861,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
-                utxo_selection,
+                selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,

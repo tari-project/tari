@@ -189,6 +189,7 @@ class WalletProcess {
       let args = [
         "build",
         "--release",
+        "--locked",
         "--bin",
         "tari_console_wallet",
         "-Z",
@@ -228,6 +229,7 @@ class WalletProcess {
       "--seed-words-file-name",
       this.seedWordsFile,
       "--non-interactive",
+      "--enable-grpc",
       "--network",
       opts.network || (this.options || {}).network || "localnet",
     ];

@@ -118,6 +118,9 @@ pub struct P2pConfig {
     /// The global maximum allowed RPC sessions.
     /// Default: 100
     pub rpc_max_simultaneous_sessions: usize,
+    /// The maximum allowed RPC sessions per peer.
+    /// Default: 10
+    pub rpc_max_sessions_per_peer: usize,
 }
 
 impl Default for P2pConfig {
@@ -141,6 +144,7 @@ impl Default for P2pConfig {
             user_agent: "".to_string(),
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
+            rpc_max_sessions_per_peer: 10,
         }
     }
 }

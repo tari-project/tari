@@ -23,6 +23,7 @@
 use std::{
     convert::TryFrom,
     io::{stdout, Write},
+    str::FromStr,
     thread,
     time::Instant,
 };
@@ -33,7 +34,10 @@ use errors::{err_empty, MinerError};
 use futures::stream::StreamExt;
 use log::*;
 use miner::Miner;
-use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
+use tari_app_grpc::{
+    authentication::ClientAuthenticationInterceptor,
+    tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient},
+};
 use tari_app_utilities::consts;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
@@ -46,7 +50,10 @@ use tari_core::blocks::BlockHeader;
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Runtime, time::sleep};
-use tonic::transport::Channel;
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Channel, Endpoint},
+};
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
 use crate::{cli::Cli, config::MinerConfig, miner::MiningReport, stratum::stratum_controller::controller::Controller};
@@ -61,6 +68,8 @@ mod errors;
 mod miner;
 mod stratum;
 mod utils;
+
+type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 /// Application entry point
 fn main() {
@@ -194,20 +203,30 @@ async fn main_inner() -> Result<(), ExitError> {
     }
 }
 
-async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
+async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletGrpcClient), MinerError> {
     let base_node_addr = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
     info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
-    let wallet_addr = multiaddr_to_socketaddr(&config.wallet_grpc_address)?;
-    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
-    let wallet_conn = WalletClient::connect(format!("http://{}", wallet_addr)).await?;
+    let wallet_conn = connect_wallet(config).await?;
 
     Ok((node_conn, wallet_conn))
 }
 
+async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerError> {
+    let wallet_addr = format!("http://{}", multiaddr_to_socketaddr(&config.wallet_grpc_address)?);
+    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
+    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
+    let wallet_conn = WalletClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.wallet_grpc_authentication)?,
+    );
+
+    Ok(wallet_conn)
+}
+
 async fn mining_cycle(
     node_conn: &mut BaseNodeClient<Channel>,
-    wallet_conn: &mut WalletClient<Channel>,
+    wallet_conn: &mut WalletGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
 ) -> Result<bool, MinerError> {
@@ -314,7 +333,7 @@ async fn display_report(report: &MiningReport, num_mining_threads: usize) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
     info!(
         target: LOG_TARGET,
-        "⛏ Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
+        "⛏ Miner {:0>2} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
         hashrate * num_mining_threads as f64,

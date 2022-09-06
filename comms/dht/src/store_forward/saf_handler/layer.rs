@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::peer_manager::NodeIdentity;
 use tokio::sync::mpsc;
 use tower::layer::Layer;
 
@@ -38,7 +38,6 @@ pub struct MessageHandlerLayer {
     config: SafConfig,
     saf_requester: StoreAndForwardRequester,
     dht_requester: DhtRequester,
-    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
     saf_response_signal_sender: mpsc::Sender<()>,
@@ -50,7 +49,6 @@ impl MessageHandlerLayer {
         saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         saf_response_signal_sender: mpsc::Sender<()>,
     ) -> Self {
@@ -58,7 +56,6 @@ impl MessageHandlerLayer {
             config,
             saf_requester,
             dht_requester,
-            peer_manager,
             node_identity,
 
             outbound_service,
@@ -77,7 +74,6 @@ impl<S> Layer<S> for MessageHandlerLayer {
             self.saf_requester.clone(),
             self.dht_requester.clone(),
             Arc::clone(&self.node_identity),
-            Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             self.saf_response_signal_sender.clone(),
         )

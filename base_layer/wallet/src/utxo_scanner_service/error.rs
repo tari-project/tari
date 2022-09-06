@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde_json::Error as SerdeJsonError;
+use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
@@ -58,4 +59,8 @@ pub enum UtxoScannerError {
     SerdeJsonError(#[from] SerdeJsonError),
     #[error("Overflow Error")]
     OverflowError,
+    #[error("FixedHash size error: `{0}`")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Connectivity has shut down")]
+    ConnectivityShutdown,
 }

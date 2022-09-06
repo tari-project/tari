@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+use std::mem::size_of;
+
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
@@ -31,6 +33,7 @@ use tari_wallet::output_manager_service::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
         sqlite_db::OutputManagerSqliteDatabase,
+        OutputSource,
     },
 };
 use tokio::runtime::Runtime;
@@ -52,7 +55,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         ));
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
@@ -99,7 +102,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             db.add_unspent_output(uo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
         }
@@ -109,7 +112,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
         }
         db.encumber_outputs(
@@ -169,12 +172,12 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Set first pending tx to mined but unconfirmed
     let mut mmr_pos = 0;
     for o in &pending_txs[0].outputs_to_be_received {
-        db.set_received_output_mined_height(o.hash.clone(), 2, vec![], mmr_pos, false, 0)
+        db.set_received_output_mined_height(o.hash, 2, FixedHash::zero(), mmr_pos, false, 0)
             .unwrap();
         mmr_pos += 1;
     }
     for o in &pending_txs[0].outputs_to_be_spent {
-        db.mark_output_as_spent(o.hash.clone(), 3, vec![], false).unwrap();
+        db.mark_output_as_spent(o.hash, 3, FixedHash::zero(), false).unwrap();
     }
 
     // Balance shouldn't change
@@ -189,12 +192,12 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Set second pending tx to mined and confirmed
     for o in &pending_txs[1].outputs_to_be_received {
-        db.set_received_output_mined_height(o.hash.clone(), 4, vec![], mmr_pos, true, 0)
+        db.set_received_output_mined_height(o.hash, 4, FixedHash::zero(), mmr_pos, true, 0)
             .unwrap();
         mmr_pos += 1;
     }
     for o in &pending_txs[1].outputs_to_be_spent {
-        db.mark_output_as_spent(o.hash.clone(), 5, vec![], true).unwrap();
+        db.mark_output_as_spent(o.hash, 5, FixedHash::zero(), true).unwrap();
     }
 
     // Balance with confirmed second pending tx
@@ -244,7 +247,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     ));
-    let output_to_be_received = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+    let output_to_be_received =
+        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
         .unwrap();
     pending_incoming_balance += output_to_be_received.unblinded_output.value;
@@ -271,8 +275,13 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(mined_unspent_outputs.len(), 4);
 
     // Spend a received and confirmed output
-    db.mark_output_as_spent(pending_txs[1].outputs_to_be_received[0].hash.clone(), 6, vec![], true)
-        .unwrap();
+    db.mark_output_as_spent(
+        pending_txs[1].outputs_to_be_received[0].hash,
+        6,
+        FixedHash::zero(),
+        true,
+    )
+    .unwrap();
 
     let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(mined_unspent_outputs.len(), 3);
@@ -317,8 +326,10 @@ pub fn test_output_manager_sqlite_db() {
 pub fn test_output_manager_sqlite_db_encrypted() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
 }
@@ -338,7 +349,7 @@ pub async fn test_short_term_encumberance() {
             &factories.commitment,
         )
         .await;
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
@@ -389,12 +400,12 @@ pub async fn test_no_duplicate_outputs() {
 
     // create an output
     let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
-    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
 
     // add it to the database
     let result = db.add_unspent_output(uo.clone());
     assert!(result.is_ok());
-    let result = db.set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true, 0);
+    let result = db.set_received_output_mined_height(uo.hash, 1, FixedHash::zero(), 1, true, 0);
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);

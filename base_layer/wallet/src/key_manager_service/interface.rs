@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
@@ -57,7 +57,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Encrypts the key manager state using the provided cipher. An error is returned if the state is already
     /// encrypted.
-    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError>;
+    async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError>;
 
     /// Decrypts the key manager state using the provided cipher. An error is returned if the state is not encrypted.
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError>;

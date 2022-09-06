@@ -188,6 +188,7 @@ where B: BlockchainBackend + 'static
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let rpc_server = RpcServer::builder()
             .with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions)
+            .with_maximum_sessions_per_client(config.rpc_max_sessions_per_peer)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊

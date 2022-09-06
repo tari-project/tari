@@ -23,15 +23,11 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
+use tari_common_types::types::{Commitment, CommitmentFactory, FixedHash, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{
-        epoch_time::EpochTime,
-        hash::Hashable,
-        hex::{to_hex, Hex},
-    },
+    tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
 
@@ -247,7 +243,7 @@ pub fn check_accounting_balance(
             bypass_range_proof_verification,
             total_coinbase,
             factories,
-            Some(block.header.prev_hash.clone()),
+            Some(block.header.prev_hash),
             block.header.height,
         )
         .map_err(|err| {
@@ -362,7 +358,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                     target: LOG_TARGET,
                     "Validation failed due to input: {} which does not exist yet", input
                 );
-                not_found_inputs.push(output_hash.clone());
+                not_found_inputs.push(output_hash);
             },
             Err(err) => {
                 return Err(err);
@@ -384,46 +380,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)
         if utxo_hash == output_hash {
-            // Check that the input found by commitment, matches the input given here
-            match db
-                .fetch_output(&utxo_hash)?
-                .and_then(|output| output.output.into_unpruned_output())
-            {
-                Some(output) => {
-                    let mut compact = input.to_compact();
-                    compact.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_value,
-                        output.minimum_value_promise,
-                    );
-                    let input_hash = input.canonical_hash()?;
-                    if compact.canonical_hash()? != input_hash {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Input '{}' spends commitment '{}' found in the UTXO set but does not contain the \
-                             matching metadata fields.",
-                            input_hash.to_hex(),
-                            input.commitment()?.to_hex(),
-                        );
-                        return Err(ValidationError::UnknownInput);
-                    }
-                },
-                None => {
-                    error!(
-                        target: LOG_TARGET,
-                        "🚨 Output '{}' was in unspent but was pruned - this indicates a blockchain database \
-                         inconsistency!",
-                        output_hash.to_hex()
-                    );
-                    return Err(ValidationError::UnknownInput);
-                },
-            }
-
+            // Because the retrieved hash matches the new input.output_hash() we know all the fields match and are all
+            // still the same
             return Ok(());
         }
 
@@ -438,7 +396,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             input,
             output
         );
-        return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+
+        return Err(ValidationError::UnknownInput);
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
@@ -596,9 +555,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     Ok(())
 }
 
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash.to_vec())? {
-        return Err(ValidationError::BadBlockFound { hash: to_hex(hash) });
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash)? {
+        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
     }
     Ok(())
 }

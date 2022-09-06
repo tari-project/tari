@@ -136,7 +136,7 @@ impl ConsensusEncoding for EncryptedValue {
 
 impl ConsensusEncodingSized for EncryptedValue {
     fn consensus_encode_exact_size(&self) -> usize {
-        self.0.len()
+        SIZE
     }
 }
 
@@ -157,7 +157,7 @@ mod test {
     };
 
     use super::*;
-    use crate::consensus::ToConsensusBytes;
+    use crate::consensus::{check_consensus_encoding_correctness, ToConsensusBytes};
 
     #[test]
     fn it_encodes_to_bytes() {
@@ -190,5 +190,11 @@ mod test {
                 EncryptedValue::decrypt_value(&encryption_key, &commitment, &encrypted_value).unwrap();
             assert_eq!(amount, decrypted_value);
         }
+    }
+    #[test]
+    fn consensus_encoding() {
+        let value = [0u8; SIZE];
+        let encrypted_value = EncryptedValue(value);
+        check_consensus_encoding_correctness(encrypted_value).unwrap();
     }
 }

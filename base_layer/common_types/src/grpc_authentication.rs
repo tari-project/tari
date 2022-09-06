@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,24 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp;
+use serde::{Deserialize, Serialize};
+use tari_utilities::SafePassword;
 
-use tari_utilities::ByteArrayError;
-
-pub fn copy_into_fixed_array<T: Default + Copy, const SZ: usize>(elems: &[T]) -> Result<[T; SZ], ByteArrayError> {
-    if elems.len() != SZ {
-        return Err(ByteArrayError::IncorrectLength);
-    }
-    let mut buf = [T::default(); SZ];
-    buf.copy_from_slice(&elems[0..SZ]);
-    Ok(buf)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GrpcAuthentication {
+    #[default]
+    None,
+    Basic {
+        username: String,
+        #[serde(deserialize_with = "deserialize_safe_password")]
+        password: SafePassword,
+    },
 }
 
-/// Copies `SZ` elements from a slice into a fixed array of size `SZ`. If the length of the slice is less than `SZ` the
-/// default value is used  for the  remaining elements.
-pub fn copy_into_fixed_array_lossy<T: Default + Copy, const SZ: usize>(elems: &[T]) -> [T; SZ] {
-    let len = cmp::min(elems.len(), SZ);
-    let mut buf = [T::default(); SZ];
-    buf[..len].copy_from_slice(&elems[..len]);
-    buf
+impl GrpcAuthentication {
+    pub fn username_password(&self) -> Option<(&str, &SafePassword)> {
+        match self {
+            GrpcAuthentication::Basic { username, password } => Some((username, password)),
+            _ => None,
+        }
+    }
+}
+
+fn deserialize_safe_password<'de, D>(deserializer: D) -> Result<SafePassword, D::Error>
+where D: serde::Deserializer<'de> {
+    let password: String = Deserialize::deserialize(deserializer)?;
+    Ok(SafePassword::from(password))
 }

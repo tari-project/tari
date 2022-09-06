@@ -18,10 +18,10 @@ const packageDefinition = protoLoader.loadSync(
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
 const tariGrpc = protoDescriptor.tari.rpc;
 
-function connect(address) {
+function connect(address, options = {}) {
   const client = new tariGrpc.Wallet(
     address,
-    grpc.credentials.createInsecure()
+    createAuth(options.authentication || {}),
   );
   promisifyAll(client, { metadata: new grpc.Metadata() });
   return client;
@@ -65,6 +65,24 @@ function Client(address) {
 }
 
 Client.connect = (address) => new Client(address);
+
+function createAuth(auth = {}) {
+  if (auth.type === "basic") {
+    const {
+      username,
+      password
+    } = auth;
+    return grpc.credentials.createFromMetadataGenerator((params, callback) => {
+        const md = new grpc.Metadata();
+        let token = new Buffer(`${username}:${password}`).toString("base64");
+        md.set('authorization', 'Basic ' + token);
+        return callback(null, md);
+    });
+  } else{
+    return grpc.credentials.createInsecure();
+  }
+
+}
 
 module.exports = {
   Client,

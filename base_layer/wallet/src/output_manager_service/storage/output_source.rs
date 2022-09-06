@@ -19,50 +19,50 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use tui::{
-    backend::Backend,
-    layout::{Constraint, Rect},
-    widgets::{Block, Borders, Row, Table, TableState},
-    Frame,
+use core::{
+    convert::TryFrom,
+    result::{
+        Result,
+        Result::{Err, Ok},
+    },
 };
 
-use crate::ui::{
-    components::{styles, Component},
-    state::AppState,
-};
+use strum_macros::Display;
 
-pub struct TokensComponent {
-    table_state: TableState,
+use crate::output_manager_service::error::OutputManagerStorageError;
+
+// The source of where the output came from
+#[derive(Copy, Clone, Debug, PartialEq, Display, Default)]
+pub enum OutputSource {
+    Unknown,
+    Coinbase,
+    RecoveredButUnrecognized,
+    #[default]
+    Standard,
+    OneSided,
+    StealthOneSided,
+    Refund,
+    AtomicSwap,
 }
 
-impl TokensComponent {
-    pub fn new() -> Self {
-        Self {
-            table_state: TableState::default(),
-        }
+impl TryFrom<i32> for OutputSource {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => OutputSource::Unknown,
+            1 => OutputSource::Coinbase,
+            2 => OutputSource::RecoveredButUnrecognized,
+            3 => OutputSource::Standard,
+            4 => OutputSource::OneSided,
+            5 => OutputSource::StealthOneSided,
+            6 => OutputSource::Refund,
+            7 => OutputSource::AtomicSwap,
+            _ => {
+                return Err(OutputManagerStorageError::ConversionError {
+                    reason: "Was expecting value between 0 and 7 for OutputSource".to_string(),
+                })
+            },
+        })
     }
-}
-
-impl<B: Backend> Component<B> for TokensComponent {
-    fn draw(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState) {
-        let rows: Vec<_> = Vec::new();
-        let table = Table::new(rows)
-            .header(Row::new(vec!["Name", "Status", "Asset Pub Key", "Unique ID", "Owner"]).style(styles::header_row()))
-            .block(Block::default().title("Tokens").borders(Borders::ALL))
-            .widths(&[
-                Constraint::Length(30),
-                Constraint::Length(20),
-                Constraint::Length(32),
-                Constraint::Length(32),
-                Constraint::Length(64),
-            ])
-            .highlight_style(styles::highlight())
-            .highlight_symbol(">>");
-        f.render_stateful_widget(table, area, &mut self.table_state)
-    }
-
-    fn on_up(&mut self, _app_state: &mut AppState) {}
-
-    fn on_down(&mut self, _app_state: &mut AppState) {}
 }

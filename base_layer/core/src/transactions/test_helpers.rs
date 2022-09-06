@@ -235,6 +235,10 @@ impl TestParams {
             script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         ) * num_outputs
     }
+
+    pub fn commit_value(&self, value: MicroTari) -> Commitment {
+        self.commitment_factory.commit_value(&self.spend_key, value.as_u64())
+    }
 }
 
 impl Default for TestParams {

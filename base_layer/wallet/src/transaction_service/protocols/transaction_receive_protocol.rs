@@ -34,7 +34,6 @@ use tari_core::transactions::{
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
-use tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
@@ -132,7 +131,6 @@ where
                 .resources
                 .db
                 .transaction_exists(data.tx_id)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
             {
                 trace!(
@@ -168,7 +166,6 @@ where
             self.resources
                 .db
                 .add_pending_inbound_transaction(inbound_transaction.tx_id, inbound_transaction.clone())
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             let send_result = send_transaction_reply(
@@ -183,7 +180,6 @@ where
             self.resources
                 .db
                 .increment_send_count(self.id)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             if send_result {
@@ -238,7 +234,7 @@ where
             .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
             .fuse();
 
-        let inbound_tx = match self.resources.db.get_pending_inbound_transaction(self.id).await {
+        let inbound_tx = match self.resources.db.get_pending_inbound_transaction(self.id) {
             Ok(tx) => tx,
             Err(_e) => {
                 debug!(
@@ -296,7 +292,6 @@ where
             self.resources
                 .db
                 .increment_send_count(self.id)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
@@ -340,7 +335,6 @@ where
                             Ok(_) => self.resources
                                         .db
                                         .increment_send_count(self.id)
-                                        .await
                                         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
                             Err(e) => warn!(
                                             target: LOG_TARGET,
@@ -374,7 +368,7 @@ where
                     true,
                     &self.resources.factories,
                     None,
-                    self.prev_header.clone(),
+                    self.prev_header,
                     self.height.unwrap_or(u64::MAX),
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
@@ -457,8 +451,7 @@ where
 
             self.resources
                 .db
-                .complete_inbound_transaction(self.id, completed_transaction.clone())
-                .await
+                .complete_inbound_transaction(self.id, completed_transaction)
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             info!(
@@ -487,17 +480,13 @@ where
             "Cancelling Transaction Receive Protocol (TxId: {}) due to timeout after no counterparty response", self.id
         );
 
-        self.resources
-            .db
-            .cancel_pending_transaction(self.id)
-            .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Pending Transaction does not exist and could not be cancelled: {:?}", e
-                );
-                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-            })?;
+        self.resources.db.cancel_pending_transaction(self.id).map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+            );
+            TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+        })?;
 
         self.resources
             .output_manager_service

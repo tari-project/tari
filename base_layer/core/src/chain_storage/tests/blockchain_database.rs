@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use tari_test_utils::unpack_enum;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
@@ -262,6 +262,8 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
+    use tari_common_types::types::FixedHash;
+
     use super::*;
 
     #[test]
@@ -276,7 +278,7 @@ mod find_headers_after_hash {
         let db = setup();
         let genesis_hash = db.fetch_block(0).unwrap().block().hash();
         add_many_chained_blocks(1, &db);
-        let hashes = vec![genesis_hash.clone()];
+        let hashes = vec![genesis_hash];
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 0);
         assert_eq!(headers.len(), 1);
@@ -303,19 +305,12 @@ mod find_headers_after_hash {
         add_many_chained_blocks(5, &db);
         let hashes = (2..=4)
             .map(|i| db.fetch_block(i).unwrap().block().hash())
-            .chain(vec![vec![0; 32], vec![0; 32]])
+            .chain(vec![FixedHash::zero(), FixedHash::zero()])
             .rev();
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 2);
         assert_eq!(headers.len(), 1);
         assert_eq!(&headers[0], db.fetch_block(5).unwrap().header());
-    }
-
-    #[test]
-    fn it_errors_for_hashes_with_an_invalid_length() {
-        let db = setup();
-        let err = db.find_headers_after_hash(vec![vec![]], 1).unwrap_err();
-        unpack_enum!(ChainStorageError::InvalidArguments { .. } = err);
     }
 }
 

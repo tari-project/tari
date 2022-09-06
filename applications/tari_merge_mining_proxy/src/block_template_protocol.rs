@@ -25,7 +25,7 @@
 use std::cmp;
 
 use log::*;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc as grpc};
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
 
 use crate::{
@@ -39,13 +39,17 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
     base_node_client: &'a mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-    wallet_client: &'a mut grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+    wallet_client: &'a mut grpc::wallet_client::WalletClient<
+        tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
+    >,
 }
 
 impl<'a> BlockTemplateProtocol<'a> {
     pub fn new(
         base_node_client: &'a mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-        wallet_client: &'a mut grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+        wallet_client: &'a mut grpc::wallet_client::WalletClient<
+            tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
+        >,
     ) -> Self {
         Self {
             base_node_client,

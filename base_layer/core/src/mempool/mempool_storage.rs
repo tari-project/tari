@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::{PrivateKey, Signature};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
@@ -101,7 +101,7 @@ impl MempoolStorage {
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                warn!(target: LOG_TARGET, "Validation failed due to already spent output");
+                warn!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => {
@@ -110,6 +110,10 @@ impl MempoolStorage {
             },
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
+                Ok(TxStorageResponse::NotStoredConsensus)
+            },
+            Err(ValidationError::DuplicateKernelError(msg)) => {
+                warn!(target: LOG_TARGET, "Validation failed due to duplicate kernel: {}", msg);
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(e) => {

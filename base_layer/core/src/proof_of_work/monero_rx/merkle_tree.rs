@@ -195,7 +195,7 @@ impl ConsensusDecoding for MerkleProof {
 
 impl ConsensusEncoding for MerkleProof {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        let _ = self.branch.consensus_encode(writer)?;
+        self.branch.consensus_encode(writer)?;
         ConsensusEncoding::consensus_encode(&self.depth, writer)?;
         ConsensusEncoding::consensus_encode(&self.path_bitmap, writer)?;
         Ok(())

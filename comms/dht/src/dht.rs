@@ -327,7 +327,6 @@ impl Dht {
                 self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
                 self.saf_response_signal_sender.clone(),
             ))
@@ -599,7 +598,7 @@ mod test {
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
-        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes());
+        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes()).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             encrypted_bytes,

@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
@@ -63,6 +63,7 @@ pub struct NewOutputSql {
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
     pub minimum_value_promise: i64,
+    pub source: i32,
 }
 
 impl NewOutputSql {
@@ -81,7 +82,7 @@ impl NewOutputSql {
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
-            hash: Some(output.hash),
+            hash: Some(output.hash.to_vec()),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
@@ -99,6 +100,7 @@ impl NewOutputSql {
             covenant: output.unblinded_output.covenant.to_bytes(),
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
+            source: output.source as i32,
         })
     }
 
@@ -109,7 +111,7 @@ impl NewOutputSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for NewOutputSql {
+impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
@@ -117,7 +119,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -130,7 +132,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -168,6 +170,7 @@ impl From<OutputSql> for NewOutputSql {
             covenant: o.covenant,
             encrypted_value: o.encrypted_value,
             minimum_value_promise: o.minimum_value_promise,
+            source: 0,
         }
     }
 }

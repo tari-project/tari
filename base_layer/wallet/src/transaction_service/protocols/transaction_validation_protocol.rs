@@ -29,7 +29,7 @@ use std::{
 use log::*;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::BlockHash,
+    types::{BlockHash, Signature},
 };
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
@@ -40,7 +40,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -51,6 +51,7 @@ use crate::{
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
+            models::TxCancellationReason,
             sqlite_db::UnconfirmedTransactionInfo,
         },
     },
@@ -67,9 +68,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
-use tari_common_types::types::Signature;
-
-use crate::transaction_service::storage::models::TxCancellationReason;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
@@ -112,7 +110,6 @@ where
         let unconfirmed_transactions = self
             .db
             .fetch_unconfirmed_transactions_info()
-            .await
             .for_protocol(self.operation_id)
             .unwrap();
 
@@ -216,7 +213,7 @@ where
             self.operation_id
         );
         let op_id = self.operation_id;
-        while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().await.for_protocol(op_id)? {
+        while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().for_protocol(op_id)? {
             let mined_height = last_mined_transaction
                 .mined_height
                 .ok_or_else(|| {
@@ -227,7 +224,6 @@ where
                 .for_protocol(op_id)?;
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
-                .clone()
                 .ok_or_else(|| {
                     TransactionServiceError::ServiceError(
                         "fetch_last_mined_transaction() should return a transaction with a mined_in_block hash"
@@ -345,14 +341,16 @@ where
                 }
             }
         }
+        let tip = batch_response
+            .tip_hash
+            .ok_or_else(|| TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string()))?
+            .try_into()?;
         Ok((
             mined,
             unmined,
             Some((
                 batch_response.height_of_longest_chain,
-                batch_response.tip_hash.ok_or_else(|| {
-                    TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
-                })?,
+                tip,
                 batch_response.tip_mined_timestamp.ok_or_else(|| {
                     TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
                 })?,
@@ -407,13 +405,12 @@ where
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 status.is_faux(),
             )
-            .await
             .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
@@ -460,33 +457,39 @@ where
         mined_timestamp: u64,
         num_confirmations: u64,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
+        // This updates the OMS first before we update the TMS. If we update the TMS first and operation fail inside of
+        // the OMS, we have two databases that are out of sync, as the TMS would have been updated and OMS will be stuck
+        // forever as pending_incoming.
+        self.output_manager_handle
+            .set_coinbase_abandoned(tx_id, true)
+            .await
+            .map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
+                    tx_id,
+                    e,
+                    self.operation_id
+                );
+                e
+            })
+            .for_protocol(self.operation_id)?;
         self.db
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 false,
             )
-            .await
             .for_protocol(self.operation_id)?;
 
         self.db
             .abandon_coinbase_transaction(tx_id)
-            .await
             .for_protocol(self.operation_id)?;
 
-        if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
-            warn!(
-                target: LOG_TARGET,
-                "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
-                tx_id,
-                e,
-                self.operation_id
-            );
-        };
         self.publish_event(TransactionEvent::TransactionCancelled(
             tx_id,
             TxCancellationReason::AbandonedCoinbase,
@@ -499,11 +502,6 @@ where
         tx_id: TxId,
         status: &TransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
-        self.db
-            .set_transaction_as_unmined(tx_id)
-            .await
-            .for_protocol(self.operation_id)?;
-
         if *status == TransactionStatus::Coinbase {
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
@@ -515,6 +513,10 @@ where
                 );
             };
         }
+
+        self.db
+            .set_transaction_as_unmined(tx_id)
+            .for_protocol(self.operation_id)?;
 
         self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
         Ok(())

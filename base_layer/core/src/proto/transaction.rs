@@ -151,8 +151,9 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             if input.output_hash.is_empty() {
                 return Err("Compact Transaction Input does not contain `output_hash`".to_string());
             }
+            let hash = input.output_hash.try_into().map_err(|_| "Invalid transaction hash")?;
             Ok(TransactionInput::new_with_output_hash(
-                input.output_hash,
+                hash,
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
             ))
@@ -169,7 +170,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
             Ok(Self {
                 input_data: input.input_data.as_bytes(),
                 script_signature: Some(input.script_signature.into()),
-                output_hash,
+                output_hash: output_hash.to_vec(),
                 ..Default::default()
             })
         } else {

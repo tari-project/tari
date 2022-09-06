@@ -38,6 +38,7 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
+    FixedHash,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -49,7 +50,7 @@ use tari_crypto::{
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_script::TariScript;
 
@@ -158,6 +159,19 @@ impl TransactionOutput {
     /// Accessor method for the range proof contained in an output
     pub fn proof(&self) -> &RangeProof {
         &self.proof
+    }
+
+    pub fn hash(&self) -> FixedHash {
+        transaction_components::hash_output(
+            self.version,
+            &self.features,
+            &self.commitment,
+            &self.script,
+            &self.covenant,
+            &self.encrypted_value,
+            &self.sender_offset_public_key,
+            self.minimum_value_promise,
+        )
     }
 
     /// Verify that range proof is valid
@@ -388,34 +402,18 @@ impl TransactionOutput {
         )
     }
 
-    pub fn witness_hash(&self) -> Vec<u8> {
+    pub fn witness_hash(&self) -> FixedHash {
         DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output_witness")
             .chain(&self.proof)
             .chain(&self.metadata_signature)
             .finalize()
-            .to_vec()
+            .into()
     }
 
     pub fn get_metadata_size(&self) -> usize {
         self.features.consensus_encode_exact_size() +
             self.script.consensus_encode_exact_size() +
             self.covenant.consensus_encode_exact_size()
-    }
-}
-
-/// Implement the canonical hashing function for TransactionOutput for use in ordering.
-impl Hashable for TransactionOutput {
-    fn hash(&self) -> Vec<u8> {
-        transaction_components::hash_output(
-            self.version,
-            &self.features,
-            &self.commitment,
-            &self.script,
-            &self.covenant,
-            &self.encrypted_value,
-            self.minimum_value_promise,
-        )
-        .to_vec()
     }
 }
 
@@ -480,10 +478,12 @@ impl ConsensusEncoding for TransactionOutput {
         self.sender_offset_public_key.consensus_encode(writer)?;
         self.metadata_signature.consensus_encode(writer)?;
         self.covenant.consensus_encode(writer)?;
+        self.encrypted_value.consensus_encode(writer)?;
         self.minimum_value_promise.consensus_encode(writer)?;
         Ok(())
     }
 }
+impl ConsensusEncodingSized for TransactionOutput {}
 
 impl ConsensusDecoding for TransactionOutput {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
@@ -582,11 +582,14 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 #[cfg(test)]
 mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::transaction_output::power_of_two_chunk_sizes,
-        CryptoFactories,
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        transactions::{
+            tari_amount::MicroTari,
+            test_helpers::{TestParams, UtxoTestParams},
+            transaction_components::transaction_output::power_of_two_chunk_sizes,
+            CryptoFactories,
+        },
     };
 
     #[test]
@@ -696,5 +699,14 @@ mod test {
         output.minimum_value_promise = minimum_value_promise;
 
         output
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let output = create_valid_output(&test_params, &factories, 123.into(), MicroTari::zero());
+        check_consensus_encoding_correctness(output).unwrap();
     }
 }

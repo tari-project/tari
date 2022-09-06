@@ -29,7 +29,7 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
@@ -317,7 +317,6 @@ where
             .resources
             .db
             .transaction_exists(tx_id)
-            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
         {
             let fee = sender_protocol
@@ -337,14 +336,12 @@ where
             self.resources
                 .db
                 .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
         if transaction_status == TransactionStatus::Pending {
             self.resources
                 .db
                 .increment_send_count(self.id)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
@@ -394,7 +391,6 @@ where
             .resources
             .db
             .get_pending_outbound_transaction(tx_id)
-            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         if !outbound_tx.sender_protocol.is_collecting_single_signature() {
@@ -452,7 +448,6 @@ where
                         self.resources
                             .db
                             .increment_send_count(self.id)
-                            .await
                             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?
                     }
                 },
@@ -499,7 +494,6 @@ where
                         self.resources
                             .db
                             .increment_send_count(self.id)
-                            .await
                             .map_err(|e| TransactionServiceProtocolError::new(
                                 self.id, TransactionServiceError::from(e))
                             )?;
@@ -521,7 +515,6 @@ where
                              self.resources
                                 .db
                                 .increment_send_count(self.id)
-                                .await
                                 .map_err(|e| TransactionServiceProtocolError::new(
                                     self.id, TransactionServiceError::from(e))
                                 )?
@@ -559,7 +552,7 @@ where
             .sender_protocol
             .finalize(
                 &self.resources.factories,
-                self.prev_header.clone(),
+                self.prev_header,
                 self.height.unwrap_or(u64::MAX),
             )
             .map_err(|e| {
@@ -594,7 +587,6 @@ where
         self.resources
             .db
             .complete_outbound_transaction(tx_id, completed_transaction.clone())
-            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         info!(
             target: LOG_TARGET,
@@ -615,7 +607,6 @@ where
         self.resources
             .db
             .increment_send_count(tx_id)
-            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         let _size = self
@@ -828,7 +819,7 @@ where
             .resources
             .outbound_message_service
             .closest_broadcast(
-                NodeId::from_public_key(&self.dest_pubkey),
+                self.dest_pubkey.clone(),
                 OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
@@ -905,20 +896,15 @@ where
         self.resources
             .db
             .increment_send_count(self.id)
-            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        self.resources
-            .db
-            .cancel_pending_transaction(self.id)
-            .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Pending Transaction does not exist and could not be cancelled: {:?}", e
-                );
-                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-            })?;
+        self.resources.db.cancel_pending_transaction(self.id).map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+            );
+            TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+        })?;
 
         self.resources
             .output_manager_service

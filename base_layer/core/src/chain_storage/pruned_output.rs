@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::HashOutput;
-use tari_utilities::Hashable;
+use tari_common_types::types::{FixedHash, HashOutput};
 
 use crate::transactions::transaction_components::TransactionOutput;
 
@@ -43,12 +42,12 @@ impl PrunedOutput {
         matches!(self, PrunedOutput::Pruned { .. })
     }
 
-    pub fn hash(&self) -> Vec<u8> {
+    pub fn hash(&self) -> FixedHash {
         match self {
             PrunedOutput::Pruned {
                 output_hash,
                 witness_hash: _,
-            } => output_hash.clone(),
+            } => *output_hash,
             PrunedOutput::NotPruned { output } => output.hash(),
         }
     }
@@ -75,8 +74,8 @@ mod test {
     impl PrunedOutput {
         pub fn sample() -> Self {
             Self::Pruned {
-                output_hash: vec![],
-                witness_hash: vec![],
+                output_hash: FixedHash::zero(),
+                witness_hash: FixedHash::zero(),
             }
         }
     }

@@ -37,7 +37,14 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
         let request = match self {
-            FetchBlocksByHash(block_hashes) => NodeCommsRequest::FetchBlocksByHash(block_hashes.outputs),
+            FetchBlocksByHash(block_hashes) => {
+                let hashes = block_hashes
+                    .outputs
+                    .into_iter()
+                    .map(|hash| hash.try_into().map_err(|_| "Malformed hash".to_string()))
+                    .collect::<Result<_, _>>()?;
+                NodeCommsRequest::FetchBlocksByHash(hashes)
+            },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
                     .excess_sigs
@@ -73,7 +80,8 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
 
 impl From<Vec<HashOutput>> for proto::HashOutputs {
     fn from(outputs: Vec<HashOutput>) -> Self {
-        Self { outputs }
+        let hashes = outputs.iter().map(|v| v.to_vec()).collect();
+        Self { outputs: hashes }
     }
 }
 

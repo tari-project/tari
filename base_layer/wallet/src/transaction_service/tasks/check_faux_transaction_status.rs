@@ -23,7 +23,10 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
+use tari_common_types::{
+    transaction::TransactionStatus,
+    types::{BlockHash, FixedHash},
+};
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
@@ -46,14 +49,14 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     event_publisher: TransactionEventSender,
     tip_height: u64,
 ) {
-    let mut all_faux_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions().await {
+    let mut all_faux_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(target: LOG_TARGET, "Problem retrieving imported transactions: {}", e);
             return;
         },
     };
-    let mut unconfirmed_faux = match db.get_unconfirmed_faux_transactions().await {
+    let mut unconfirmed_faux = match db.get_unconfirmed_faux_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(
@@ -66,7 +69,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     all_faux_transactions.append(&mut unconfirmed_faux);
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
-    let last_mined_transaction = match db.fetch_last_mined_transaction().await {
+    let last_mined_transaction = match db.fetch_last_mined_transaction() {
         Ok(tx) => tx,
         Err(_) => None,
     };
@@ -76,7 +79,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     } else {
         height_with_margin
     };
-    let mut confirmed_faux = match db.get_confirmed_faux_transactions_from_height(check_height).await {
+    let mut confirmed_faux = match db.get_confirmed_faux_transactions_from_height(check_height) {
         Ok(txs) => txs,
         Err(e) => {
             error!(
@@ -114,7 +117,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             let mined_in_block: BlockHash = if let Some(hash) = output_statuses_by_tx_id.block_hash {
                 hash
             } else {
-                vec![0u8; 32]
+                FixedHash::zero()
             };
             let is_valid = tip_height >= mined_height;
             let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;
@@ -131,17 +134,15 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                 num_confirmations,
                 is_valid,
             );
-            let result = db
-                .set_transaction_mined_height(
-                    tx.tx_id,
-                    mined_height,
-                    mined_in_block,
-                    0,
-                    num_confirmations,
-                    is_confirmed,
-                    is_valid,
-                )
-                .await;
+            let result = db.set_transaction_mined_height(
+                tx.tx_id,
+                mined_height,
+                mined_in_block,
+                0,
+                num_confirmations,
+                is_confirmed,
+                is_valid,
+            );
             if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,

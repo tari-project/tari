@@ -26,10 +26,11 @@ use std::io;
 
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
+use tari_app_grpc::authentication::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{proof_of_work::monero_rx::MergeMineError, transactions::CoinbaseBuildError};
 use thiserror::Error;
-use tonic::transport;
+use tonic::{codegen::http::uri::InvalidUri, transport};
 
 #[derive(Debug, Error)]
 pub enum MmProxyError {
@@ -42,6 +43,8 @@ pub enum MmProxyError {
         #[from]
         source: MergeMineError,
     },
+    #[error("Invalid URI: {0}")]
+    InvalidUriError(#[from] InvalidUri),
     #[error("Reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("Missing data:{0}")]
@@ -50,6 +53,8 @@ pub enum MmProxyError {
     IoError(#[from] io::Error),
     #[error("Tonic transport error: {0}")]
     TonicTransportError(#[from] transport::Error),
+    #[error("Grpc authentication error: {0}")]
+    GRPCAuthenticationError(#[from] BasicAuthError),
     #[error("GRPC response did not contain the expected field: `{0}`")]
     GrpcResponseMissingField(&'static str),
     #[error("Hyper error: {0}")]

@@ -36,6 +36,7 @@ use tari_common_types::types::{
     BulletRangeProof,
     ComSignature,
     CommitmentFactory,
+    FixedHash,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -336,7 +337,7 @@ impl UnblindedOutput {
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
     // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
-    pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
+    pub fn hash(&self, factories: &CryptoFactories) -> FixedHash {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
         transaction_components::hash_output(
             self.version,
@@ -345,9 +346,9 @@ impl UnblindedOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            &self.sender_offset_public_key,
             self.minimum_value_promise,
         )
-        .to_vec()
     }
 }
 

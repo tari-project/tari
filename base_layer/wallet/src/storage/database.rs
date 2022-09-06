@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -47,7 +47,7 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError>;
+    fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), WalletStorageError>;
 
@@ -121,218 +121,143 @@ where T: WalletBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub async fn get_master_seed(&self) -> Result<Option<CipherSeed>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::MasterSeed) {
+    pub fn get_master_seed(&self) -> Result<Option<CipherSeed>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::MasterSeed) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::MasterSeed(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::MasterSeed, other),
             Err(e) => log_error(DbKey::MasterSeed, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn set_master_seed(&self, seed: CipherSeed) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Insert(DbKeyValuePair::MasterSeed(seed))))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_master_seed(&self, seed: CipherSeed) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::MasterSeed(seed)))?;
         Ok(())
     }
 
-    pub async fn clear_master_seed(&self) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::MasterSeed)))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn clear_master_seed(&self) -> Result<(), WalletStorageError> {
+        self.db.write(WriteOperation::Remove(DbKey::MasterSeed))?;
         Ok(())
     }
 
-    pub async fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::TorId) {
+    pub fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::TorId) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::TorId(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::TorId, other),
             Err(e) => log_error(DbKey::TorId, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Insert(DbKeyValuePair::TorId(id))))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
+        self.db.write(WriteOperation::Insert(DbKeyValuePair::TorId(id)))?;
         Ok(())
     }
 
-    pub async fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CommsAddress) {
+    pub fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::CommsAddress) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsAddress(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::CommsAddress, other),
             Err(e) => log_error(DbKey::CommsAddress, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::CommsAddress(address)))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::CommsAddress(address)))?;
         Ok(())
     }
 
-    pub async fn get_node_features(&self) -> Result<Option<PeerFeatures>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CommsFeatures) {
+    pub fn get_node_features(&self) -> Result<Option<PeerFeatures>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::CommsFeatures) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsFeatures(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::CommsFeatures, other),
             Err(e) => log_error(DbKey::CommsFeatures, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn set_node_features(&self, features: PeerFeatures) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::CommsFeatures(features)))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_node_features(&self, features: PeerFeatures) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::CommsFeatures(features)))?;
         Ok(())
     }
 
-    pub async fn get_comms_identity_signature(&self) -> Result<Option<IdentitySignature>, WalletStorageError> {
-        let db = self.db.clone();
-
-        let sig = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::CommsIdentitySignature) {
+    pub fn get_comms_identity_signature(&self) -> Result<Option<IdentitySignature>, WalletStorageError> {
+        let sig = match self.db.fetch(&DbKey::CommsIdentitySignature) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsIdentitySignature(k))) => Ok(Some(*k)),
             Ok(Some(other)) => unexpected_result(DbKey::CommsIdentitySignature, other),
             Err(e) => log_error(DbKey::CommsIdentitySignature, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(sig)
     }
 
-    pub async fn set_comms_identity_signature(&self, sig: IdentitySignature) -> Result<(), WalletStorageError> {
-        let db = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db.write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
+    pub fn set_comms_identity_signature(&self, sig: IdentitySignature) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
                 Box::new(sig),
-            )))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+            )))?;
         Ok(())
     }
 
-    pub async fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::BaseNodeChainMetadata) {
+    pub fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::BaseNodeChainMetadata) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::BaseNodeChainMetadata(metadata))) => Ok(Some(metadata)),
             Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMetadata, other),
             Err(e) => log_error(DbKey::BaseNodeChainMetadata, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))?;
         Ok(())
     }
 
-    pub async fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.apply_encryption(passphrase))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+    pub fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError> {
+        self.db.apply_encryption(passphrase)
     }
 
-    pub async fn remove_encryption(&self) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.remove_encryption())
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+    pub fn remove_encryption(&self) -> Result<(), WalletStorageError> {
+        self.db.remove_encryption()
     }
 
-    pub async fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::ClientKeyValue(key, value)))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::ClientKeyValue(key, value)))?;
         Ok(())
     }
 
-    pub async fn get_client_key_value(&self, key: String) -> Result<Option<String>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::ClientKey(key.clone())) {
+    pub fn get_client_key_value(&self, key: String) -> Result<Option<String>, WalletStorageError> {
+        let c = match self.db.fetch(&DbKey::ClientKey(key.clone())) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::ClientValue(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
             Err(e) => log_error(DbKey::ClientKey(key), e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(c)
     }
 
-    pub async fn get_client_key_from_str<V>(&self, key: String) -> Result<Option<V>, WalletStorageError>
+    pub fn get_client_key_from_str<V>(&self, key: String) -> Result<Option<V>, WalletStorageError>
     where
         V: std::str::FromStr,
         V::Err: ToString,
     {
-        let db = self.db.clone();
-
-        let value = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::ClientKey(key.clone())) {
+        let value = match self.db.fetch(&DbKey::ClientKey(key.clone())) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::ClientValue(k))) => Ok(Some(k)),
             Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
             Err(e) => log_error(DbKey::ClientKey(key), e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
 
         match value {
             Some(c) => {
@@ -343,89 +268,54 @@ where T: WalletBackend + 'static
         }
     }
 
-    pub async fn clear_client_value(&self, key: String) -> Result<bool, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || {
-            match db_clone.write(WriteOperation::Remove(DbKey::ClientKey(key.clone()))) {
-                Ok(None) => Ok(false),
-                Ok(Some(DbValue::ValueCleared)) => Ok(true),
-                Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
-                Err(e) => log_error(DbKey::ClientKey(key), e),
-            }
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn clear_client_value(&self, key: String) -> Result<bool, WalletStorageError> {
+        let c = match self.db.write(WriteOperation::Remove(DbKey::ClientKey(key.clone()))) {
+            Ok(None) => Ok(false),
+            Ok(Some(DbValue::ValueCleared)) => Ok(true),
+            Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
+            Err(e) => log_error(DbKey::ClientKey(key), e),
+        }?;
         Ok(c)
     }
 
-    pub async fn get_wallet_birthday(&self) -> Result<u16, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let result = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::WalletBirthday) {
+    pub fn get_wallet_birthday(&self) -> Result<u16, WalletStorageError> {
+        let result = match self.db.fetch(&DbKey::WalletBirthday) {
             Ok(None) => Err(WalletStorageError::ValueNotFound(DbKey::WalletBirthday)),
             Ok(Some(DbValue::WalletBirthday(b))) => Ok(b
                 .parse::<u16>()
                 .map_err(|_| WalletStorageError::ConversionError("Could not parse wallet birthday".to_string()))?),
             Ok(Some(other)) => unexpected_result(DbKey::WalletBirthday, other),
             Err(e) => log_error(DbKey::WalletBirthday, e),
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        }?;
         Ok(result)
     }
 
-    pub async fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        let result = tokio::task::spawn_blocking(move || db_clone.get_scanned_blocks())
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
+    pub fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
+        let result = self.db.get_scanned_blocks()?;
         Ok(result)
     }
 
-    pub async fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.save_scanned_block(scanned_block))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
+    pub fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
+        self.db.save_scanned_block(scanned_block)?;
         Ok(())
     }
 
-    pub async fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks())
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
+    pub fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError> {
+        self.db.clear_scanned_blocks()?;
         Ok(())
     }
 
-    pub async fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks_from_and_higher(height))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
+    pub fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError> {
+        self.db.clear_scanned_blocks_from_and_higher(height)?;
         Ok(())
     }
 
-    pub async fn clear_scanned_blocks_before_height(
+    pub fn clear_scanned_blocks_before_height(
         &self,
         height: u64,
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks_before_height(height, exclude_recovered))
-            .await
-            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
+        self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
         Ok(())
     }
 }
@@ -486,7 +376,6 @@ mod test {
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tempfile::tempdir;
-    use tokio::runtime::Runtime;
 
     use crate::storage::{
         database::WalletDatabase,
@@ -496,8 +385,6 @@ mod test {
 
     #[test]
     fn test_database_crud() {
-        let runtime = Runtime::new().unwrap();
-
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
@@ -505,13 +392,13 @@ mod test {
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
         // Test wallet settings
-        assert!(runtime.block_on(db.get_master_seed()).unwrap().is_none());
+        assert!(db.get_master_seed().unwrap().is_none());
         let seed = CipherSeed::new();
-        runtime.block_on(db.set_master_seed(seed.clone())).unwrap();
-        let stored_seed = runtime.block_on(db.get_master_seed()).unwrap().unwrap();
+        db.set_master_seed(seed.clone()).unwrap();
+        let stored_seed = db.get_master_seed().unwrap().unwrap();
         assert_eq!(seed, stored_seed);
-        runtime.block_on(db.clear_master_seed()).unwrap();
-        assert!(runtime.block_on(db.get_master_seed()).unwrap().is_none());
+        db.clear_master_seed().unwrap();
+        assert!(db.get_master_seed().unwrap().is_none());
 
         let client_key_values = vec![
             ("key1".to_string(), "value1".to_string()),
@@ -520,36 +407,25 @@ mod test {
         ];
 
         for kv in &client_key_values {
-            runtime
-                .block_on(db.set_client_key_value(kv.0.clone(), kv.1.clone()))
-                .unwrap();
+            db.set_client_key_value(kv.0.clone(), kv.1.clone()).unwrap();
         }
 
-        assert!(runtime
-            .block_on(db.get_client_key_value("wrong".to_string()))
-            .unwrap()
-            .is_none());
+        assert!(db.get_client_key_value("wrong".to_string()).unwrap().is_none());
 
-        runtime
-            .block_on(db.set_client_key_value(client_key_values[0].0.clone(), "updated".to_string()))
+        db.set_client_key_value(client_key_values[0].0.clone(), "updated".to_string())
             .unwrap();
 
         assert_eq!(
-            runtime
-                .block_on(db.get_client_key_value(client_key_values[0].0.clone()))
+            db.get_client_key_value(client_key_values[0].0.clone())
                 .unwrap()
                 .unwrap(),
             "updated".to_string()
         );
 
-        assert!(!runtime.block_on(db.clear_client_value("wrong".to_string())).unwrap());
+        assert!(!db.clear_client_value("wrong".to_string()).unwrap());
 
-        assert!(runtime
-            .block_on(db.clear_client_value(client_key_values[0].0.clone()))
-            .unwrap());
+        assert!(db.clear_client_value(client_key_values[0].0.clone()).unwrap());
 
-        assert!(!runtime
-            .block_on(db.clear_client_value(client_key_values[0].0.clone()))
-            .unwrap());
+        assert!(!db.clear_client_value(client_key_values[0].0.clone()).unwrap());
     }
 }

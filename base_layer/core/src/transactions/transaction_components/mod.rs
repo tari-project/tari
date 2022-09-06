@@ -32,7 +32,7 @@ pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use side_chain::*;
-use tari_common_types::types::Commitment;
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -92,8 +92,9 @@ pub(super) fn hash_output(
     script: &TariScript,
     covenant: &Covenant,
     encrypted_value: &EncryptedValue,
+    sender_offset_public_key: &PublicKey,
     minimum_value_promise: MicroTari,
-) -> [u8; 32] {
+) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
         .chain(&version)
         .chain(features)
@@ -101,9 +102,10 @@ pub(super) fn hash_output(
         .chain(script)
         .chain(covenant)
         .chain(encrypted_value)
+        .chain(sender_offset_public_key)
         .chain(&minimum_value_promise);
 
     match version {
-        TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize(),
+        TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize().into(),
     }
 }

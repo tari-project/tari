@@ -55,7 +55,7 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
@@ -265,6 +265,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -282,6 +283,7 @@ impl AppState {
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -296,6 +298,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -313,6 +316,7 @@ impl AppState {
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -327,6 +331,7 @@ impl AppState {
         &mut self,
         dest_pubkey: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -344,6 +349,7 @@ impl AppState {
         tokio::spawn(send_one_sided_to_stealth_address_transaction(
             dest_pubkey,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -428,6 +434,7 @@ impl AppState {
                 .completed_txs
                 .iter()
                 .filter(|tx| !matches!(tx.cancelled, Some(TxCancellationReason::AbandonedCoinbase)))
+                .filter(|tx| !matches!(tx.status, TransactionStatus::Coinbase))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -892,15 +899,11 @@ impl AppStateInner {
         // persist the custom node in wallet db
         self.wallet
             .db
-            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())
-            .await?;
-        self.wallet
-            .db
-            .set_client_key_value(
-                CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
-            )
-            .await?;
+            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
+        self.wallet.db.set_client_key_value(
+            CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+        )?;
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
@@ -931,12 +934,10 @@ impl AppStateInner {
         // clear from wallet db
         self.wallet
             .db
-            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-            .await?;
+            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())?;
         self.wallet
             .db
-            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
-            .await?;
+            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())?;
         Ok(())
     }
 

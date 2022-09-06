@@ -28,7 +28,7 @@ use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::TransactionStatus,
-    types::{PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -61,7 +61,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::{Hashable, SafePassword};
+use tari_utilities::SafePassword;
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -95,7 +95,7 @@ use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
 
 pub mod support;
-use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
+use tari_wallet::output_manager_service::{storage::database::OutputManagerDatabase, UtxoSelectionCriteria};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -145,6 +145,7 @@ async fn create_wallet(
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
+        rpc_max_sessions_per_peer: 0,
     };
 
     let sql_database_path = comms_config
@@ -169,12 +170,12 @@ async fn create_wallet(
         ..Default::default()
     };
 
-    let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0, 0);
+    let metadata = ChainMetadata::new(i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
 
     let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
     let wallet_db = WalletDatabase::new(wallet_backend);
-    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db)?;
 
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
@@ -273,6 +274,7 @@ async fn test_wallet() {
         .send_transaction(
             bob_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(5),
             "".to_string(),
@@ -400,19 +402,17 @@ async fn test_wallet() {
 
     let alice_seed = CipherSeed::new();
 
-    alice_wallet.db.set_master_seed(alice_seed).await.unwrap();
+    alice_wallet.db.set_master_seed(alice_seed).unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
-    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone())
-        .await
-        .unwrap();
+    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone()).unwrap();
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_seed = wallet_db.get_master_seed().await.unwrap();
+    let master_seed = wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path, 16).expect(
@@ -420,7 +420,7 @@ async fn test_wallet() {
     db",
     );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_seed = backup_wallet_db.get_master_seed().await.unwrap();
+    let master_seed = backup_wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_none());
 
     shutdown_b.trigger();
@@ -590,6 +590,7 @@ async fn test_store_and_forward_send_tx() {
         .send_transaction(
             carol_identity.public_key().clone(),
             value,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(3),
             "Store and Forward!".to_string(),
@@ -642,6 +643,7 @@ async fn test_store_and_forward_send_tx() {
     assert!(tx_recv, "Must have received a tx from alice");
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_import_utxo() {
     let factories = CryptoFactories::default();
@@ -678,6 +680,7 @@ async fn test_import_utxo() {
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
+        rpc_max_sessions_per_peer: 0,
     };
     let config = WalletConfig {
         p2p: comms_config,
@@ -808,7 +811,7 @@ async fn test_recovery_birthday() {
     .await
     .unwrap();
 
-    let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
+    let db_birthday = wallet.db.get_wallet_birthday().unwrap();
     assert_eq!(birthday, db_birthday);
 }
 

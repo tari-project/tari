@@ -21,10 +21,10 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{FixedHash, Signature};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
@@ -108,7 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             None => (),
             Some((_, block_hash)) => {
                 match db
-                    .fetch_header_by_block_hash(block_hash.clone())
+                    .fetch_header_by_block_hash(block_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?
                 {
@@ -117,7 +117,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                         let confirmations = chain_metadata.height_of_longest_chain().saturating_sub(header.height);
                         let response = TxQueryResponse {
                             location: TxLocation::Mined as i32,
-                            block_hash: Some(block_hash),
+                            block_hash: Some(block_hash.to_vec()),
                             confirmations,
                             is_synced: true,
                             height_of_longest_chain: chain_metadata.height_of_longest_chain(),
@@ -301,7 +301,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(TxQueryBatchResponses {
             responses,
             is_synced,
-            tip_hash: Some(metadata.best_block().clone()),
+            tip_hash: Some(metadata.best_block().to_vec()),
             height_of_longest_chain: metadata.height_of_longest_chain(),
             tip_mined_timestamp: Some(metadata.timestamp()),
         }))
@@ -323,8 +323,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
+        let hashes: Vec<FixedHash> = message
+            .output_hashes
+            .into_iter()
+            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
+            .collect::<Result<_, _>>()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let utxos = db
-            .fetch_utxos(message.output_hashes)
+            .fetch_utxos(hashes)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .into_iter()
@@ -363,9 +369,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             "Querying {} UTXO(s) for mined state",
             message.output_hashes.len(),
         );
-
+        let hashes: Vec<FixedHash> = message
+            .output_hashes
+            .into_iter()
+            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
+            .collect::<Result<_, _>>()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let mined_info_resp = db
-            .fetch_utxos_and_mined_info(message.output_hashes)
+            .fetch_utxos_and_mined_info(hashes)
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
 
@@ -384,15 +395,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         Ok(Response::new(UtxoQueryResponses {
             height_of_longest_chain: metadata.height_of_longest_chain(),
-            best_block: metadata.best_block().clone(),
+            best_block: metadata.best_block().to_vec(),
             responses: mined_info_resp
                 .into_iter()
                 .flatten()
                 .map(|utxo| UtxoQueryResponse {
                     mmr_position: utxo.mmr_position.into(),
                     mined_height: utxo.mined_height,
-                    mined_in_block: utxo.header_hash,
-                    output_hash: utxo.output.hash(),
+                    mined_in_block: utxo.header_hash.to_vec(),
+                    output_hash: utxo.output.hash().to_vec(),
                     output: match utxo.output {
                         PrunedOutput::Pruned { .. } => None,
                         PrunedOutput::NotPruned { output } => Some(output.into()),
@@ -413,9 +424,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let message = request.into_message();
 
         if let Some(chain_must_include_header) = message.chain_must_include_header {
+            let hash = chain_must_include_header
+                .try_into()
+                .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
             if self
                 .db
-                .fetch_header_by_block_hash(chain_must_include_header)
+                .fetch_header_by_block_hash(hash)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .is_none()
@@ -458,7 +472,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             blocks_deleted_in.reserve(headers.len());
             for (height, hash) in headers.into_iter().flatten() {
                 heights_deleted_at.push(height);
-                blocks_deleted_in.push(hash);
+                blocks_deleted_in.push(hash.to_vec());
             }
         }
 
@@ -470,7 +484,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
-            best_block: metadata.best_block().clone(),
+            best_block: metadata.best_block().to_vec(),
             deleted_positions: deleted_positions.into_iter().map(u64::from).collect(),
             not_deleted_positions: not_deleted_positions.into_iter().map(u64::from).collect(),
             blocks_deleted_in,

@@ -164,7 +164,7 @@ pub fn make_dht_envelope(
     if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
-        message = crypt::encrypt(&key_message, &message);
+        message = crypt::encrypt(&key_message, &message).unwrap();
     }
     let header = make_dht_header(
         node_identity,

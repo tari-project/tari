@@ -75,6 +75,8 @@ impl From<TransactionWeight> for Fee {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
     use tari_crypto::ristretto::RistrettoComSig;
     use tari_script::ExecutionStack;
 
@@ -105,7 +107,7 @@ mod test {
 
     #[test]
     fn test_calculate_body() {
-        let hash = vec![0u8; 32];
+        let hash = vec![0u8; 32].try_into().unwrap();
         let spent_output = SpentOutput::OutputHash(hash);
         let input = TransactionInput::new_current_version(
             spent_output,

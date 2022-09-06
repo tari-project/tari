@@ -392,9 +392,18 @@ impl ConnectivityManagerActor {
     }
 
     async fn reap_inactive_connections(&mut self) {
-        let connections = self
+        let excess_connections = self
             .pool
-            .get_inactive_connections_mut(self.config.reaper_min_inactive_age);
+            .count_connected()
+            .saturating_sub(self.config.reaper_min_connection_threshold);
+        if excess_connections == 0 {
+            return;
+        }
+
+        let mut connections = self
+            .pool
+            .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
+        connections.truncate(excess_connections as usize);
         for conn in connections {
             if !conn.is_connected() {
                 continue;
@@ -402,8 +411,9 @@ impl ConnectivityManagerActor {
 
             debug!(
                 target: LOG_TARGET,
-                "Disconnecting '{}' because connection was inactive",
-                conn.peer_node_id().short_str()
+                "Disconnecting '{}' because connection was inactive ({} handles)",
+                conn.peer_node_id().short_str(),
+                conn.handle_count()
             );
             if let Err(err) = conn.disconnect().await {
                 // Already disconnected

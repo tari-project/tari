@@ -69,7 +69,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::SafePassword;
+use tari_utilities::{ByteArray, SafePassword};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -267,15 +267,11 @@ where
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database
-            .set_node_address(comms.node_identity().public_address())
-            .await?;
-        wallet_database
-            .set_node_features(comms.node_identity().features())
-            .await?;
+        wallet_database.set_node_address(comms.node_identity().public_address())?;
+        wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
-            wallet_database.set_comms_identity_signature(identity_sig).await?;
+            wallet_database.set_comms_identity_signature(identity_sig)?;
         }
 
         Ok(Self {
@@ -678,7 +674,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: SafePassword) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let cipher = self.db.apply_encryption(passphrase).await?;
+        let cipher = self.db.apply_encryption(passphrase)?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
         self.transaction_service.apply_encryption(cipher.clone()).await?;
         self.key_manager_service.apply_encryption(cipher).await?;
@@ -691,18 +687,18 @@ where
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
         self.key_manager_service.remove_encryption().await?;
-        self.db.remove_encryption().await?;
+        self.db.remove_encryption()?;
         Ok(())
     }
 
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
-    pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
+    pub fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
+        Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
-        let master_seed = self.db.get_master_seed().await?.ok_or_else(|| {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+        let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),
             ))
@@ -713,24 +709,24 @@ where
     }
 }
 
-pub async fn read_or_create_master_seed<T: WalletBackend + 'static>(
+pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
     recovery_seed: Option<CipherSeed>,
     db: &WalletDatabase<T>,
 ) -> Result<CipherSeed, WalletError> {
-    let db_master_seed = db.get_master_seed().await?;
+    let db_master_seed = db.get_master_seed()?;
 
     let master_seed = match recovery_seed {
         None => match db_master_seed {
             None => {
                 let seed = CipherSeed::new();
-                db.set_master_seed(seed.clone()).await?;
+                db.set_master_seed(seed.clone())?;
                 seed
             },
             Some(seed) => seed,
         },
         Some(recovery_seed) => {
             if db_master_seed.is_none() {
-                db.set_master_seed(recovery_seed.clone()).await?;
+                db.set_master_seed(recovery_seed.clone())?;
                 recovery_seed
             } else {
                 error!(
@@ -758,7 +754,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-pub async fn persist_one_sided_payment_script_for_node_identity(
+async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {

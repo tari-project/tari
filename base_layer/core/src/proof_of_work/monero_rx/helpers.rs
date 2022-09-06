@@ -295,7 +295,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -351,7 +351,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -403,7 +403,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -454,7 +454,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -509,7 +509,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -560,7 +560,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),
@@ -602,7 +602,7 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             witness_mr: FixedHash::zero(),

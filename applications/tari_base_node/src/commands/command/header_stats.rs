@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use tari_core::proof_of_work::PowAlgorithm;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
     io::{self, AsyncWriteExt},
@@ -100,7 +100,7 @@ impl CommandContext {
 
             let target_diff = self
                 .blockchain_db
-                .fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                .fetch_target_difficulties_for_next_block(*prev_header.hash())
                 .await?;
             let pow_algo = header.header().pow_algo();
 

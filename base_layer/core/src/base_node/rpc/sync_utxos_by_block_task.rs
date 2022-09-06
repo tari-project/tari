@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Instant};
+use std::{convert::TryInto, sync::Arc, time::Instant};
 
 use log::*;
 use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
@@ -52,16 +52,25 @@ where B: BlockchainBackend + 'static
         request: SyncUtxosByBlockRequest,
         mut tx: mpsc::Sender<Result<SyncUtxosByBlockResponse, RpcStatus>>,
     ) -> Result<(), RpcStatus> {
+        let hash = request
+            .start_header_hash
+            .clone()
+            .try_into()
+            .rpc_status_internal_error(LOG_TARGET)?;
         let start_header = self
             .db
-            .fetch_header_by_block_hash(request.start_header_hash.clone())
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Start header hash is was not found"))?;
-
+        let hash = request
+            .end_header_hash
+            .clone()
+            .try_into()
+            .rpc_status_internal_error(LOG_TARGET)?;
         let end_header = self
             .db
-            .fetch_header_by_block_hash(request.end_header_hash.clone())
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
@@ -153,7 +162,7 @@ where B: BlockchainBackend + 'static
             let utxo_block_response = SyncUtxosByBlockResponse {
                 outputs: utxos,
                 height: current_header.height,
-                header_hash: current_header_hash,
+                header_hash: current_header_hash.to_vec(),
                 mined_timestamp: current_header.timestamp.as_u64(),
             };
             // Ensure task stops if the peer prematurely stops their RPC session

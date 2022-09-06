@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
@@ -48,6 +48,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
+    output_manager_service::UtxoSelectionCriteria,
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -76,18 +77,21 @@ pub enum TransactionServiceRequest {
     SendTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
     BurnTari {
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
@@ -95,11 +99,12 @@ pub enum TransactionServiceRequest {
     SendOneSidedToStealthAddressTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
-    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
@@ -114,7 +119,7 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
-    ApplyEncryption(Box<Aes256Gcm>),
+    ApplyEncryption(Box<XChaCha20Poly1305>),
     RemoveEncryption,
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     RestartTransactionProtocols,
@@ -173,7 +178,7 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
-            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+            Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
@@ -428,6 +433,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -437,6 +443,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -452,6 +459,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -461,6 +469,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -476,6 +485,7 @@ impl TransactionServiceHandle {
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
@@ -483,6 +493,7 @@ impl TransactionServiceHandle {
             .handle
             .call(TransactionServiceRequest::BurnTari {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 message,
             })
@@ -497,6 +508,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -506,6 +518,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -713,7 +726,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), TransactionServiceError> {
+    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ApplyEncryption(Box::new(cipher)))
@@ -810,6 +823,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
@@ -818,6 +832,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 message,
             ))

@@ -29,20 +29,23 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
+use tari_crypto::hashing::AsFixedBytes;
+use tari_utilities::{hex::*, ByteArray, ByteArrayError};
 
 use super::BulletRangeProofHasherBlake256;
+use crate::types::FixedHash;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BulletRangeProof(pub Vec<u8>);
-/// Implement the hashing function for RangeProof for use in the MMR
-impl Hashable for BulletRangeProof {
-    fn hash(&self) -> Vec<u8> {
+impl BulletRangeProof {
+    /// Implement the hashing function for RangeProof for use in the MMR
+    pub fn hash(&self) -> FixedHash {
         BulletRangeProofHasherBlake256::new()
             .chain(&self.0)
             .finalize()
-            .as_ref()
-            .to_vec()
+            .as_fixed_bytes()
+            .expect("This should be 32 bytes for a Blake 256 hash")
+            .into()
     }
 }
 

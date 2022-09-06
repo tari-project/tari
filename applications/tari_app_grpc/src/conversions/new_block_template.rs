@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::{BlindingFactor, FixedHash};
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
     proof_of_work::ProofOfWork,
@@ -38,7 +38,7 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
         let header = grpc::NewBlockHeaderTemplate {
             version: u32::from(block.header.version),
             height: block.header.height,
-            prev_hash: block.header.prev_hash.clone(),
+            prev_hash: block.header.prev_hash.to_vec(),
             total_kernel_offset: Vec::from(block.header.total_kernel_offset.as_bytes()),
             total_script_offset: Vec::from(block.header.total_script_offset.as_bytes()),
             pow: Some(grpc::ProofOfWork {
@@ -87,7 +87,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
         let header = NewBlockHeaderTemplate {
             version: u16::try_from(header.version).map_err(|_| "header version too large")?,
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             total_kernel_offset,
             total_script_offset,
             pow,
