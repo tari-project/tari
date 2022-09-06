@@ -111,6 +111,7 @@ class MergeMiningProxyProcess {
       await this.runCommand("cargo", [
         "build",
         "--release",
+        "--locked",
         "--bin",
         "tari_merge_mining_proxy",
         "-Z",

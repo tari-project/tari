@@ -165,6 +165,7 @@ class MiningNodeProcess {
       await this.runCommand("cargo", [
         "build",
         "--release",
+        "--locked",
         "--bin",
         "tari_miner",
         "-Z",
