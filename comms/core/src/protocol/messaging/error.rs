@@ -68,6 +68,8 @@ impl From<io::Error> for MessagingProtocolError {
             ErrorKind::ConnectionReset |
             ErrorKind::ConnectionAborted |
             ErrorKind::BrokenPipe |
+            ErrorKind::WriteZero |
+            ErrorKind::NotConnected |
             ErrorKind::UnexpectedEof => MessagingProtocolError::ConnectionClosed(err),
             _ => MessagingProtocolError::Io(err),
         }
