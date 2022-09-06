@@ -26,7 +26,7 @@ impl From<Contact> for UiContact {
         Self {
             alias: c.alias,
             public_key: c.public_key.to_string(),
-            emoji_id: EmojiId::from_pubkey(&c.public_key).as_str().to_string(),
+            emoji_id: EmojiId::from_public_key(&c.public_key).to_emoji_string(),
             last_seen: match c.last_seen {
                 Some(val) => DateTime::<Local>::from_utc(val, Local::now().offset().to_owned())
                     .format("%m-%dT%H:%M")

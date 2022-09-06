@@ -218,7 +218,9 @@ impl AppState {
         let public_key = match CommsPublicKey::from_hex(public_key_or_emoji_id.as_str()) {
             Ok(pk) => pk,
             Err(_) => {
-                EmojiId::str_to_pubkey(public_key_or_emoji_id.as_str()).map_err(|_| UiError::PublicKeyParseError)?
+                EmojiId::from_emoji_string(public_key_or_emoji_id.as_str())
+                    .map_err(|_| UiError::PublicKeyParseError)?
+                    .to_public_key()
             },
         };
 
@@ -250,7 +252,7 @@ impl AppState {
         let mut inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
         };
 
         inner.wallet.contacts_service.remove_contact(public_key).await?;
@@ -273,7 +275,7 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -306,7 +308,7 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -339,7 +341,7 @@ impl AppState {
         let inner = self.inner.write().await;
         let dest_pubkey = match CommsPublicKey::from_hex(dest_pubkey.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(dest_pubkey.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(dest_pubkey.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -1087,7 +1089,7 @@ impl AppStateData {
         base_node_selected: Peer,
         base_node_config: PeerConfig,
     ) -> Self {
-        let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
+        let eid = EmojiId::from_public_key(node_identity.public_key()).to_emoji_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();
         let image = code
