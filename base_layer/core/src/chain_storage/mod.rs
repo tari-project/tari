@@ -79,3 +79,6 @@ mod target_difficulties;
 mod utxo_mined_info;
 pub use target_difficulties::TargetDifficulties;
 pub use utxo_mined_info::*;
+
+mod active_validator_node;
+pub use active_validator_node::ActiveValidatorNode;

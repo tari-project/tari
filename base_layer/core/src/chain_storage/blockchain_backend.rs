@@ -7,6 +7,7 @@ use tari_common_types::{
     types::{Commitment, HashOutput, Signature},
 };
 
+use super::ActiveValidatorNode;
 use crate::{
     blocks::{
         Block,
@@ -191,4 +192,7 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches all tracked reorgs
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
+
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
+    fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
 }

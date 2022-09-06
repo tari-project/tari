@@ -124,6 +124,8 @@ message OutputFeatures {
     uint64 maturity = 3;
     bytes metadata = 4;
     SideChainFeatures sidechain_features = 5;
+    bytes validator_node_public_key = 6;
+    Signature validator_node_signature = 7;
 }
 
 

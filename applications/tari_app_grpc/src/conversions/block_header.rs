@@ -53,6 +53,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 pow_algo: pow_algo.as_u64(),
                 pow_data: h.pow.pow_data,
             }),
+            validator_node_merkle_root: h.validator_node_merkle_root,
         }
     }
 }
@@ -91,6 +92,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             total_script_offset,
             nonce: header.nonce,
             pow,
+            validator_node_merkle_root: header.validator_node_merkle_root,
         })
     }
 }

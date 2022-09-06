@@ -67,6 +67,8 @@ use tari_app_grpc::{
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        RegisterValidatorNodeRequest,
+        RegisterValidatorNodeResponse,
         RevalidateRequest,
         RevalidateResponse,
         SeedWordsResponse,
@@ -966,6 +968,46 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateTemplateRegistrationResponse {}))
+    }
+
+    async fn register_validator_node(
+        &self,
+        request: Request<RegisterValidatorNodeRequest>,
+    ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let validator_node_public_key = CommsPublicKey::from_hex(&request.validator_node_public_key)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        let validator_node_signature = request
+            .validator_node_signature
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+            .try_into()
+            .unwrap();
+
+        let response = match transaction_service
+            .register_validator_node(
+                validator_node_public_key,
+                validator_node_signature,
+                request.fee_per_gram.into(),
+                request.message,
+            )
+            .await
+        {
+            Ok(tx) => RegisterValidatorNodeResponse {
+                transaction_id: tx.as_u64(),
+                is_success: true,
+                failure_message: Default::default(),
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                RegisterValidatorNodeResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+        Ok(Response::new(response))
     }
 }
 

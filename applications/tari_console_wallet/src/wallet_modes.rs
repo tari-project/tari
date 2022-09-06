@@ -463,6 +463,7 @@ mod test {
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::HashGrpcPassword(_) => {},
+                CliCommands::RegisterValidatorNode(_) => {},
             }
         }
         assert!(get_balance && send_tari && make_it_rain && coin_split && discover_peer && whois);

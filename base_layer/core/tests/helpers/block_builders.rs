@@ -338,7 +338,8 @@ pub fn chain_block(
     transactions: Vec<Transaction>,
     consensus: &ConsensusManager,
 ) -> NewBlockTemplate {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
+    let mut header =
+        BlockHeader::from_previous(&prev_block.header, prev_block.header.validator_node_merkle_root.clone());
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     let reward = consensus.get_block_reward_at(height);
@@ -366,7 +367,10 @@ pub fn chain_block_with_coinbase(
     coinbase_kernel: TransactionKernel,
     consensus: &ConsensusManager,
 ) -> NewBlockTemplate {
-    let mut header = BlockHeader::from_previous(prev_block.header());
+    let mut header = BlockHeader::from_previous(
+        prev_block.header(),
+        prev_block.header().validator_node_merkle_root.clone(),
+    );
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     NewBlockTemplate::from_block(
@@ -397,7 +401,10 @@ pub fn chain_block_with_new_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(height).coinbase_lock_height(),
     );
-    let mut header = BlockHeader::from_previous(prev_block.header());
+    let mut header = BlockHeader::from_previous(
+        prev_block.header(),
+        prev_block.header().validator_node_merkle_root.clone(),
+    );
     header.height = height;
     header.version = consensus_manager
         .consensus_constants(header.height)

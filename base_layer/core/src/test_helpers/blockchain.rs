@@ -51,6 +51,7 @@ use crate::{
     },
     chain_storage::{
         create_lmdb_database,
+        ActiveValidatorNode,
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -159,17 +160,19 @@ pub struct TempDatabase {
 impl TempDatabase {
     pub fn new() -> Self {
         let temp_path = create_temporary_data_path();
+        let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
     }
 
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
+        let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }
@@ -409,6 +412,17 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_all_reorgs()
+    }
+
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<crate::chain_storage::ActiveValidatorNode>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+    }
+
+    fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_committee(height, shard)
     }
 }
 

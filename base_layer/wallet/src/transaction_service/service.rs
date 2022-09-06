@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -634,6 +634,25 @@ where
                 .burn_tari(amount, fee_per_gram, message, transaction_broadcast_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::RegisterValidatorNode {
+                validator_node_public_key,
+                validator_node_signature,
+                fee_per_gram,
+                message,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.register_validator_node(
+                    validator_node_public_key,
+                    validator_node_signature,
+                    fee_per_gram,
+                    message,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    rp,
+                )
+                .await?;
+                return Ok(());
+            },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
                 Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
                     self.send_sha_atomic_swap_transaction(
@@ -1442,6 +1461,38 @@ where
         .await?;
 
         Ok(tx_id)
+    }
+
+    pub async fn register_validator_node(
+        &mut self,
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        fee_per_gram: MicroTari,
+        message: String,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let output_features =
+            OutputFeatures::create_validator_node_registration(validator_node_public_key, validator_node_signature);
+        let tx_meta =
+            TransactionMetadata::new_with_features(0.into(), 3, KernelFeatures::create_validator_node_registration());
+        self.send_transaction(
+            self.node_identity.public_key().clone(),
+            MicroTari::from(1),
+            output_features,
+            fee_per_gram,
+            message,
+            tx_meta,
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await
     }
 
     /// Sends a one side payment transaction to a recipient

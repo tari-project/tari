@@ -47,6 +47,7 @@ use crate::{
             TransactionOutputVersion,
         },
     },
+    ValidatorNodeMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -161,6 +162,7 @@ fn get_igor_genesis_block_raw() -> Block {
     let genesis = DateTime::parse_from_rfc2822("08 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
+    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
     Block {
         header: BlockHeader {
             version: 0,
@@ -187,6 +189,7 @@ fn get_igor_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
+            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
         },
         body,
     }
@@ -281,6 +284,8 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             maturity: 6,
             metadata: Vec::new(),
             sidechain_features: None,
+            validator_node_public_key: None,
+            validator_node_signature: None,
         },
         Commitment::from_hex("2afed894ae877b5e9c7450cc0e29de46aeb6b118cd3d6b0a77da8c8156a1e234").unwrap(),
         BulletRangeProof::from_hex("0136b44930772f85b17139dd8e83789f84ccc2134cf6b2416d908fb8403efa4d3bc0247ec4afbbb1f7f7498d129226f26199eec988bd3e5ccce2572fd7aee16f2c4a2d710fac0e3bc1d612d700af2265e230ae1c45e3b0e4d3aab43cb87534217b56dcdb6598ed859d0cd6d70fae5acaaa38db5bbae6df8339e5e3dd594388bd53cef6f2acda4ac002d8ac6e01d430bdcf8565b8b8823ff3fb7dc8b359e687dd6feab0edf86c7444c713f34d2513145049b9664aae2e3dbc8a3365baae9d26842852ec9f401112a9742560ec220e61b05f65448d75b714839a6bafc723e9a04f25c69c036775fc55b7ec2bb28ef1de25a32cac51c288ed6d43f3819b1c3356d7699ea5f10217d553e90e6c93641649bd289dedb9e5725579539df07301f15093496c8fca3ec66a43332d1be3a3f94b530e1b8ca7feaa24c4ca73e60397a786ab742ac8933ba6bd504ef3c1a53fa1ff4397aba7c42a526507f930fdf9ff00a2a07b521841574d4e2b5beece946a15fa2545c8e556e704eed0ed10c0e3cbb9f5d6147e6e2d260666c79fa04d89c8901eeb3d3793239a68218a2c105f1bcb4211631eea037102bd5c840de751d84f473bb5cf6c41b3b97ec1c978700ec3c132e09a28d0a92c7e141e9968d0d2852c339a85c052356049f6752cb57c3d2b8c03db24525aa1f7db4a4f4d7d48639e27faa8c8bc695ad6c4f7688d43feedabef4d05c20b349ebc1697b3b899038b22fa308546efff290902cdacbe9992450cc31b61fc00652cffe4335c080d8398b061add986626068e17d5982ee9f6f28b4f4579d0406").unwrap(),
@@ -311,6 +316,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let genesis = DateTime::parse_from_rfc2822("24 Aug 2022 22:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
+    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
     Block {
         header: BlockHeader {
             version: 0,
@@ -337,6 +343,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
+            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
         },
         body,
     }

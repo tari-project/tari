@@ -94,6 +94,8 @@ pub struct ConsensusConstants {
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
+    /// How long does it take to timeout validator node registration
+    validator_node_timeout: u64,
 }
 
 // todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
@@ -286,6 +288,10 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
+    pub fn get_validator_node_timeout(&self) -> u64 {
+        self.validator_node_timeout
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -323,6 +329,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
+            validator_node_timeout: 0,
         }]
     }
 
@@ -363,6 +370,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            validator_node_timeout: 0,
         }]
     }
 
@@ -406,6 +414,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            validator_node_timeout: 0,
         }]
     }
 
@@ -456,6 +465,7 @@ impl ConsensusConstants {
                 output_version_range: output_version_range.clone(),
                 kernel_version_range: kernel_version_range.clone(),
                 permitted_output_types: Self::current_permitted_output_types(),
+                validator_node_timeout: 0,
             },
             ConsensusConstants {
                 effective_from_height: 23000,
@@ -479,6 +489,7 @@ impl ConsensusConstants {
                 output_version_range,
                 kernel_version_range,
                 permitted_output_types: Self::current_permitted_output_types(),
+                validator_node_timeout: 0,
             },
         ]
     }
@@ -527,6 +538,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            validator_node_timeout: 50,
         }]
     }
 
@@ -568,6 +580,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            validator_node_timeout: 0,
         }]
     }
 

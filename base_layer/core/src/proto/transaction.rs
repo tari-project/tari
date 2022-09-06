@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -300,6 +300,9 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .map(SideChainFeatures::try_from)
             .transpose()?;
 
+        let validator_node_public_key = PublicKey::from_bytes(features.validator_node_public_key.as_bytes()).ok();
+        let validator_node_signature = features.validator_node_signature.map(Signature::try_from).transpose()?;
+
         let flags = features
             .flags
             .try_into()
@@ -313,6 +316,8 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.metadata,
             sidechain_features,
+            validator_node_public_key,
+            validator_node_signature,
         ))
     }
 }
@@ -325,6 +330,11 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             metadata: features.metadata,
             version: features.version as u32,
             sidechain_features: features.sidechain_features.map(Into::into),
+            validator_node_public_key: features
+                .validator_node_public_key
+                .map(|pk| pk.as_bytes().to_vec())
+                .unwrap_or_default(),
+            validator_node_signature: features.validator_node_signature.map(Into::into),
         }
     }
 }

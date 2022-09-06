@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -53,6 +53,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -174,6 +175,24 @@ pub async fn claim_htlc_refund(
         .submit_transaction(tx_id, tx, amount, message)
         .await?;
     Ok(tx_id)
+}
+
+pub async fn register_validator_node(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    validator_node_public_key: PublicKey,
+    validator_node_signature: Signature,
+    fee_per_gram: MicroTari,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .register_validator_node(
+            validator_node_public_key,
+            validator_node_signature,
+            fee_per_gram,
+            message,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
 }
 
 /// Send a one-sided transaction to a recipient
@@ -794,6 +813,21 @@ pub async fn command_runner(
                         username
                     );
                 }
+            },
+            RegisterValidatorNode(args) => {
+                let tx_id = register_validator_node(
+                    transaction_service.clone(),
+                    args.validator_node_public_key.into(),
+                    Signature::new(
+                        args.validator_node_public_nonce.into(),
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature).unwrap(),
+                    ),
+                    config.fee_per_gram * uT,
+                    args.message,
+                )
+                .await?;
+                debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
+                tx_ids.push(tx_id);
             },
         }
     }
