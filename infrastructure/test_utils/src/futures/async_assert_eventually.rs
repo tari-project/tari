@@ -43,7 +43,7 @@ macro_rules! async_assert_eventually {
             assert!(
                 attempts <= $max_attempts,
                 "assert_eventually assertion failed. Expression did not equal value after {} attempts.",
-                attempts
+                attempts - 1
             );
             tokio::time::sleep($interval).await;
             value = $check_expr;
