@@ -171,7 +171,7 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
                     db_kernel.excess_sig.get_public_nonce().to_hex(),
                     db_kernel.excess_sig.get_signature().to_hex(),
                 );
-                trace!(target: LOG_TARGET, "{}", msg);
+                debug!(target: LOG_TARGET, "{}", msg);
                 return Err(ValidationError::DuplicateKernelError(msg));
             };
         }
