@@ -113,7 +113,10 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
-                warn!(target: LOG_TARGET, "Validation failed due to duplicate kernel: {}", msg);
+                debug!(
+                    target: LOG_TARGET,
+                    "Validation failed due to already mined kernel: {}", msg
+                );
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(e) => {
