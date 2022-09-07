@@ -83,7 +83,11 @@ use tari_wallet::{
     util::watch::Watch,
 };
 use tempfile::{tempdir, TempDir};
-use tokio::{sync::broadcast, task, time::sleep};
+use tokio::{
+    sync::{broadcast, mpsc},
+    task,
+    time::sleep,
+};
 
 use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -246,20 +250,24 @@ async fn tx_broadcast_protocol_submit_success() {
 
     let timeout_watch = Watch::new(Duration::from_secs(1));
 
-    let protocol = TransactionBroadcastProtocol::new(2u64.into(), resources.clone(), timeout_watch.get_receiver());
-    let join_handle = task::spawn(protocol.execute());
+    let (tx_tx, tx_recv) = mpsc::unbounded_channel();
+    tx_tx.send(2u64.into()).unwrap();
+    let protocol = TransactionBroadcastProtocol::new(resources.clone(), timeout_watch.get_receiver(), tx_recv);
+    let join_handle = task::spawn(protocol.run());
 
     // Fails because there is no transaction in the database to be broadcast
-    assert!(join_handle.await.unwrap().is_err());
+    let evt = event_stream.recv().await.unwrap();
+    // assert!(join_handle.await.unwrap().is_err());
 
     add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
     let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).unwrap();
     assert!(db_completed_tx.confirmations.is_none());
 
-    let protocol = TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_watch.get_receiver());
+    tx_tx.send(1u64.into()).unwrap();
+    // let protocol = TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_watch.get_receiver());
 
-    task::spawn(protocol.execute());
+    // task::spawn(protocol.run());
 
     // Set Base Node response to be not synced but in mempool
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -339,7 +347,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         is_synced: true,
     });
 
-    let join_handle = task::spawn(protocol.execute());
+    let join_handle = task::spawn(protocol.run());
 
     // Check that the protocol ends with rejection error
     if let Err(e) = join_handle.await.unwrap() {
@@ -415,7 +423,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
     let protocol =
         TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
-    let join_handle = task::spawn(protocol.execute());
+    let join_handle = task::spawn(protocol.run());
 
     // Check if in mempool (its not)
     // Wait for 1 queries
@@ -501,7 +509,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let protocol =
         TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
-    let join_handle = task::spawn(protocol.execute());
+    let join_handle = task::spawn(protocol.run());
 
     // Accepted in the mempool on submit but not query
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -594,7 +602,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     let protocol =
         TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
-    let join_handle = task::spawn(protocol.execute());
+    let join_handle = task::spawn(protocol.run());
 
     let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
@@ -665,7 +673,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let protocol =
         TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
-    let join_handle = task::spawn(protocol.execute());
+    let join_handle = task::spawn(protocol.run());
 
     // Wait for 1 queries
     let _schnorr_signatures = rpc_service_state

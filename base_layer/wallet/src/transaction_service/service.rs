@@ -166,11 +166,11 @@ pub struct TransactionService<
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<TxId, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
-    active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
     wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
+    broadcast_tx: mpsc::UnboundedSender<TxId>,
 }
 
 impl<
@@ -245,6 +245,11 @@ where
             PowerMode::Normal => config.broadcast_monitoring_timeout,
         };
         let timeout_update_watch = Watch::new(timeout);
+        let (broadcast_tx, broadcast_rx) = mpsc::unbounded_channel();
+
+        let broadcast_protocol =
+            TransactionBroadcastProtocol::new(resources.clone(), timeout_update_watch.get_receiver(), broadcast_rx);
+        broadcast_protocol.spawn();
 
         Self {
             config,
@@ -264,11 +269,11 @@ where
             send_transaction_cancellation_senders: HashMap::new(),
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
-            active_transaction_broadcast_protocols: HashSet::new(),
             timeout_update_watch,
             base_node_service,
             wallet_db,
             last_seen_tip_height: None,
+            broadcast_tx,
         }
     }
 
@@ -321,10 +326,6 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         > = FuturesUnordered::new();
 
-        let mut transaction_broadcast_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
         let mut transaction_validation_protocol_handles: FuturesUnordered<
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         > = FuturesUnordered::new();
@@ -358,7 +359,6 @@ where
                     let _result = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
-                        &mut transaction_broadcast_protocol_handles,
                         &mut transaction_validation_protocol_handles,
                         reply_tx,
                     ).await.map_err(|e| {
@@ -505,7 +505,6 @@ where
                     match join_result {
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(
                             join_result_inner,
-                            &mut transaction_broadcast_protocol_handles
                         ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
@@ -515,16 +514,8 @@ where
                     match join_result {
                         Ok(join_result_inner) => self.complete_receive_transaction_protocol(
                             join_result_inner,
-                            &mut transaction_broadcast_protocol_handles
                         ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
-                    };
-                }
-                Some(join_result) = transaction_broadcast_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
-                    match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
                 Some(join_result) = transaction_validation_protocol_handles.next() => {
@@ -532,7 +523,6 @@ where
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_validation_protocol(
                             join_result_inner,
-                            &mut transaction_broadcast_protocol_handles,
                         ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
@@ -556,9 +546,6 @@ where
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
         receive_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         transaction_validation_join_handles: &mut FuturesUnordered<
@@ -588,7 +575,6 @@ where
                     message,
                     TransactionMetadata::default(),
                     send_transaction_join_handles,
-                    transaction_broadcast_join_handles,
                     rp,
                 )
                 .await?;
@@ -609,7 +595,6 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
-                    transaction_broadcast_join_handles,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
@@ -628,7 +613,6 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
-                    transaction_broadcast_join_handles,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
@@ -638,13 +622,7 @@ where
                 fee_per_gram,
                 message,
             } => self
-                .burn_tari(
-                    amount,
-                    selection_criteria,
-                    fee_per_gram,
-                    message,
-                    transaction_broadcast_join_handles,
-                )
+                .burn_tari(amount, selection_criteria, fee_per_gram, message)
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
@@ -654,15 +632,8 @@ where
                 fee_per_gram,
                 message,
             ) => Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
-                self.send_sha_atomic_swap_transaction(
-                    dest_pubkey,
-                    amount,
-                    selection_criteria,
-                    fee_per_gram,
-                    message,
-                    transaction_broadcast_join_handles,
-                )
-                .await?,
+                self.send_sha_atomic_swap_transaction(dest_pubkey, amount, selection_criteria, fee_per_gram, message)
+                    .await?,
             )),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
@@ -719,7 +690,7 @@ where
                 )
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
-                .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+                .submit_transaction_to_self(tx_id, tx, fee, amount, message)
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
                 .generate_coinbase_transaction(reward, fees, block_height)
@@ -750,7 +721,7 @@ where
                 )
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::RestartBroadcastProtocols => self
-                .restart_broadcast_protocols(transaction_broadcast_join_handles)
+                .restart_broadcast_protocols()
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
                 TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
@@ -895,9 +866,7 @@ where
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
+
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
@@ -927,24 +896,21 @@ where
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-            self.submit_transaction(
-                transaction_broadcast_join_handles,
-                CompletedTransaction::new(
-                    tx_id,
-                    self.node_identity.public_key().clone(),
-                    self.node_identity.public_key().clone(),
-                    amount,
-                    fee,
-                    transaction,
-                    TransactionStatus::Completed,
-                    message,
-                    Utc::now().naive_utc(),
-                    TransactionDirection::Inbound,
-                    None,
-                    None,
-                    None,
-                ),
-            )?;
+            self.submit_transaction(CompletedTransaction::new(
+                tx_id,
+                self.node_identity.public_key().clone(),
+                self.node_identity.public_key().clone(),
+                amount,
+                fee,
+                transaction,
+                TransactionStatus::Completed,
+                message,
+                Utc::now().naive_utc(),
+                TransactionDirection::Inbound,
+                None,
+                None,
+                None,
+            ))?;
 
             let _result = reply_channel
                 .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
@@ -997,9 +963,6 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
         let tx_id = TxId::new_random();
         // this can be anything, so lets generate a random private key
@@ -1149,24 +1112,21 @@ where
                 Some(rewind_data),
             )
             .await?;
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new(
-                tx_id,
-                self.resources.node_identity.public_key().clone(),
-                dest_pubkey.clone(),
-                amount,
-                fee,
-                tx.clone(),
-                TransactionStatus::Completed,
-                message.clone(),
-                Utc::now().naive_utc(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                None,
-            ),
-        )?;
+        self.submit_transaction(CompletedTransaction::new(
+            tx_id,
+            self.resources.node_identity.public_key().clone(),
+            dest_pubkey.clone(),
+            amount,
+            fee,
+            tx.clone(),
+            TransactionStatus::Completed,
+            message.clone(),
+            Utc::now().naive_utc(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            None,
+        ))?;
 
         Ok(Box::new((tx_id, pre_image, output)))
     }
@@ -1179,9 +1139,6 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
         script: TariScript,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
@@ -1279,24 +1236,21 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new(
-                tx_id,
-                self.resources.node_identity.public_key().clone(),
-                dest_pubkey.clone(),
-                amount,
-                fee,
-                tx.clone(),
-                TransactionStatus::Completed,
-                message.clone(),
-                Utc::now().naive_utc(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                None,
-            ),
-        )?;
+        self.submit_transaction(CompletedTransaction::new(
+            tx_id,
+            self.resources.node_identity.public_key().clone(),
+            dest_pubkey.clone(),
+            amount,
+            fee,
+            tx.clone(),
+            TransactionStatus::Completed,
+            message.clone(),
+            Utc::now().naive_utc(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            None,
+        ))?;
 
         Ok(tx_id)
     }
@@ -1314,9 +1268,6 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) -> Result<TxId, TransactionServiceError> {
         if self.node_identity.public_key() == &dest_pubkey {
             warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
@@ -1331,7 +1282,6 @@ where
             output_features,
             fee_per_gram,
             message,
-            transaction_broadcast_join_handles,
             script!(PushPubKey(Box::new(dest_pubkey))),
         )
         .await
@@ -1347,9 +1297,6 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
         let output_features = OutputFeatures::create_burn_output();
@@ -1427,24 +1374,21 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new(
-                tx_id,
-                self.resources.node_identity.public_key().clone(),
-                CommsPublicKey::default(),
-                amount,
-                fee,
-                tx.clone(),
-                TransactionStatus::Completed,
-                message.clone(),
-                Utc::now().naive_utc(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                None,
-            ),
-        )?;
+        self.submit_transaction(CompletedTransaction::new(
+            tx_id,
+            self.resources.node_identity.public_key().clone(),
+            CommsPublicKey::default(),
+            amount,
+            fee,
+            tx.clone(),
+            TransactionStatus::Completed,
+            message.clone(),
+            Utc::now().naive_utc(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            None,
+        ))?;
 
         Ok(tx_id)
     }
@@ -1462,9 +1406,6 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) -> Result<TxId, TransactionServiceError> {
         if self.node_identity.public_key() == &dest_pubkey {
             warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
@@ -1489,7 +1430,6 @@ where
             output_features,
             fee_per_gram,
             message,
-            transaction_broadcast_join_handles,
             script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
         )
         .await
@@ -1632,9 +1572,6 @@ where
     fn complete_send_transaction_protocol(
         &mut self,
         join_result: Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) {
         match join_result {
             Ok(val) => {
@@ -1651,16 +1588,13 @@ where
                             return;
                         },
                     };
-                    let _result = self
-                        .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                        .map_err(|resp| {
-                            error!(
-                                target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}",
-                                resp
-                            );
-                            resp
-                        });
+                    let _result = self.broadcast_completed_transaction(completed_tx).map_err(|resp| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", resp
+                        );
+                        resp
+                    });
                 } else if val.transaction_status == TransactionStatus::Queued {
                     trace!(
                         target: LOG_TARGET,
@@ -2027,9 +1961,6 @@ where
     fn complete_receive_transaction_protocol(
         &mut self,
         join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) {
         match join_result {
             Ok(id) => {
@@ -2046,15 +1977,13 @@ where
                         return;
                     },
                 };
-                let _result = self
-                    .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                    .map_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error broadcasting completed transaction TxId: {} to mempool: {:?}", id, e
-                        );
-                        e
-                    });
+                let _result = self.broadcast_completed_transaction(completed_tx).map_err(|e| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error broadcasting completed transaction TxId: {} to mempool: {:?}", id, e
+                    );
+                    e
+                });
 
                 trace!(
                     target: LOG_TARGET,
@@ -2230,9 +2159,6 @@ where
     fn complete_transaction_validation_protocol(
         &mut self,
         join_result: Result<OperationId, TransactionServiceProtocolError<OperationId>>,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
     ) {
         match join_result {
             Ok(id) => {
@@ -2242,7 +2168,7 @@ where
                 );
                 // Restart broadcast protocols for any transactions that were found to be no longer mined.
                 let _ = self
-                    .restart_broadcast_protocols(transaction_broadcast_join_handles)
+                    .restart_broadcast_protocols()
                     .map_err(|e| warn!(target: LOG_TARGET, "Error restarting broadcast protocols: {}", e));
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -2260,25 +2186,21 @@ where
         }
     }
 
-    fn restart_broadcast_protocols(
-        &mut self,
-        broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
-    ) -> Result<(), TransactionServiceError> {
+    fn restart_broadcast_protocols(&mut self) -> Result<(), TransactionServiceError> {
         if !self.connectivity().is_base_node_set() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
 
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
-        self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
-            .map_err(|resp| {
-                error!(
-                    target: LOG_TARGET,
-                    "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' \
-                     and 'Broadcast': {:?}",
-                    resp
-                );
+        self.broadcast_completed_and_broadcast_transactions().map_err(|resp| {
+            error!(
+                target: LOG_TARGET,
+                "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' and \
+                 'Broadcast': {:?}",
                 resp
-            })?;
+            );
+            resp
+        })?;
 
         Ok(())
     }
@@ -2287,7 +2209,6 @@ where
     fn broadcast_completed_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
         if !(completed_tx.status == TransactionStatus::Completed ||
@@ -2308,31 +2229,28 @@ where
         }
 
         // Check if the protocol has already been started
-        if self.active_transaction_broadcast_protocols.insert(tx_id) {
-            let protocol = TransactionBroadcastProtocol::new(
-                tx_id,
-                self.resources.clone(),
-                self.timeout_update_watch.get_receiver(),
-            );
-            let join_handle = tokio::spawn(protocol.execute());
-            join_handles.push(join_handle);
-        } else {
-            trace!(
-                target: LOG_TARGET,
-                "Transaction Broadcast Protocol (TxId: {}) already started",
-                tx_id
-            );
+        // if self.active_transaction_broadcast_protocols.insert(tx_id) {
+        if let Err(err) = self.broadcast_tx.send(tx_id) {
+            error!(target: LOG_TARGET, "Error sending tx_id to broadcast protocol: {}", err);
         }
+        // let protocol =
+        //     TransactionBroadcastProtocol::new(self.resources.clone(), self.timeout_update_watch.get_receiver());
+        // let join_handle = tokio::spawn(protocol.run());
+        // join_handles.push(join_handle);
+        // } else {
+        //     trace!(
+        //         target: LOG_TARGET,
+        //         "Transaction Broadcast Protocol (TxId: {}) already started",
+        //         tx_id
+        //     );
+        // }
 
         Ok(())
     }
 
     /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
-    fn broadcast_completed_and_broadcast_transactions(
-        &mut self,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
-    ) -> Result<(), TransactionServiceError> {
+    fn broadcast_completed_and_broadcast_transactions(&mut self) -> Result<(), TransactionServiceError> {
         trace!(
             target: LOG_TARGET,
             "Attempting to Broadcast all valid and not cancelled Completed Transactions with status 'Completed' and \
@@ -2340,40 +2258,10 @@ where
         );
         let txn_list = self.db.get_transactions_to_be_broadcast()?;
         for completed_txn in txn_list {
-            self.broadcast_completed_transaction(completed_txn, join_handles)?;
+            self.broadcast_completed_transaction(completed_txn)?;
         }
 
         Ok(())
-    }
-
-    /// Handle the final clean up after a Transaction Broadcast protocol completes
-    fn complete_transaction_broadcast_protocol(
-        &mut self,
-        join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
-    ) {
-        match join_result {
-            Ok(id) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Transaction Broadcast Protocol for TxId: {} completed successfully", id
-                );
-                let _ = self.active_transaction_broadcast_protocols.remove(&id);
-            },
-            Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.active_transaction_broadcast_protocols.remove(&id);
-
-                if let TransactionServiceError::Shutdown = error {
-                    return;
-                }
-                warn!(
-                    target: LOG_TARGET,
-                    "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
-                );
-                let _size = self
-                    .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
-            },
-        }
     }
 
     /// Handle an incoming basenode response message
@@ -2459,9 +2347,6 @@ where
     /// Submit a completed transaction to the Transaction Manager
     fn submit_transaction(
         &mut self,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_transaction.tx_id;
@@ -2472,13 +2357,10 @@ where
             "Launch the transaction broadcast protocol for submitted transaction ({}).",
             tx_id
         );
-        self.complete_send_transaction_protocol(
-            Ok(TransactionSendResult {
-                tx_id,
-                transaction_status: TransactionStatus::Completed,
-            }),
-            transaction_broadcast_join_handles,
-        );
+        self.complete_send_transaction_protocol(Ok(TransactionSendResult {
+            tx_id,
+            transaction_status: TransactionStatus::Completed,
+        }));
         Ok(())
     }
 
@@ -2486,33 +2368,27 @@ where
     /// `submit_transaction` in that it will expose less information about the completed transaction.
     pub fn submit_transaction_to_self(
         &mut self,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
         tx_id: TxId,
         tx: Transaction,
         fee: MicroTari,
         amount: MicroTari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new(
-                tx_id,
-                self.node_identity.public_key().clone(),
-                self.node_identity.public_key().clone(),
-                amount,
-                fee,
-                tx,
-                TransactionStatus::Completed,
-                message,
-                Utc::now().naive_utc(),
-                TransactionDirection::Inbound,
-                None,
-                None,
-                None,
-            ),
-        )?;
+        self.submit_transaction(CompletedTransaction::new(
+            tx_id,
+            self.node_identity.public_key().clone(),
+            self.node_identity.public_key().clone(),
+            amount,
+            fee,
+            tx,
+            TransactionStatus::Completed,
+            message,
+            Utc::now().naive_utc(),
+            TransactionDirection::Inbound,
+            None,
+            None,
+            None,
+        ))?;
         Ok(())
     }
 
