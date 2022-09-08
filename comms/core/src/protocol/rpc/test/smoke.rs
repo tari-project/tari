@@ -551,7 +551,7 @@ async fn max_per_client_sessions() {
 
     let socket = inbound.incoming_mut().next().await.unwrap();
     let framed = framing::canonical(socket, 1024);
-    let mut client = GreetingClient::builder()
+    let client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(5))
         .connect(framed)
         .await
@@ -568,7 +568,6 @@ async fn max_per_client_sessions() {
     unpack_enum!(RpcError::HandshakeError(err) = err);
     unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
 
-    client.close().await;
     drop(client);
     let substream = outbound.get_yamux_control().open_stream().await.unwrap();
     muxer
