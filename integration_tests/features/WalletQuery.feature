@@ -35,3 +35,13 @@ Feature: Wallet Querying
     Then TX1 is in the mempool
     When I mine 1 blocks on SeedA
     Then the UTXO UTX1 has been mined according to SeedA
+
+  Scenario: As a wallet I want to receive events
+    Given I have a seed node NODE
+    And I have 1 base nodes connected to all seed nodes
+    And I have wallet WALLET_A connected to all seed nodes
+    When I receive events from wallet WALLET_A
+    When I mine a block on NODE with coinbase CB1
+    Then node NODE is at height 1
+    Then the UTXO CB1 has been mined according to NODE
+    And I received notification event in wallet WALLET_A

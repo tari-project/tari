@@ -72,6 +72,10 @@ class WalletClient {
     return transactions;
   }
 
+  streamTransactionEvents() {
+    return this.client.streamTransactionEvents();
+  }
+
   async getAllCoinbaseTransactions() {
     const data = await this.getCompletedTransactions();
     const transactions = [];

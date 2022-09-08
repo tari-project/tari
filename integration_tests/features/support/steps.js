@@ -356,6 +356,30 @@ When(
 );
 
 When(
+  /I receive events from wallet (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    let client = await wallet.connectClient();
+    let stream = client.streamTransactionEvents();
+    wallet.events_stream = stream;
+  }
+);
+
+When(
+  /I received (.*) event in wallet (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (eventName, walletName) {
+    let wallet = this.getWallet(walletName);
+    let stream = wallet.events_stream;
+    stream.then((event) => {
+      console.log("EVENT", event);
+    });
+    await stream;
+  }
+);
+
+When(
   /I mine but do not submit a block (.*) on (.*)/,
   async function (blockName, nodeName) {
     const tipHeight = await this.getClient(nodeName).getTipHeight();

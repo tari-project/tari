@@ -53,6 +53,7 @@ function Client(address) {
     "getOwnedAssets",
     "mintTokens",
     "getOwnedTokens",
+    "streamTransactionEvents"
   ];
 
   this.waitForReady = (...args) => {
