@@ -43,25 +43,25 @@ pub enum ChecksumError {
 }
 
 // Fixed for a dictionary size of `2^8 == 256`
-const K: u8 = 8;
-const COEFFICIENTS: [u8; 4] = [8, 4, 3, 1];
+const COEFFICIENTS: [u8; 3] = [4, 3, 1];
 
 /// Compute the DammSum checksum for an array, each of whose elements are in the range `[0, 2^8)`
 pub fn compute_checksum(data: &Vec<u8>) -> u8 {
-    let mut mask = 1u16;
+    let mut mask = 1u8;
 
     // Compute the bitmask (if possible)
     for bit in COEFFICIENTS {
-        mask += 1u16 << bit;
+        mask += 1u8 << bit;
     }
 
     // Perform the Damm algorithm
-    let mut result = 0u16;
+    let mut result = 0u8;
 
     for digit in data {
-        result ^= u16::from(*digit); // add
-        result <<= 1u16; // double
-        if result & (1u16 << K) > 0 {
+        result ^= *digit; // add
+        let overflow = (result & (1 << 7)) != 0;
+        result <<= 1; // double
+        if overflow {
             // reduce
             result ^= mask;
         }
