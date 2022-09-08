@@ -43,6 +43,32 @@ use crate::{
 ///
 /// An emoji ID can be instantiated either from a public key or from a string of emoji characters, and can be
 /// converted to either form as well. Checksum validation is done automatically on instantiation.
+///
+/// # Example
+///
+/// ```
+/// use tari_common_types::emoji::EmojiId;
+///
+/// // Construct an emoji ID from an emoji string (this can fail)
+/// let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
+/// let emoji_id_from_emoji_string = EmojiId::from_emoji_string(emoji_string);
+/// assert!(emoji_id_from_emoji_string.is_ok());
+///
+/// // Get the public key
+/// let public_key = emoji_id_from_emoji_string.unwrap().to_public_key();
+///
+/// // Reconstruct the emoji ID from the public key (this cannot fail)
+/// let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
+///
+/// // An emoji ID is deterministic
+/// assert_eq!(emoji_id_from_public_key.to_emoji_string(), emoji_string);
+///
+/// // Oh no! We swapped the first two emoji characters by mistake, so this should fail
+/// let invalid_emoji_string = "🐩🌴🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
+/// assert!(EmojiId::from_emoji_string(invalid_emoji_string).is_err());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct EmojiId(PublicKey);
 
 const DICT_SIZE: usize = 256; // number of elements in the symbol dictionary
 const INTERNAL_SIZE: usize = 32; // number of bytes used for the internal representation (without checksum)
@@ -76,10 +102,6 @@ lazy_static! {
         m
     };
 }
-
-/// Internally, an EmojiId is a public key
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct EmojiId(PublicKey);
 
 /// Returns the current emoji set as a character array
 pub const fn emoji_set() -> [char; DICT_SIZE] {
@@ -136,8 +158,6 @@ impl EmojiId {
         Self(public_key.clone())
     }
 
-    /// Convert an emoji ID from a hex string
-
     /// Convert the emoji ID to an emoji string with checksum
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
@@ -183,7 +203,6 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        println!("{}", emoji_string); // TODO TEST ONLY
 
         assert_eq!(emoji_string.chars().count(), INTERNAL_SIZE + CHECKSUM_SIZE);
 

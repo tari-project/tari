@@ -67,7 +67,7 @@ pub fn compute_checksum(data: &Vec<u8>) -> u8 {
         }
     }
 
-    result as u8
+    result
 }
 
 /// Determine whether the array ends with a valid checksum
