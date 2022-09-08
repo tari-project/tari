@@ -187,7 +187,7 @@ jobs:
         with:
           use-cross: ${{ matrix.builds.cross }}
           command: build
-          args: --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }} --locked
+          args: --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }} ${{ matrix.builds.flags }} --locked
 
       - name: Copy binaries to folder for zipping
         shell: bash
