@@ -217,11 +217,9 @@ impl AppState {
 
         let public_key = match CommsPublicKey::from_hex(public_key_or_emoji_id.as_str()) {
             Ok(pk) => pk,
-            Err(_) => {
-                EmojiId::from_emoji_string(public_key_or_emoji_id.as_str())
-                    .map_err(|_| UiError::PublicKeyParseError)?
-                    .to_public_key()
-            },
+            Err(_) => EmojiId::from_emoji_string(public_key_or_emoji_id.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let contact = Contact::new(alias, public_key, None, None);
@@ -252,7 +250,9 @@ impl AppState {
         let mut inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         inner.wallet.contacts_service.remove_contact(public_key).await?;
@@ -275,7 +275,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -308,7 +310,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -341,7 +345,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let dest_pubkey = match CommsPublicKey::from_hex(dest_pubkey.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(dest_pubkey.as_str()).map_err(|_| UiError::PublicKeyParseError)?.to_public_key(),
+            Err(_) => EmojiId::from_emoji_string(dest_pubkey.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };

@@ -23,12 +23,12 @@
 use thiserror::Error;
 
 /// Calculates a checksum using the [DammSum](https://github.com/cypherstack/dammsum) algorithm.
-/// 
+///
 /// This approach uses a dictionary whose size must be `2^k` for some `k > 0`.
 /// The algorithm accepts an array of arbitrary size, each of whose elements are integers in the range `[0, 2^k)`.
 /// The checksum is a single element also within this range.
 /// DammSum detects all single transpositions and substitutions.
-/// 
+///
 /// Note that for this implementation, we add the additional restriction that `k == 8`.
 /// This is only because DammSum requires us to provide the coefficients for a certain type of polynomial, and
 /// because it's unlikely for the alphabet size to change for this use case.
@@ -49,7 +49,7 @@ const COEFFICIENTS: [u8; 4] = [8, 4, 3, 1];
 /// Compute the DammSum checksum for an array, each of whose elements are in the range `[0, 2^8)`
 pub fn compute_checksum(data: &Vec<u8>) -> u8 {
     let mut mask = 1u16;
-    
+
     // Compute the bitmask (if possible)
     for bit in COEFFICIENTS {
         mask += 1u16 << bit;
@@ -59,9 +59,10 @@ pub fn compute_checksum(data: &Vec<u8>) -> u8 {
     let mut result = 0u16;
 
     for digit in data {
-        result ^= (*digit) as u16; // add
+        result ^= u16::from(*digit); // add
         result <<= 1u16; // double
-        if result & (1u16 << K) > 0 { // reduce
+        if result & (1u16 << K) > 0 {
+            // reduce
             result ^= mask;
         }
     }
@@ -79,14 +80,15 @@ pub fn validate_checksum(data: &Vec<u8>) -> Result<(), ChecksumError> {
     // It's sufficient to check the entire array against a zero checksum
     match compute_checksum(data) {
         0u8 => Ok(()),
-        _ => Err(ChecksumError::InvalidChecksum)
+        _ => Err(ChecksumError::InvalidChecksum),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::dammsum::{compute_checksum, validate_checksum, ChecksumError};
     use rand::Rng;
+
+    use crate::dammsum::{compute_checksum, validate_checksum, ChecksumError};
 
     #[test]
     /// Check that valid checksums validate
@@ -195,7 +197,7 @@ mod test {
 
         // Check all transpositions
         for j in 0..(data.len() - 1) {
-            if data[j] == data[j+1] {
+            if data[j] == data[j + 1] {
                 continue;
             }
 

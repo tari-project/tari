@@ -47,7 +47,7 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::from_emoji_string(&key.trim().replace('|', ""))
-        .and_then(|emoji_id| Ok(emoji_id.to_public_key()))
+        .map(|emoji_id| emoji_id.to_public_key())
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
 }

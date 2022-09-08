@@ -22,8 +22,8 @@
 
 use std::{
     collections::HashMap,
-    iter,
     fmt::{Display, Error, Formatter},
+    iter,
 };
 
 use tari_crypto::tari_utilities::ByteArray;
@@ -37,10 +37,10 @@ use crate::{
 /// An emoji ID is a 33-character emoji representation of a public key that includes a checksum for safety.
 /// Each character corresponds to a byte; the first 32 bytes are an encoding of the underlying public key.
 /// The last byte is a DammSum checksum of all preceding bytes.
-/// 
+///
 /// Because the emoji character set contains 256 elements, it is more compact (in character count, not necessarily
 /// in display width!) than other common encodings would provide, and is in theory easier for humans to examine.
-/// 
+///
 /// An emoji ID can be instantiated either from a public key or from a string of emoji characters, and can be
 /// converted to either form as well. Checksum validation is done automatically on instantiation.
 
@@ -127,7 +127,7 @@ impl EmojiId {
         // Convert to a public key
         match PublicKey::from_bytes(&bytes) {
             Ok(public_key) => Ok(Self(public_key)),
-            Err(_) => Err(EmojiIdError::CannotRecoverPublicKey)
+            Err(_) => Err(EmojiIdError::CannotRecoverPublicKey),
         }
     }
 
@@ -142,7 +142,11 @@ impl EmojiId {
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.0.as_bytes().to_vec();
-        bytes.iter().chain(iter::once(&compute_checksum(&bytes))).map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(&bytes)))
+            .map(|b| EMOJI[*b as usize])
+            .collect::<String>()
     }
 
     /// Convert the emoji ID to a public key
@@ -159,9 +163,12 @@ impl Display for EmojiId {
 
 #[cfg(test)]
 mod test {
-    use crate::emoji::{EmojiId, INTERNAL_SIZE, CHECKSUM_SIZE};
-    use crate::types::{PublicKey, PrivateKey};
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+
+    use crate::{
+        emoji::{EmojiId, CHECKSUM_SIZE, INTERNAL_SIZE},
+        types::{PrivateKey, PublicKey},
+    };
 
     #[test]
     /// Test valid emoji ID
