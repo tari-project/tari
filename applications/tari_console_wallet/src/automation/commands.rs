@@ -127,6 +127,18 @@ pub async fn send_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
+pub async fn burn_tari(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
 /// publishes a tari-SHA atomic swap HTLC transaction
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
@@ -607,6 +619,22 @@ pub async fn command_runner(
                 }
                 if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
                     eprintln!("DiscoverPeer error! {}", e);
+                }
+            },
+            BurnFunds(args) => {
+                match burn_tari(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.message,
+                )
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "burn funds concluded with tx_id {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("BurnFunds error! {}", e),
                 }
             },
             SendTari(args) => {
