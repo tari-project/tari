@@ -397,7 +397,7 @@ async fn fee_estimate() {
     }
 
     // not enough funds
-    let err = oms
+    let fee = oms
         .output_manager_handle
         .fee_estimate(
             MicroTari::from(2750),
@@ -407,8 +407,8 @@ async fn fee_estimate() {
             1,
         )
         .await
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+        .unwrap();
+    assert_eq!(fee, MicroTari::from(360));
 }
 
 #[allow(clippy::identity_op)]
