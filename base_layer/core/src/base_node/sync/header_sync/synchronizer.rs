@@ -31,7 +31,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcHandshakeError},
+    protocol::rpc::{RpcClient, RpcError, RpcHandshakeError},
     PeerConnection,
 };
 use tari_utilities::hex::Hex;
@@ -136,7 +136,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Attempting to synchronize headers with `{}`", node_id
             );
 
-            let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
+            let config = RpcClient::builder()
+                .with_deadline(self.config.rpc_deadline)
+                .with_deadline_grace_period(Duration::from_secs(5));
+            let mut client = conn
+                .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
+                .await?;
 
             let latency = client
                 .get_last_request_latency()
@@ -208,6 +213,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
                         .await?;
                 },
+                Err(err @ BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ BlockHeaderSyncError::MaxLatencyExceeded { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     if i == self.sync_peers.len() - 1 {

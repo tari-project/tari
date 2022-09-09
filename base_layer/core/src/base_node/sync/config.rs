@@ -48,17 +48,21 @@ pub struct BlockchainSyncConfig {
     pub forced_sync_peers: Vec<NodeId>,
     /// Number of threads to use for validation
     pub validation_concurrency: usize,
+    /// The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for
+    /// sync.
+    pub rpc_deadline: Duration,
 }
 
 impl Default for BlockchainSyncConfig {
     fn default() -> Self {
         Self {
-            initial_max_sync_latency: Duration::from_secs(10),
+            initial_max_sync_latency: Duration::from_secs(20),
             max_latency_increase: Duration::from_secs(2),
             ban_period: Duration::from_secs(30 * 60),
             short_ban_period: Duration::from_secs(60),
             forced_sync_peers: Default::default(),
             validation_concurrency: 6,
+            rpc_deadline: Duration::from_secs(10),
         }
     }
 }
