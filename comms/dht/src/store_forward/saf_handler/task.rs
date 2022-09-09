@@ -229,15 +229,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             match self
                 .outbound_service
-                .send_message_no_header(
+                .send_message_no_header_no_wait(
                     SendMessageParams::new()
                         .direct_public_key(message.source_peer.public_key.clone())
                         .with_dht_message_type(DhtMessageType::SafStoredMessages)
                         .finish(),
                     stored_messages,
                 )
-                .await?
-                .resolve()
                 .await
             {
                 Ok(_) => {

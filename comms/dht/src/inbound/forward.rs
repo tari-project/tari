@@ -237,7 +237,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         if !is_already_forwarded {
             send_params.with_dht_header(dht_header.clone());
-            self.outbound_service.send_raw(send_params.finish(), body).await?;
+            self.outbound_service
+                .send_raw_no_wait(send_params.finish(), body)
+                .await?;
         }
 
         Ok(())
@@ -254,6 +256,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
     use tokio::sync::mpsc;
 
@@ -306,7 +310,10 @@ mod test {
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
-        assert_eq!(oms_mock_state.call_count().await, 1);
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
         let (params, body) = oms_mock_state.pop_call().await.unwrap();
 
         // Header and body are preserved when forwarding

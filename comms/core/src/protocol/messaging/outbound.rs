@@ -163,37 +163,28 @@ impl OutboundMessaging {
     }
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
-        let span = span!(
-            Level::DEBUG,
-            "dial_peer",
-            node_id = self.peer_node_id.to_string().as_str()
-        );
-        async move {
-            loop {
-                match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
-                    Ok(conn) => break Ok(conn),
-                    Err(ConnectivityError::DialCancelled) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
-                             Retrying...",
-                            self.peer_node_id,
-                        );
-                        continue;
-                    },
-                    Err(err) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "MessagingProtocol failed to dial peer '{}' because '{:?}'", self.peer_node_id, err
-                        );
+        loop {
+            match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
+                Ok(conn) => break Ok(conn),
+                Err(ConnectivityError::DialCancelled) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
+                         Retrying...",
+                        self.peer_node_id,
+                    );
+                    continue;
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "MessagingProtocol failed to dial peer '{}' because '{:?}'", self.peer_node_id, err
+                    );
 
-                        break Err(MessagingProtocolError::PeerDialFailed(err));
-                    },
-                }
+                    break Err(MessagingProtocolError::PeerDialFailed(err));
+                },
             }
         }
-        .instrument(span)
-        .await
     }
 
     async fn try_establish(
@@ -232,27 +223,16 @@ impl OutboundMessaging {
         &mut self,
         conn: &mut PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        let span = span!(
-            Level::DEBUG,
-            "open_substream",
-            node_id = self.peer_node_id.to_string().as_str()
-        );
-        async move {
-            match conn.open_substream(&MESSAGING_PROTOCOL).await {
-                Ok(substream) => Ok(substream),
-                Err(err) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "MessagingProtocol failed to open a substream to peer '{}' because '{}'",
-                        self.peer_node_id,
-                        err
-                    );
-                    Err(err.into())
-                },
-            }
+        match conn.open_substream(&MESSAGING_PROTOCOL).await {
+            Ok(substream) => Ok(substream),
+            Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "MessagingProtocol failed to open a substream to peer '{}' because '{}'", self.peer_node_id, err
+                );
+                Err(err.into())
+            },
         }
-        .instrument(span)
-        .await
     }
 
     async fn start_forwarding_messages(

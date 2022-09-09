@@ -267,10 +267,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         match self.select_peers(broadcast_strategy.clone()).await {
             Ok(mut peers) => {
-                if reply_tx.is_closed() {
-                    return Err(DhtOutboundError::ReplyChannelCanceled);
-                }
-
                 let mut reply_tx = Some(reply_tx);
 
                 trace!(

@@ -129,7 +129,6 @@ async fn create_wallet(
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
@@ -672,7 +671,6 @@ async fn test_import_utxo() {
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 10,
         dht: Default::default(),
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
