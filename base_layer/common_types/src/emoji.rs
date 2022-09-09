@@ -183,10 +183,13 @@ impl Display for EmojiId {
 
 #[cfg(test)]
 mod test {
+    use std::iter;
+
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 
     use crate::{
-        emoji::{EmojiId, CHECKSUM_SIZE, INTERNAL_SIZE},
+        dammsum::compute_checksum,
+        emoji::{emoji_set, EmojiId, EmojiIdError, CHECKSUM_SIZE, INTERNAL_SIZE},
         types::{PrivateKey, PublicKey},
     };
 
@@ -203,7 +206,6 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-
         assert_eq!(emoji_string.chars().count(), INTERNAL_SIZE + CHECKSUM_SIZE);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
@@ -212,5 +214,56 @@ mod test {
 
         // Return to the original public key for good measure
         assert_eq!(emoji_id_from_emoji_string.to_public_key(), public_key);
+    }
+
+    #[test]
+    /// Test invalid size
+    fn invalid_size() {
+        // This emoji string is too short to be a valid emoji ID
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒";
+        assert_eq!(EmojiId::from_emoji_string(emoji_string), Err(EmojiIdError::InvalidSize));
+    }
+
+    #[test]
+    /// Test invalid emoji
+    fn invalid_emoji() {
+        // This emoji string contains an invalid emoji character
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎅";
+        assert_eq!(
+            EmojiId::from_emoji_string(emoji_string),
+            Err(EmojiIdError::InvalidEmoji)
+        );
+    }
+
+    #[test]
+    /// Test invalid checksum
+    fn invalid_checksum() {
+        // This emoji string contains an invalid checksum
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒";
+        assert_eq!(
+            EmojiId::from_emoji_string(emoji_string),
+            Err(EmojiIdError::InvalidChecksum)
+        );
+    }
+
+    #[test]
+    /// Test invalid public key
+    fn invalid_public_key() {
+        // This byte representation does not represent a valid public key
+        let mut bytes = vec![0u8; INTERNAL_SIZE];
+        bytes[0] = 1;
+
+        // Convert to an emoji string and manually add a valid checksum
+        let emoji_set = emoji_set();
+        let emoji_string = bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(&bytes)))
+            .map(|b| emoji_set[*b as usize])
+            .collect::<String>();
+
+        assert_eq!(
+            EmojiId::from_emoji_string(&emoji_string),
+            Err(EmojiIdError::CannotRecoverPublicKey)
+        );
     }
 }
