@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -58,6 +58,7 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
     FetchValidatorNodesKeys { height: u64 },
     FetchCommittee { height: u64, shard: [u8; 32] },
+    GetShardKey { height: u64, public_key: PublicKey },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,6 +102,9 @@ impl Display for NodeCommsRequest {
             },
             FetchCommittee { height, shard } => {
                 write!(f, "FetchCommittee height ({}), shard({:?})", height, shard)
+            },
+            GetShardKey { height, public_key } => {
+                write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
             },
         }
     }

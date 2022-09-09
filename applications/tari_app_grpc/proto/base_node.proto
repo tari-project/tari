@@ -91,7 +91,7 @@ service BaseNode {
     // Get VNs
     rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream ActiveValidatorNode);
     rpc GetCommittee(GetCommitteeRequest) returns (GetCommitteeResponse);
-
+    rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -455,4 +455,13 @@ message GetCommitteeRequest {
 
 message GetCommitteeResponse {
     repeated bytes public_key = 1;
+}
+
+message GetShardKeyRequest {
+    uint64 height = 1;
+    bytes public_key = 2;
+}
+
+message GetShardKeyResponse {
+    bytes shard_key = 1;
 }

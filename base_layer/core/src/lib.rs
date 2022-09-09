@@ -108,6 +108,14 @@ mod domain_hashing {
     );
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake256, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
+}
+
+#[cfg(feature = "base_node")]
+pub use domain_hashing::*;
+
+mod validator_domain_hashing {
+    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use tari_mmr::{Hash, MerkleMountainRange};
 
     hash_domain!(
         ValidatorNodeMmrHashDomain,
@@ -117,5 +125,5 @@ mod domain_hashing {
     pub type ValidatorNodeMmrHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeMmrHashDomain>;
     pub type ValidatorNodeMmr = MerkleMountainRange<ValidatorNodeMmrHasherBlake256, Vec<Hash>>;
 }
-#[cfg(feature = "base_node")]
-pub use domain_hashing::*;
+
+pub use validator_domain_hashing::*;

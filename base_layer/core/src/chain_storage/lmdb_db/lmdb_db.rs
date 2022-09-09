@@ -182,7 +182,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
-        .add_database(LMDB_DB_VALIDATOR_NODES, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES, flags | db::DUPSORT)
         .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
@@ -2470,6 +2470,21 @@ impl BlockchainBackend for LMDBDatabase {
             }
         }
         Ok(result)
+    }
+
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let validator_nodes: Vec<ActiveValidatorNode> =
+            lmdb_get_multiple(&txn, &self.validator_nodes, public_key.as_bytes())?;
+        validator_nodes
+            .iter()
+            .find(|a| a.from_height <= height && height <= a.to_height)
+            .map(|a| a.shard_key)
+            .ok_or(ChainStorageError::ValueNotFound {
+                entity: "ShardKey",
+                field: "public_key",
+                value: public_key.to_hex(),
+            })
     }
 }
 

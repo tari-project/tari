@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -298,6 +298,17 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::FetchCommitteeResponse(validator_node) => Ok(validator_node),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_shard_key(&mut self, height: u64, public_key: PublicKey) -> Result<[u8; 32], CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetShardKey { height, public_key })
+            .await??
+        {
+            NodeCommsResponse::GetShardKeyResponse(shard_key) => Ok(shard_key),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

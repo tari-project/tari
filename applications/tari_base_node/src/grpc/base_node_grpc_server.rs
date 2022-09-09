@@ -33,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{Commitment, Signature};
+use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -1597,6 +1597,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map(|a| a.shard_key.to_vec())
             .collect();
         Ok(Response::new(tari_rpc::GetCommitteeResponse { public_key: response }))
+    }
+
+    async fn get_shard_key(
+        &self,
+        request: Request<tari_rpc::GetShardKeyRequest>,
+    ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+        let mut handler = self.node_service.clone();
+        let public_key = PublicKey::from_bytes(&request.public_key)
+            .map_err(|e| report_error(report_error_flag, Status::invalid_argument(e.to_string())))?;
+        let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {
+            error!(target: LOG_TARGET, "Error {}", e);
+            report_error(report_error_flag, Status::internal(e.to_string()))
+        })?;
+        Ok(Response::new(tari_rpc::GetShardKeyResponse {
+            shard_key: shard_key.to_vec(),
+        }))
     }
 
     async fn get_active_validator_nodes(
