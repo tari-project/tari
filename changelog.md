@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.2](https://github.com/tari-project/tari/compare/v0.38.1...v0.38.2) (2022-09-08)
+
+
+### Bug Fixes
+
+* **comms/rpc:** detect early close in all cases ([#4647](https://github.com/tari-project/tari/issues/4647)) ([0125051](https://github.com/tari-project/tari/commit/0125051fe6d80dbf5fe65e91a2e47e9c89a09e5b))
+* exclude libtor from windows build ([#4631](https://github.com/tari-project/tari/issues/4631)) ([dffea23](https://github.com/tari-project/tari/commit/dffea2387b7f941eb798548b7eca819738f3e95e))
+
 ### [0.38.1](https://github.com/tari-project/tari/compare/v0.38.0...v0.38.1) (2022-09-07)
 
 

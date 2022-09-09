@@ -40,7 +40,7 @@ use tari_comms::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time::Instant};
 
-pub async fn spawn_node(signal: ShutdownSignal) -> CommsNode {
+async fn spawn_node(signal: ShutdownSignal) -> CommsNode {
     let rpc_server = RpcServer::builder()
         .with_unlimited_simultaneous_sessions()
         .finish()
@@ -132,6 +132,7 @@ async fn run_stress_test(test_params: Params) {
                     id: i as u64,
                     num_items: num_items as u64,
                     item_size: payload_size as u64,
+                    delay_ms: 0,
                 })
                 .await
                 .unwrap();
