@@ -26,6 +26,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
+use itertools::Itertools;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
@@ -371,106 +372,110 @@ impl OutputSql {
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
     #[allow(clippy::cast_possible_wrap)]
-    pub fn get_balance(
-        current_tip_for_time_lock_calculation: Option<u64>,
-        conn: &SqliteConnection,
-    ) -> Result<Balance, OutputManagerStorageError> {
+    pub fn get_balance(height: Option<u64>, conn: &SqliteConnection) -> Result<Balance, OutputManagerStorageError> {
+        use OutputStatus::{
+            EncumberedToBeReceived,
+            EncumberedToBeSpent,
+            ShortTermEncumberedToBeReceived,
+            ShortTermEncumberedToBeSpent,
+            SpentMinedUnconfirmed,
+            Unspent,
+            UnspentMinedUnconfirmed,
+        };
+
         #[derive(QueryableByName, Clone)]
         struct BalanceQueryResult {
             #[sql_type = "diesel::sql_types::BigInt"]
             amount: i64,
-            #[sql_type = "diesel::sql_types::Text"]
-            category: String,
-        }
-        let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
-            let balance_query = sql_query(
-                "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
-                 FROM outputs WHERE status = ? OR status = ? OR status = ?",
-            )
-                // available_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
-                // time_locked_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
-                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
-                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
-                // pending_incoming_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
-                // pending_outgoing_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
-        } else {
-            let balance_query = sql_query(
-                "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
-                 FROM outputs WHERE status = ? OR status = ? OR status = ?",
-            )
-                // available_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
-                // pending_incoming_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
-                // pending_outgoing_balance
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
-        };
-        let mut available_balance = None;
-        let mut time_locked_balance = Some(None);
-        let mut pending_incoming_balance = None;
-        let mut pending_outgoing_balance = None;
-        for balance in balance_query_result {
-            match balance.category.as_str() {
-                "available_balance" => available_balance = Some(MicroTari::from(balance.amount as u64)),
-                "time_locked_balance" => time_locked_balance = Some(Some(MicroTari::from(balance.amount as u64))),
-                "pending_incoming_balance" => pending_incoming_balance = Some(MicroTari::from(balance.amount as u64)),
-                "pending_outgoing_balance" => pending_outgoing_balance = Some(MicroTari::from(balance.amount as u64)),
-                _ => {
-                    return Err(OutputManagerStorageError::UnexpectedResult(
-                        "Unexpected category in balance query".to_string(),
-                    ))
-                },
-            }
+            #[sql_type = "diesel::sql_types::Integer"]
+            status: i32,
+            #[sql_type = "diesel::sql_types::BigInt"]
+            maturity: i64,
+            #[sql_type = "diesel::sql_types::BigInt"]
+            script_lock_height: i64,
+            #[sql_type = "diesel::sql_types::Integer"]
+            source: i32,
         }
 
-        Ok(Balance {
-            available_balance: available_balance.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult("Available balance could not be calculated".to_string())
-            })?,
-            time_locked_balance: time_locked_balance.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult("Time locked balance could not be calculated".to_string())
-            })?,
-            pending_incoming_balance: pending_incoming_balance.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult(
-                    "Pending incoming balance could not be calculated".to_string(),
-                )
-            })?,
-            pending_outgoing_balance: pending_outgoing_balance.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult(
-                    "Pending outgoing balance could not be calculated".to_string(),
-                )
-            })?,
+        let amounts = sql_query(
+            "SELECT SUM(value) as amount, status, maturity, script_lock_height, source FROM outputs GROUP BY status",
+        )
+        .load::<BalanceQueryResult>(conn)?;
+
+        Ok(match height {
+            // without height specified
+            None => Balance {
+                available_balance: amounts
+                    .iter()
+                    .filter(|x| OutputStatus::try_from(x.status).unwrap() == Unspent)
+                    .map(|x| MicroTari(x.amount as u64))
+                    .sum(),
+                time_locked_balance: None,
+                pending_incoming_balance: amounts
+                    .iter()
+                    .filter(|x| {
+                        matches!(
+                            OutputStatus::try_from(x.status).unwrap(),
+                            EncumberedToBeReceived | ShortTermEncumberedToBeReceived | UnspentMinedUnconfirmed
+                        ) && x.source != OutputSource::Coinbase as i32
+                    })
+                    .map(|x| MicroTari(x.amount as u64))
+                    .sum(),
+                pending_outgoing_balance: amounts
+                    .iter()
+                    .filter(|x| {
+                        matches!(
+                            OutputStatus::try_from(x.status).unwrap(),
+                            EncumberedToBeSpent | ShortTermEncumberedToBeSpent | SpentMinedUnconfirmed
+                        )
+                    })
+                    .map(|x| MicroTari(x.amount as u64))
+                    .sum(),
+            },
+            // with height
+            Some(height) => {
+                let height = height as i64;
+                Balance {
+                    available_balance: amounts
+                        .iter()
+                        .filter(|x| {
+                            matches!(OutputStatus::try_from(x.status).unwrap(), Unspent) &&
+                                x.script_lock_height <= height &&
+                                x.maturity <= height
+                        })
+                        .map(|x| MicroTari(x.amount as u64))
+                        .sum(),
+                    time_locked_balance: amounts
+                        .iter()
+                        .filter(|x| {
+                            matches!(OutputStatus::try_from(x.status).unwrap(), Unspent) &&
+                                x.script_lock_height > height &&
+                                x.maturity > height
+                        })
+                        .map(|x| MicroTari(x.amount as u64))
+                        .sum1(),
+                    pending_incoming_balance: amounts
+                        .iter()
+                        .filter(|x| {
+                            matches!(
+                                OutputStatus::try_from(x.status).unwrap(),
+                                EncumberedToBeReceived | ShortTermEncumberedToBeReceived | UnspentMinedUnconfirmed
+                            ) && x.source != OutputSource::Coinbase as i32
+                        })
+                        .map(|x| MicroTari(x.amount as u64))
+                        .sum(),
+                    pending_outgoing_balance: amounts
+                        .iter()
+                        .filter(|x| {
+                            matches!(
+                                OutputStatus::try_from(x.status).unwrap(),
+                                EncumberedToBeSpent | ShortTermEncumberedToBeSpent | SpentMinedUnconfirmed
+                            )
+                        })
+                        .map(|x| MicroTari(x.amount as u64))
+                        .sum(),
+                }
+            },
         })
     }
 
