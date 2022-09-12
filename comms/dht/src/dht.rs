@@ -615,7 +615,10 @@ mod test {
 
         service.call(inbound_message).await.unwrap();
 
-        assert_eq!(oms_mock_state.call_count().await, 1);
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
         let (params, _) = oms_mock_state.pop_call().await.unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header

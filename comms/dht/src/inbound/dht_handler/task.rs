@@ -225,7 +225,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
             // Propagate message to closer peers
             self.outbound_service
-                .send_raw(
+                .send_raw_no_wait(
                     SendMessageParams::new()
                         .propagate(origin_public_key.clone().into(), vec![
                             origin_peer.node_id,
@@ -349,7 +349,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
         self.outbound_service
-            .send_message_no_header(
+            .send_message_no_header_no_wait(
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key)
                     .with_destination(NodeDestination::Unknown)
