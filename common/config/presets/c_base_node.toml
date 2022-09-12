@@ -157,10 +157,10 @@ track_reorgs = true
 #peer_database_name = "peers"
 
 # The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-#max_concurrent_inbound_tasks = 50
+#max_concurrent_inbound_tasks = 4
 
 # The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
-#max_concurrent_outbound_tasks = 100
+#max_concurrent_outbound_tasks = 4
 
 # Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
 # addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
