@@ -115,7 +115,7 @@ impl ConfigOverrideProvider for Cli {
 pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
-    BurnFunds(BurnFundsArgs),
+    BurnTari(BurnTariArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -149,7 +149,7 @@ pub struct SendTariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct BurnFundsArgs {
+pub struct BurnTariArgs {
     pub amount: MicroTari,
     #[clap(short, long, default_value = "Burn funds")]
     pub message: String,

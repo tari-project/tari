@@ -621,7 +621,7 @@ pub async fn command_runner(
                     eprintln!("DiscoverPeer error! {}", e);
                 }
             },
-            BurnFunds(args) => {
+            BurnTari(args) => {
                 match burn_tari(
                     transaction_service.clone(),
                     config.fee_per_gram,
@@ -631,10 +631,10 @@ pub async fn command_runner(
                 .await
                 {
                     Ok(tx_id) => {
-                        debug!(target: LOG_TARGET, "burn funds concluded with tx_id {}", tx_id);
+                        debug!(target: LOG_TARGET, "burn tari concluded with tx_id {}", tx_id);
                         tx_ids.push(tx_id);
                     },
-                    Err(e) => eprintln!("BurnFunds error! {}", e),
+                    Err(e) => eprintln!("BurnTari error! {}", e),
                 }
             },
             SendTari(args) => {

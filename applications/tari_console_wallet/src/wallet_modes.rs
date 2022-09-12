@@ -452,7 +452,7 @@ mod test {
             match command {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendTari(_) => send_tari = true,
-                CliCommands::BurnFunds(_) => burn_funds = true,
+                CliCommands::BurnTari(_) => burn_funds = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
