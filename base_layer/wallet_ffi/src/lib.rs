@@ -3899,7 +3899,6 @@ pub unsafe extern "C" fn comms_config_create(
                 peer_database_name: database_name_string,
                 max_concurrent_inbound_tasks: 25,
                 max_concurrent_outbound_tasks: 50,
-                outbound_buffer_size: 50,
                 dht: DhtConfig {
                     discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                     database_url: DbConnectionUrl::File(dht_database_path),

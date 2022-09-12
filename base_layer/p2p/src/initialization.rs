@@ -186,7 +186,6 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let (event_sender, _) = broadcast::channel(100);
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })
@@ -333,7 +332,7 @@ async fn configure_comms_and_dht(
     let node_identity = comms.node_identity();
     let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
+    let (outbound_tx, outbound_rx) = mpsc::channel(config.dht.outbound_buffer_size);
 
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
@@ -350,7 +349,6 @@ async fn configure_comms_and_dht(
 
     // Hook up DHT messaging middlewares
     let messaging_pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(config.outbound_buffer_size)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })

@@ -201,7 +201,6 @@ async fn setup_comms_dht(
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })

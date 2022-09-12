@@ -269,6 +269,22 @@ impl OutboundMessageRequester {
         self.send_raw(params, body).await
     }
 
+    /// Send a message without a domain header part
+    pub async fn send_message_no_header_no_wait<T>(
+        &mut self,
+        params: FinalSendMessageParams,
+        message: T,
+    ) -> Result<(), DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        if cfg!(debug_assertions) {
+            trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
+        }
+        let body = wrap_in_envelope_body!(message).to_encoded_bytes();
+        self.send_raw_no_wait(params, body).await
+    }
+
     /// Send a raw message
     pub async fn send_raw(
         &mut self,
@@ -283,6 +299,19 @@ impl OutboundMessageRequester {
         reply_rx
             .await
             .map_err(|_| DhtOutboundError::RequesterReplyChannelClosed)
+    }
+
+    /// Send a raw message
+    pub async fn send_raw_no_wait(
+        &mut self,
+        params: FinalSendMessageParams,
+        body: Vec<u8>,
+    ) -> Result<(), DhtOutboundError> {
+        let (reply_tx, _) = oneshot::channel();
+        self.sender
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))
+            .await?;
+        Ok(())
     }
 
     #[cfg(test)]

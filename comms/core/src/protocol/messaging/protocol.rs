@@ -54,7 +54,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"t/msg/0.1");
-const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 150;
+const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 
 /// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
 const RATE_LIMIT_CAPACITY: usize = 10;
@@ -163,11 +163,11 @@ impl MessagingProtocol {
         loop {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
-                    self.handle_internal_messaging_event(event).await;
+                    self.handle_internal_messaging_event(event);
                 },
 
                 Some(msg) = self.retry_queue_rx.recv() => {
-                    if let Err(err) = self.handle_retry_queue_messages(msg).await {
+                    if let Err(err) = self.handle_retry_queue_messages(msg) {
                         error!(
                             target: LOG_TARGET,
                             "Failed to retry outbound message because '{}'",
@@ -177,7 +177,7 @@ impl MessagingProtocol {
                 },
 
                 Some(req) = self.request_rx.recv() => {
-                    if let Err(err) = self.handle_request(req).await {
+                    if let Err(err) = self.handle_request(req) {
                         error!(
                             target: LOG_TARGET,
                             "Failed to handle request because '{}'",
@@ -187,7 +187,7 @@ impl MessagingProtocol {
                 },
 
                 Some(notification) = self.proto_notification.recv() => {
-                    self.handle_protocol_notification(notification).await;
+                    self.handle_protocol_notification(notification);
                 },
 
                 _ = &mut shutdown_signal => {
@@ -204,7 +204,7 @@ impl MessagingProtocol {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
-    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+    fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
         use MessagingEvent::OutboundProtocolExited;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match event {
@@ -231,26 +231,26 @@ impl MessagingProtocol {
         }
     }
 
-    async fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
+    fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
         use MessagingRequest::SendMessage;
         match req {
             SendMessage(msg) => {
                 trace!(target: LOG_TARGET, "Received request to send message ({})", msg);
-                self.send_message(msg).await?;
+                self.send_message(msg)?;
             },
         }
 
         Ok(())
     }
 
-    async fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         debug!(target: LOG_TARGET, "Retrying outbound message ({})", msg);
-        self.send_message(msg).await?;
+        self.send_message(msg)?;
         Ok(())
     }
 
     // #[tracing::instrument(skip(self, out_msg), err)]
-    async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
             match self.active_queues.entry(peer_node_id.clone()) {
@@ -315,7 +315,7 @@ impl MessagingProtocol {
         task::spawn(inbound_messaging.run(substream));
     }
 
-    async fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
+    fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {

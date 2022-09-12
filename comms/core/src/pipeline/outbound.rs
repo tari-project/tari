@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Display, time::Instant};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 use futures::future::Either;
 use log::*;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time};
 use tower::{Service, ServiceExt};
 
 use crate::{
@@ -93,16 +96,26 @@ where
                     let pipeline = self.config.pipeline.clone();
                     let id = current_id;
                     current_id = (current_id + 1) % u64::MAX;
-
                     self.executor
                         .spawn(async move {
                             let timer = Instant::now();
                             trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
-                            if let Err(err) = pipeline.oneshot(msg).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Outbound pipeline {} returned an error: '{}'", id, err
-                                );
+                            match time::timeout(Duration::from_secs(30), pipeline.oneshot(msg)).await {
+                                Ok(Ok(_)) => {},
+                                Ok(Err(err)) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Outbound pipeline {} returned an error: '{}'", id, err
+                                    );
+                                },
+                                Err(_) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: \
+                                         there was a deadlock or excessive delay in processing this pipeline.",
+                                        id
+                                    );
+                                },
                             }
 
                             trace!(
@@ -174,7 +187,7 @@ mod test {
         )
         .await
         .unwrap();
-        let (out_tx, out_rx) = mpsc::channel(NUM_ITEMS);
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
         let (msg_tx, mut msg_rx) = mpsc::channel(NUM_ITEMS);
         let executor = Handle::current();
 

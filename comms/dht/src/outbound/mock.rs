@@ -184,34 +184,31 @@ impl OutboundServiceMock {
                             match behaviour.direct {
                                 ResponseType::Queued => {
                                     let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    let _ignore = reply_tx.send(response);
                                     inner_reply_tx.reply_success();
                                 },
                                 ResponseType::QueuedFail => {
                                     let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    let _ignore = reply_tx.send(response);
                                     inner_reply_tx.reply_fail(SendFailReason::PeerDialFailed);
                                 },
                                 ResponseType::QueuedSuccessDelay(delay) => {
                                     let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    let _ignore = reply_tx.send(response);
                                     sleep(delay).await;
                                     inner_reply_tx.reply_success();
                                 },
                                 resp => {
-                                    reply_tx
-                                        .send(SendMessageResponse::Failed(SendFailure::General(format!(
-                                            "Unexpected mock response {:?}",
-                                            resp
-                                        ))))
-                                        .expect("Reply channel cancelled");
+                                    let _ignore = reply_tx.send(SendMessageResponse::Failed(SendFailure::General(
+                                        format!("Unexpected mock response {:?}", resp),
+                                    )));
                                 },
                             };
                         },
                         BroadcastStrategy::ClosestNodes(_) => {
                             if behaviour.broadcast == ResponseType::Queued {
                                 let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                                reply_tx.send(response).expect("Reply channel cancelled");
+                                let _ignore = reply_tx.send(response);
                                 inner_reply_tx.reply_success();
                             } else {
                                 reply_tx
@@ -223,7 +220,7 @@ impl OutboundServiceMock {
                         },
                         _ => {
                             let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                            reply_tx.send(response).expect("Reply channel cancelled");
+                            let _ignore = reply_tx.send(response);
                             inner_reply_tx.reply_success();
                         },
                     }

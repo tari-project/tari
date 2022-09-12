@@ -39,9 +39,9 @@ use crate::{
     runtime::task,
 };
 
-/// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
-/// messages before creating backpressure on peers speaking the messaging protocol.
-pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 100;
+/// Buffer size for inbound messages from _all_ peers. If the message consumer is slow to get through this queue,
+/// sending peers will start to experience backpressure (this is a good thing).
+pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 10;
 /// Buffer size notifications that a peer wants to speak /tari/messaging. This buffer is used for all peers, but a low
 /// value is ok because this events happen once (or less) per connecting peer. For e.g. a value of 10 would allow 10
 /// peers to concurrently request to speak /tari/messaging.
