@@ -39,7 +39,7 @@ use crate::{
     runtime::task,
 };
 
-/// Buffer size for inbound messages from _all_ peers. Is the message consumer is slow to get through this queue,
+/// Buffer size for inbound messages from _all_ peers. If the message consumer is slow to get through this queue,
 /// sending peers will start to experience backpressure (this is a good thing).
 pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 10;
 /// Buffer size notifications that a peer wants to speak /tari/messaging. This buffer is used for all peers, but a low
