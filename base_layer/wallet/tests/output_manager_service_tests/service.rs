@@ -496,21 +496,19 @@ async fn test_utxo_selection_no_chain_metadata() {
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_metadata_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
-
     let spendable_amount = (3..=10).sum::<u64>() * amount;
     let fee = oms
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee,MicroTari::from(250));
-
+    assert_eq!(fee, MicroTari::from(250));
 
     let broke_amount = spendable_amount + MicroTari::from(2000);
     let fee = oms
         .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee,MicroTari::from(250));
+    assert_eq!(fee, MicroTari::from(250));
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -596,7 +594,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee,MicroTari::from(250));
+    assert_eq!(fee, MicroTari::from(250));
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
