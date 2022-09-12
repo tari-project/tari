@@ -22,22 +22,60 @@
 
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fmt::{Display, Error, Formatter},
+    iter,
 };
 
-use tari_crypto::tari_utilities::{
-    hex::{Hex, HexError},
-    ByteArray,
-};
+use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
 
 use crate::{
-    luhn::{checksum, is_valid},
+    dammsum::{compute_checksum, validate_checksum},
     types::PublicKey,
 };
 
-const EMOJI: [char; 256] = [
+/// An emoji ID is a 33-character emoji representation of a public key that includes a checksum for safety.
+/// Each character corresponds to a byte; the first 32 bytes are an encoding of the underlying public key.
+/// The last byte is a DammSum checksum of all preceding bytes.
+///
+/// Because the emoji character set contains 256 elements, it is more compact (in character count, not necessarily
+/// in display width!) than other common encodings would provide, and is in theory easier for humans to examine.
+///
+/// An emoji ID can be instantiated either from a public key or from a string of emoji characters, and can be
+/// converted to either form as well. Checksum validation is done automatically on instantiation.
+///
+/// # Example
+///
+/// ```
+/// use tari_common_types::emoji::EmojiId;
+///
+/// // Construct an emoji ID from an emoji string (this can fail)
+/// let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
+/// let emoji_id_from_emoji_string = EmojiId::from_emoji_string(emoji_string);
+/// assert!(emoji_id_from_emoji_string.is_ok());
+///
+/// // Get the public key
+/// let public_key = emoji_id_from_emoji_string.unwrap().to_public_key();
+///
+/// // Reconstruct the emoji ID from the public key (this cannot fail)
+/// let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
+///
+/// // An emoji ID is deterministic
+/// assert_eq!(emoji_id_from_public_key.to_emoji_string(), emoji_string);
+///
+/// // Oh no! We swapped the first two emoji characters by mistake, so this should fail
+/// let invalid_emoji_string = "🐩🌴🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
+/// assert!(EmojiId::from_emoji_string(invalid_emoji_string).is_err());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct EmojiId(PublicKey);
+
+const DICT_SIZE: usize = 256; // number of elements in the symbol dictionary
+const INTERNAL_SIZE: usize = 32; // number of bytes used for the internal representation (without checksum)
+const CHECKSUM_SIZE: usize = 1; // number of bytes in the checksum
+
+// The emoji table, mapping byte values to emoji characters
+const EMOJI: [char; DICT_SIZE] = [
     '🌀', '🌂', '🌈', '🌊', '🌋', '🌍', '🌙', '🌝', '🌞', '🌟', '🌠', '🌰', '🌴', '🌵', '🌷', '🌸', '🌹', '🌻', '🌽',
     '🍀', '🍁', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🍎', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕',
     '🍗', '🍚', '🍞', '🍟', '🍠', '🍣', '🍦', '🍩', '🍪', '🍫', '🍬', '🍭', '🍯', '🍰', '🍳', '🍴', '🍵', '🍶', '🍷',
@@ -54,175 +92,178 @@ const EMOJI: [char; 256] = [
     '🚦', '🚧', '🚨', '🚪', '🚫', '🚲', '🚽', '🚿', '🛁',
 ];
 
+// The reverse table, mapping emoji to characters to byte values
 lazy_static! {
-    static ref REVERSE_EMOJI: HashMap<char, usize> = {
-        let mut m = HashMap::with_capacity(256);
+    static ref REVERSE_EMOJI: HashMap<char, u8> = {
+        let mut m = HashMap::with_capacity(DICT_SIZE);
         EMOJI.iter().enumerate().for_each(|(i, c)| {
-            m.insert(*c, i);
+            m.insert(*c, i as u8);
         });
         m
     };
 }
 
-/// Emoji IDs are 33-byte long representations of a public key. The first 32 bytes are a mapping of a 256 byte emoji
-/// dictionary to each of the 32 bytes in the public key. The 33rd emoji is a checksum character of the 32-length
-/// string.
-///
-/// Emoji IDs (32 characters minus checksum) are therefore more compact than Base58 or Base64 encodings (~44 characters)
-/// or hexadecimal (64 characters) and in theory, more human readable.
-///
-/// The checksum is calculated using a Luhn mod 256 checksum, which guards against most transposition errors.
-///
-/// # Example
-///
-/// ```
-/// use tari_common_types::emoji::EmojiId;
-///
-/// assert!(EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"));
-/// let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-/// assert_eq!(eid.as_str(), "🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒");
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct EmojiId(String);
-
-/// Returns the current emoji set as a vector of char
-pub const fn emoji_set() -> [char; 256] {
+/// Returns the current emoji set as a character array
+pub const fn emoji_set() -> [char; DICT_SIZE] {
     EMOJI
 }
 
+#[derive(Debug, Error, PartialEq)]
+pub enum EmojiIdError {
+    #[error("Invalid size")]
+    InvalidSize,
+    #[error("Invalid emoji character")]
+    InvalidEmoji,
+    #[error("Invalid checksum")]
+    InvalidChecksum,
+    #[error("Cannot recover public key")]
+    CannotRecoverPublicKey,
+}
+
 impl EmojiId {
-    /// Construct an Emoji ID from the given pubkey.
-    pub fn from_pubkey(key: &PublicKey) -> Self {
-        EmojiId::from_bytes(key.as_bytes())
-    }
+    /// Construct an emoji ID from an emoji string with checksum
+    pub fn from_emoji_string(emoji: &str) -> Result<Self, EmojiIdError> {
+        // The string must be the correct size, including the checksum
+        if emoji.chars().count() != INTERNAL_SIZE + CHECKSUM_SIZE {
+            return Err(EmojiIdError::InvalidSize);
+        }
 
-    /// Try and construct an emoji ID from the given hex string. The method will fail if the hex is not a valid
-    /// representation of a public key.
-    pub fn from_hex(hex_key: &str) -> Result<Self, HexError> {
-        let key = PublicKey::from_hex(hex_key)?;
-        Ok(EmojiId::from_pubkey(&key))
-    }
-
-    /// Return the public key that this emoji ID represents
-    pub fn to_pubkey(&self) -> PublicKey {
-        let bytes = self.to_bytes();
-        PublicKey::from_bytes(&bytes).unwrap()
-    }
-
-    /// Checks whether a given string would be a valid emoji ID using the assertion that
-    /// i) The string is 33 bytes long
-    /// ii) The last byte is a valid checksum
-    pub fn is_valid(s: &str) -> bool {
-        EmojiId::str_to_pubkey(s).is_ok()
-    }
-
-    pub fn str_to_pubkey(s: &str) -> Result<PublicKey, EmojiIdError> {
-        let mut indices = Vec::with_capacity(33);
-        for c in s.chars() {
+        // Convert the emoji string to a byte array
+        let mut bytes = Vec::<u8>::with_capacity(INTERNAL_SIZE + CHECKSUM_SIZE);
+        for c in emoji.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
-                indices.push(*i);
+                bytes.push(*i);
             } else {
-                return Err(EmojiIdError);
+                return Err(EmojiIdError::InvalidEmoji);
             }
         }
-        if !is_valid(&indices, 256) {
-            return Err(EmojiIdError);
+
+        // Assert the checksum is valid
+        if validate_checksum(&bytes).is_err() {
+            return Err(EmojiIdError::InvalidChecksum);
         }
-        let bytes = EmojiId::byte_vec(s)?;
-        PublicKey::from_bytes(&bytes).map_err(|_| EmojiIdError)
-    }
 
-    /// Return the 33 character emoji string for this emoji ID
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+        // Remove the checksum
+        bytes.pop();
 
-    /// Convert the emoji ID string into its associated public key, represented as a byte array
-    pub fn to_bytes(&self) -> Vec<u8> {
-        EmojiId::byte_vec(&self.0).unwrap()
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Self {
-        let mut vec = Vec::<usize>::with_capacity(33);
-        bytes.iter().for_each(|b| vec.push((*b) as usize));
-        let checksum = checksum(&vec, 256);
-        assert!(checksum < 256);
-        vec.push(checksum);
-        let id = vec.iter().map(|b| EMOJI[*b]).collect();
-        Self(id)
-    }
-
-    fn byte_vec(s: &str) -> Result<Vec<u8>, EmojiIdError> {
-        let mut v = Vec::with_capacity(32);
-        for c in s.chars().take(32) {
-            if let Some(index) = REVERSE_EMOJI.get(&c) {
-                v.push(u8::try_from(*index).unwrap());
-            } else {
-                return Err(EmojiIdError);
-            }
+        // Convert to a public key
+        match PublicKey::from_bytes(&bytes) {
+            Ok(public_key) => Ok(Self(public_key)),
+            Err(_) => Err(EmojiIdError::CannotRecoverPublicKey),
         }
-        Ok(v)
+    }
+
+    /// Construct an emoji ID from a public key
+    pub fn from_public_key(public_key: &PublicKey) -> Self {
+        Self(public_key.clone())
+    }
+
+    /// Convert the emoji ID to an emoji string with checksum
+    pub fn to_emoji_string(&self) -> String {
+        // Convert the public key to bytes and compute the checksum
+        let bytes = self.0.as_bytes().to_vec();
+        bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(&bytes)))
+            .map(|b| EMOJI[*b as usize])
+            .collect::<String>()
+    }
+
+    /// Convert the emoji ID to a public key
+    pub fn to_public_key(&self) -> PublicKey {
+        self.0.clone()
     }
 }
 
 impl Display for EmojiId {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str(self.as_str())
+        fmt.write_str(&self.to_emoji_string())
     }
 }
 
-// TODO: We have to add more details
-#[derive(Debug, Error)]
-#[error("emoji id error")]
-pub struct EmojiIdError;
-
 #[cfg(test)]
 mod test {
-    use tari_crypto::tari_utilities::hex::Hex;
+    use std::iter;
 
-    use crate::{emoji::EmojiId, types::PublicKey};
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+
+    use crate::{
+        dammsum::compute_checksum,
+        emoji::{emoji_set, EmojiId, EmojiIdError, CHECKSUM_SIZE, INTERNAL_SIZE},
+        types::{PrivateKey, PublicKey},
+    };
 
     #[test]
-    fn convert_key() {
-        let pubkey = PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+    /// Test valid emoji ID
+    fn valid_emoji_id() {
+        // Generate random public key
+        let mut rng = rand::thread_rng();
+        let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+
+        // Generate an emoji ID from the public key and ensure we recover it
+        let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
+        assert_eq!(emoji_id_from_public_key.to_public_key(), public_key);
+
+        // Check the size of the corresponding emoji string
+        let emoji_string = emoji_id_from_public_key.to_emoji_string();
+        assert_eq!(emoji_string.chars().count(), INTERNAL_SIZE + CHECKSUM_SIZE);
+
+        // Generate an emoji ID from the emoji string and ensure we recover it
+        let emoji_id_from_emoji_string = EmojiId::from_emoji_string(&emoji_string).unwrap();
+        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
+
+        // Return to the original public key for good measure
+        assert_eq!(emoji_id_from_emoji_string.to_public_key(), public_key);
+    }
+
+    #[test]
+    /// Test invalid size
+    fn invalid_size() {
+        // This emoji string is too short to be a valid emoji ID
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒";
+        assert_eq!(EmojiId::from_emoji_string(emoji_string), Err(EmojiIdError::InvalidSize));
+    }
+
+    #[test]
+    /// Test invalid emoji
+    fn invalid_emoji() {
+        // This emoji string contains an invalid emoji character
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎅";
         assert_eq!(
-            eid.as_str(),
-            "🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"
-        );
-        assert_eq!(EmojiId::from_pubkey(&pubkey), eid);
-        assert_eq!(
-            &eid.to_bytes().to_hex(),
-            "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"
-        );
-        assert_eq!(
-            EmojiId::str_to_pubkey("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒").unwrap(),
-            pubkey
+            EmojiId::from_emoji_string(emoji_string),
+            Err(EmojiIdError::InvalidEmoji)
         );
     }
 
     #[test]
-    fn is_valid() {
-        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        // Valid emojiID
-        assert!(EmojiId::is_valid(eid.as_str()));
-        assert!(!EmojiId::is_valid(""), "Emoji ID too short");
-        assert!(!EmojiId::is_valid("🌂"), "Emoji ID too short");
-        assert!(
-            !EmojiId::is_valid("🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"),
-            "Emoji ID too short"
+    /// Test invalid checksum
+    fn invalid_checksum() {
+        // This emoji string contains an invalid checksum
+        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒";
+        assert_eq!(
+            EmojiId::from_emoji_string(emoji_string),
+            Err(EmojiIdError::InvalidChecksum)
         );
-        assert!(
-            !EmojiId::is_valid("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"),
-            "Not emoji string"
-        );
-        assert!(
-            !EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹"),
-            "No checksum"
-        );
-        assert!(
-            !EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹📝"),
-            "Wrong checksum"
+    }
+
+    #[test]
+    /// Test invalid public key
+    fn invalid_public_key() {
+        // This byte representation does not represent a valid public key
+        let mut bytes = vec![0u8; INTERNAL_SIZE];
+        bytes[0] = 1;
+
+        // Convert to an emoji string and manually add a valid checksum
+        let emoji_set = emoji_set();
+        let emoji_string = bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(&bytes)))
+            .map(|b| emoji_set[*b as usize])
+            .collect::<String>();
+
+        assert_eq!(
+            EmojiId::from_emoji_string(&emoji_string),
+            Err(EmojiIdError::CannotRecoverPublicKey)
         );
     }
 }
