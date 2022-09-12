@@ -80,7 +80,7 @@ impl CommandContext {
             }
         };
 
-        let eid = EmojiId::from_pubkey(&peer.public_key);
+        let eid = EmojiId::from_public_key(&peer.public_key).to_emoji_string();
         println!("Emoji ID: {}", eid);
         println!("Public Key: {}", peer.public_key);
         println!("NodeId: {}", peer.node_id);

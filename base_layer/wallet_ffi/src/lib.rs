@@ -1032,8 +1032,8 @@ pub unsafe extern "C" fn public_key_to_emoji_id(pk: *mut TariPublicKey, error_ou
         return CString::into_raw(result);
     }
 
-    let emoji = EmojiId::from_pubkey(&(*pk));
-    result = CString::new(emoji.as_str()).expect("Emoji will not fail.");
+    let emoji_id = EmojiId::from_public_key(&(*pk));
+    result = CString::new(emoji_id.to_emoji_string().as_str()).expect("Emoji will not fail.");
     CString::into_raw(result)
 }
 
@@ -1061,10 +1061,10 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
 
     match CStr::from_ptr(emoji)
         .to_str()
-        .map_err(|_| EmojiIdError)
-        .and_then(EmojiId::str_to_pubkey)
+        .map_err(|_| EmojiIdError::InvalidEmoji)
+        .and_then(EmojiId::from_emoji_string)
     {
-        Ok(pk) => Box::into_raw(Box::new(pk)),
+        Ok(emoji_id) => Box::into_raw(Box::new(emoji_id.to_public_key())),
         Err(_) => {
             error = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -8196,7 +8196,7 @@ mod test {
             assert_ne!((*private_bytes), (*public_bytes));
             let emoji = public_key_to_emoji_id(public_key, error_ptr) as *mut c_char;
             let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
-            assert!(EmojiId::is_valid(emoji_str));
+            assert!(EmojiId::from_emoji_string(emoji_str).is_ok());
             let pk_emoji = emoji_id_to_public_key(emoji, error_ptr);
             assert_eq!((*public_key), (*pk_emoji));
             private_key_destroy(private_key);
