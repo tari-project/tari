@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod chain_metadata;
+pub mod dammsum;
 pub mod emoji;
 pub mod grpc_authentication;
-pub mod luhn;
 pub mod transaction;
 mod tx_id;
 pub mod types;
