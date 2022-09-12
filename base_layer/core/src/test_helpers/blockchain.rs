@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -423,6 +423,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_committee(height, shard)
+    }
+
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+        self.db.as_ref().unwrap().get_shard_key(height, public_key)
     }
 }
 

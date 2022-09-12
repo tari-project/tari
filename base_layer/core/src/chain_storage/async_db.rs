@@ -26,7 +26,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -271,6 +271,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_committee(height: u64, shard: [u8;32]) -> Vec<ActiveValidatorNode>, "fetch_committee");
 
     make_async_fn!(get_validator_nodes_mr() -> Vec<u8>, "get_validator_nodes_mr");
+
+    make_async_fn!(get_shard_key(height:u64, public_key:PublicKey) -> [u8;32], "get_shard_key");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

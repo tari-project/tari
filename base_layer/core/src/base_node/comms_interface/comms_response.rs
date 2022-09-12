@@ -73,6 +73,7 @@ pub enum NodeCommsResponse {
     },
     FetchValidatorNodesKeysResponse(Vec<ActiveValidatorNode>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
+    GetShardKeyResponse([u8; 32]),
 }
 
 impl Display for NodeCommsResponse {
@@ -113,6 +114,7 @@ impl Display for NodeCommsResponse {
             FetchOutputsByContractIdResponse { .. } => write!(f, "FetchOutputsByContractIdResponse"),
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
             FetchCommitteeResponse(_) => write!(f, "FetchCommitteeResponse"),
+            GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
         }
     }
 }

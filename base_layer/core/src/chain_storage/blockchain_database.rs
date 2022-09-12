@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
@@ -846,6 +846,11 @@ where B: BlockchainBackend
         // Note: MMR is not balanced
         let mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.shard_key.to_vec()).collect());
         Ok(mmr.get_merkle_root().unwrap())
+    }
+
+    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.get_shard_key(height, public_key)
     }
 
     /// Tries to add a block to the longest chain.
