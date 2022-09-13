@@ -103,18 +103,6 @@ Then(
   }
 );
 
-Then(
-  "I get balance of wallet {word} is {int} uT via command line",
-  { timeout: 180 * 1000 },
-  async function (name, amount) {
-    let wallet = this.getWallet(name);
-    let output = await wallet_run_command(wallet, "get-balance", 180);
-    let parse = output.buffer.match(/Available balance: (\d*.\d*) T/);
-    expect(parse, "Parsing the output buffer failed").to.not.be.null;
-    expect(parseFloat(parse[1])).to.be.equal(amount / 1000000);
-  }
-);
-
 When(
   "I send {int} uT from {word} to {word} via command line",
   { timeout: 180 * 1000 },
@@ -135,11 +123,7 @@ When(
   { timeout: 180 * 1000 },
   async function (amount, name) {
     let wallet = this.getWallet(name);
-    await wallet_run_command(
-      wallet,
-      `burn-tari ${amount}`,
-      180
-    );
+    await wallet_run_command(wallet, `burn-tari ${amount}`, 180);
   }
 );
 
