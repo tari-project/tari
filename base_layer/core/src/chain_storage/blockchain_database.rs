@@ -807,8 +807,8 @@ where B: BlockchainBackend
         if median_timestamp > header.timestamp {
             header.timestamp = median_timestamp.increase(1);
         }
-        let block = Block { header, body };
-        let (mut block, roots) = self.calculate_mmr_roots(block)?;
+        let mut block = Block { header, body };
+        let roots = calculate_mmr_roots(&*db, &block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
