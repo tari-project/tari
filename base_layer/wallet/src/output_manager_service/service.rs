@@ -865,7 +865,7 @@ where
                     Covenant::new().consensus_encode_exact_size(),
             );
 
-        let utxo_selection = self
+        let utxo_selection = match self
             .select_utxos(
                 amount,
                 selection_criteria,
@@ -873,7 +873,26 @@ where
                 num_outputs,
                 metadata_byte_size * num_outputs,
             )
-            .await?;
+            .await
+        {
+            Ok(v) => Ok(v),
+            Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "We dont have enough funds available to make a fee estimate, so we estimate 1 input, no change"
+                );
+                let fee_calc = self.get_fee_calc();
+                let output_features_estimate = OutputFeatures::default();
+                let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
+                    output_features_estimate.consensus_encode_exact_size() +
+                        Covenant::new().consensus_encode_exact_size() +
+                        script![Nop].consensus_encode_exact_size(),
+                );
+                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_metadata_size);
+                return Ok(Fee::normalize(fee));
+            },
+            Err(e) => Err(e),
+        }?;
 
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
