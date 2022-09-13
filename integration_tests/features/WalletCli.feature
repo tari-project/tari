@@ -54,6 +54,18 @@ Feature: Wallet CLI
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
     @long-running
+    Scenario: As a user I want to burn tari via command line
+        Given I have a seed node SEED
+        And I have a base node BASE connected to seed SEED
+        And I have wallet WALLET connected to base node BASE
+        And I have mining node MINER connected to base node BASE and wallet WALLET
+        And mining node MINER mines 15 blocks
+        Then all nodes are at height 15
+        When I wait for wallet WALLET to have at least 55000000000 uT
+        When I create a burn transaction of 45000000000 uT from WALLET via command line
+        Then I get balance of wallet WALLET is at least 10000000000 uT via command line
+        
+    @long-running
     Scenario: As a user I want to send one-sided via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
