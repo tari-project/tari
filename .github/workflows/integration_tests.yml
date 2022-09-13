@@ -170,7 +170,8 @@ jobs:
         working-directory: integration_tests
         run: |
           node ./generate_report.js
-          if [ -f cucumber_output/tests_ffi.cucumber ] ; then
+          # Empty file check
+          if [ -s cucumber_output/tests_ffi.cucumber ] ; then
             node ./generate_report.js "cucumber_output/tests_ffi.cucumber" "temp/reports/cucumber_ffi_report.html"
           fi
 
