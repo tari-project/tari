@@ -168,10 +168,21 @@ impl MempoolStorage {
             failed_block.header.height,
             failed_block.hash().to_hex()
         );
-        self.unconfirmed_pool
+        let txs = self
+            .unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(failed_block);
+
+        // Reinsert them to validate if they are still valid
+        for tx in txs {
+            let _result = self.insert(tx).map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Discarding transaction because it is no longer valid: {}", e
+                );
+            });
+        }
         self.unconfirmed_pool.compact();
-        debug!(target: LOG_TARGET, "{}", self.stats());
+
         Ok(())
     }
 
