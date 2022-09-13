@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.3](https://github.com/tari-project/tari/compare/v0.38.2...v0.38.3) (2022-09-13)
+
+
+### Bug Fixes
+
+* **ci:** libtor build on Ubuntu ([#4644](https://github.com/tari-project/tari/issues/4644)) ([6f69276](https://github.com/tari-project/tari/commit/6f692766d5cca5e9b393b2a06662c85fc7ca5aff))
+* **comms/messaging:** fix possible deadlock in outbound pipeline ([#4657](https://github.com/tari-project/tari/issues/4657)) ([3fcc6a0](https://github.com/tari-project/tari/commit/3fcc6a00c663dfab6ea7a196f56d689eda5990d2))
+* **core/sync:** handle deadline timeouts by changing peer ([#4649](https://github.com/tari-project/tari/issues/4649)) ([5ed997c](https://github.com/tari-project/tari/commit/5ed997cdf4ac29daa28f5e2654ace99a65ef0144))
+* fee estimate ([#4656](https://github.com/tari-project/tari/issues/4656)) ([d9de2e0](https://github.com/tari-project/tari/commit/d9de2e01c745afb7c876454510191982f1e9af68))
+* replace Luhn checksum with DammSum ([#4639](https://github.com/tari-project/tari/issues/4639)) ([c01471a](https://github.com/tari-project/tari/commit/c01471a663eae409d77ba703e40ecd2bb31df173))
+
 ### [0.38.2](https://github.com/tari-project/tari/compare/v0.38.1...v0.38.2) (2022-09-08)
 
 
