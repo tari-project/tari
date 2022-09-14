@@ -47,10 +47,6 @@ pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 10;
 /// peers to concurrently request to speak /tari/messaging.
 pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 30;
 
-/// Buffer size for requests to the messaging protocol. All outbound messages will be sent along this channel. Some
-/// buffering may be required if the node needs to send many messages out at the same time.
-pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;
-
 /// Installs the messaging protocol
 pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
@@ -73,17 +69,17 @@ where
     TInPipe::Future: Send + 'static,
     TOutReq: Send + 'static,
 {
-    fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
+    fn install(mut self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
         context.add_protocol(&[MESSAGING_PROTOCOL.clone()], &proto_tx);
 
-        let (messaging_request_tx, messaging_request_rx) = mpsc::channel(MESSAGING_REQUEST_BUFFER_SIZE);
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
 
+        let message_receiver = self.pipeline.outbound.out_receiver.take().unwrap();
         let messaging = MessagingProtocol::new(
             context.connectivity(),
             proto_rx,
-            messaging_request_rx,
+            message_receiver,
             self.event_tx,
             inbound_message_tx,
             context.shutdown_signal(),
@@ -106,7 +102,7 @@ where
 
         let executor = OptionallyBoundedExecutor::from_current(self.pipeline.max_concurrent_outbound_tasks);
         // Spawn outbound pipeline
-        let outbound = pipeline::Outbound::new(executor, self.pipeline.outbound, messaging_request_tx);
+        let outbound = pipeline::Outbound::new(executor, self.pipeline.outbound);
         task::spawn(outbound.run());
 
         Ok(())
