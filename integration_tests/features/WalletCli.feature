@@ -57,18 +57,16 @@ Feature: Wallet CLI
     Scenario: As a user I want to burn tari via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
-        And I have wallet WALLET connected to base node BASE
-        And I have mining node MINER connected to base node BASE and wallet WALLET
-        And mining node MINER mines 12 blocks
-        Then I mine 3 blocks on BASE
+        And I have wallet WALLET_A connected to base node BASE
+        And I have wallet WALLET_B connected to base node BASE
+        And I have mining node MINER_A connected to base node BASE and wallet WALLET_A
+        And I have mining node MINER_B connected to base node BASE and wallet WALLET_B
+        And mining node MINER_A mines 15 blocks
         Then all nodes are at height 15
-        When I wait for wallet WALLET to have at least 221552530060 uT
-        When I create a burn transaction of 221552500000 uT from WALLET via command line
-        When I mine 5 blocks on BASE
-        Then all nodes are at height 20
-        Then I wait for wallet WALLET to have at least 100 uT
-        Then I get balance of wallet WALLET is at most 50000 uT via command line
-        # TODO: verify the actual burned kernel
+        When I wait for wallet WALLET_A to have at least 55000000000 uT
+        When I create a burn transaction of 45000000000 uT from WALLET_A via command line
+        Then I have mining node MINER_B mines 10 blocks
+        Then I get balance of wallet WALLET_A is at least 10000000000 uT via command line
         
     @long-running
     Scenario: As a user I want to send one-sided via command line
