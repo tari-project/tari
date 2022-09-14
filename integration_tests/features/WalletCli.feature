@@ -53,7 +53,7 @@ Feature: Wallet CLI
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
-    @long-running
+  
     Scenario: As a user I want to burn tari via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
