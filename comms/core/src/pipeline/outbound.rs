@@ -62,15 +62,17 @@ where
             // Pipeline IN received a message. Spawn a new task for the pipeline
             let num_available = self.executor.num_available();
             if let Some(max_available) = self.executor.max_available() {
-                // Only emit this message if there is any concurrent usage
-                if num_available < max_available {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Outbound pipeline usage: {}/{}",
-                        max_available - num_available,
-                        max_available
-                    );
-                }
+                log!(
+                    target: LOG_TARGET,
+                    if num_available < max_available {
+                        Level::Debug
+                    } else {
+                        Level::Trace
+                    },
+                    "Outbound pipeline usage: {}/{}",
+                    max_available - num_available,
+                    max_available
+                );
             }
             let pipeline = self.config.pipeline.clone();
             let id = current_id;
