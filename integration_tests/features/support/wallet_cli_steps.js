@@ -109,7 +109,6 @@ Then(
   async function (name, amount) {
     let wallet = this.getWallet(name);
     let output = await wallet_run_command(wallet, "get-balance", 180);
-    console.log("FLAG: the output is", output);
     let parse = output.buffer.match(/Available balance: (\d*.\d*) T/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parseFloat(parse[1])).to.be.lessThanOrEqual(amount / 1000000);

@@ -62,11 +62,12 @@ Feature: Wallet CLI
         And mining node MINER mines 12 blocks
         Then I mine 3 blocks on BASE
         Then all nodes are at height 15
-        When I wait for wallet WALLET to have at least 166164616630 uT
-        When I create a burn transaction of 166164610000 uT from WALLET via command line
+        When I wait for wallet WALLET to have at least 221552530060 uT
+        When I create a burn transaction of 221552500000 uT from WALLET via command line
         When I mine 5 blocks on BASE
         Then all nodes are at height 20
-        Then I get balance of wallet WALLET is at most 7000 uT via command line
+        Then I wait for wallet WALLET to have at least 100 uT
+        Then I get balance of wallet WALLET is at most 30000 uT via command line
         # TODO: verify the actual burned kernel
         
     @long-running
