@@ -67,7 +67,7 @@ Feature: Wallet CLI
         When I mine 5 blocks on BASE
         Then all nodes are at height 20
         Then I wait for wallet WALLET to have at least 100 uT
-        Then I get balance of wallet WALLET is at most 30000 uT via command line
+        Then I get balance of wallet WALLET is at most 50000 uT via command line
         # TODO: verify the actual burned kernel
         
     @long-running
