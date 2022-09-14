@@ -119,6 +119,15 @@ When(
 );
 
 When(
+  "I create a burn transaction of {int} uT from {word} via command line",
+  { timeout: 180 * 1000 },
+  async function (amount, name) {
+    let wallet = this.getWallet(name);
+    await wallet_run_command(wallet, `burn-tari ${amount}`, 180);
+  }
+);
+
+When(
   "I send one-sided {int} uT from {word} to {word} via command line",
   { timeout: 180 * 1000 },
   async function (amount, sender, receiver) {
