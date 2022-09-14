@@ -217,20 +217,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
             (Some(node_id), Some(true)) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Forwarding SAF message directly to node: {}, {}", node_id, dht_header.message_tag
+                let debug_info = format!(
+                    "Forwarding SAF message directly to node: {}, {}",
+                    node_id, dht_header.message_tag
                 );
+                debug!(target: LOG_TARGET, "{}", &debug_info);
+                send_params.with_debug_info(debug_info);
                 send_params.direct_or_closest_connected(node_id, excluded_peers);
             },
             _ => {
-                debug!(
-                    target: LOG_TARGET,
+                let debug_info = format!(
                     "Propagating SAF message for {}, propagating it. {}",
-                    dht_header.destination,
-                    dht_header.message_tag
+                    dht_header.destination, dht_header.message_tag
                 );
-
+                debug!(target: LOG_TARGET, "{}", debug_info);
+                send_params.with_debug_info(debug_info);
                 send_params.propagate(dht_header.destination.clone(), excluded_peers);
             },
         };

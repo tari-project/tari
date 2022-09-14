@@ -114,6 +114,7 @@ pub async fn send_finalized_transaction_message_direct(
                 &TariMessageType::TransactionFinalized,
                 finalized_transaction_message.clone(),
             ),
+            "transaction finalized".to_string(),
         )
         .await
     {

@@ -108,7 +108,9 @@ impl MempoolService {
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
                 Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
-                    self.spawn_handle_outbound_tx(txn, excluded_peers);
+                    let _res = handle_outbound_tx(&mut self.outbound_message_service, txn, excluded_peers).await.map_err(|e|
+                        error!(target: LOG_TARGET, "Error sending outbound tx message: {}", e)
+                    );
                 },
 
                 // Incoming transaction messages from the Comms layer
@@ -142,16 +144,6 @@ impl MempoolService {
     async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         // TODO: Move db calls into MempoolService
         self.inbound_handlers.handle_request(request).await
-    }
-
-    fn spawn_handle_outbound_tx(&self, tx: Arc<Transaction>, excluded_peers: Vec<NodeId>) {
-        let outbound_message_service = self.outbound_message_service.clone();
-        task::spawn(async move {
-            let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
-            if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", e);
-            }
-        });
     }
 
     fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
@@ -236,7 +228,7 @@ async fn handle_incoming_tx(
 }
 
 async fn handle_outbound_tx(
-    mut outbound_message_service: OutboundMessageRequester,
+    outbound_message_service: &mut OutboundMessageRequester,
     tx: Arc<Transaction>,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
@@ -247,7 +239,13 @@ async fn handle_outbound_tx(
             exclude_peers,
             OutboundDomainMessage::new(
                 &TariMessageType::NewTransaction,
-                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
+                proto::types::Transaction::try_from(tx.clone()).map_err(MempoolServiceError::ConversionError)?,
+            ),
+            format!(
+                "Outbound mempool tx: {}",
+                tx.first_kernel_excess_sig()
+                    .map(|s| s.get_signature().to_hex())
+                    .unwrap_or_else(|| "No kernels!".to_string())
             ),
         )
         .await;

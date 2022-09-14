@@ -43,6 +43,7 @@ pub async fn send_transaction_cancelled_message(
         .send_direct(
             destination_public_key.clone(),
             OutboundDomainMessage::new(&TariMessageType::TransactionCancelled, proto_message.clone()),
+            "transaction cancelled".to_string(),
         )
         .await?;
 

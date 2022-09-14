@@ -68,6 +68,7 @@ pub struct FinalSendMessageParams {
     pub dht_message_type: DhtMessageType,
     pub dht_message_flags: DhtMessageFlags,
     pub dht_header: Option<DhtMessageHeader>,
+    pub debug_info: Option<String>,
     pub tag: Option<MessageTag>,
 }
 
@@ -82,6 +83,7 @@ impl Default for FinalSendMessageParams {
             force_origin: false,
             is_discovery_enabled: false,
             dht_header: None,
+            debug_info: None,
             tag: None,
         }
     }
@@ -100,6 +102,13 @@ impl Display for FinalSendMessageParams {
 impl SendMessageParams {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn with_debug_info(&mut self, debug_info: String) -> &mut Self {
+        if let Some(ref mut params) = self.params {
+            params.debug_info = Some(debug_info);
+        }
+        self
     }
 
     /// Set broadcast_strategy to DirectPublicKey

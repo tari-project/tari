@@ -110,21 +110,21 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) -> Result<(), UnconfirmedPoolError> {
+    ) {
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
-            return Ok(());
+            return;
         }
 
         let new_key = self.get_next_key();
         let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs);
         if self.tx_by_key.len() >= self.config.storage_capacity {
             if prioritized_tx.priority < *self.lowest_priority() {
-                return Ok(());
+                return;
             }
             self.remove_lowest_priority_tx();
         }
@@ -143,8 +143,6 @@ impl UnconfirmedPool {
             "Inserted transaction {} into unconfirmed pool:", prioritized_tx
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
-
-        Ok(())
     }
 
     /// TThis will search the unconfirmed pool for the set of outputs and return true if all of them are found
@@ -158,11 +156,10 @@ impl UnconfirmedPool {
         &mut self,
         txs: I,
         transaction_weighting: &TransactionWeight,
-    ) -> Result<(), UnconfirmedPoolError> {
+    ) {
         for tx in txs {
-            self.insert(tx, None, transaction_weighting)?;
+            self.insert(tx, None, transaction_weighting);
         }
-        Ok(())
     }
 
     /// Check if a transaction is available in the UnconfirmedPool

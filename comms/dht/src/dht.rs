@@ -358,6 +358,10 @@ impl Dht {
         S::Future: Send,
     {
         ServiceBuilder::new()
+            .layer(MessageLoggingLayer::new(format!(
+                "Pre Broadcast [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(outbound::BroadcastLayer::new(
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),

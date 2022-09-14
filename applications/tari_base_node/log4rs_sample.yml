@@ -36,7 +36,24 @@ appenders:
         count: 5
         pattern: "log/base-node/network.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  message_logging:
+    kind: rolling_file
+    path: "log/base-node/messages.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/messages.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
+
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
@@ -53,7 +70,7 @@ appenders:
         count: 5
         pattern: "log/base-node/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m}{n} // {f}:{L} "
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m} // {f}:{L}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
@@ -152,3 +169,7 @@ loggers:
     appenders:
       - other
     additive: false
+  comms::middleware::message_logging:
+    level: trace
+    appenders:
+      - message_logging
