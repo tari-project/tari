@@ -36,10 +36,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    base_node::{
-        comms_interface::{BlockEvent, BlockEventReceiver},
-        StateMachineHandle,
-    },
+    base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     mempool::service::{
         error::MempoolServiceError,
         inbound_handlers::MempoolInboundHandlers,
@@ -66,19 +63,13 @@ pub struct MempoolStreams<STxIn, SLocalReq> {
 pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
-    state_machine: StateMachineHandle,
 }
 
 impl MempoolService {
-    pub fn new(
-        outbound_message_service: OutboundMessageRequester,
-        inbound_handlers: MempoolInboundHandlers,
-        state_machine: StateMachineHandle,
-    ) -> Self {
+    pub fn new(outbound_message_service: OutboundMessageRequester, inbound_handlers: MempoolInboundHandlers) -> Self {
         Self {
             outbound_message_service,
             inbound_handlers,
-            state_machine,
         }
     }
 
