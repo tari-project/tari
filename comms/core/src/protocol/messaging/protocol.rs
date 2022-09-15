@@ -64,12 +64,6 @@ const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
 pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
 pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
 
-/// Request types for MessagingProtocol
-#[derive(Debug)]
-pub enum MessagingRequest {
-    SendMessage(OutboundMessage),
-}
-
 /// The reason for dial failure. This enum should contain simple variants which describe the kind of failure that
 /// occurred
 #[derive(Debug, Error, Copy, Clone)]
@@ -110,7 +104,7 @@ pub struct MessagingProtocol {
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
-    request_rx: mpsc::Receiver<MessagingRequest>,
+    outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: MessagingEventSender,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
@@ -126,7 +120,7 @@ impl MessagingProtocol {
     pub(super) fn new(
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
-        request_rx: mpsc::Receiver<MessagingRequest>,
+        outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         shutdown_signal: ShutdownSignal,
@@ -138,7 +132,7 @@ impl MessagingProtocol {
         Self {
             connectivity,
             proto_notification,
-            request_rx,
+            outbound_message_rx,
             active_queues: Default::default(),
             messaging_events_tx,
             internal_messaging_event_rx,
@@ -176,8 +170,8 @@ impl MessagingProtocol {
                     }
                 },
 
-                Some(req) = self.request_rx.recv() => {
-                    if let Err(err) = self.handle_request(req) {
+                Some(msg) = self.outbound_message_rx.recv() => {
+                    if let Err(err) = self.send_message(msg) {
                         error!(
                             target: LOG_TARGET,
                             "Failed to handle request because '{}'",
@@ -231,18 +225,6 @@ impl MessagingProtocol {
         }
     }
 
-    fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
-        use MessagingRequest::SendMessage;
-        match req {
-            SendMessage(msg) => {
-                trace!(target: LOG_TARGET, "Received request to send message ({})", msg);
-                self.send_message(msg)?;
-            },
-        }
-
-        Ok(())
-    }
-
     fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         debug!(target: LOG_TARGET, "Retrying outbound message ({})", msg);
         self.send_message(msg)?;
@@ -251,6 +233,7 @@ impl MessagingProtocol {
 
     // #[tracing::instrument(skip(self, out_msg), err)]
     fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+        trace!(target: LOG_TARGET, "Received request to send message ({})", out_msg);
         let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
             match self.active_queues.entry(peer_node_id.clone()) {

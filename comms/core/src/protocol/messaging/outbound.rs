@@ -270,10 +270,16 @@ impl OutboundMessaging {
             outbound_count.inc();
             event!(
                 Level::DEBUG,
-                "Message buffered for sending {} on stream {}",
+                "Message for peer '{}' sending {} on stream {}",
+                peer_node_id,
                 out_msg,
                 stream_id
             );
+            debug!(
+                target: LOG_TARGET,
+                "Message for peer '{}' sending {} on stream {}", peer_node_id, out_msg, stream_id
+            );
+
             out_msg.reply_success();
             Result::<_, MessagingProtocolError>::Ok(out_msg.body)
         });
