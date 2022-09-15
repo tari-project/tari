@@ -118,7 +118,7 @@ async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
         let msg = OutboundDomainMessage::new(&999, PropagationMessage::new(u32::try_from(i).unwrap(), opts.msg_size));
         let states = match opts.send_method {
             SendMethod::Direct => outbound
-                .send_direct_node_id(opts.peer.node_id.clone(), msg)
+                .send_direct_node_id(opts.peer.node_id.clone(), msg, "Example stress".to_string())
                 .await
                 .map(MessageSendStates::from)?,
             SendMethod::Propagated => {

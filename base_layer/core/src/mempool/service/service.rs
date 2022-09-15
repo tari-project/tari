@@ -115,7 +115,13 @@ impl MempoolService {
 
                 // Incoming transaction messages from the Comms layer
                 Some(transaction_msg) = inbound_transaction_stream.next() => {
-                    self.spawn_handle_incoming_tx(transaction_msg);
+                    let result = handle_incoming_tx(&mut self.inbound_handlers, transaction_msg).await;
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming transaction message: {:?}", e
+                );
+            }
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -144,31 +150,6 @@ impl MempoolService {
     async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         // TODO: Move db calls into MempoolService
         self.inbound_handlers.handle_request(request).await
-    }
-
-    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
-        // Determine if we are bootstrapped
-        let status_watch = self.state_machine.get_status_info_watch();
-
-        if !(*status_watch.borrow()).bootstrapped {
-            debug!(
-                target: LOG_TARGET,
-                "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",
-                tx_msg.dht_header.message_tag,
-                tx_msg.source_peer.node_id.short_str(),
-            );
-            return;
-        }
-        let inbound_handlers = self.inbound_handlers.clone();
-        task::spawn(async move {
-            let result = handle_incoming_tx(inbound_handlers, tx_msg).await;
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
-                );
-            }
-        });
     }
 
     fn spawn_handle_local_request(
@@ -201,7 +182,7 @@ impl MempoolService {
 }
 
 async fn handle_incoming_tx(
-    mut inbound_handlers: MempoolInboundHandlers,
+    inbound_handlers: &mut MempoolInboundHandlers,
     domain_transaction_msg: DomainMessage<Transaction>,
 ) -> Result<(), MempoolServiceError> {
     let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;

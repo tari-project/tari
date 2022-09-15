@@ -665,12 +665,10 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool
-            .insert_many(
-                [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-                &tx_weight,
-            )
-            .unwrap();
+        unconfirmed_pool.insert_many(
+            [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+            &tx_weight,
+        );
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
@@ -744,9 +742,7 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool
-            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight)
-            .unwrap();
+        unconfirmed_pool.insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight);
         assert_eq!(unconfirmed_pool.len(), 3);
 
         let desired_weight = tx1.calculate_weight(&tx_weight) +
@@ -776,12 +772,10 @@ mod test {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool
-            .insert_many(
-                vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-                &tx_weight,
-            )
-            .unwrap();
+        unconfirmed_pool.insert_many(
+            vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+            &tx_weight,
+        );
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
@@ -826,19 +820,17 @@ mod test {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool
-            .insert_many(
-                vec![
-                    tx1.clone(),
-                    tx2.clone(),
-                    tx3.clone(),
-                    tx4.clone(),
-                    tx5.clone(),
-                    tx6.clone(),
-                ],
-                &tx_weight,
-            )
-            .unwrap();
+        unconfirmed_pool.insert_many(
+            vec![
+                tx1.clone(),
+                tx2.clone(),
+                tx3.clone(),
+                tx4.clone(),
+                tx5.clone(),
+                tx6.clone(),
+            ],
+            &tx_weight,
+        );
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
         let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()], &consensus);
@@ -882,7 +874,7 @@ mod test {
             Arc::new(tx3.clone()),
             Arc::new(tx4.clone()),
         ];
-        unconfirmed_pool.insert_many(txns.clone(), &tx_weight).unwrap();
+        unconfirmed_pool.insert_many(txns.clone(), &tx_weight);
 
         for txn in txns {
             for output in txn.as_ref().body.outputs() {
@@ -964,9 +956,7 @@ mod test {
             let tx2 = Arc::new(tx2);
             let tx3 = Arc::new(tx3);
             let tx4 = Arc::new(tx4);
-            unconfirmed_pool
-                .insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight)
-                .unwrap();
+            unconfirmed_pool.insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight);
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
             assert_eq!(stats[0].order, 0);
@@ -1004,7 +994,7 @@ mod test {
             let tx_weight = TransactionWeight::latest();
             let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
 
-            unconfirmed_pool.insert_many(transactions, &tx_weight).unwrap();
+            unconfirmed_pool.insert_many(transactions, &tx_weight);
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(2, 2000).unwrap();
             assert_eq!(stats, expected_stats);
