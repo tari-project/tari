@@ -275,7 +275,6 @@ async fn initialize_hidden_service(
     mut config: TorTransportConfig,
 ) -> Result<tor::HiddenServiceController, CommsInitializationError> {
     let mut builder = tor::HiddenServiceBuilder::new()
-        .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth()?)
