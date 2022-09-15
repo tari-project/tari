@@ -169,7 +169,9 @@ loggers:
     appenders:
       - other
     additive: false
+
   comms::middleware::message_logging:
-    level: trace
+    # Set to `trace` to retrieve message logging
+    level: warn
     appenders:
       - message_logging
