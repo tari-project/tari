@@ -74,7 +74,7 @@ where TBackend: TransactionBackend + 'static
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_transaction_send_result: unsafe extern "C" fn(u64, *mut TransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
@@ -116,7 +116,7 @@ where TBackend: TransactionBackend + 'static
         callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_transaction_send_result: unsafe extern "C" fn(u64, *mut TransactionSendStatus),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+        callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
@@ -302,11 +302,14 @@ where TBackend: TransactionBackend + 'static
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
-                                    self.output_validation_complete_event(request_key,  true);
+                                    self.output_validation_complete_event(request_key,  0);
                                     self.trigger_balance_refresh().await;
                                 },
-                                OutputManagerEvent::TxoValidationFailure(request_key) => {
-                                    self.output_validation_complete_event(request_key,  false);
+                                OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
+                                    self.output_validation_complete_event(request_key,  1);
+                                },
+                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
+                                    self.output_validation_complete_event(request_key,  2);
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -581,7 +584,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn output_validation_complete_event(&mut self, request_key: u64, success: bool) {
+    fn output_validation_complete_event(&mut self, request_key: u64, success: u64) {
         debug!(
             target: LOG_TARGET,
             "Calling Output Validation Complete callback function for Request Key: {} with success = {:?}",

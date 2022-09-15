@@ -395,7 +395,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn set_received_output_mined_height(
+    pub fn set_received_output_mined_height_and_status(
         &self,
         hash: HashOutput,
         mined_height: u64,
@@ -405,7 +405,7 @@ where T: OutputManagerBackend + 'static
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_received_output_mined_height(
+        db.set_received_output_mined_height_and_status(
             hash,
             mined_height,
             mined_in_block,

@@ -116,6 +116,7 @@ where
         Ok(self.operation_id)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn update_spent_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
@@ -148,12 +149,21 @@ where
                 .for_protocol(self.operation_id)?;
 
             for output in batch {
-                let mined_mmr_position = output
-                    .mined_mmr_position
-                    .ok_or(OutputManagerError::InconsistentDataError(
-                        "Mined Unspent output should have `mined_mmr_position`",
-                    ))
-                    .for_protocol(self.operation_id)?;
+                let mined_mmr_position = if let Some(pos) = output.mined_mmr_position {
+                    pos
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Mined Unspent output {} should have `mined_mmr_position`, setting as unmined to revalidate \
+                         (Operation ID: {})",
+                        output.commitment.to_hex(),
+                        self.operation_id
+                    );
+                    self.db
+                        .set_output_to_unmined_and_invalid(output.hash)
+                        .for_protocol(self.operation_id)?;
+                    continue;
+                };
 
                 if deleted_bitmap_response.deleted_positions.len() != deleted_bitmap_response.blocks_deleted_in.len() ||
                     deleted_bitmap_response.deleted_positions.len() !=
@@ -161,7 +171,7 @@ where
                 {
                     return Err(OutputManagerProtocolError::new(
                         self.operation_id,
-                        OutputManagerError::InconsistentDataError(
+                        OutputManagerError::InconsistentBaseNodeDataError(
                             "`deleted_positions`, `blocks_deleted_in` and `heights_deleted_at` should be the same \
                              length",
                         ),
@@ -169,20 +179,31 @@ where
                 }
 
                 if deleted_bitmap_response.deleted_positions.contains(&mined_mmr_position) {
-                    let position = deleted_bitmap_response
+                    let position = if let Some(pos) = deleted_bitmap_response
                         .deleted_positions
                         .iter()
                         .position(|dp| dp == &mined_mmr_position)
-                        .ok_or(OutputManagerError::InconsistentDataError(
-                            "Deleted positions should include the `mined_mmr_position`",
-                        ))
-                        .for_protocol(self.operation_id)?;
+                    {
+                        pos
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Deleted positions for Mined Unspent output {} should include the `mined_mmr_position`. \
+                             setting as unmined to revalidate (Operation ID: {})",
+                            output.commitment.to_hex(),
+                            self.operation_id
+                        );
+                        self.db
+                            .set_output_to_unmined_and_invalid(output.hash)
+                            .for_protocol(self.operation_id)?;
+                        continue;
+                    };
 
                     let deleted_height = deleted_bitmap_response.heights_deleted_at[position];
                     let deleted_block = match deleted_bitmap_response.blocks_deleted_in[position].clone().try_into() {
                         Ok(v) => v,
                         Err(_) => {
-                            debug!(target: LOG_TARGET, "Received malformed deleted_block",);
+                            debug!(target: LOG_TARGET, "Received malformed deleted_block");
                             continue;
                         },
                     };
@@ -203,14 +224,10 @@ where
                     );
                 }
 
-                if deleted_bitmap_response.not_deleted_positions.contains(
-                    &output
-                        .mined_mmr_position
-                        .ok_or(OutputManagerError::InconsistentDataError(
-                            "Mined Unspent output should have `mined_mmr_position`",
-                        ))
-                        .for_protocol(self.operation_id)?,
-                ) && output.marked_deleted_at_height.is_some()
+                if deleted_bitmap_response
+                    .not_deleted_positions
+                    .contains(&mined_mmr_position) &&
+                    output.marked_deleted_at_height.is_some()
                 {
                     self.db
                         .mark_output_as_unspent(output.hash)
@@ -279,7 +296,8 @@ where
         Ok(())
     }
 
-    // returns the last header found still in the chain
+    // Returns the last header found still in the chain
+    #[allow(clippy::too_many_lines)]
     async fn check_for_reorgs(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
@@ -291,18 +309,36 @@ where
         );
 
         while let Some(last_spent_output) = self.db.get_last_spent_output().for_protocol(self.operation_id)? {
-            let mined_height = last_spent_output
-                .marked_deleted_at_height
-                .ok_or(OutputManagerError::InconsistentDataError(
-                    "Spent output should have `marked_deleted_at_height`",
-                ))
-                .for_protocol(self.operation_id)?;
-            let mined_in_block_hash = last_spent_output
-                .marked_deleted_in_block
-                .ok_or(OutputManagerError::InconsistentDataError(
-                    "Spent output should have `marked_deleted_in_block`",
-                ))
-                .for_protocol(self.operation_id)?;
+            let mined_height = if let Some(height) = last_spent_output.marked_deleted_at_height {
+                height
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Spent output {} should have `marked_deleted_at_height`, setting as unmined to revalidate \
+                     (Operation ID: {})",
+                    last_spent_output.commitment.to_hex(),
+                    self.operation_id
+                );
+                self.db
+                    .set_output_to_unmined_and_invalid(last_spent_output.hash)
+                    .for_protocol(self.operation_id)?;
+                continue;
+            };
+            let mined_in_block_hash = if let Some(hash) = last_spent_output.marked_deleted_in_block {
+                hash
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Spent output {} should have `marked_deleted_in_block`, setting as unmined to revalidate \
+                     (Operation ID: {})",
+                    last_spent_output.commitment.to_hex(),
+                    self.operation_id
+                );
+                self.db
+                    .set_output_to_unmined_and_invalid(last_spent_output.hash)
+                    .for_protocol(self.operation_id)?;
+                continue;
+            };
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
                 .await
@@ -332,12 +368,17 @@ where
 
         while let Some(last_mined_output) = self.db.get_last_mined_output().for_protocol(self.operation_id)? {
             if last_mined_output.mined_height.is_none() || last_mined_output.mined_in_block.is_none() {
-                return Err(OutputManagerProtocolError::new(
-                    self.operation_id,
-                    OutputManagerError::InconsistentDataError(
-                        "Output marked as mined, but mined_height or mined_in_block was empty",
-                    ),
-                ));
+                warn!(
+                    target: LOG_TARGET,
+                    "Output ({}) marked as mined, but mined_height or mined_in_block was empty, invalidating so we \
+                     can try to find this output again (Operation ID: {})",
+                    last_mined_output.commitment.to_hex(),
+                    self.operation_id
+                );
+                self.db
+                    .set_output_to_unmined_and_invalid(last_mined_output.hash)
+                    .for_protocol(self.operation_id)?;
+                continue;
             }
             let mined_height = last_mined_output.mined_height.unwrap();
             let mined_in_block_hash = last_mined_output.mined_in_block.unwrap();
@@ -479,7 +520,7 @@ where
         let confirmed = (tip_height - mined_height) >= self.config.num_confirmations_required;
 
         self.db
-            .set_received_output_mined_height(
+            .set_received_output_mined_height_and_status(
                 tx.hash,
                 mined_height,
                 *mined_in_block,

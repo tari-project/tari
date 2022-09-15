@@ -4182,7 +4182,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
@@ -7934,7 +7934,7 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u64) {
         // assert!(true); //optimized out by compiler
     }
 
