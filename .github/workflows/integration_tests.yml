@@ -5,12 +5,23 @@ name: Integration tests
   push:
     paths-ignore:
       - '**/*.md'
-    branches:
-      - 'ci-*'
   schedule:
-    - cron: '0 2 * * *'   # daily @ 02h00
-    - cron: '0 12 * * 6'  # weekly - Saturday @ noon
+    - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
+    - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)
   workflow_dispatch:
+    inputs:
+      ci_bins:
+        type: boolean
+        default: true
+        description: 'run ci on binaries'
+      ci_ffi:
+        type: boolean
+        default: true
+        description: 'run ci on ffi'
+      ci_profile:
+        default: ci
+        description: 'ci profile to run'
+        type: string
 
 env:
   toolchain: nightly-2022-05-01
@@ -18,14 +29,14 @@ env:
   build_binaries: "tari_base_node tari_console_wallet tari_merge_mining_proxy tari_miner"
 
 jobs:
-  long-running:
+  cucumber_tests:
     name: Cucumber tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
 
-      - name: Envs setup for ${{ env.CI_RUN }}
+      - name: Envs setup
         id: envs_setup
         shell: bash
         run: |
@@ -38,13 +49,21 @@ jobs:
           done
           echo "TARGET_BINS=${VAPPS_TARGET_BINS}" >> $GITHUB_ENV
           if [ "${{ github.event_name }}" == "schedule" ] ; then
+            echo "CI_FFI=false" >> $GITHUB_ENV
             if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
-              echo "CI_RUN=non-critical" >> $GITHUB_ENV
+              echo "CI_PROFILE=non-critical" >> $GITHUB_ENV
             elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
-              echo "CI_RUN=long-running" >> $GITHUB_ENV
+              echo "CI_PROFILE=long-running" >> $GITHUB_ENV
             fi
           else
-            echo "CI_RUN=non-critical" >> $GITHUB_ENV
+            echo "CI ..."
+            echo "CI_PROFILE=ci" >> $GITHUB_ENV
+            CI_BINS=${{ inputs.ci_bins }}
+            echo "Run binary - ${CI_BINS}"
+            echo "CI_BINS=${CI_BINS:-true}" >> $GITHUB_ENV
+            CI_FFI=${{ inputs.ci_ffi }}
+            echo "Run FFI - ${CI_FFI}"
+            echo "CI_FFI=${CI_FFI:-true}" >> $GITHUB_ENV
           fi
 
       - name: Install ubuntu dependencies
@@ -120,13 +139,28 @@ jobs:
           npm install
           npm ci
 
-      - name: Run ${{ env.CI_RUN }} integration tests
+      - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
+        if: ${{ env.CI_BINS == 'true' }}
         continue-on-error: true
+        timeout-minutes: 90
         shell: bash
         working-directory: integration_tests
         run: |
-          node_modules/.bin/cucumber-js --profile "${{ env.CI_RUN }}" \
+          node_modules/.bin/cucumber-js --publish-quiet \
+            --profile "${{ env.CI_PROFILE }}" \
             --tags "not @wallet-ffi" --format json:cucumber_output/tests.cucumber \
+            --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
+
+      - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
+        if: ${{ env.CI_FFI == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 90
+        shell: bash
+        working-directory: integration_tests
+        run: |
+          node_modules/.bin/cucumber-js --publish-quiet \
+            --profile "${{ env.CI_PROFILE }}" \
+            --tags "@wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber \
             --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
 
       - name: Generate report
@@ -134,13 +168,18 @@ jobs:
         if: always()
         shell: bash
         working-directory: integration_tests
-        run: node ./generate_report.js
+        run: |
+          node ./generate_report.js
+          # Empty file check
+          if [ -s cucumber_output/tests_ffi.cucumber ] ; then
+            node ./generate_report.js "cucumber_output/tests_ffi.cucumber" "temp/reports/cucumber_ffi_report.html"
+          fi
 
-      - name: Store ${{ env.CI_RUN }} test results
+      - name: Store ${{ env.CI_PROFILE }} test results
         uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: ${{ env.CI_RUN }} test results
+          name: ${{ env.CI_PROFILE }} test results
           path: |
             integration_tests/cucumber_output
             integration_tests/temp/reports
