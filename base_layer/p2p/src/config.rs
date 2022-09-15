@@ -138,7 +138,7 @@ impl Default for P2pConfig {
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
             listener_liveness_allowlist_cidrs: StringList::default(),
-            user_agent: "".to_string(),
+            user_agent: String::new(),
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,

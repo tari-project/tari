@@ -115,7 +115,7 @@ where
         let pipeline = (factory)(sink_service);
         Ok(OutboundPipelineConfig {
             in_receiver,
-            out_receiver,
+            out_receiver: Some(out_receiver),
             pipeline,
         })
     }
@@ -147,7 +147,7 @@ pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     /// Messages read from this stream are passed to the pipeline
     pub in_receiver: mpsc::Receiver<TInItem>,
     /// Receiver of `OutboundMessage`s coming from the pipeline
-    pub out_receiver: mpsc::UnboundedReceiver<OutboundMessage>,
+    pub out_receiver: Option<mpsc::UnboundedReceiver<OutboundMessage>>,
     /// The pipeline (`tower::Service`) to run for each in_stream message
     pub pipeline: TPipeline,
 }
