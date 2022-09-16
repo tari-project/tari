@@ -514,7 +514,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn set_output_to_unmined(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
+    fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -899,6 +899,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     UpdateOutput {
                         status: Some(OutputStatus::Unspent),
                         spent_in_tx_id: Some(None),
+                        // We clear these so that the output will be revalidated the next time a validation is done.
+                        mined_height: Some(None),
                         mined_in_block: Some(None),
                         ..Default::default()
                     },
@@ -1241,6 +1243,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
 
@@ -1254,16 +1257,8 @@ pub struct UpdateOutputSql {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
-}
-
-#[derive(AsChangeset)]
-#[table_name = "outputs"]
-#[changeset_options(treat_none_as_null = "true")]
-/// This struct is used to set the contained field to null
-pub struct NullOutputSql {
-    received_in_tx_id: Option<i64>,
-    spent_in_tx_id: Option<i64>,
 }
 
 /// Map a Rust friendly UpdateOutput to the Sql data type form
@@ -1277,6 +1272,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             metadata_signature_u_key: u.metadata_signature_u_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
+            mined_height: u.mined_height,
             mined_in_block: u.mined_in_block,
         }
     }
