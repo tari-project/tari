@@ -95,6 +95,7 @@ pub async fn send_transaction_reply_direct(
         .send_direct(
             inbound_transaction.source_public_key.clone(),
             OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+            "wallet transaction reply".to_string(),
         )
         .await
     {

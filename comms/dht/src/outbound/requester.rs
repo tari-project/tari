@@ -54,12 +54,14 @@ impl OutboundMessageRequester {
         &mut self,
         dest_public_key: CommsPublicKey,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
             SendMessageParams::new()
+                .with_debug_info(format!("Send direct to {} from {}", &dest_public_key, source_info))
                 .direct_public_key(dest_public_key)
                 .with_discovery(true)
                 .finish(),
@@ -73,13 +75,17 @@ impl OutboundMessageRequester {
         &mut self,
         dest_node_id: NodeId,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendState, DhtOutboundError>
     where
         T: prost::Message,
     {
         let resp = self
             .send_message(
-                SendMessageParams::new().direct_node_id(dest_node_id.clone()).finish(),
+                SendMessageParams::new()
+                    .direct_node_id(dest_node_id.clone())
+                    .with_debug_info(format!("Send direct to {}. Source: {}", dest_node_id, source_info))
+                    .finish(),
                 message,
             )
             .await?;
@@ -132,6 +138,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
@@ -139,6 +146,7 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .broadcast(exclude_peers)
+                .with_debug_info(format!("broadcast requested from {}", source_info))
                 .with_encryption(encryption)
                 .with_destination(destination)
                 .finish(),
@@ -184,12 +192,14 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
             SendMessageParams::new()
+                .with_debug_info(source_info)
                 .flood(exclude_peers)
                 .with_destination(destination)
                 .with_encryption(encryption)

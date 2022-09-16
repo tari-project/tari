@@ -22,7 +22,8 @@
 
 // For some inexplicable reason if we don't include extern crate then we get libtor not defined errors in this crate on
 // matrix builds
+#[cfg(unix)]
 #[allow(unused_extern_crates)]
 extern crate libtor;
-
+#[cfg(unix)]
 pub mod tor;

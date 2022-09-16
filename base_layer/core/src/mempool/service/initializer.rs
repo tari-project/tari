@@ -40,7 +40,7 @@ use tari_service_framework::{
 use tokio::sync::mpsc;
 
 use crate::{
-    base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
+    base_node::comms_interface::LocalNodeCommsInterface,
     mempool::{
         mempool::Mempool,
         service::{
@@ -135,7 +135,6 @@ impl ServiceInitializer for MempoolServiceInitializer {
 
         context.spawn_until_shutdown(move |handles| {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
-            let state_machine = handles.expect_handle::<StateMachineHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let streams = MempoolStreams {
@@ -146,7 +145,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
                 request_receiver,
             };
             debug!(target: LOG_TARGET, "Mempool service started");
-            MempoolService::new(outbound_message_service, inbound_handlers, state_machine).start(streams)
+            MempoolService::new(outbound_message_service, inbound_handlers).start(streams)
         });
 
         Ok(())

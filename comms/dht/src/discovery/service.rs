@@ -325,7 +325,7 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
+            "Sending Discovery message for peer public key '{}' with destination {}", &dest_public_key, destination
         );
 
         self.outbound_requester
@@ -333,6 +333,7 @@ impl DhtDiscoveryService {
                 SendMessageParams::new()
                     .broadcast(Vec::new())
                     .with_destination(destination)
+                    .with_debug_info(format!("discover: {}", &dest_public_key))
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
                     .finish(),
