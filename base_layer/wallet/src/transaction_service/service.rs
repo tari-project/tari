@@ -650,6 +650,7 @@ where
             TransactionServiceRequest::RegisterValidatorNode {
                 validator_node_public_key,
                 validator_node_signature,
+                selection_criteria,
                 fee_per_gram,
                 message,
             } => {
@@ -657,6 +658,7 @@ where
                 self.register_validator_node(
                     validator_node_public_key,
                     validator_node_signature,
+                    selection_criteria,
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
@@ -1472,6 +1474,7 @@ where
         &mut self,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
         join_handles: &mut FuturesUnordered<
@@ -1489,6 +1492,7 @@ where
         self.send_transaction(
             self.node_identity.public_key().clone(),
             MicroTari::from(1),
+            selection_criteria,
             output_features,
             fee_per_gram,
             message,

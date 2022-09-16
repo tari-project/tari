@@ -91,6 +91,7 @@ pub enum TransactionServiceRequest {
     RegisterValidatorNode {
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -164,9 +165,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
             Self::RegisterValidatorNode {
                 validator_node_public_key,
-                validator_node_signature: _,
-                fee_per_gram: _,
                 message,
+                ..
             } => f.write_str(&format!("Registering VN ({}, {})", validator_node_public_key, message)),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
@@ -471,6 +471,7 @@ impl TransactionServiceHandle {
         &mut self,
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
@@ -479,6 +480,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::RegisterValidatorNode {
                 validator_node_public_key,
                 validator_node_signature,
+                selection_criteria,
                 fee_per_gram,
                 message,
             })

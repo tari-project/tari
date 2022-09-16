@@ -954,6 +954,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .register_validator_node(
                 validator_node_public_key,
                 validator_node_signature,
+                UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,
             )

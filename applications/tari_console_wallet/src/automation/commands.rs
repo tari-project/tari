@@ -195,6 +195,7 @@ pub async fn register_validator_node(
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
+    selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -202,6 +203,7 @@ pub async fn register_validator_node(
         .register_validator_node(
             validator_node_public_key,
             validator_node_signature,
+            selection_criteria,
             fee_per_gram,
             message,
         )
@@ -974,6 +976,7 @@ pub async fn command_runner(
                         args.validator_node_public_nonce.into(),
                         RistrettoSecretKey::from_vec(&args.validator_node_signature).unwrap(),
                     ),
+                    UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     args.message,
                 )
