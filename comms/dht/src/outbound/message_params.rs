@@ -105,9 +105,7 @@ impl SendMessageParams {
     }
 
     pub fn with_debug_info(&mut self, debug_info: String) -> &mut Self {
-        if let Some(ref mut params) = self.params {
-            params.debug_info = Some(debug_info);
-        }
+        self.params_mut().debug_info = Some(debug_info);
         self
     }
 
