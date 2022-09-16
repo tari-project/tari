@@ -355,7 +355,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined(last_mined_output.hash)
+                    .set_output_to_unmined_and_invalid(last_mined_output.hash)
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
