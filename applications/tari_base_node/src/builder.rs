@@ -244,8 +244,8 @@ async fn build_node_context(
             app_config.base_node.bypass_range_proof_verification,
             blockchain_db.clone(),
         )),
-        Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
+        Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
     ]);
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),

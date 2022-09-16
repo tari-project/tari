@@ -55,7 +55,7 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
@@ -217,9 +217,9 @@ impl AppState {
 
         let public_key = match CommsPublicKey::from_hex(public_key_or_emoji_id.as_str()) {
             Ok(pk) => pk,
-            Err(_) => {
-                EmojiId::str_to_pubkey(public_key_or_emoji_id.as_str()).map_err(|_| UiError::PublicKeyParseError)?
-            },
+            Err(_) => EmojiId::from_emoji_string(public_key_or_emoji_id.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let contact = Contact::new(alias, public_key, None, None);
@@ -250,7 +250,9 @@ impl AppState {
         let mut inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         inner.wallet.contacts_service.remove_contact(public_key).await?;
@@ -265,6 +267,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -272,7 +275,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -282,6 +287,7 @@ impl AppState {
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -296,6 +302,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -303,7 +310,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -313,6 +322,7 @@ impl AppState {
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -327,6 +337,7 @@ impl AppState {
         &mut self,
         dest_pubkey: String,
         amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -334,7 +345,9 @@ impl AppState {
         let inner = self.inner.write().await;
         let dest_pubkey = match CommsPublicKey::from_hex(dest_pubkey.as_str()) {
             Ok(pk) => pk,
-            Err(_) => EmojiId::str_to_pubkey(dest_pubkey.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+            Err(_) => EmojiId::from_emoji_string(dest_pubkey.as_str())
+                .map_err(|_| UiError::PublicKeyParseError)?
+                .to_public_key(),
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -344,6 +357,7 @@ impl AppState {
         tokio::spawn(send_one_sided_to_stealth_address_transaction(
             dest_pubkey,
             MicroTari::from(amount),
+            selection_criteria,
             output_features,
             message,
             fee_per_gram,
@@ -428,6 +442,7 @@ impl AppState {
                 .completed_txs
                 .iter()
                 .filter(|tx| !matches!(tx.cancelled, Some(TxCancellationReason::AbandonedCoinbase)))
+                .filter(|tx| !matches!(tx.status, TransactionStatus::Coinbase))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -892,15 +907,11 @@ impl AppStateInner {
         // persist the custom node in wallet db
         self.wallet
             .db
-            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())
-            .await?;
-        self.wallet
-            .db
-            .set_client_key_value(
-                CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
-            )
-            .await?;
+            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
+        self.wallet.db.set_client_key_value(
+            CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+        )?;
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
@@ -931,12 +942,10 @@ impl AppStateInner {
         // clear from wallet db
         self.wallet
             .db
-            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-            .await?;
+            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())?;
         self.wallet
             .db
-            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
-            .await?;
+            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())?;
         Ok(())
     }
 
@@ -1086,7 +1095,7 @@ impl AppStateData {
         base_node_selected: Peer,
         base_node_config: PeerConfig,
     ) -> Self {
-        let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
+        let eid = EmojiId::from_public_key(node_identity.public_key()).to_emoji_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();
         let image = code

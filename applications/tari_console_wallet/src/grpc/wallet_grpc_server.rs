@@ -20,13 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fs,
-    path::PathBuf,
-};
+use std::convert::{TryFrom, TryInto};
 
-use clap::Parser;
 use futures::{
     channel::mpsc::{self, Sender},
     future,
@@ -50,7 +45,6 @@ use tari_app_grpc::{
         CreateBurnTransactionResponse,
         CreateTemplateRegistrationRequest,
         CreateTemplateRegistrationResponse,
-        FileDeletedResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -71,7 +65,6 @@ use tari_app_grpc::{
         RegisterValidatorNodeResponse,
         RevalidateRequest,
         RevalidateResponse,
-        SeedWordsResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
@@ -116,7 +109,6 @@ use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
 
 use crate::{
-    cli::Cli,
     grpc::{convert_to_transaction_event, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
 };
@@ -319,6 +311,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .send_sha_atomic_swap_transaction(
                 address.clone(),
                 message.amount.into(),
+                UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 message.message,
             )
@@ -496,6 +489,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -506,6 +500,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -516,6 +511,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_to_stealth_address_transaction(
                                 pk,
                                 amount.into(),
+                                UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
@@ -564,7 +560,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Tari", message.amount);
         let response = match transaction_service
-            .burn_tari(message.amount.into(), message.fee_per_gram.into(), message.message)
+            .burn_tari(
+                message.amount.into(),
+                UtxoSelectionCriteria::default(),
+                message.fee_per_gram.into(),
+                message.message,
+            )
             .await
         {
             Ok(tx_id) => {
@@ -889,41 +890,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }))
             },
         }
-    }
-
-    /// Returns the contents of a seed words file, provided via CLI
-    async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
-        let cli = Cli::parse();
-
-        let filepath: PathBuf = match cli.seed_words_file_name {
-            Some(filepath) => filepath,
-            None => return Err(Status::not_found("file path is empty")),
-        };
-
-        let words = fs::read_to_string(filepath)?
-            .split(' ')
-            .collect::<Vec<&str>>()
-            .iter()
-            .map(|&x| x.into())
-            .collect::<Vec<String>>();
-
-        Ok(Response::new(SeedWordsResponse { words }))
-    }
-
-    /// Deletes the seed words file, provided via CLI
-    async fn delete_seed_words_file(
-        &self,
-        _: Request<tari_rpc::Empty>,
-    ) -> Result<Response<FileDeletedResponse>, Status> {
-        let cli = Cli::parse();
-
-        // WARNING: the filepath used is supplied as an argument
-        fs::remove_file(match cli.seed_words_file_name {
-            Some(filepath) => filepath,
-            None => return Err(Status::not_found("file path is empty")),
-        })?;
-
-        Ok(Response::new(FileDeletedResponse {}))
     }
 
     async fn create_template_registration(

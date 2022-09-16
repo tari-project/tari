@@ -32,7 +32,13 @@ use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{peer_manager::NodeId, traits::OrOptional, types::CommsPublicKey, PeerConnection};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::RpcClientLease,
+    traits::OrOptional,
+    types::CommsPublicKey,
+    PeerConnection,
+};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -47,6 +53,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     storage::database::WalletBackend,
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
@@ -61,10 +68,8 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub struct UtxoScannerTask<TBackend>
-where TBackend: WalletBackend + 'static
-{
-    pub(crate) resources: UtxoScannerResources<TBackend>,
+pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
@@ -73,14 +78,16 @@ where TBackend: WalletBackend + 'static
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
 }
-impl<TBackend> UtxoScannerTask<TBackend>
-where TBackend: WalletBackend + 'static
+impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
+where
+    TBackend: WalletBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
-            self.set_recovery_mode().await?;
+            self.set_recovery_mode()?;
         } else {
-            let in_progress = self.check_recovery_mode().await?;
+            let in_progress = self.check_recovery_mode()?;
             if in_progress {
                 warn!(
                     target: LOG_TARGET,
@@ -98,8 +105,7 @@ where TBackend: WalletBackend + 'static
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
-                            .await?;
+                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)?;
                         return Ok(());
                     },
                     Err(e) => {
@@ -125,9 +131,8 @@ where TBackend: WalletBackend + 'static
                     if self.num_retries >= self.retry_limit {
                         self.publish_event(UtxoScannerEvent::ScanningFailed);
                         return Err(UtxoScannerError::UtxoScanningError(format!(
-                            "Failed to scan UTXO's after {} attempt(s) using all {} sync peer(s). Aborting...",
+                            "Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
                             self.num_retries,
-                            self.peer_seeds.len()
                         )));
                     }
 
@@ -139,7 +144,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
-    async fn finalize(
+    fn finalize(
         &self,
         num_outputs_recovered: u64,
         final_height: u64,
@@ -159,13 +164,12 @@ where TBackend: WalletBackend + 'static
 
         // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
         if self.mode == UtxoScannerMode::Recovery {
-            self.clear_recovery_mode().await?;
+            self.clear_recovery_mode()?;
         }
         Ok(())
     }
 
     async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         debug!(
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
@@ -192,11 +196,19 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroTari, Duration), UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
+        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
 
-        let mut client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
-            .await?;
+        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
+            // Use the wallet connectivity service so that RPC pools are correctly managed
+            self.resources
+                .wallet_connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .ok_or(UtxoScannerError::ConnectivityShutdown)?
+        } else {
+            self.establish_new_rpc_connection(&peer).await?
+        };
 
         let latency = client.get_last_request_latency();
         self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
@@ -243,7 +255,7 @@ where TBackend: WalletBackend + 'static
             } else {
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
-                self.resources.db.clear_scanned_blocks().await?;
+                self.resources.db.clear_scanned_blocks()?;
                 let birthday_height_hash = self.get_birthday_header_height_hash(&mut client).await?;
 
                 ScannedBlock {
@@ -297,6 +309,17 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    async fn establish_new_rpc_connection(
+        &mut self,
+        peer: &NodeId,
+    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
+        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        let client = connection
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
+            .await?;
+        Ok(RpcClientLease::new(client))
+    }
+
     async fn get_chain_tip_header(
         &self,
         client: &mut BaseNodeWalletRpcClient,
@@ -314,7 +337,7 @@ where TBackend: WalletBackend + 'static
         current_tip_height: u64,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
-        let scanned_blocks = self.resources.db.get_scanned_blocks().await?;
+        let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
             "Found {} cached previously scanned blocks",
@@ -376,10 +399,7 @@ where TBackend: WalletBackend + 'static
                 target: LOG_TARGET,
                 "Reorg detected on base node. Removing scanned blocks from height {}", block.height
             );
-            self.resources
-                .db
-                .clear_scanned_blocks_from_and_higher(block.height)
-                .await?;
+            self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
         }
 
         if let Some(sb) = found_scanned_block {
@@ -466,21 +486,17 @@ where TBackend: WalletBackend + 'static
                 .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
                 .await?;
             let block_hash = current_header_hash.try_into()?;
-            self.resources
-                .db
-                .save_scanned_block(ScannedBlock {
-                    header_hash: block_hash,
-                    height: current_height,
-                    num_outputs: Some(count),
-                    amount: Some(amount),
-                    timestamp: Utc::now().naive_utc(),
-                })
-                .await?;
+            self.resources.db.save_scanned_block(ScannedBlock {
+                header_hash: block_hash,
+                height: current_height,
+                num_outputs: Some(count),
+                amount: Some(amount),
+                timestamp: Utc::now().naive_utc(),
+            })?;
 
             self.resources
                 .db
-                .clear_scanned_blocks_before_height(current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE), true)
-                .await?;
+                .clear_scanned_blocks_before_height(current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE), true)?;
 
             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                 debug!(
@@ -525,12 +541,12 @@ where TBackend: WalletBackend + 'static
                 .await?
                 .into_iter()
                 .map(|ro| {
-                    (
-                        ro.output,
-                        self.resources.recovery_message.clone(),
-                        ImportStatus::Imported,
-                        ro.tx_id,
-                    )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::Coinbase
+                    } else {
+                        ImportStatus::Imported
+                    };
+                    (ro.output, self.resources.recovery_message.clone(), status, ro.tx_id)
                 })
                 .collect(),
         );
@@ -563,15 +579,22 @@ where TBackend: WalletBackend + 'static
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
-        // Because we do not know the source public key we are making it the default key of zeroes to make it clear this
-        // value is a placeholder.
-        let source_public_key = CommsPublicKey::default();
+        let default_key = CommsPublicKey::default();
+        let self_key = self.resources.node_identity.public_key().clone();
 
         for (uo, message, import_status, tx_id) in utxos {
+            let source_public_key = if uo.features.is_coinbase() {
+                // its a coinbase, so we know we mined it and it comes from us.
+                &self_key
+            } else {
+                // Because we do not know the source public key we are making it the default key of zeroes to make it
+                // clear this value is a placeholder.
+                &default_key
+            };
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),
-                    &source_public_key,
+                    source_public_key,
                     message,
                     import_status,
                     tx_id,
@@ -600,25 +623,23 @@ where TBackend: WalletBackend + 'static
         Ok((num_recovered, total_amount))
     }
 
-    async fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         self.resources
             .db
-            .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())
-            .await?;
+            .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+    fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
         self.resources
             .db
             .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
-            .await
             .map(|x| x.is_some())
             .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
-    async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
-        let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned()).await?;
+    fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+        let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
 
@@ -646,7 +667,7 @@ where TBackend: WalletBackend + 'static
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
-                import_status,
+                import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
@@ -655,12 +676,13 @@ where TBackend: WalletBackend + 'static
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::FauxUnconfirmed'",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::{}'",
             unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
                 .to_hex(),
+            import_status
         );
 
         Ok(tx_id)
@@ -676,7 +698,7 @@ where TBackend: WalletBackend + 'static
         &self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
-        let birthday = self.resources.db.get_wallet_birthday().await?;
+        let birthday = self.resources.db.get_wallet_birthday()?;
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
         let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;

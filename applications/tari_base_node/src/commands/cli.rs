@@ -23,10 +23,7 @@
 use std::io::stdout;
 
 use chrono::{Datelike, Utc};
-use crossterm::{
-    execute,
-    terminal::{SetSize, SetTitle},
-};
+use crossterm::{execute, terminal::SetTitle};
 use tari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
@@ -106,17 +103,8 @@ fn multiline_find_display_length(lines: &str) -> usize {
     result
 }
 
-/// Try to resize terminal to make sure the width is enough.
-/// In case of error, just simply print out the error.
-#[allow(clippy::cast_possible_truncation)]
-fn resize_terminal_to_fit_the_box(width: usize, height: usize) {
-    if let Err(e) = execute!(stdout(), SetSize(width as u16, height as u16)) {
-        println!("Can't resize terminal to fit the box. Error: {}", e)
-    }
-}
-
 /// Prints a pretty banner on the console as well as the list of available commands
-pub fn print_banner(commands: Vec<String>, chunk_size: usize, resize_terminal: bool) {
+pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     let terminal_title = format!("Tari Base Node - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
@@ -191,13 +179,8 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize, resize_terminal: b
     let rows = box_tabular_data_rows(command_data, row_cell_size, target_line_length, 10);
     // There are 24 fixed rows besides the possible changed "Commands" rows
     // and plus 2 more blank rows for better layout.
-    let height_to_resize = &rows.len() + 24 + 2;
     for row in rows {
         println!("{}", row);
     }
     println!("{}", box_line(target_line_length, false));
-
-    if resize_terminal {
-        resize_terminal_to_fit_the_box(target_line_length, height_to_resize);
-    }
 }

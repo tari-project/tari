@@ -59,7 +59,7 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     key_manager_service::NextKeyResult,
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
     WalletConfig,
@@ -119,10 +119,23 @@ pub async fn send_tari(
         .send_transaction(
             dest_pubkey,
             amount,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
         )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+pub async fn burn_tari(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -132,11 +145,12 @@ pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_pubkey, amount, selection_criteria, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -200,6 +214,7 @@ pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -207,6 +222,7 @@ pub async fn send_one_sided(
         .send_one_sided_transaction(
             dest_pubkey,
             amount,
+            selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
@@ -219,6 +235,7 @@ pub async fn send_one_sided_to_stealth_address(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -226,6 +243,7 @@ pub async fn send_one_sided_to_stealth_address(
         .send_one_sided_to_stealth_address_transaction(
             dest_pubkey,
             amount,
+            selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
@@ -393,10 +411,26 @@ pub async fn make_it_rain(
                             send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
                         },
                         MakeItRainTransactionType::OneSided => {
-                            send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                            send_one_sided(
+                                tx_service,
+                                fee,
+                                amount,
+                                UtxoSelectionCriteria::default(),
+                                pk.clone(),
+                                msg.clone(),
+                            )
+                            .await
                         },
                         MakeItRainTransactionType::StealthOneSided => {
-                            send_one_sided_to_stealth_address(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                            send_one_sided_to_stealth_address(
+                                tx_service,
+                                fee,
+                                amount,
+                                UtxoSelectionCriteria::default(),
+                                pk.clone(),
+                                msg.clone(),
+                            )
+                            .await
                         },
                     };
                     let submit_time = Instant::now();
@@ -585,56 +619,102 @@ pub async fn command_runner(
         match parsed {
             GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
+                    debug!(target: LOG_TARGET, "get-balance concluded");
                     println!("{}", balance);
                 },
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
             DiscoverPeer(args) => {
                 if !online {
-                    wait_for_comms(&connectivity_requester).await?;
-                    online = true;
+                    match wait_for_comms(&connectivity_requester).await {
+                        Ok(..) => {
+                            online = true;
+                        },
+                        Err(e) => {
+                            eprintln!("DiscoverPeer error! {}", e);
+                            continue;
+                        },
+                    }
                 }
-                discover_peer(dht_service.clone(), args.dest_public_key.into()).await?
+                if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
+                    eprintln!("DiscoverPeer error! {}", e);
+                }
+            },
+            BurnTari(args) => {
+                match burn_tari(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.message,
+                )
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "burn tari concluded with tx_id {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("BurnTari error! {}", e),
+                }
             },
             SendTari(args) => {
-                let tx_id = send_tari(
+                match send_tari(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
                     args.destination.into(),
                     args.message,
                 )
-                .await?;
-                debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
-                tx_ids.push(tx_id);
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "send-tari concluded with tx_id {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("SendTari error! {}", e),
+                }
             },
             SendOneSided(args) => {
-                let tx_id = send_one_sided(
+                match send_one_sided(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
-                .await?;
-                debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
-                tx_ids.push(tx_id);
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "send-one-sided concluded with tx_id {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("SendOneSided error! {}", e),
+                }
             },
             SendOneSidedToStealthAddress(args) => {
-                let tx_id = send_one_sided_to_stealth_address(
+                match send_one_sided_to_stealth_address(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
-                .await?;
-                debug!(target: LOG_TARGET, "send-one-sided-to-stealth-address tx_id {}", tx_id);
-                tx_ids.push(tx_id);
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "send-one-sided-to-stealth-address concluded with tx_id {}", tx_id
+                        );
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("SendOneSidedToStealthAddress error! {}", e),
+                }
             },
             MakeItRain(args) => {
                 let transaction_type = args.transaction_type();
-                make_it_rain(
+                if let Err(e) = make_it_rain(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.transactions_per_second,
@@ -646,10 +726,13 @@ pub async fn command_runner(
                     transaction_type,
                     args.message,
                 )
-                .await?;
+                .await
+                {
+                    eprintln!("MakeItRain error! {}", e);
+                }
             },
             CoinSplit(args) => {
-                let tx_id = coin_split(
+                match coin_split(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
@@ -657,161 +740,230 @@ pub async fn command_runner(
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
-                .await?;
-                tx_ids.push(tx_id);
-                println!("Coin split succeeded");
+                .await
+                {
+                    Ok(tx_id) => {
+                        tx_ids.push(tx_id);
+                        debug!(target: LOG_TARGET, "coin-split concluded with tx_id {}", tx_id);
+                        println!("Coin split succeeded");
+                    },
+                    Err(e) => eprintln!("CoinSplit error! {}", e),
+                }
             },
             Whois(args) => {
                 let public_key = args.public_key.into();
-                let emoji_id = EmojiId::from_pubkey(&public_key);
+                let emoji_id = EmojiId::from_public_key(&public_key).to_emoji_string();
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
             },
-            ExportUtxos(args) => {
-                let utxos = output_service.get_unspent_outputs().await?;
-                let count = utxos.len();
-                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-                if let Some(file) = args.output_file {
-                    write_utxos_to_csv_file(utxos, file)?;
-                } else {
-                    for (i, utxo) in utxos.iter().enumerate() {
-                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+            ExportUtxos(args) => match output_service.get_unspent_outputs().await {
+                Ok(utxos) => {
+                    let count = utxos.len();
+                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                    if let Some(file) = args.output_file {
+                        if let Err(e) = write_utxos_to_csv_file(utxos, file) {
+                            eprintln!("ExportUtxos error! {}", e);
+                        }
+                    } else {
+                        for (i, utxo) in utxos.iter().enumerate() {
+                            println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                        }
                     }
-                }
-                println!("Total number of UTXOs: {}", count);
-                println!("Total value of UTXOs: {}", sum);
+                    println!("Total number of UTXOs: {}", count);
+                    println!("Total value of UTXOs: {}", sum);
+                },
+                Err(e) => eprintln!("ExportUtxos error! {}", e),
             },
-            ExportSpentUtxos(args) => {
-                let utxos = output_service.get_spent_outputs().await?;
-                let count = utxos.len();
-                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-                if let Some(file) = args.output_file {
-                    write_utxos_to_csv_file(utxos, file)?;
-                } else {
-                    for (i, utxo) in utxos.iter().enumerate() {
-                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+            ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
+                Ok(utxos) => {
+                    let count = utxos.len();
+                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                    if let Some(file) = args.output_file {
+                        if let Err(e) = write_utxos_to_csv_file(utxos, file) {
+                            eprintln!("ExportSpentUtxos error! {}", e);
+                        }
+                    } else {
+                        for (i, utxo) in utxos.iter().enumerate() {
+                            println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                        }
                     }
-                }
-                println!("Total number of UTXOs: {}", count);
-                println!("Total value of UTXOs: {}", sum);
+                    println!("Total number of UTXOs: {}", count);
+                    println!("Total value of UTXOs: {}", sum);
+                },
+                Err(e) => eprintln!("ExportSpentUtxos error! {}", e),
             },
-            CountUtxos => {
-                let utxos = output_service.get_unspent_outputs().await?;
-                let count = utxos.len();
-                let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
-                let sum: MicroTari = values.iter().sum();
-                println!("Total number of UTXOs: {}", count);
-                println!("Total value of UTXOs : {}", sum);
-                if let Some(min) = values.iter().min() {
-                    println!("Minimum value UTXO   : {}", min);
-                }
-                if count > 0 {
-                    let average = f64::from(sum) / count as f64;
-                    let average = Tari::from(MicroTari(average.round() as u64));
-                    println!("Average value UTXO   : {}", average);
-                }
-                if let Some(max) = values.iter().max() {
-                    println!("Maximum value UTXO   : {}", max);
-                }
+            CountUtxos => match output_service.get_unspent_outputs().await {
+                Ok(utxos) => {
+                    let count = utxos.len();
+                    let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
+                    let sum: MicroTari = values.iter().sum();
+                    println!("Total number of UTXOs: {}", count);
+                    println!("Total value of UTXOs : {}", sum);
+                    if let Some(min) = values.iter().min() {
+                        println!("Minimum value UTXO   : {}", min);
+                    }
+                    if count > 0 {
+                        let average = f64::from(sum) / count as f64;
+                        let average = Tari::from(MicroTari(average.round() as u64));
+                        println!("Average value UTXO   : {}", average);
+                    }
+                    if let Some(max) = values.iter().max() {
+                        println!("Maximum value UTXO   : {}", max);
+                    }
+                },
+                Err(e) => eprintln!("CountUtxos error! {}", e),
             },
             SetBaseNode(args) => {
-                set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await?;
+                if let Err(e) = set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
+                    eprintln!("SetBaseNode error! {}", e);
+                }
             },
             SetCustomBaseNode(args) => {
-                let (public_key, net_address) =
-                    set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await?;
-                wallet
-                    .db
-                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
-                    .await?;
-                wallet
-                    .db
-                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
-                    .await?;
-                println!("Custom base node peer saved in wallet database.");
+                match set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
+                    Ok((public_key, net_address)) => {
+                        if let Err(e) = wallet
+                            .db
+                            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
+                        {
+                            eprintln!("SetCustomBaseNode error! {}", e);
+                        } else if let Err(e) = wallet
+                            .db
+                            .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
+                        {
+                            eprintln!("SetCustomBaseNode error! {}", e);
+                        } else {
+                            println!("Custom base node peer saved in wallet database.");
+                        }
+                    },
+                    Err(e) => eprintln!("SetCustomBaseNode error! {}", e),
+                }
             },
             ClearCustomBaseNode => {
-                wallet
+                match wallet
                     .db
                     .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-                    .await?;
-                wallet
-                    .db
-                    .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
-                    .await?;
-                println!("Custom base node peer cleared from wallet database.");
+                {
+                    Ok(_) => match wallet.db.clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string()) {
+                        Ok(true) => {
+                            println!("Custom base node peer cleared from wallet database.")
+                        },
+                        Ok(false) => {
+                            println!("Warning - custom base node peer not cleared from wallet database.")
+                        },
+                        Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
+                    },
+                    Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
+                }
             },
             InitShaAtomicSwap(args) => {
-                let (tx_id, pre_image, output) = init_sha_atomic_swap(
+                match init_sha_atomic_swap(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
-                .await?;
-                debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
-                let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
-                println!("pre_image hex: {}", pre_image.to_hex());
-                println!("pre_image hash: {}", hash.to_hex());
-                println!("Output hash: {}", output.hash().to_hex());
-                tx_ids.push(tx_id);
+                .await
+                {
+                    Ok((tx_id, pre_image, output)) => {
+                        debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
+                        let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+                        println!("pre_image hex: {}", pre_image.to_hex());
+                        println!("pre_image hash: {}", hash.to_hex());
+                        println!("Output hash: {}", output.hash().to_hex());
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("InitShaAtomicSwap error! {}", e),
+                }
             },
-            FinaliseShaAtomicSwap(args) => {
-                let hash = args.output_hash[0].clone().try_into()?;
-                let tx_id = finalise_sha_atomic_swap(
-                    output_service.clone(),
-                    transaction_service.clone(),
-                    hash,
-                    args.pre_image.into(),
-                    config.fee_per_gram.into(),
-                    args.message,
-                )
-                .await?;
-                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
-                tx_ids.push(tx_id);
+            FinaliseShaAtomicSwap(args) => match args.output_hash[0].clone().try_into() {
+                Ok(hash) => {
+                    match finalise_sha_atomic_swap(
+                        output_service.clone(),
+                        transaction_service.clone(),
+                        hash,
+                        args.pre_image.into(),
+                        config.fee_per_gram.into(),
+                        args.message,
+                    )
+                    .await
+                    {
+                        Ok(tx_id) => {
+                            debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                            tx_ids.push(tx_id);
+                        },
+                        Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+                    }
+                },
+                Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
-            ClaimShaAtomicSwapRefund(args) => {
-                let hash = args.output_hash[0].clone().try_into()?;
-                let tx_id = claim_htlc_refund(
-                    output_service.clone(),
-                    transaction_service.clone(),
-                    hash,
-                    config.fee_per_gram.into(),
-                    args.message,
-                )
-                .await?;
-                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
-                tx_ids.push(tx_id);
+            ClaimShaAtomicSwapRefund(args) => match args.output_hash[0].clone().try_into() {
+                Ok(hash) => {
+                    match claim_htlc_refund(
+                        output_service.clone(),
+                        transaction_service.clone(),
+                        hash,
+                        config.fee_per_gram.into(),
+                        args.message,
+                    )
+                    .await
+                    {
+                        Ok(tx_id) => {
+                            debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                            tx_ids.push(tx_id);
+                        },
+                        Err(e) => eprintln!("ClaimShaAtomicSwapRefund error! {}", e),
+                    }
+                },
+                Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
+
             RevalidateWalletDb => {
-                output_service
+                if let Err(e) = output_service
                     .revalidate_all_outputs()
                     .await
-                    .map_err(CommandError::OutputManagerError)?;
-                transaction_service
+                    .map_err(CommandError::OutputManagerError)
+                {
+                    eprintln!("RevalidateWalletDb error! {}", e);
+                }
+                if let Err(e) = transaction_service
                     .revalidate_all_transactions()
                     .await
-                    .map_err(CommandError::TransactionServiceError)?;
+                    .map_err(CommandError::TransactionServiceError)
+                {
+                    eprintln!("RevalidateWalletDb error! {}", e);
+                }
             },
             HashGrpcPassword(args) => {
-                let (username, password) = config
+                match config
                     .grpc_authentication
                     .username_password()
-                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))?;
-                let hashed_password = create_salted_hashed_password(password.reveal())
-                    .map_err(|e| CommandError::General(e.to_string()))?;
-                if args.short {
-                    println!("{}", *hashed_password);
-                } else {
-                    println!("Your hashed password is:");
-                    println!("{}", *hashed_password);
-                    println!();
-                    println!(
-                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC requests",
-                        username
-                    );
+                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))
+                {
+                    Ok((username, password)) => {
+                        match create_salted_hashed_password(password.reveal())
+                            .map_err(|e| CommandError::General(e.to_string()))
+                        {
+                            Ok(hashed_password) => {
+                                if args.short {
+                                    println!("{}", *hashed_password);
+                                } else {
+                                    println!("Your hashed password is:");
+                                    println!("{}", *hashed_password);
+                                    println!();
+                                    println!(
+                                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC \
+                                         requests",
+                                        username
+                                    );
+                                }
+                            },
+                            Err(e) => eprintln!("HashGrpcPassword error! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("HashGrpcPassword error! {}", e),
                 }
             },
             RegisterValidatorNode(args) => {

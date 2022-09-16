@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Display, time::Instant};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 use futures::future::FusedFuture;
 use log::*;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time};
 use tower::{Service, ServiceExt};
 
 use crate::bounded_executor::BoundedExecutor;
@@ -85,15 +88,17 @@ where
 
             let num_available = self.executor.num_available();
             let max_available = self.executor.max_available();
-            // Only emit this message if there is any concurrent usage
-            if num_available < max_available {
-                debug!(
-                    target: LOG_TARGET,
-                    "Inbound pipeline usage: {}/{}",
-                    max_available - num_available,
-                    max_available
-                );
-            }
+            log!(
+                target: LOG_TARGET,
+                if num_available < max_available {
+                    Level::Debug
+                } else {
+                    Level::Trace
+                },
+                "Inbound pipeline usage: {}/{}",
+                max_available - num_available,
+                max_available
+            );
 
             let id = current_id;
             current_id = (current_id + 1) % u64::MAX;
@@ -103,8 +108,19 @@ where
                 .spawn(async move {
                     let timer = Instant::now();
                     trace!(target: LOG_TARGET, "Start inbound pipeline {}", id);
-                    if let Err(err) = service.oneshot(item).await {
-                        warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
+                    match time::timeout(Duration::from_secs(10), service.oneshot(item)).await {
+                        Ok(Ok(_)) => {},
+                        Ok(Err(err)) => {
+                            warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
+                        },
+                        Err(_) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Inbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                 deadlock or excessive delay in processing this pipeline.",
+                                id
+                            );
+                        },
                     }
                     trace!(
                         target: LOG_TARGET,

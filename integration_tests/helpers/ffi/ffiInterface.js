@@ -34,6 +34,7 @@ class InterfaceFFI {
       const args = [
         "build",
         "--release",
+        "--locked",
         "--package",
         "tari_wallet_ffi",
         "-Z",
@@ -49,13 +50,7 @@ class InterfaceFFI {
         fs.mkdirSync(baseDir, { recursive: true });
         fs.mkdirSync(baseDir + "/log", { recursive: true });
       }
-      const ps = spawn(cmd, args, {
-        cwd: baseDir,
-        env: {
-          ...process.env,
-          CARGO_TARGET_DIR: process.cwd() + "/temp/ffi-target",
-        },
-      });
+      const ps = spawn(cmd, args);
       ps.on("close", (_code) => {
         resolve(ps);
       });

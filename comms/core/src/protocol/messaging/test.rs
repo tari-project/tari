@@ -33,13 +33,7 @@ use tokio::{
     time,
 };
 
-use super::protocol::{
-    MessagingEvent,
-    MessagingEventReceiver,
-    MessagingProtocol,
-    MessagingRequest,
-    MESSAGING_PROTOCOL,
-};
+use super::protocol::{MessagingEvent, MessagingEventReceiver, MessagingProtocol, MESSAGING_PROTOCOL};
 use crate::{
     message::{InboundMessage, MessageTag, MessagingReplyRx, OutboundMessage},
     multiplexing::Substream,
@@ -64,7 +58,7 @@ async fn spawn_messaging_protocol() -> (
     Arc<NodeIdentity>,
     ConnectivityManagerMockState,
     mpsc::Sender<ProtocolNotification<Substream>>,
-    mpsc::Sender<MessagingRequest>,
+    mpsc::UnboundedSender<OutboundMessage>,
     mpsc::Receiver<InboundMessage>,
     MessagingEventReceiver,
     Shutdown,
@@ -78,7 +72,7 @@ async fn spawn_messaging_protocol() -> (
     let peer_manager = PeerManager::new(CommsDatabase::new(), None).map(Arc::new).unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
-    let (request_tx, request_rx) = mpsc::channel(100);
+    let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (inbound_msg_tx, inbound_msg_rx) = mpsc::channel(100);
     let (events_tx, events_rx) = broadcast::channel(100);
 
@@ -173,7 +167,7 @@ async fn send_message_request() {
 
     // Send a message to node
     let out_msg = OutboundMessage::new(peer_node_identity.node_id().clone(), TEST_MSG1.clone());
-    request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+    request_tx.send(out_msg).unwrap();
 
     // Check that node got the message
     let stream = peer_conn_mock2.next_incoming_substream().await.unwrap();
@@ -193,7 +187,7 @@ async fn send_message_dial_failed() {
     let (reply_tx, reply_rx) = oneshot::channel();
     let out_msg = OutboundMessage::with_reply(node_id, TEST_MSG1.clone(), reply_tx.into());
     // Send a message to node 2
-    request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+    request_tx.send(out_msg).unwrap();
 
     let event = event_tx.recv().await.unwrap();
     unpack_enum!(MessagingEvent::OutboundProtocolExited(_node_id) = &*event);
@@ -221,14 +215,14 @@ async fn send_message_substream_bulk_failure() {
     conn_manager_mock.add_active_connection(conn1).await;
 
     async fn send_msg(
-        request_tx: &mut mpsc::Sender<MessagingRequest>,
+        request_tx: &mut mpsc::UnboundedSender<OutboundMessage>,
         node_id: NodeId,
     ) -> (MessageTag, MessagingReplyRx) {
         let (reply_tx, reply_rx) = oneshot::channel();
         let out_msg = OutboundMessage::with_reply(node_id, TEST_MSG1.clone(), reply_tx.into());
         let msg_tag = out_msg.tag;
         // Send a message to node 2
-        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+        request_tx.send(out_msg).unwrap();
         (msg_tag, reply_rx)
     }
 
@@ -300,7 +294,7 @@ async fn many_concurrent_send_message_requests() {
         };
         msg_tags.push(out_msg.tag);
         reply_rxs.push(reply_rx);
-        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+        request_tx.send(out_msg).unwrap();
     }
 
     // Check that the node got the messages
@@ -340,7 +334,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
         };
         msg_tags.push(out_msg.tag);
         reply_rxs.push(reply_rx);
-        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+        request_tx.send(out_msg).unwrap();
     }
 
     let unordered = reply_rxs.into_iter().collect::<FuturesUnordered<_>>();

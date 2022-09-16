@@ -30,16 +30,14 @@ use crate::{
 };
 
 const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
-const DEFAULT_OUTBOUND_BUFFER_SIZE: usize = 50;
 
-type OutboundMessageSinkService = SinkService<mpsc::Sender<OutboundMessage>>;
+type OutboundMessageSinkService = SinkService<mpsc::UnboundedSender<OutboundMessage>>;
 
 /// Message pipeline builder
 #[derive(Default)]
 pub struct Builder<TInSvc, TOutSvc, TOutReq> {
     max_concurrent_inbound_tasks: usize,
     max_concurrent_outbound_tasks: Option<usize>,
-    outbound_buffer_size: usize,
     inbound: Option<TInSvc>,
     outbound_rx: Option<mpsc::Receiver<TOutReq>>,
     outbound_pipeline_factory: Option<Box<dyn FnOnce(OutboundMessageSinkService) -> TOutSvc>>,
@@ -50,7 +48,6 @@ impl Builder<(), (), ()> {
         Self {
             max_concurrent_inbound_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             max_concurrent_outbound_tasks: None,
-            outbound_buffer_size: DEFAULT_OUTBOUND_BUFFER_SIZE,
             inbound: None,
             outbound_rx: None,
             outbound_pipeline_factory: None,
@@ -69,11 +66,6 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
         self
     }
 
-    pub fn outbound_buffer_size(mut self, buf_size: usize) -> Self {
-        self.outbound_buffer_size = buf_size;
-        self
-    }
-
     pub fn with_outbound_pipeline<F, S, R>(self, receiver: mpsc::Receiver<R>, factory: F) -> Builder<TInSvc, S, R>
     where
         // Factory function takes in a SinkService and returns a new composed service
@@ -87,7 +79,6 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
             max_concurrent_inbound_tasks: self.max_concurrent_inbound_tasks,
             max_concurrent_outbound_tasks: self.max_concurrent_outbound_tasks,
             inbound: self.inbound,
-            outbound_buffer_size: self.outbound_buffer_size,
         }
     }
 
@@ -100,7 +91,6 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
             max_concurrent_outbound_tasks: self.max_concurrent_outbound_tasks,
             outbound_rx: self.outbound_rx,
             outbound_pipeline_factory: self.outbound_pipeline_factory,
-            outbound_buffer_size: self.outbound_buffer_size,
         }
     }
 }
@@ -111,7 +101,7 @@ where
     TInSvc: Service<InboundMessage> + Clone + Send + 'static,
 {
     fn build_outbound(&mut self) -> Result<OutboundPipelineConfig<TOutReq, TOutSvc>, PipelineBuilderError> {
-        let (out_sender, out_receiver) = mpsc::channel(self.outbound_buffer_size);
+        let (out_sender, out_receiver) = mpsc::unbounded_channel();
 
         let in_receiver = self
             .outbound_rx
@@ -125,7 +115,7 @@ where
         let pipeline = (factory)(sink_service);
         Ok(OutboundPipelineConfig {
             in_receiver,
-            out_receiver,
+            out_receiver: Some(out_receiver),
             pipeline,
         })
     }
@@ -157,7 +147,7 @@ pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     /// Messages read from this stream are passed to the pipeline
     pub in_receiver: mpsc::Receiver<TInItem>,
     /// Receiver of `OutboundMessage`s coming from the pipeline
-    pub out_receiver: mpsc::Receiver<OutboundMessage>,
+    pub out_receiver: Option<mpsc::UnboundedReceiver<OutboundMessage>>,
     /// The pipeline (`tower::Service`) to run for each in_stream message
     pub pipeline: TPipeline,
 }

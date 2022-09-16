@@ -148,7 +148,7 @@ where T: ContactsBackend + 'static
         pin_mut!(shutdown);
 
         // Add all contacts as monitored peers to the liveness service
-        let result = self.db.get_contacts().await;
+        let result = self.db.get_contacts();
         if let Ok(ref contacts) = result {
             self.add_contacts_to_liveness_service(contacts).await?;
         }
@@ -195,14 +195,14 @@ where T: ContactsBackend + 'static
     ) -> Result<ContactsServiceResponse, ContactsServiceError> {
         match request {
             ContactsServiceRequest::GetContact(pk) => {
-                let result = self.db.get_contact(pk.clone()).await;
+                let result = self.db.get_contact(pk.clone());
                 if let Ok(ref contact) = result {
                     self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
                 };
                 Ok(result.map(ContactsServiceResponse::Contact)?)
             },
             ContactsServiceRequest::UpsertContact(c) => {
-                self.db.upsert_contact(c.clone()).await?;
+                self.db.upsert_contact(c.clone())?;
                 self.liveness.check_add_monitored_peer(c.node_id).await?;
                 info!(
                     target: LOG_TARGET,
@@ -211,7 +211,7 @@ where T: ContactsBackend + 'static
                 Ok(ContactsServiceResponse::ContactSaved)
             },
             ContactsServiceRequest::RemoveContact(pk) => {
-                let result = self.db.remove_contact(pk.clone()).await?;
+                let result = self.db.remove_contact(pk.clone())?;
                 self.liveness
                     .check_remove_monitored_peer(result.node_id.clone())
                     .await?;
@@ -222,7 +222,7 @@ where T: ContactsBackend + 'static
                 Ok(ContactsServiceResponse::ContactRemoved(result))
             },
             ContactsServiceRequest::GetContacts => {
-                let result = self.db.get_contacts().await;
+                let result = self.db.get_contacts();
                 if let Ok(ref contacts) = result {
                     self.add_contacts_to_liveness_service(contacts).await?;
                 }
@@ -254,11 +254,11 @@ where T: ContactsBackend + 'static
         match event {
             // Received a ping, check if it contains ContactsLiveness
             LivenessEvent::ReceivedPing(event) => {
-                self.update_with_ping_pong(event, ContactMessageType::Ping).await?;
+                self.update_with_ping_pong(event, ContactMessageType::Ping)?;
             },
             // Received a pong, check if our neighbour sent it and it contains ContactsLiveness
             LivenessEvent::ReceivedPong(event) => {
-                self.update_with_ping_pong(event, ContactMessageType::Pong).await?;
+                self.update_with_ping_pong(event, ContactMessageType::Pong)?;
             },
             // New ping round has begun
             LivenessEvent::PingRoundBroadcast(num_peers) => {
@@ -277,7 +277,7 @@ where T: ContactsBackend + 'static
                 self.resize_contacts_liveness_data_buffer(*num_peers);
 
                 // Update offline status
-                if let Ok(contacts) = self.db.get_contacts().await {
+                if let Ok(contacts) = self.db.get_contacts() {
                     for contact in contacts {
                         let online_status = self.get_online_status(&contact).await?;
                         if online_status == ContactOnlineStatus::Online {
@@ -308,11 +308,16 @@ where T: ContactsBackend + 'static
         let mut online_status = ContactOnlineStatus::NeverSeen;
         match self.connectivity.get_peer_info(contact.node_id.clone()).await? {
             Some(peer_data) => {
-                if peer_data.banned_until().is_some() {
-                    return Ok(ContactOnlineStatus::Banned(peer_data.banned_reason));
+                if let Some(banned_until) = peer_data.banned_until() {
+                    let msg = format!(
+                        "Until {} ({})",
+                        banned_until.format("%m-%d %H:%M"),
+                        peer_data.banned_reason
+                    );
+                    return Ok(ContactOnlineStatus::Banned(msg));
                 }
             },
-            None => return Ok(online_status),
+            None => {},
         };
         if let Some(time) = contact.last_seen {
             if self.is_online(time) {
@@ -332,7 +337,7 @@ where T: ContactsBackend + 'static
         Utc::now().naive_utc().sub(last_seen) <= ping_window
     }
 
-    async fn update_with_ping_pong(
+    fn update_with_ping_pong(
         &mut self,
         event: &PingPongEvent,
         message_type: ContactMessageType,
@@ -356,15 +361,14 @@ where T: ContactsBackend + 'static
             }
             let this_public_key = self
                 .db
-                .update_contact_last_seen(&event.node_id, last_seen.naive_utc(), latency)
-                .await?;
+                .update_contact_last_seen(&event.node_id, last_seen.naive_utc(), latency)?;
 
             let data = ContactsLivenessData::new(
                 this_public_key,
                 event.node_id.clone(),
                 latency,
                 Some(last_seen.naive_utc()),
-                message_type.clone(),
+                message_type,
                 ContactOnlineStatus::Online,
             );
             self.liveness_data.push(data.clone());

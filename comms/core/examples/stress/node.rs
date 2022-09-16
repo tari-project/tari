@@ -31,7 +31,7 @@ use tari_comms::{
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolNotification, Protocols},
     tor,
-    tor::{HsFlags, TorIdentity},
+    tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
     CommsBuilder,
     CommsNode,
@@ -131,7 +131,6 @@ pub async fn create(
             .unwrap()
     } else {
         let mut hs_builder = tor::HiddenServiceBuilder::new()
-            .with_hs_flags(HsFlags::DETACH)
             .with_port_mapping(port)
             .with_control_server_address(TOR_CONTROL_PORT_ADDR.parse().unwrap());
 

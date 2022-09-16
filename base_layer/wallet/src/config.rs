@@ -45,6 +45,12 @@ use crate::{
 
 pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
+fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
+where D: serde::Deserializer<'de> {
+    let password: Option<String> = Deserialize::deserialize(deserializer)?;
+    Ok(password.map(SafePassword::from))
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
@@ -74,6 +80,7 @@ pub struct WalletConfig {
     /// The main wallet db sqlite database backend connection pool size for concurrent reads
     pub db_connection_pool_size: usize,
     /// The main wallet password
+    #[serde(deserialize_with = "deserialize_safe_password_option")]
     pub password: Option<SafePassword>,
     /// The auto ping interval to use for contacts liveness data
     #[serde(with = "serializers::seconds")]
@@ -129,7 +136,7 @@ impl Default for WalletConfig {
             base_node_service_config: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
-            db_connection_pool_size: 5, // TODO: get actual default
+            db_connection_pool_size: 16, // Note: Do not reduce this default number
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,

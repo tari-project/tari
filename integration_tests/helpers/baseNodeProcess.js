@@ -70,6 +70,7 @@ class BaseNodeProcess {
       await this.runCommand("cargo", [
         "build",
         "--release",
+        "--locked",
         "--bin",
         "tari_base_node",
         "-Z",
@@ -157,7 +158,7 @@ class BaseNodeProcess {
       // Create convenience script - this is NOT used to start the base node in cucumber
       fs.writeFileSync(
         `${this.baseDir}/start_node.sh`,
-        "bash -c \"RUST_BACKTRACE=1 cargo run --release --bin tari_base_node -- -n --watch status -b . --network localnet $(grep -v '^#' .overrides)\"",
+        "bash -c \"RUST_BACKTRACE=1 cargo run --release --locked --bin tari_base_node -- -n --watch status -b . --network localnet $(grep -v '^#' .overrides)\"",
         { mode: 0o777 }
       );
 

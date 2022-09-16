@@ -29,7 +29,12 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcClient, RpcError},
+    PeerConnection,
+};
 use tari_utilities::hex::Hex;
 use tracing;
 
@@ -119,8 +124,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             let mut conn = self.connect_to_sync_peer(node_id.clone()).await?;
+            let config = RpcClient::builder()
+                .with_deadline(self.config.rpc_deadline)
+                .with_deadline_grace_period(Duration::from_secs(5));
             let mut client = conn
-                .connect_rpc_using_builder(rpc::BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
+                .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
                 .await?;
             let latency = client
                 .get_last_request_latency()
@@ -158,6 +166,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     self.ban_peer(node_id, &err).await?;
                     return Err(err.into());
                 },
+                Err(err @ BlockSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     if i == self.sync_peers.len() - 1 {

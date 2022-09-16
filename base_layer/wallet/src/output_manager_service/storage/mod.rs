@@ -22,6 +22,9 @@
 
 pub mod database;
 pub mod models;
+pub mod output_source;
 pub mod output_status;
 pub mod sqlite_db;
+
+pub use output_source::OutputSource;
 pub use output_status::OutputStatus;

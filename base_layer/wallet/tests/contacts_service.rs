@@ -83,7 +83,6 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,

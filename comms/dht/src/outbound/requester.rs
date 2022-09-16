@@ -54,12 +54,14 @@ impl OutboundMessageRequester {
         &mut self,
         dest_public_key: CommsPublicKey,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
             SendMessageParams::new()
+                .with_debug_info(format!("Send direct to {} from {}", &dest_public_key, source_info))
                 .direct_public_key(dest_public_key)
                 .with_discovery(true)
                 .finish(),
@@ -73,13 +75,17 @@ impl OutboundMessageRequester {
         &mut self,
         dest_node_id: NodeId,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendState, DhtOutboundError>
     where
         T: prost::Message,
     {
         let resp = self
             .send_message(
-                SendMessageParams::new().direct_node_id(dest_node_id.clone()).finish(),
+                SendMessageParams::new()
+                    .direct_node_id(dest_node_id.clone())
+                    .with_debug_info(format!("Send direct to {}. Source: {}", dest_node_id, source_info))
+                    .finish(),
                 message,
             )
             .await?;
@@ -132,6 +138,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
@@ -139,6 +146,7 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .broadcast(exclude_peers)
+                .with_debug_info(format!("broadcast requested from {}", source_info))
                 .with_encryption(encryption)
                 .with_destination(destination)
                 .finish(),
@@ -155,7 +163,7 @@ impl OutboundMessageRequester {
     /// Use this strategy to broadcast a message destined for a particular peer.
     pub async fn closest_broadcast<T>(
         &mut self,
-        destination_node_id: NodeId,
+        destination_public_key: CommsPublicKey,
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
@@ -165,9 +173,9 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .closest(destination_node_id.clone(), exclude_peers)
+                .closest(NodeId::from_public_key(&destination_public_key), exclude_peers)
                 .with_encryption(encryption)
-                .with_destination(destination_node_id.into())
+                .with_destination(destination_public_key.into())
                 .finish(),
             message,
         )
@@ -184,12 +192,14 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
             SendMessageParams::new()
+                .with_debug_info(source_info)
                 .flood(exclude_peers)
                 .with_destination(destination)
                 .with_encryption(encryption)
@@ -269,6 +279,22 @@ impl OutboundMessageRequester {
         self.send_raw(params, body).await
     }
 
+    /// Send a message without a domain header part
+    pub async fn send_message_no_header_no_wait<T>(
+        &mut self,
+        params: FinalSendMessageParams,
+        message: T,
+    ) -> Result<(), DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        if cfg!(debug_assertions) {
+            trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
+        }
+        let body = wrap_in_envelope_body!(message).to_encoded_bytes();
+        self.send_raw_no_wait(params, body).await
+    }
+
     /// Send a raw message
     pub async fn send_raw(
         &mut self,
@@ -283,6 +309,19 @@ impl OutboundMessageRequester {
         reply_rx
             .await
             .map_err(|_| DhtOutboundError::RequesterReplyChannelClosed)
+    }
+
+    /// Send a raw message
+    pub async fn send_raw_no_wait(
+        &mut self,
+        params: FinalSendMessageParams,
+        body: Vec<u8>,
+    ) -> Result<(), DhtOutboundError> {
+        let (reply_tx, _) = oneshot::channel();
+        self.sender
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))
+            .await?;
+        Ok(())
     }
 
     #[cfg(test)]

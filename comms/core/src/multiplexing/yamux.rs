@@ -23,7 +23,6 @@
 use std::{future::Future, io, pin::Pin, task::Poll};
 
 use futures::{task::Context, Stream};
-use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,
@@ -91,11 +90,10 @@ impl Yamux {
     where
         TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static,
     {
-        let shutdown = Shutdown::new();
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
-        let incoming = IncomingWorker::new(connection, incoming_tx, shutdown.to_signal());
+        let incoming = IncomingWorker::new(connection, incoming_tx);
         runtime::task::spawn(incoming.run());
-        IncomingSubstreams::new(incoming_rx, counter, shutdown)
+        IncomingSubstreams::new(incoming_rx, counter)
     }
 
     /// Get the yamux control struct
@@ -166,19 +164,13 @@ impl Control {
 pub struct IncomingSubstreams {
     inner: mpsc::Receiver<yamux::Stream>,
     substream_counter: AtomicRefCounter,
-    shutdown: Shutdown,
 }
 
 impl IncomingSubstreams {
-    pub(self) fn new(
-        inner: mpsc::Receiver<yamux::Stream>,
-        substream_counter: AtomicRefCounter,
-        shutdown: Shutdown,
-    ) -> Self {
+    pub(self) fn new(inner: mpsc::Receiver<yamux::Stream>, substream_counter: AtomicRefCounter) -> Self {
         Self {
             inner,
             substream_counter,
-            shutdown,
         }
     }
 
@@ -198,12 +190,6 @@ impl Stream for IncomingSubstreams {
             })),
             None => Poll::Ready(None),
         }
-    }
-}
-
-impl Drop for IncomingSubstreams {
-    fn drop(&mut self) {
-        self.shutdown.trigger();
     }
 }
 
@@ -258,41 +244,23 @@ impl From<yamux::StreamId> for stream_id::Id {
 struct IncomingWorker<TSocket> {
     connection: yamux::Connection<TSocket>,
     sender: mpsc::Sender<yamux::Stream>,
-    shutdown_signal: ShutdownSignal,
 }
 
 impl<TSocket> IncomingWorker<TSocket>
 where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static /*  */
 {
-    pub fn new(
-        connection: yamux::Connection<TSocket>,
-        sender: mpsc::Sender<yamux::Stream>,
-        shutdown_signal: ShutdownSignal,
-    ) -> Self {
-        Self {
-            connection,
-            sender,
-            shutdown_signal,
-        }
+    pub fn new(connection: yamux::Connection<TSocket>, sender: mpsc::Sender<yamux::Stream>) -> Self {
+        Self { connection, sender }
     }
 
     #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self), fields(connection = %self.connection))]
     pub async fn run(mut self) {
         loop {
             tokio::select! {
-                biased;
-
-                _ = self.shutdown_signal.wait() => {
-                    let mut control = self.connection.control();
-                    if let Err(err) = control.close().await {
-                        error!(target: LOG_TARGET, "Failed to close yamux connection: {}", err);
-                    }
-                    debug!(
-                        target: LOG_TARGET,
-                        "{} Yamux connection has closed", self.connection
-                    );
+                _ = self.sender.closed() => {
+                    self.close().await;
                     break
-                }
+                },
 
                 result = self.connection.next_stream() => {
                      match result {
@@ -336,14 +304,51 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
             }
         }
     }
+
+    async fn close(&mut self) {
+        let mut control = self.connection.control();
+        // Sends the close message once polled, while continuing to poll the connection future
+        let close_fut = control.close();
+        tokio::pin!(close_fut);
+        loop {
+            tokio::select! {
+                biased;
+
+                result = &mut close_fut => {
+                    match result {
+                        Ok(_) => break,
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Failed to close yamux connection: {}", err);
+                            break;
+                        }
+                    }
+                },
+
+                result = self.connection.next_stream() => {
+                    match result {
+                        Ok(Some(_)) => continue,
+                        Ok(None) => break,
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        debug!(target: LOG_TARGET, "{} Yamux connection has closed", self.connection);
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{io, time::Duration};
+    use std::{io, sync::Arc, time::Duration};
 
     use tari_test_utils::collect_stream;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        sync::Barrier,
+    };
     use tokio_stream::StreamExt;
 
     use crate::{
@@ -451,6 +456,34 @@ mod test {
             Ok(()) => panic!("Write should have failed"),
             Err(e) => assert_eq!(e.kind(), io::ErrorKind::WriteZero),
         }
+
+        Ok(())
+    }
+
+    #[runtime::test]
+    async fn rude_close_does_not_freeze() -> io::Result<()> {
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let b = barrier.clone();
+
+        task::spawn(async move {
+            // Drop immediately
+            let incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
+                .unwrap()
+                .into_incoming();
+            drop(incoming);
+            b.wait().await;
+        });
+
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+        let mut substream = dialer_control.open_stream().await.unwrap();
+        barrier.wait().await;
+
+        let mut buf = vec![];
+        substream.read_to_end(&mut buf).await.unwrap();
+        assert!(buf.is_empty());
 
         Ok(())
     }

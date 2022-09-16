@@ -327,7 +327,6 @@ impl Dht {
                 self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
                 self.saf_response_signal_sender.clone(),
             ))
@@ -359,6 +358,10 @@ impl Dht {
         S::Future: Send,
     {
         ServiceBuilder::new()
+            .layer(MessageLoggingLayer::new(format!(
+                "Pre Broadcast [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(outbound::BroadcastLayer::new(
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
@@ -599,7 +602,7 @@ mod test {
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
-        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes());
+        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes()).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             encrypted_bytes,
@@ -616,7 +619,10 @@ mod test {
 
         service.call(inbound_message).await.unwrap();
 
-        assert_eq!(oms_mock_state.call_count().await, 1);
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
         let (params, _) = oms_mock_state.pop_call().await.unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header

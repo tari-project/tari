@@ -344,6 +344,7 @@ impl TransactionInput {
                 features,
                 covenant,
                 encrypted_value,
+                sender_offset_public_key,
                 minimum_value_promise,
                 ..
             } => transaction_components::hash_output(
@@ -353,6 +354,7 @@ impl TransactionInput {
                 script,
                 covenant,
                 encrypted_value,
+                sender_offset_public_key,
                 *minimum_value_promise,
             ),
         }
@@ -364,34 +366,13 @@ impl TransactionInput {
 
     /// Implement the canonical hashing function for TransactionInput for use in ordering
     pub fn canonical_hash(&self) -> Result<FixedHash, TransactionError> {
-        match self.spent_output {
-            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
-            SpentOutput::OutputData {
-                ref version,
-                ref features,
-                ref commitment,
-                ref script,
-                ref sender_offset_public_key,
-                ref covenant,
-                ref encrypted_value,
-                ref minimum_value_promise,
-            } => {
-                // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
-                    .chain(version)
-                    .chain(features)
-                    .chain(commitment)
-                    .chain(script)
-                    .chain(sender_offset_public_key)
-                    .chain(&self.script_signature)
-                    .chain(&self.input_data)
-                    .chain(covenant)
-                    .chain(encrypted_value)
-                    .chain(minimum_value_promise);
+        let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
+            .chain(&self.version)
+            .chain(&self.script_signature)
+            .chain(&self.input_data)
+            .chain(&self.output_hash());
 
-                Ok(writer.finalize().into())
-            },
-        }
+        Ok(writer.finalize().into())
     }
 
     pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {

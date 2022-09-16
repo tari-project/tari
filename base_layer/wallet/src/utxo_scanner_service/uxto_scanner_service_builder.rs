@@ -22,14 +22,14 @@
 
 use std::sync::Arc;
 
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey, NodeIdentity};
 use tari_core::transactions::CryptoFactories;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
@@ -108,10 +108,11 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerService<WalletSqliteDatabase> {
+    ) -> UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle> {
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             comms_connectivity: wallet.comms.connectivity(),
+            wallet_connectivity: wallet.wallet_connectivity.clone(),
             current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
@@ -136,11 +137,11 @@ impl UtxoScannerServiceBuilder {
         )
     }
 
-    pub fn build_with_resources<TBackend: WalletBackend + 'static>(
+    pub fn build_with_resources<TBackend: WalletBackend + 'static, TWalletConnectivity: WalletConnectivityInterface>(
         &mut self,
         db: WalletDatabase<TBackend>,
         comms_connectivity: ConnectivityRequester,
-        base_node_watcher: watch::Receiver<Option<Peer>>,
+        wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
         node_identity: Arc<NodeIdentity>,
@@ -150,11 +151,12 @@ impl UtxoScannerServiceBuilder {
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
-    ) -> UtxoScannerService<TBackend> {
+    ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
         let resources = UtxoScannerResources {
             db,
             comms_connectivity,
-            current_base_node_watcher: base_node_watcher,
+            current_base_node_watcher: wallet_connectivity.get_current_base_node_watcher(),
+            wallet_connectivity,
             output_manager_service,
             transaction_service,
             node_identity,

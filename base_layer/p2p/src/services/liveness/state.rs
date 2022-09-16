@@ -173,9 +173,11 @@ impl LivenessState {
 
         let (node_id, _) = self.inflight_pings.get(&nonce)?;
         if node_id == sent_by {
-            self.inflight_pings
-                .remove(&nonce)
-                .map(|(node_id, sent_time)| self.add_latency_sample(node_id, sent_time.elapsed()).calc_average())
+            self.inflight_pings.remove(&nonce).map(|(node_id, sent_time)| {
+                let latency = sent_time.elapsed();
+                self.add_latency_sample(node_id, latency);
+                latency
+            })
         } else {
             warn!(
                 target: LOG_TARGET,

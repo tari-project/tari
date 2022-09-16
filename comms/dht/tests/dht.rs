@@ -201,7 +201,6 @@ async fn setup_comms_dht(
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })
@@ -358,7 +357,7 @@ async fn dht_discover_propagation() {
         .discovery_service_requester()
         .discover_peer(
             node_D.node_identity().public_key().clone(),
-            node_D.node_identity().node_id().clone().into(),
+            node_D.node_identity().public_key().clone().into(),
         )
         .await
         .unwrap();
@@ -409,7 +408,7 @@ async fn dht_store_forward() {
         .with_encryption(OutboundEncryption::encrypt_for(
             node_C_node_identity.public_key().clone(),
         ))
-        .with_destination(node_C_node_identity.node_id().clone().into())
+        .with_destination(node_C_node_identity.public_key().clone().into())
         .finish();
 
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
@@ -573,7 +572,7 @@ async fn dht_propagate_dedup() {
         .dht
         .outbound_requester()
         .propagate(
-            node_D.node_identity().node_id().clone().into(),
+            node_D.node_identity().public_key().clone().into(),
             OutboundEncryption::encrypt_for(node_D.node_identity().public_key().clone()),
             vec![],
             out_msg,
@@ -962,7 +961,7 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
         .send_message_no_header(
             SendMessageParams::new()
                 .direct_node_id(node_B.node_identity().node_id().clone())
-                .with_destination(node_A.node_identity().node_id().clone().into())
+                .with_destination(node_A.node_identity().public_key().clone().into())
                 .with_encryption(OutboundEncryption::ClearText)
                 .force_origin()
                 .finish(),
@@ -985,7 +984,7 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
         .outbound_requester()
         .send_raw(
             SendMessageParams::new()
-                .propagate(node_B.node_identity().node_id().clone().into(), vec![msg
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
                     .source_peer
                     .node_id
                     .clone()])
@@ -1068,7 +1067,7 @@ async fn dht_header_not_malleable() {
         .send_message_no_header(
             SendMessageParams::new()
                 .direct_node_id(node_B.node_identity().node_id().clone())
-                .with_destination(node_A.node_identity().node_id().clone().into())
+                .with_destination(node_A.node_identity().public_key().clone().into())
                 .with_encryption(OutboundEncryption::ClearText)
                 .force_origin()
                 .finish(),
@@ -1091,7 +1090,7 @@ async fn dht_header_not_malleable() {
         .outbound_requester()
         .send_raw(
             SendMessageParams::new()
-                .propagate(node_B.node_identity().node_id().clone().into(), vec![msg
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
                     .source_peer
                     .node_id
                     .clone()])

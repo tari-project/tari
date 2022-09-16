@@ -3,22 +3,22 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.37.0"
+version = "0.38.3"
 edition = "2018"
 
 [dependencies]
-tari_core = { version = "^0.37", path = "../../base_layer/core", default-features = false, features = ["tari_mmr", "transactions"]}
+tari_core = { version = "^0.38", path = "../../base_layer/core", default-features = false, features = ["tari_mmr", "transactions"]}
 tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
-tari_comms = { version = "^0.37", path = "../../comms/core", features = ["c_integration"]}
-tari_comms_dht = { version = "^0.37", path = "../../comms/dht", default-features = false }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.4" }
-tari_key_manager = { version = "^0.37", path = "../key_manager" }
-tari_p2p = { version = "^0.37", path = "../p2p" }
+tari_comms = { version = "^0.38", path = "../../comms/core", features = ["c_integration"]}
+tari_comms_dht = { version = "^0.38", path = "../../comms/dht", default-features = false }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
+tari_key_manager = { version = "^0.38", path = "../key_manager" }
+tari_p2p = { version = "^0.38", path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_shutdown = { version = "^0.37", path = "../../infrastructure/shutdown" }
+tari_shutdown = { version = "^0.38", path = "../../infrastructure/shutdown" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
-tari_wallet = { version = "^0.37", path = "../wallet", features = ["c_integration"]}
+tari_wallet = { version = "^0.38", path = "../wallet", features = ["c_integration"]}
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 futures =  { version = "^0.3.1", features =["compat", "std"]}
@@ -29,8 +29,7 @@ log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "y
 openssl = { version = "0.10.41", features = ["vendored"] }
 rand = "0.8"
 thiserror = "1.0.26"
-tokio = "1.11"
-env_logger = "0.7.0"
+tokio = "1.20"
 num-traits = "0.2.15"
 itertools = "0.10.3"
 
@@ -50,9 +49,9 @@ crate-type = ["staticlib","cdylib"]
 [dev-dependencies]
 tempfile = "3.1.0"
 lazy_static = "1.3.0"
-tari_key_manager = { version = "^0.37", path = "../key_manager" }
-tari_common_types = { version = "^0.37", path = "../../base_layer/common_types"}
-tari_test_utils = { version = "^0.37", path = "../../infrastructure/test_utils"}
+tari_key_manager = { version = "^0.38", path = "../key_manager" }
+tari_common_types = { version = "^0.38", path = "../../base_layer/common_types"}
+tari_test_utils = { version = "^0.38", path = "../../infrastructure/test_utils"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 
 [build-dependencies]

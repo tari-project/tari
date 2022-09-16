@@ -43,7 +43,8 @@
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
     "target_cpu": "x86-64",
-    "features": "safe"
+    "features": "safe",
+    "flags": "--workspace --exclude tari_libtor"
   },
   {
     "name": "windows-arm64",

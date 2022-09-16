@@ -32,7 +32,11 @@ use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, RangeProofService};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcClient, RpcError},
+};
 use tari_crypto::{commitment::HomomorphicCommitment, tari_utilities::hex::Hex};
 use tokio::task;
 
@@ -178,7 +182,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn sync(&mut self, header: &BlockHeader) -> Result<(), HorizonSyncError> {
         for (i, sync_peer) in self.sync_peers.iter().enumerate() {
             let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
-            let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
+            let config = RpcClient::builder()
+                .with_deadline(self.config.rpc_deadline)
+                .with_deadline_grace_period(Duration::from_secs(3));
+            let mut client = connection.connect_rpc_using_builder(config).await?;
 
             match self.begin_sync(sync_peer.clone(), &mut client, header).await {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
@@ -188,6 +195,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         return Err(err);
                     },
                 },
+                Err(err @ HorizonSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ HorizonSyncError::MaxLatencyExceeded { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     if i == self.sync_peers.len() - 1 {

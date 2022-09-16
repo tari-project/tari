@@ -163,16 +163,16 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
         for kernel in tx.body.kernels() {
             if let Some((db_kernel, header_hash)) = self.db.fetch_kernel_by_excess_sig(kernel.excess_sig.to_owned())? {
                 let msg = format!(
-                    "Block contains kernel excess: {} which matches already existing excess signature in chain \
-                     database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: {}",
+                    "Aggregate body contains kernel excess: {} which matches already existing excess signature in \
+                     chain database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess \
+                     signature: {}",
                     kernel.excess.to_hex(),
                     header_hash.to_hex(),
                     db_kernel.excess.to_hex(),
                     db_kernel.excess_sig.get_public_nonce().to_hex(),
                     db_kernel.excess_sig.get_signature().to_hex(),
                 );
-                warn!(target: LOG_TARGET, "{}", msg);
-                return Err(ValidationError::ConsensusError(msg));
+                return Err(ValidationError::DuplicateKernelError(msg));
             };
         }
         Ok(())

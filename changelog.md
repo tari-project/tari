@@ -2,6 +2,90 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.3](https://github.com/tari-project/tari/compare/v0.38.2...v0.38.3) (2022-09-13)
+
+
+### Bug Fixes
+
+* **ci:** libtor build on Ubuntu ([#4644](https://github.com/tari-project/tari/issues/4644)) ([6f69276](https://github.com/tari-project/tari/commit/6f692766d5cca5e9b393b2a06662c85fc7ca5aff))
+* **comms/messaging:** fix possible deadlock in outbound pipeline ([#4657](https://github.com/tari-project/tari/issues/4657)) ([3fcc6a0](https://github.com/tari-project/tari/commit/3fcc6a00c663dfab6ea7a196f56d689eda5990d2))
+* **core/sync:** handle deadline timeouts by changing peer ([#4649](https://github.com/tari-project/tari/issues/4649)) ([5ed997c](https://github.com/tari-project/tari/commit/5ed997cdf4ac29daa28f5e2654ace99a65ef0144))
+* fee estimate ([#4656](https://github.com/tari-project/tari/issues/4656)) ([d9de2e0](https://github.com/tari-project/tari/commit/d9de2e01c745afb7c876454510191982f1e9af68))
+* replace Luhn checksum with DammSum ([#4639](https://github.com/tari-project/tari/issues/4639)) ([c01471a](https://github.com/tari-project/tari/commit/c01471a663eae409d77ba703e40ecd2bb31df173))
+
+### [0.38.2](https://github.com/tari-project/tari/compare/v0.38.1...v0.38.2) (2022-09-08)
+
+
+### Bug Fixes
+
+* **comms/rpc:** detect early close in all cases ([#4647](https://github.com/tari-project/tari/issues/4647)) ([0125051](https://github.com/tari-project/tari/commit/0125051fe6d80dbf5fe65e91a2e47e9c89a09e5b))
+* exclude libtor from windows build ([#4631](https://github.com/tari-project/tari/issues/4631)) ([dffea23](https://github.com/tari-project/tari/commit/dffea2387b7f941eb798548b7eca819738f3e95e))
+
+### [0.38.1](https://github.com/tari-project/tari/compare/v0.38.0...v0.38.1) (2022-09-07)
+
+
+### Features
+
+* allow user to select specific UTXOs when sending transactions [#4514](https://github.com/tari-project/tari/issues/4514) ([#4523](https://github.com/tari-project/tari/issues/4523)) ([4b40e61](https://github.com/tari-project/tari/commit/4b40e61154e5aa7ee32914ca48540f4f583c1d91))
+* attempt to recognize the source of a recovered output ([#4580](https://github.com/tari-project/tari/issues/4580)) ([095196b](https://github.com/tari-project/tari/commit/095196bb684546eba00a9fd2e35c02ddda172437))
+* **ci:** merge non-critical & long-running CI into one workflow ([#4614](https://github.com/tari-project/tari/issues/4614)) ([a81228c](https://github.com/tari-project/tari/commit/a81228c4a363035b68c09b49a4435b6fa982f3b7))
+* **comms:** update yamux and snow dependencies ([#4600](https://github.com/tari-project/tari/issues/4600)) ([541877a](https://github.com/tari-project/tari/commit/541877a78b85bff9bc540b6e6d465b9bbf41ef7d))
+* console and FFI should have setting to not choose outputs that reveal the address [#4403](https://github.com/tari-project/tari/issues/4403) ([#4516](https://github.com/tari-project/tari/issues/4516)) ([17bb64e](https://github.com/tari-project/tari/commit/17bb64e4174549c846aa6f39ad0235cfd4d013f1))
+* hide Coinbases that are in the process of being mined ([#4602](https://github.com/tari-project/tari/issues/4602)) ([c6c47fc](https://github.com/tari-project/tari/commit/c6c47fcdc8a12078e2e1210964bdd3977b8a57ca))
+* let sql in wal mode provide async db, not app level spawn blocking (transaction service) ([#4597](https://github.com/tari-project/tari/issues/4597)) ([e17c1f9](https://github.com/tari-project/tari/commit/e17c1f9696e3f4aaca73d1f711735bbdc5ffa0ec))
+* make sure duplication check happens first in mempool ([#4627](https://github.com/tari-project/tari/issues/4627)) ([23e4894](https://github.com/tari-project/tari/commit/23e4894ddc21f8099a102b22bfb540c6c9dcd13d))
+* remove spawn blocking calls from wallet db (wallet storage)([#4591](https://github.com/tari-project/tari/issues/4591)) ([77bb10d](https://github.com/tari-project/tari/commit/77bb10d42e8c004406d0ddd69b65575f0e111cd1))
+
+
+### Bug Fixes
+
+* add Grpc authentication to merge mining proxy (see issue [#4587](https://github.com/tari-project/tari/issues/4587)) ([#4592](https://github.com/tari-project/tari/issues/4592)) ([004c219](https://github.com/tari-project/tari/commit/004c219643ae42c0c1afcdb835542e53b581bfa3))
+* change wallet log target from error to trace (see issue [#4586](https://github.com/tari-project/tari/issues/4586)) ([183fa6e](https://github.com/tari-project/tari/commit/183fa6e22eabb43037605c03236cdc81ce0a7dae))
+* cleanup logs ([#4590](https://github.com/tari-project/tari/issues/4590)) ([66c8032](https://github.com/tari-project/tari/commit/66c80327db77a26f8370bc7bd972b8d5abcaf619))
+* **comms:** only reap when number of connections exceeds threshold ([#4607](https://github.com/tari-project/tari/issues/4607)) ([415f339](https://github.com/tari-project/tari/commit/415f33989ad55a55a04ca4afc3f4c115a9e930c1))
+* **console_wallet:** use cli.non_interactive instead of propmt to show seed words ([#4612](https://github.com/tari-project/tari/issues/4612)) ([8ad67ab](https://github.com/tari-project/tari/commit/8ad67ab5e8626157e475b2d57d4c68ad43df5108))
+* **dht:** updates to message padding ([#4594](https://github.com/tari-project/tari/issues/4594)) ([cf4f9bf](https://github.com/tari-project/tari/commit/cf4f9bf1b555755d8be6fd7a3bd401f6bc154fdd))
+* ffi wallet file for unknown type name ([#4589](https://github.com/tari-project/tari/issues/4589)) ([5cbf9aa](https://github.com/tari-project/tari/commit/5cbf9aa95a9b03e9e9a95c9b823dd12e43aa30f1))
+* **outbound:** reduce messaging protocol error to debug ([#4578](https://github.com/tari-project/tari/issues/4578)) ([99cef05](https://github.com/tari-project/tari/commit/99cef051a341e506420c2a70517122ff68c60dba))
+* reduces RPC error log to debug when domain-level RPC service returns an error (fixes [#4579](https://github.com/tari-project/tari/issues/4579)) ([#4611](https://github.com/tari-project/tari/issues/4611)) ([86c030d](https://github.com/tari-project/tari/commit/86c030d7b3adbdf8b65394f6d3dc4ace61ba8c35))
+* remove unused dependencies ([#4624](https://github.com/tari-project/tari/issues/4624)) ([058f492](https://github.com/tari-project/tari/commit/058f492e7f61fec68583c3b0d08ffd4de470f27a))
+* remove window resize ([#4593](https://github.com/tari-project/tari/issues/4593)) ([896eff9](https://github.com/tari-project/tari/commit/896eff9b8df5b865fa511e3964231c983547e3a0))
+* stop race condition in output encumbrance  ([#4613](https://github.com/tari-project/tari/issues/4613)) ([31e130a](https://github.com/tari-project/tari/commit/31e130a821cdba0daaa75da051c8c19237efbff0))
+* update cargo versions ([#4622](https://github.com/tari-project/tari/issues/4622)) ([07c1a29](https://github.com/tari-project/tari/commit/07c1a2949e07918a56fd00ba77698037e4212009))
+* use dht inbound error for decryption (Fixes [#4596](https://github.com/tari-project/tari/issues/4596))  ([#4601](https://github.com/tari-project/tari/issues/4601)) ([d9ef267](https://github.com/tari-project/tari/commit/d9ef2670df1a2e7c68e3751e0583f77eaf8bdf7c))
+* **wallet:** detect base node change during long-running protocols ([#4610](https://github.com/tari-project/tari/issues/4610)) ([2a2a8b6](https://github.com/tari-project/tari/commit/2a2a8b68ee2ff8bf2b4335288fd5fbff0d11ea92))
+* **wallet:** use RPC pool connections for non-recovery utxo scanning ([#4598](https://github.com/tari-project/tari/issues/4598)) ([7c9e22c](https://github.com/tari-project/tari/commit/7c9e22cb32ea9d8253dc11b45759a488c7ba1659))
+
+## [0.38.0](https://github.com/tari-project/tari/compare/v0.37.0...v0.38.0) (2022-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace AES-GCM with XChaCha20-Poly1305 (#4550)
+
+### Features
+
+* **build:** multiple targeted build types with options for docker builds ([#4540](https://github.com/tari-project/tari/issues/4540)) ([7e7d053](https://github.com/tari-project/tari/commit/7e7d05351e157b8ca6d4d5b5e1e258a6281d6375))
+* **comms/rpc:** restrict rpc session per peer [#4497](https://github.com/tari-project/tari/issues/4497) ([#4549](https://github.com/tari-project/tari/issues/4549)) ([080bccf](https://github.com/tari-project/tari/commit/080bccf1a037f5574962704947d29d8f1218d42a))
+* **console-wallet:** detect local base node and prompt ([#4557](https://github.com/tari-project/tari/issues/4557)) ([887df88](https://github.com/tari-project/tari/commit/887df88d57fb4566b8383a3e33ad5caee4df762c))
+* remove spawn blocking calls from wallet db (contacts service) ([#4575](https://github.com/tari-project/tari/issues/4575)) ([7464581](https://github.com/tari-project/tari/commit/74645813ab836b19d9d722aaa189a2d190eb5c6e))
+* remove spawn blocking calls from wallet db (key manager service) ([#4564](https://github.com/tari-project/tari/issues/4564)) ([a5d5133](https://github.com/tari-project/tari/commit/a5d5133943bb11e8509a51aeb7f3d40b67bc065b))
+* update tor seed nodes for esmeralda network ([#4572](https://github.com/tari-project/tari/issues/4572)) ([c4cfc12](https://github.com/tari-project/tari/commit/c4cfc128f786be3806f51d699d89465756f97e7b))
+* upgrade to tokio 1.20.1 ([#4566](https://github.com/tari-project/tari/issues/4566)) ([777936a](https://github.com/tari-project/tari/commit/777936a0c2783635f77549d3f23520912b87b7bf))
+
+
+### Bug Fixes
+
+* **cucumber:** handles listHeaders response correctly ([#4551](https://github.com/tari-project/tari/issues/4551)) ([3958dde](https://github.com/tari-project/tari/commit/3958dde8114e4301c33a90073c1a2e3c973e0e5d))
+* deserializer for SafePassword ([#4565](https://github.com/tari-project/tari/issues/4565)) ([ee89960](https://github.com/tari-project/tari/commit/ee899606e0b9c9877c89fa35add3dc2fe54be30f))
+* ignored consensus tests (see issue [#4559](https://github.com/tari-project/tari/issues/4559)) ([#4571](https://github.com/tari-project/tari/issues/4571)) ([397fe67](https://github.com/tari-project/tari/commit/397fe673b3b47d57422db71523d8012381980e6c))
+* potential problem with not updating the OMS database ([#4563](https://github.com/tari-project/tari/issues/4563)) ([c867279](https://github.com/tari-project/tari/commit/c86727969ef3fffc124ab706d44c8845addbf415))
+* remove assets and tokens tabs from tari console wallet (see issue [#4543](https://github.com/tari-project/tari/issues/4543)) ([#4556](https://github.com/tari-project/tari/issues/4556)) ([11af787](https://github.com/tari-project/tari/commit/11af7875acfca85d82394d82852729952d638d98))
+* removed `seed_words` and `delete_seed_words` commands ([#4567](https://github.com/tari-project/tari/issues/4567)) ([0b2a155](https://github.com/tari-project/tari/commit/0b2a15585e88240c027175a24dd9757cca4218ac))
+* replace AES-GCM with XChaCha20-Poly1305 ([#4550](https://github.com/tari-project/tari/issues/4550)) ([85acc2f](https://github.com/tari-project/tari/commit/85acc2f1a06afa4e7b184e4577c2b081691783da))
+* resolve tests in output_manager_service_tests.rs (see issue [#4561](https://github.com/tari-project/tari/issues/4561)) ([#4577](https://github.com/tari-project/tari/issues/4577)) ([c69245b](https://github.com/tari-project/tari/commit/c69245bbf5e9f212c07bc1736cedd9351f4d6eef))
+* update rest of the crates to tokio 1.20 ([#4576](https://github.com/tari-project/tari/issues/4576)) ([ad24bf7](https://github.com/tari-project/tari/commit/ad24bf71714ffc091c9fce7c1fc224235e3666a9))
+
 ## [0.37.0](https://github.com/tari-project/tari/compare/v0.36.0...v0.37.0) (2022-08-25)
 
 

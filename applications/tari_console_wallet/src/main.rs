@@ -47,6 +47,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
+use tari_utilities::SafePassword;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
@@ -92,8 +93,7 @@ fn main() {
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
-    let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli)?;
+    let cfg = load_configuration(cli.common.config_path().as_path(), true, &cli)?;
     initialize_logging(
         &cli.common.log_config_path("wallet"),
         include_str!("../log4rs_sample.yml"),
@@ -118,11 +118,7 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
-    let password = cli
-        .password
-        .as_ref()
-        .or(config.wallet.password.as_ref())
-        .map(|s| s.to_owned());
+    let password = get_password(&config, &cli);
 
     if password.is_none() {
         tari_splash_screen("Console Wallet");
@@ -141,7 +137,12 @@ fn main_inner() -> Result<(), ExitError> {
 
     if cli.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&config, password, shutdown_signal));
+        return runtime.block_on(change_password(
+            &config,
+            password,
+            shutdown_signal,
+            cli.non_interactive_mode,
+        ));
     }
 
     // Run our own Tor instance, if configured
@@ -164,10 +165,11 @@ fn main_inner() -> Result<(), ExitError> {
         seed_words_file_name,
         recovery_seed,
         shutdown_signal,
+        cli.non_interactive_mode,
     ))?;
 
     // Check if there is an in progress recovery in the wallet's database
-    if runtime.block_on(wallet.is_recovery_in_progress())? {
+    if wallet.is_recovery_in_progress()? {
         println!("A Wallet Recovery was found to be in progress, continuing.");
         boot_mode = WalletBoot::Recovery;
     }
@@ -217,6 +219,13 @@ fn main_inner() -> Result<(), ExitError> {
     println!("Done.");
 
     result
+}
+
+fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
+    cli.password
+        .as_ref()
+        .or(config.wallet.password.as_ref())
+        .map(|s| s.to_owned())
 }
 
 fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {

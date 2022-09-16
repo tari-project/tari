@@ -48,6 +48,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
+    output_manager_service::UtxoSelectionCriteria,
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -76,12 +77,14 @@ pub enum TransactionServiceRequest {
     SendTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
     BurnTari {
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -94,6 +97,7 @@ pub enum TransactionServiceRequest {
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
@@ -101,11 +105,12 @@ pub enum TransactionServiceRequest {
     SendOneSidedToStealthAddressTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
-    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
@@ -185,7 +190,7 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
-            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+            Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
@@ -440,6 +445,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -449,6 +455,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -486,6 +493,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -495,6 +503,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -510,6 +519,7 @@ impl TransactionServiceHandle {
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
@@ -517,6 +527,7 @@ impl TransactionServiceHandle {
             .handle
             .call(TransactionServiceRequest::BurnTari {
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 message,
             })
@@ -531,6 +542,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
@@ -540,6 +552,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
@@ -844,6 +857,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
@@ -852,6 +866,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 dest_pubkey,
                 amount,
+                selection_criteria,
                 fee_per_gram,
                 message,
             ))

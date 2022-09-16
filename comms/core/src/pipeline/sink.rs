@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::task::Poll;
+use std::{future, task::Poll};
 
 use futures::{future::BoxFuture, task::Context, FutureExt};
 use tower::Service;
@@ -57,5 +57,24 @@ where T: Send + 'static
                 .map_err(|_| anyhow::anyhow!("sink closed in sink service"))
         }
         .boxed()
+    }
+}
+impl<T> Service<T> for SinkService<tokio::sync::mpsc::UnboundedSender<T>>
+where T: Send + 'static
+{
+    type Error = PipelineError;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = ();
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, item: T) -> Self::Future {
+        let sink = self.0.clone();
+        let result = sink
+            .send(item)
+            .map_err(|_| anyhow::anyhow!("sink closed in sink service"));
+        future::ready(result)
     }
 }

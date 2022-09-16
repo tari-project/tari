@@ -75,9 +75,6 @@ identity_file = "config/base_node_id_esmeralda.json"
 # Liveness meta data auto ping interval between peers (default = 30 s)
 #metadata_auto_ping_interval = 30
 
-# Resize the CLI terminal on startup to a pre-defined size, or keep user settings (default = true)
-#resize_terminal_on_startup = true
-
 # Obscure GRPC error responses (default = false)
 #report_grpc_error = false
 
@@ -160,13 +157,10 @@ track_reorgs = true
 #peer_database_name = "peers"
 
 # The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-#max_concurrent_inbound_tasks = 50
+#max_concurrent_inbound_tasks = 4
 
 # The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
-#max_concurrent_outbound_tasks = 100
-
-# The size of the buffer (channel) which holds pending outbound message requests
-#outbound_buffer_size = 100
+#max_concurrent_outbound_tasks = 4
 
 # Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
 # addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
