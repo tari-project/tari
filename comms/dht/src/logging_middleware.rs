@@ -91,7 +91,7 @@ where
     }
 
     fn call(&mut self, msg: R) -> Self::Future {
-        info!(target: LOG_TARGET, "{}{:?}", self.prefix_msg, msg);
+        debug!(target: LOG_TARGET, "{}{:?}", self.prefix_msg, msg);
         self.inner.call(msg)
     }
 }
