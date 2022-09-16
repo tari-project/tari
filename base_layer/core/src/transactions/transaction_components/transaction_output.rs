@@ -217,13 +217,14 @@ impl TransactionOutput {
     }
 
     pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
-        if let Some(public_key) = &self.features.validator_node_public_key {
-            let signature = self
-                .features
-                .validator_node_signature
-                .clone()
-                .ok_or(TransactionError::MissingValidatorNodeSignature)?;
-            if !signature.verify_challenge(public_key, &[0]) {
+        if let Some(validator_node_reg) = self
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.validator_node_registration())
+        {
+            // TODO: figure out what the validator node should sign
+            if !validator_node_reg.is_valid_signature_for(b"") {
                 return Err(TransactionError::InvalidSignatureError(
                     "Validator node signature is not valid!".to_string(),
                 ));

@@ -96,13 +96,7 @@ use crate::{
     consensus::{ConsensusManager, DomainSeparatedConsensusHasher},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{
-            SpentOutput,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
+        transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         TransactionHashDomain,
     },
     MutablePrunedOutputMmr,
@@ -1268,16 +1262,18 @@ impl LMDBDatabase {
                     None => return Err(ChainStorageError::UnspendableInput),
                 },
             };
-            if let SpentOutput::OutputData {
-                version: _, features, ..
-            } = &input.spent_output
+
+            let features = input.features()?;
+            if let Some(vn_reg) = features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
             {
-                if let Some(validator_node_public_key) = &features.validator_node_public_key {
-                    let read_txn = self.read_transaction()?;
-                    let shard_key = self.get_vn_mapping(&read_txn, validator_node_public_key)?;
-                    self.delete_validator_node(txn, validator_node_public_key, &shard_key)?;
-                }
+                let read_txn = self.read_transaction()?;
+                let shard_key = self.get_vn_mapping(&read_txn, &vn_reg.public_key)?;
+                self.delete_validator_node(txn, &vn_reg.public_key, &shard_key)?;
             }
+
             if !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "Could not delete index {} from the output MMR",
@@ -1296,9 +1292,16 @@ impl LMDBDatabase {
                     mmr_count
                 ))
             })?;
-            if let Some(validator_node_public_key) = &output.features.validator_node_public_key {
+
+            if let Some(vn_reg) = output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+            {
                 let shard_key = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
-                    .chain(&validator_node_public_key.as_bytes())
+                    // <pk, sig>
+                    .chain(vn_reg)
                     .chain(&block_hash)
                     .finalize();
 
@@ -1310,7 +1313,7 @@ impl LMDBDatabase {
                         self.consensus_manager
                             .consensus_constants(header.height)
                             .get_validator_node_timeout(),
-                    public_key: validator_node_public_key.clone(),
+                    public_key: vn_reg.public_key.clone(),
                 };
                 self.insert_validator_node(txn, &validator_node)?;
             }
@@ -1563,7 +1566,7 @@ impl LMDBDatabase {
         lmdb_insert(
             txn,
             &self.validator_nodes,
-            &validator_node.public_key.to_vec(),
+            validator_node.public_key.as_bytes(),
             validator_node,
             "validator_nodes",
         )?;
@@ -1571,13 +1574,19 @@ impl LMDBDatabase {
             txn,
             &self.validator_nodes_mapping,
             &validator_node.shard_key,
-            &validator_node.public_key.to_vec(),
+            &validator_node.public_key.as_bytes(),
             "validator_nodes_mapping",
         )
     }
 
     fn get_vn_mapping(&self, txn: &ReadTransaction<'_>, public_key: &PublicKey) -> Result<[u8; 32], ChainStorageError> {
-        let x: ActiveValidatorNode = lmdb_get(txn, &self.validator_nodes, &public_key.to_vec())?.unwrap();
+        let x: ActiveValidatorNode = lmdb_get(txn, &self.validator_nodes, public_key.as_bytes())?.ok_or_else(|| {
+            ChainStorageError::ValueNotFound {
+                entity: "ActiveValidatorNode",
+                field: "public_key",
+                value: public_key.to_hex(),
+            }
+        })?;
         Ok(x.shard_key)
     }
 
@@ -1587,8 +1596,9 @@ impl LMDBDatabase {
         public_key: &PublicKey,
         shard_key: &[u8; 32],
     ) -> Result<(), ChainStorageError> {
-        lmdb_delete(txn, &self.validator_nodes, &public_key.to_vec(), "validator_nodes")?;
-        lmdb_delete(txn, &self.validator_nodes, shard_key, "validator_nodes_mapping")
+        lmdb_delete(txn, &self.validator_nodes, public_key.as_bytes(), "validator_nodes")?;
+        lmdb_delete(txn, &self.validator_nodes, shard_key, "validator_nodes_mapping")?;
+        Ok(())
     }
 
     fn fetch_output_in_txn(

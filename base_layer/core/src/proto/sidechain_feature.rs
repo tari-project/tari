@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Impls for sidechain_features proto
+//! Impls for sidechain_feature proto
 
 use std::convert::{TryFrom, TryInto};
 
@@ -30,34 +30,70 @@ use tari_utilities::ByteArray;
 use crate::{
     consensus::MaxSizeString,
     proto,
-    transactions::transaction_components::{BuildInfo, CodeTemplateRegistration, SideChainFeatures, TemplateType},
+    transactions::transaction_components::{
+        BuildInfo,
+        CodeTemplateRegistration,
+        SideChainFeature,
+        TemplateType,
+        ValidatorNodeRegistration,
+    },
 };
 
-//---------------------------------- SideChainFeatures --------------------------------------------//
-impl From<SideChainFeatures> for proto::types::SideChainFeatures {
-    fn from(value: SideChainFeatures) -> Self {
+//---------------------------------- SideChainFeature --------------------------------------------//
+impl From<SideChainFeature> for proto::types::SideChainFeature {
+    fn from(value: SideChainFeature) -> Self {
         value.into()
     }
 }
 
-impl From<SideChainFeatures> for proto::types::side_chain_features::SideChainFeatures {
-    fn from(value: SideChainFeatures) -> Self {
+impl From<SideChainFeature> for proto::types::side_chain_feature::SideChainFeature {
+    fn from(value: SideChainFeature) -> Self {
         match value {
-            SideChainFeatures::TemplateRegistration(template_reg) => {
-                proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
+            SideChainFeature::ValidatorNodeRegistration(template_reg) => {
+                proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
+            },
+            SideChainFeature::TemplateRegistration(template_reg) => {
+                proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
         }
     }
 }
 
-impl TryFrom<proto::types::side_chain_features::SideChainFeatures> for SideChainFeatures {
+impl TryFrom<proto::types::side_chain_feature::SideChainFeature> for SideChainFeature {
     type Error = String;
 
-    fn try_from(features: proto::types::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
+    fn try_from(features: proto::types::side_chain_feature::SideChainFeature) -> Result<Self, Self::Error> {
         match features {
-            proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
-                Ok(SideChainFeatures::TemplateRegistration(template_reg.try_into()?))
+            proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(vn_reg) => {
+                Ok(SideChainFeature::ValidatorNodeRegistration(vn_reg.try_into()?))
             },
+            proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
+                Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+            },
+        }
+    }
+}
+
+// -------------------------------- ValidatorNodeRegistration -------------------------------- //
+impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistration {
+    type Error = String;
+
+    fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
+        Ok(Self {
+            public_key: PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            signature: value
+                .signature
+                .map(Signature::try_from)
+                .ok_or("signature not provided")??,
+        })
+    }
+}
+
+impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration {
+    fn from(value: ValidatorNodeRegistration) -> Self {
+        Self {
+            public_key: value.public_key.to_vec(),
+            signature: Some(value.signature.into()),
         }
     }
 }

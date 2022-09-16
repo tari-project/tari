@@ -49,7 +49,7 @@ mod test {
         covenant,
         covenants::{
             filters::test::setup_filter_test,
-            test::{create_input, make_sample_sidechain_features},
+            test::{create_input, make_sample_sidechain_feature},
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
@@ -60,7 +60,7 @@ mod test {
     fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let features = OutputFeatures {
             maturity: 42,
-            sidechain_features: Some(make_sample_sidechain_features()),
+            sidechain_feature: Some(make_sample_sidechain_feature()),
             ..Default::default()
         };
         let mut hasher = Challenge::new();

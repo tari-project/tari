@@ -26,29 +26,49 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     consensus::{read_byte, write_byte, ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_components::CodeTemplateRegistration,
+    transactions::transaction_components::{CodeTemplateRegistration, ValidatorNodeRegistration},
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub enum SideChainFeatures {
+pub enum SideChainFeature {
+    ValidatorNodeRegistration(ValidatorNodeRegistration),
     TemplateRegistration(CodeTemplateRegistration),
 }
-impl SideChainFeatures {
+
+impl SideChainFeature {
+    pub fn template_registration(&self) -> Option<&CodeTemplateRegistration> {
+        match self {
+            Self::TemplateRegistration(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
+        match self {
+            Self::ValidatorNodeRegistration(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn as_byte(&self) -> u8 {
         #[allow(clippy::enum_glob_use)]
-        use SideChainFeatures::*;
+        use SideChainFeature::*;
         match self {
-            TemplateRegistration(_) => 0x01,
+            ValidatorNodeRegistration(_) => 0x01,
+            TemplateRegistration(_) => 0x02,
         }
     }
 }
 
-impl ConsensusEncoding for SideChainFeatures {
+impl ConsensusEncoding for SideChainFeature {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         #[allow(clippy::enum_glob_use)]
-        use SideChainFeatures::*;
+        use SideChainFeature::*;
         write_byte(writer, self.as_byte())?;
         match self {
+            ValidatorNodeRegistration(validator_node_registration) => {
+                validator_node_registration.consensus_encode(writer)?;
+            },
             TemplateRegistration(template_registration) => {
                 template_registration.consensus_encode(writer)?;
             },
@@ -57,15 +77,16 @@ impl ConsensusEncoding for SideChainFeatures {
     }
 }
 
-impl ConsensusEncodingSized for SideChainFeatures {}
+impl ConsensusEncodingSized for SideChainFeature {}
 
-impl ConsensusDecoding for SideChainFeatures {
+impl ConsensusDecoding for SideChainFeature {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         #[allow(clippy::enum_glob_use)]
-        use SideChainFeatures::*;
+        use SideChainFeature::*;
         let byte = read_byte(reader)?;
         match byte {
-            0x01 => Ok(TemplateRegistration(ConsensusDecoding::consensus_decode(reader)?)),
+            0x01 => Ok(ValidatorNodeRegistration(ConsensusDecoding::consensus_decode(reader)?)),
+            0x02 => Ok(TemplateRegistration(ConsensusDecoding::consensus_decode(reader)?)),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("Invalid SideChainFeatures byte '{}'", byte),
@@ -88,7 +109,7 @@ mod tests {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
-        let subject = SideChainFeatures::TemplateRegistration(CodeTemplateRegistration {
+        let subject = SideChainFeature::TemplateRegistration(CodeTemplateRegistration {
             author_public_key: Default::default(),
             author_signature: Default::default(),
             template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),

@@ -1486,7 +1486,7 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let output_features =
-            OutputFeatures::create_validator_node_registration(validator_node_public_key, validator_node_signature);
+            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
         let tx_meta =
             TransactionMetadata::new_with_features(0.into(), 3, KernelFeatures::create_validator_node_registration());
         self.send_transaction(

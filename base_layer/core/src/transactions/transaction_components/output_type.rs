@@ -44,8 +44,10 @@ pub enum OutputType {
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
     Burn = 2,
+    /// Output defines a validator node registration
+    ValidatorNodeRegistration = 3,
     /// Output defines a new re-usable code template.
-    CodeTemplateRegistration = 3,
+    CodeTemplateRegistration = 4,
 }
 
 impl OutputType {
@@ -61,7 +63,13 @@ impl OutputType {
     }
 
     pub const fn all() -> &'static [Self] {
-        &[OutputType::Standard, OutputType::Coinbase, OutputType::Burn]
+        &[
+            OutputType::Standard,
+            OutputType::Coinbase,
+            OutputType::Burn,
+            OutputType::ValidatorNodeRegistration,
+            OutputType::CodeTemplateRegistration,
+        ]
     }
 }
 
@@ -115,7 +123,8 @@ mod tests {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
         assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
-        assert_eq!(OutputType::from_byte(3), Some(OutputType::CodeTemplateRegistration));
+        assert_eq!(OutputType::from_byte(3), Some(OutputType::ValidatorNodeRegistration));
+        assert_eq!(OutputType::from_byte(4), Some(OutputType::CodeTemplateRegistration));
         assert_eq!(OutputType::from_byte(108), None);
     }
 
