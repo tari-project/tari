@@ -16,4 +16,6 @@ multiaddr = { version = "0.14.0" }
 rand = "0.8"
 tempfile = "3.1.0"
 tor-hash-passwd = "1.0.1"
-libtor = "46.9.0"
+
+[target.'cfg(unix)'.dependencies]
+libtor = { version="46.9.0"}

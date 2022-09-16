@@ -389,6 +389,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         .send_direct(
             origin_public_key,
             OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
+            "Outbound response message from base node".to_string(),
         )
         .await?;
 
@@ -473,6 +474,14 @@ async fn handle_outbound_request(
     node_id: Option<NodeId>,
     service_request_timeout: Duration,
 ) -> Result<(), CommsInterfaceError> {
+    let debug_info = format!(
+        "Node request:{} to {}",
+        &request,
+        node_id
+            .as_ref()
+            .map(|n| n.short_str())
+            .unwrap_or_else(|| "random".to_string())
+    );
     let request_key = generate_request_key(&mut OsRng);
     let service_request = proto::BaseNodeServiceRequest {
         request_key,
@@ -480,6 +489,7 @@ async fn handle_outbound_request(
     };
 
     let mut send_msg_params = SendMessageParams::new();
+    send_msg_params.with_debug_info(debug_info);
     match node_id {
         Some(node_id) => send_msg_params.direct_node_id(node_id),
         None => send_msg_params.random(1),
@@ -565,6 +575,7 @@ async fn handle_outbound_block(
                 &TariMessageType::NewBlock,
                 shared_protos::core::NewBlock::from(new_block),
             ),
+            "Outbound new block from base node".to_string(),
         )
         .await;
     if let Err(e) = result {

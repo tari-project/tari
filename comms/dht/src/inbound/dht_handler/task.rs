@@ -231,6 +231,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                             origin_peer.node_id,
                             source_peer.node_id.clone(),
                         ])
+                        .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
                     body.to_encoded_bytes(),
@@ -352,6 +353,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .send_message_no_header_no_wait(
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key)
+                    .with_debug_info("Sending discovery response".to_string())
                     .with_destination(NodeDestination::Unknown)
                     .with_dht_message_type(DhtMessageType::DiscoveryResponse)
                     .finish(),

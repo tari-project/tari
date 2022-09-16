@@ -275,6 +275,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             OutboundEncryption::ClearText,
             vec![],
             OutboundDomainMessage::new(&0i32, PUBLIC_MESSAGE.to_string()),
+            "Memory net example".to_string(),
         )
         .await
         .unwrap();

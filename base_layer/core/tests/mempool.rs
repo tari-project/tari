@@ -846,6 +846,7 @@ async fn receive_and_propagate_transaction() {
                 &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).unwrap(),
             ),
+            "mempool tests".to_string(),
         )
         .await
         .unwrap();
@@ -857,6 +858,7 @@ async fn receive_and_propagate_transaction() {
                 &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(orphan).unwrap(),
             ),
+            "mempool tests".to_string(),
         )
         .await
         .unwrap();

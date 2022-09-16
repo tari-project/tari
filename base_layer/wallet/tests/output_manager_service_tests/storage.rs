@@ -424,3 +424,28 @@ pub async fn test_no_duplicate_outputs() {
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
 }
+
+#[tokio::test]
+pub async fn test_mark_as_unmined() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+    let db = OutputManagerDatabase::new(backend);
+
+    // create an output
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
+    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
+
+    // add it to the database
+    db.add_unspent_output(uo.clone()).unwrap();
+    db.set_received_output_mined_height(uo.hash, 1, FixedHash::zero(), 1, true, 0)
+        .unwrap();
+    let o = db.get_last_mined_output().unwrap().unwrap();
+    assert_eq!(o.hash, uo.hash);
+    db.set_output_to_unmined_and_invalid(uo.hash).unwrap();
+    assert!(db.get_last_mined_output().unwrap().is_none());
+    let o = db.get_invalid_outputs().unwrap().pop().unwrap();
+    assert_eq!(o.hash, uo.hash);
+    assert!(o.mined_height.is_none());
+    assert!(o.mined_in_block.is_none());
+}

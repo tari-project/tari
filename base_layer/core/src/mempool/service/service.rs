@@ -36,10 +36,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    base_node::{
-        comms_interface::{BlockEvent, BlockEventReceiver},
-        StateMachineHandle,
-    },
+    base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     mempool::service::{
         error::MempoolServiceError,
         inbound_handlers::MempoolInboundHandlers,
@@ -66,19 +63,13 @@ pub struct MempoolStreams<STxIn, SLocalReq> {
 pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
-    state_machine: StateMachineHandle,
 }
 
 impl MempoolService {
-    pub fn new(
-        outbound_message_service: OutboundMessageRequester,
-        inbound_handlers: MempoolInboundHandlers,
-        state_machine: StateMachineHandle,
-    ) -> Self {
+    pub fn new(outbound_message_service: OutboundMessageRequester, inbound_handlers: MempoolInboundHandlers) -> Self {
         Self {
             outbound_message_service,
             inbound_handlers,
-            state_machine,
         }
     }
 
@@ -108,12 +99,20 @@ impl MempoolService {
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
                 Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
-                    self.spawn_handle_outbound_tx(txn, excluded_peers);
+                    let _res = handle_outbound_tx(&mut self.outbound_message_service, txn, excluded_peers).await.map_err(|e|
+                        error!(target: LOG_TARGET, "Error sending outbound tx message: {}", e)
+                    );
                 },
 
                 // Incoming transaction messages from the Comms layer
                 Some(transaction_msg) = inbound_transaction_stream.next() => {
-                    self.spawn_handle_incoming_tx(transaction_msg);
+                    let result = handle_incoming_tx(&mut self.inbound_handlers, transaction_msg).await;
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming transaction message: {:?}", e
+                );
+            }
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -142,41 +141,6 @@ impl MempoolService {
     async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         // TODO: Move db calls into MempoolService
         self.inbound_handlers.handle_request(request).await
-    }
-
-    fn spawn_handle_outbound_tx(&self, tx: Arc<Transaction>, excluded_peers: Vec<NodeId>) {
-        let outbound_message_service = self.outbound_message_service.clone();
-        task::spawn(async move {
-            let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
-            if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", e);
-            }
-        });
-    }
-
-    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
-        // Determine if we are bootstrapped
-        let status_watch = self.state_machine.get_status_info_watch();
-
-        if !(*status_watch.borrow()).bootstrapped {
-            debug!(
-                target: LOG_TARGET,
-                "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",
-                tx_msg.dht_header.message_tag,
-                tx_msg.source_peer.node_id.short_str(),
-            );
-            return;
-        }
-        let inbound_handlers = self.inbound_handlers.clone();
-        task::spawn(async move {
-            let result = handle_incoming_tx(inbound_handlers, tx_msg).await;
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
-                );
-            }
-        });
     }
 
     fn spawn_handle_local_request(
@@ -209,7 +173,7 @@ impl MempoolService {
 }
 
 async fn handle_incoming_tx(
-    mut inbound_handlers: MempoolInboundHandlers,
+    inbound_handlers: &mut MempoolInboundHandlers,
     domain_transaction_msg: DomainMessage<Transaction>,
 ) -> Result<(), MempoolServiceError> {
     let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
@@ -236,7 +200,7 @@ async fn handle_incoming_tx(
 }
 
 async fn handle_outbound_tx(
-    mut outbound_message_service: OutboundMessageRequester,
+    outbound_message_service: &mut OutboundMessageRequester,
     tx: Arc<Transaction>,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
@@ -247,7 +211,13 @@ async fn handle_outbound_tx(
             exclude_peers,
             OutboundDomainMessage::new(
                 &TariMessageType::NewTransaction,
-                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
+                proto::types::Transaction::try_from(tx.clone()).map_err(MempoolServiceError::ConversionError)?,
+            ),
+            format!(
+                "Outbound mempool tx: {}",
+                tx.first_kernel_excess_sig()
+                    .map(|s| s.get_signature().to_hex())
+                    .unwrap_or_else(|| "No kernels!".to_string())
             ),
         )
         .await;

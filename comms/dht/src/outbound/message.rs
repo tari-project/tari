@@ -191,12 +191,13 @@ impl fmt::Display for DhtOutboundMessage {
             });
         write!(
             f,
-            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----\n{:?}\n",
             self.body.len(),
             self.dht_message_type,
-            self.destination_node_id,
+            self.destination,
             header_str,
             self.tag,
+            self.body
         )
     }
 }
