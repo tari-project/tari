@@ -94,6 +94,8 @@ pub enum TransactionServiceError {
     AttemptedToBroadcastCoinbaseTransaction(TxId),
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
+    #[error("Base node changed during {task_name}")]
+    BaseNodeChanged { task_name: &'static str },
     #[error("Error sending data to Protocol via registered channels")]
     ProtocolChannelError,
     #[error("Transaction detected as rejected by mempool")]

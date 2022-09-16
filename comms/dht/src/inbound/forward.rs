@@ -212,32 +212,35 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("previous check that decryption failed");
 
         let excluded_peers = vec![source_peer.node_id.clone()];
-        let dest_node_id = dht_header.destination.node_id();
+        let dest_node_id = dht_header.destination.to_derived_node_id();
 
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
             (Some(node_id), Some(true)) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Forwarding SAF message directly to node: {}, {}", node_id, dht_header.message_tag
+                let debug_info = format!(
+                    "Forwarding SAF message directly to node: {}, {}",
+                    node_id, dht_header.message_tag
                 );
-                send_params.direct_or_closest_connected(node_id.clone(), excluded_peers);
+                debug!(target: LOG_TARGET, "{}", &debug_info);
+                send_params.with_debug_info(debug_info);
+                send_params.direct_or_closest_connected(node_id, excluded_peers);
             },
             _ => {
-                debug!(
-                    target: LOG_TARGET,
+                let debug_info = format!(
                     "Propagating SAF message for {}, propagating it. {}",
-                    dht_header.destination,
-                    dht_header.message_tag
+                    dht_header.destination, dht_header.message_tag
                 );
-
+                debug!(target: LOG_TARGET, "{}", debug_info);
+                send_params.with_debug_info(debug_info);
                 send_params.propagate(dht_header.destination.clone(), excluded_peers);
             },
         };
 
         if !is_already_forwarded {
             send_params.with_dht_header(dht_header.clone());
-            self.outbound_service.send_raw(send_params.finish(), body).await?;
+            self.outbound_service
+                .send_raw_no_wait(send_params.finish(), body)
+                .await?;
         }
 
         Ok(())
@@ -248,16 +251,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return pk == &source.public_key;
         }
 
-        if let Some(node_id) = destination.node_id() {
-            return node_id == &source.node_id;
-        }
-
         false
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
     use tokio::sync::mpsc;
 
@@ -310,7 +311,10 @@ mod test {
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
-        assert_eq!(oms_mock_state.call_count().await, 1);
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
         let (params, body) = oms_mock_state.pop_call().await.unwrap();
 
         // Header and body are preserved when forwarding

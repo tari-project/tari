@@ -1,11 +1,9 @@
 ---
-# Runs daily
----
-name: Security audit
+name: Security audit - daily
 
-on:
+'on':
   schedule:
-    - cron: "43 05 * * *"
+    - cron: '43 05 * * *'
 
 jobs:
   security_audit:

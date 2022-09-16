@@ -416,9 +416,9 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn set_output_to_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+    pub fn set_output_to_unmined_and_invalid(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_output_to_unmined(hash)?;
+        db.set_output_to_unmined_and_invalid(hash)?;
         Ok(())
     }
 

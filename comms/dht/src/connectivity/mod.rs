@@ -406,11 +406,6 @@ impl DhtConnectivity {
             self.insert_neighbour(peer);
         });
 
-        // Drop any connection handles that removed from the neighbour pool
-        difference.iter().for_each(|peer| {
-            self.remove_connection_handle(peer);
-        });
-
         if !new_neighbours.is_empty() {
             self.connectivity.request_many_dials(new_neighbours).await?;
         }

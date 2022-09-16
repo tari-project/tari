@@ -56,19 +56,19 @@ where TBackend: KeyManagerBackend + 'static
         }
     }
 
-    pub async fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
+    pub fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.contains_key(&branch) {
             AddResult::AlreadyExists
         } else {
             AddResult::NewEntry
         };
-        let state = match self.db.get_key_manager_state(branch.clone()).await? {
+        let state = match self.db.get_key_manager_state(branch.clone())? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
                     primary_key_index: 0,
                 };
-                self.db.set_key_manager_state(starting_state.clone()).await?;
+                self.db.set_key_manager_state(starting_state.clone())?;
                 starting_state
             },
             Some(km) => km,
@@ -92,7 +92,7 @@ where TBackend: KeyManagerBackend + 'static
             .lock()
             .await;
         let key = km.next_key()?;
-        self.db.increment_key_index(branch).await?;
+        self.db.increment_key_index(branch)?;
         Ok(NextKeyResult {
             key: key.k,
             index: km.key_index(),
@@ -110,13 +110,13 @@ where TBackend: KeyManagerBackend + 'static
         Ok(key.k)
     }
 
-    pub async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
-        self.db.apply_encryption(cipher).await?;
+    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
+        self.db.apply_encryption(cipher)?;
         Ok(())
     }
 
-    pub async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
-        self.db.remove_encryption().await?;
+    pub fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
+        self.db.remove_encryption()?;
         Ok(())
     }
 
@@ -156,7 +156,7 @@ where TBackend: KeyManagerBackend + 'static
         let current_index = km.key_index();
         if index > current_index {
             km.update_key_index(index);
-            self.db.set_key_index(branch, index).await?;
+            self.db.set_key_index(branch, index)?;
             trace!(target: LOG_TARGET, "Updated UTXO Key Index to {}", index);
         }
         Ok(())

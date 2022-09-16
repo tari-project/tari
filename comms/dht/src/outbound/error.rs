@@ -26,10 +26,15 @@ use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
-use crate::outbound::{message::SendFailure, DhtOutboundRequest};
+use crate::{
+    error::DhtEncryptError,
+    outbound::{message::SendFailure, DhtOutboundRequest},
+};
 
 #[derive(Debug, Error)]
 pub enum DhtOutboundError {
+    #[error("DhtEncryptError: {0}")]
+    DhtEncryptError(#[from] DhtEncryptError),
     #[error("`Failed to send: {0}")]
     SendError(#[from] SendError<DhtOutboundRequest>),
     #[error("MessageSerializationError: {0}")]
@@ -42,8 +47,6 @@ pub enum DhtOutboundError {
     RequesterReplyChannelClosed,
     #[error("Peer selection failed")]
     PeerSelectionFailed,
-    #[error("Reply channel cancelled")]
-    ReplyChannelCanceled,
     #[error("Attempted to send a message to ourselves")]
     SendToOurselves,
     #[error("Discovery process failed")]
@@ -56,6 +59,8 @@ pub enum DhtOutboundError {
     NoMessagesQueued,
     #[error("Cipher error: `{0}`")]
     CipherError(String),
+    #[error("Padding error: `{0}`")]
+    PaddingError(String), // TODO: clean up these errors
 }
 
 impl From<SendFailure> for DhtOutboundError {

@@ -27,14 +27,14 @@ use std::{
 
 use log::*;
 use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::protocol::rpc::RpcError::RequestFailed;
+use tari_comms::{peer_manager::Peer, protocol::rpc::RpcError::RequestFailed};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
     proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
 };
-use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
+use tokio::sync::watch;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -54,6 +54,7 @@ const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     operation_id: u64,
     db: OutputManagerDatabase<TBackend>,
+    base_node_watch: watch::Receiver<Option<Peer>>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
@@ -74,13 +75,14 @@ where
         Self {
             operation_id,
             db,
+            base_node_watch: connectivity.get_current_base_node_watcher(),
             connectivity,
             event_publisher,
             config,
         }
     }
 
-    pub async fn execute(mut self, _shutdown: ShutdownSignal) -> Result<u64, OutputManagerProtocolError> {
+    pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
         let mut base_node_client = self
             .connectivity
             .obtain_base_node_wallet_rpc_client()
@@ -88,9 +90,15 @@ where
             .ok_or(OutputManagerError::Shutdown)
             .for_protocol(self.operation_id)?;
 
+        let base_node_peer = self
+            .base_node_watch
+            .borrow()
+            .as_ref()
+            .map(|p| p.node_id.clone())
+            .ok_or_else(|| OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged))?;
         debug!(
             target: LOG_TARGET,
-            "Starting TXO validation protocol (Id: {})", self.operation_id,
+            "Starting TXO validation protocol with peer {} (Id: {})", base_node_peer, self.operation_id,
         );
 
         let last_mined_header = self.check_for_reorgs(&mut base_node_client).await?;
@@ -99,10 +107,11 @@ where
 
         self.update_spent_outputs(&mut base_node_client, last_mined_header)
             .await?;
+
         self.publish_event(OutputManagerEvent::TxoValidationSuccess(self.operation_id));
         debug!(
             target: LOG_TARGET,
-            "Finished TXO validation protocol (Id: {})", self.operation_id,
+            "Finished TXO validation protocol from base node {} (Id: {})", base_node_peer, self.operation_id,
         );
         Ok(self.operation_id)
     }
@@ -233,6 +242,7 @@ where
                 batch.len(),
                 self.operation_id
             );
+
             let (mined, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
                 .await
@@ -345,7 +355,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined(last_mined_output.hash)
+                    .set_output_to_unmined_and_invalid(last_mined_output.hash)
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(

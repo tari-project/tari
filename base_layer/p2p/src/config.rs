@@ -95,8 +95,6 @@ pub struct P2pConfig {
     /// The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging
     /// queue
     pub max_concurrent_outbound_tasks: usize,
-    /// The size of the buffer (channel) which holds pending outbound message requests
-    pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
     /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
@@ -131,9 +129,8 @@ impl Default for P2pConfig {
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 50,
-            max_concurrent_outbound_tasks: 100,
-            outbound_buffer_size: 100,
+            max_concurrent_inbound_tasks: 4,
+            max_concurrent_outbound_tasks: 4,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("dht.sqlite"),
                 ..Default::default()
@@ -141,7 +138,7 @@ impl Default for P2pConfig {
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
             listener_liveness_allowlist_cidrs: StringList::default(),
-            user_agent: "".to_string(),
+            user_agent: String::new(),
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,

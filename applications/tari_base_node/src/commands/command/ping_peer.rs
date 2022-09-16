@@ -26,7 +26,7 @@ use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
 use tari_p2p::services::liveness::LivenessEvent;
-use tokio::sync::broadcast::error::RecvError;
+use tokio::{sync::broadcast::error::RecvError, task};
 
 use super::{CommandContext, HandleCommand};
 
@@ -49,27 +49,32 @@ impl CommandContext {
     pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
         println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
-
-        self.liveness.send_ping(dest_node_id.clone()).await?;
-        loop {
-            match liveness_events.recv().await {
-                Ok(event) => {
-                    if let LivenessEvent::ReceivedPong(pong) = &*event {
-                        if pong.node_id == dest_node_id {
-                            println!(
-                                "🏓️ Pong received, round-trip-time is {:.2?}!",
-                                pong.latency.unwrap_or_default()
-                            );
-                            break;
-                        }
-                    }
-                },
-                Err(RecvError::Closed) => {
-                    break;
-                },
-                Err(RecvError::Lagged(_)) => {},
+        let mut liveness = self.liveness.clone();
+        task::spawn(async move {
+            if let Err(e) = liveness.send_ping(dest_node_id.clone()).await {
+                println!("🏓 Ping failed to send to {}: {}", dest_node_id, e);
+                return;
             }
-        }
+            loop {
+                match liveness_events.recv().await {
+                    Ok(event) => {
+                        if let LivenessEvent::ReceivedPong(pong) = &*event {
+                            if pong.node_id == dest_node_id {
+                                println!(
+                                    "🏓️ Pong received, round-trip-time is {:.2?}!",
+                                    pong.latency.unwrap_or_default()
+                                );
+                                break;
+                            }
+                        }
+                    },
+                    Err(RecvError::Closed) => {
+                        break;
+                    },
+                    Err(RecvError::Lagged(_)) => {},
+                }
+            }
+        });
         Ok(())
     }
 }

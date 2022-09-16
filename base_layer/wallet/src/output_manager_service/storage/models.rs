@@ -32,7 +32,10 @@ use tari_core::transactions::{
 };
 use tari_script::{ExecutionStack, TariScript};
 
-use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
+use crate::output_manager_service::{
+    error::OutputManagerStorageError,
+    storage::{OutputSource, OutputStatus},
+};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -47,6 +50,7 @@ pub struct DbUnblindedOutput {
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
     pub spending_priority: SpendingPriority,
+    pub source: OutputSource,
 }
 
 impl DbUnblindedOutput {
@@ -54,6 +58,7 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
         spend_priority: Option<SpendingPriority>,
+        source: OutputSource,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
@@ -68,6 +73,7 @@ impl DbUnblindedOutput {
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            source,
         })
     }
 
@@ -77,6 +83,7 @@ impl DbUnblindedOutput {
         rewind_data: &RewindData,
         spending_priority: Option<SpendingPriority>,
         proof: Option<&BulletRangeProof>,
+        source: OutputSource,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, proof)?;
         Ok(DbUnblindedOutput {
@@ -91,6 +98,7 @@ impl DbUnblindedOutput {
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),
+            source,
         })
     }
 }

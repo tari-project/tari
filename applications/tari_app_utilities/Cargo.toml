@@ -1,16 +1,15 @@
 [package]
 name = "tari_app_utilities"
-version = "0.37.0"
+version = "0.38.3"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
 
 clap = { version = "3.2.0", features = ["derive", "env"] }
@@ -20,7 +19,7 @@ dirs-next = "1.0.2"
 json5 = "0.2.2"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.8"
-tokio = { version = "1.11", features = ["signal"] }
+tokio = { version = "1.20", features = ["signal"] }
 serde = "1.0.126"
 structopt = { version = "0.3.13", default_features = false }
 thiserror = "^1.0.26"

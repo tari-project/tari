@@ -262,15 +262,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             is_discovery_enabled,
             force_origin,
             dht_header,
+            debug_info: _,
             tag,
         } = params;
 
         match self.select_peers(broadcast_strategy.clone()).await {
             Ok(mut peers) => {
-                if reply_tx.is_closed() {
-                    return Err(DhtOutboundError::ReplyChannelCanceled);
-                }
-
                 let mut reply_tx = Some(reply_tx);
 
                 trace!(
@@ -500,7 +497,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate key message for encryption of message
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
                 // Encrypt the message with the body with key message above
-                let encrypted_body = crypt::encrypt(&key_message, &body);
+                let encrypted_body = crypt::encrypt(&key_message, &body)?;
 
                 // Produce domain separated signature signature
                 let mac_signature = crypt::create_message_domain_separated_hash_parts(
@@ -586,7 +583,7 @@ mod test {
     };
 
     #[runtime::test]
-    async fn send_message_flood() {
+    async fn test_send_message_flood() {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
             pk.clone(),
@@ -651,7 +648,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn send_message_direct_not_found() {
+    async fn test_send_message_direct_not_found() {
         // Test for issue https://github.com/tari-project/tari/issues/959
 
         let pk = CommsPublicKey::default();
@@ -696,7 +693,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn send_message_direct_dht_discovery() {
+    async fn test_send_message_direct_dht_discovery() {
         let node_identity = NodeIdentity::random(
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),

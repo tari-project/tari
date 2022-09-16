@@ -514,7 +514,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn set_output_to_unmined(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
+    fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -663,6 +663,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
+
         for i in outputs_to_send {
             let output = OutputSql::find_by_commitment_and_cancelled(i.commitment.as_bytes(), false, &conn)?;
             if output.status != (OutputStatus::Unspent as i32) {
@@ -898,6 +899,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     UpdateOutput {
                         status: Some(OutputStatus::Unspent),
                         spent_in_tx_id: Some(None),
+                        // We clear these so that the output will be revalidated the next time a validation is done.
+                        mined_height: Some(None),
                         mined_in_block: Some(None),
                         ..Default::default()
                     },
@@ -1240,6 +1243,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
 
@@ -1253,16 +1257,8 @@ pub struct UpdateOutputSql {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
-}
-
-#[derive(AsChangeset)]
-#[table_name = "outputs"]
-#[changeset_options(treat_none_as_null = "true")]
-/// This struct is used to set the contained field to null
-pub struct NullOutputSql {
-    received_in_tx_id: Option<i64>,
-    spent_in_tx_id: Option<i64>,
 }
 
 /// Map a Rust friendly UpdateOutput to the Sql data type form
@@ -1276,6 +1272,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             metadata_signature_u_key: u.metadata_signature_u_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
+            mined_height: u.mined_height,
             mined_in_block: u.mined_in_block,
         }
     }
@@ -1480,6 +1477,7 @@ mod test {
                 OutputStatus,
                 UpdateOutput,
             },
+            OutputSource,
         },
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         util::encryption::Encryptable,
@@ -1517,7 +1515,7 @@ mod test {
 
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -1526,7 +1524,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
@@ -1627,7 +1625,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
         let mut key = [0u8; size_of::<Key>()];
@@ -1694,12 +1692,12 @@ mod test {
             let factories = CryptoFactories::default();
 
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             output.commit(&conn).unwrap();
 
             let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None).unwrap();
+            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None, OutputSource::Unknown).unwrap();
             let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None).unwrap();
             output2.commit(&conn).unwrap();
         }

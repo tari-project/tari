@@ -148,7 +148,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
             .discovery_service_requester()
             .discover_peer(
                 wallet2.node_identity().public_key().clone(),
-                wallet2.node_identity().node_id().clone().into(),
+                wallet2.node_identity().public_key().clone().into(),
             )
             .await;
 
@@ -275,6 +275,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             OutboundEncryption::ClearText,
             vec![],
             OutboundDomainMessage::new(&0i32, PUBLIC_MESSAGE.to_string()),
+            "Memory net example".to_string(),
         )
         .await
         .unwrap();
@@ -442,7 +443,7 @@ pub async fn do_store_and_forward_message_propagation(
             .dht
             .outbound_requester()
             .closest_broadcast(
-                node_identity.node_id().clone(),
+                node_identity.public_key().clone(),
                 OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(&123i32, secret_message.clone()),
@@ -949,7 +950,6 @@ async fn setup_comms_dht(
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })

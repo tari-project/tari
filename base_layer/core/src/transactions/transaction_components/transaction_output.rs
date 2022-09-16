@@ -169,6 +169,7 @@ impl TransactionOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            &self.sender_offset_public_key,
             self.minimum_value_promise,
         )
     }

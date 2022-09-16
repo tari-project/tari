@@ -80,35 +80,6 @@ use crate::helpers::{
 mod helpers;
 
 #[test]
-fn test_genesis_block() {
-    let factories = CryptoFactories::default();
-    let network = Network::Esmeralda;
-    let rules = ConsensusManager::builder(network).build();
-    let backend = create_test_db();
-    let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), false, factories),
-    );
-    let db = BlockchainDatabase::new(
-        backend,
-        rules.clone(),
-        validators,
-        BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
-    )
-    .unwrap();
-    let block = rules.get_genesis_block();
-    match db.add_block(block.to_arc_block()).unwrap_err() {
-        ChainStorageError::ValidationError { source } => match source {
-            ValidationError::ValidatingGenesis => (),
-            _ => panic!("Failed because incorrect validation error was received"),
-        },
-        _ => panic!("Failed because incorrect ChainStorageError was received"),
-    }
-}
-
-#[test]
 fn test_monero_blocks() {
     // Create temporary test folder
     let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";

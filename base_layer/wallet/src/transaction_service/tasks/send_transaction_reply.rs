@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use log::*;
 use tari_common_types::transaction::TxId;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
@@ -95,6 +95,7 @@ pub async fn send_transaction_reply_direct(
         .send_direct(
             inbound_transaction.source_public_key.clone(),
             OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+            "wallet transaction reply".to_string(),
         )
         .await
     {
@@ -200,7 +201,7 @@ async fn send_transaction_reply_store_and_forward(
 ) -> Result<bool, TransactionServiceError> {
     match outbound_message_service
         .closest_broadcast(
-            NodeId::from_public_key(&destination_pubkey),
+            destination_pubkey.clone(),
             OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
             OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, msg),

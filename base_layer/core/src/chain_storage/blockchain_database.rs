@@ -809,8 +809,8 @@ where B: BlockchainBackend
         if median_timestamp > header.timestamp {
             header.timestamp = median_timestamp.increase(1);
         }
-        let block = Block { header, body };
-        let (mut block, roots) = self.calculate_mmr_roots(block)?;
+        let mut block = Block { header, body };
+        let roots = calculate_mmr_roots(&*db, &block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
@@ -890,17 +890,11 @@ where B: BlockchainBackend
         }
 
         let new_height = block.header.height;
-        // Perform orphan block validation.
-        if let Err(e) = self.validators.orphan.validate(&block) {
-            warn!(
-                target: LOG_TARGET,
-                "Block #{} ({}) failed validation - {}",
-                &new_height,
-                block.hash().to_hex(),
-                e.to_string()
-            );
-            return Err(e.into());
-        }
+        // This is important, we ask for a write lock to disable all read access to the db. The sync process sets the
+        // add_block disable flag,  but we can have a race condition between the two especially since the orphan
+        // validation can take some time during big blocks as it does Rangeproof and metadata signature validation.
+        // Because the sync process first acquires a read_lock then a write_lock, and the RWLock will be prioritised,
+        // the add_block write lock will be given out before the sync write_lock.
         trace!(
             target: LOG_TARGET,
             "[add_block] waiting for write access to add block block #{}",
@@ -915,6 +909,21 @@ where B: BlockchainBackend
             new_height,
             timer.elapsed()
         );
+        let block_hash = block.hash();
+        if db.contains(&DbKey::BlockHash(block_hash))? {
+            return Ok(BlockAddResult::BlockExists);
+        }
+        // Perform orphan block validation.
+        if let Err(e) = self.validators.orphan.validate(&block) {
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) failed validation - {}",
+                &new_height,
+                block.hash().to_hex(),
+                e.to_string()
+            );
+            return Err(e.into());
+        }
         let block_add_result = add_block(
             &mut *db,
             &self.config,
@@ -1415,10 +1424,6 @@ fn add_block<T: BlockchainBackend>(
     difficulty_calculator: &DifficultyCalculator,
     block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    let block_hash = block.hash();
-    if db.contains(&DbKey::BlockHash(block_hash))? {
-        return Ok(BlockAddResult::BlockExists);
-    }
     handle_possible_reorg(
         db,
         config,

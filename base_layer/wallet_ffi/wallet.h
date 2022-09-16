@@ -8,6 +8,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * The number of unique fields available. This always matches the number of variants in `OutputField`.
+ */
+#define OutputFields_NUM_FIELDS 10
+
 enum TariTypeTag {
   Text = 0,
   Utxo = 1,
@@ -60,13 +65,27 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+struct Covenant;
+
 struct EmojiSet;
+
+/**
+ * value: u64 + tag: [u8; 16]
+ */
+struct EncryptedValue;
+
+struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
 
 struct InboundTransaction;
 
 struct OutboundTransaction;
+
+/**
+ * Options for UTXO's
+ */
+struct OutputFeatures;
 
 /**
  * Configuration for a comms node
@@ -138,6 +157,15 @@ struct TariSeedWords;
 
 struct TariWallet;
 
+/**
+ * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
+ * why it is necessary, refer to the
+ * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+ * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
+ * this transaction can be mined) and the transaction fee, in cleartext.
+ */
+struct TransactionKernel;
+
 struct TransactionSendStatus;
 
 struct TransportConfig;
@@ -157,7 +185,7 @@ struct TariCoinPreview {
   uint64_t fee;
 };
 
-typedef TransactionKernel TariTransactionKernel;
+typedef struct TransactionKernel TariTransactionKernel;
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
@@ -261,11 +289,11 @@ typedef RistrettoComSig ComSignature;
 
 typedef ComSignature TariCommitmentSignature;
 
-typedef Covenant TariCovenant;
+typedef struct Covenant TariCovenant;
 
-typedef EncryptedValue TariEncryptedValue;
+typedef struct EncryptedValue TariEncryptedValue;
 
-typedef OutputFeatures TariOutputFeatures;
+typedef struct OutputFeatures TariOutputFeatures;
 
 typedef struct Contact TariContact;
 
@@ -287,7 +315,7 @@ typedef struct Balance TariBalance;
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
-typedef FeePerGramStat TariFeePerGramStat;
+typedef struct FeePerGramStat TariFeePerGramStat;
 
 struct TariUtxo {
   const char *commitment;
@@ -1230,6 +1258,7 @@ int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
  * |   0 | Online           |
  * |   1 | Offline          |
  * |   2 | NeverSeen        |
+ * |   3 | Banned           |
  *
  * # Safety
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
@@ -2624,6 +2653,8 @@ void balance_destroy(TariBalance *balance);
  * `wallet` - The TariWallet pointer
  * `dest_public_key` - The TariPublicKey pointer of the peer
  * `amount` - The amount
+ * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
  * `fee_per_gram` - The transaction fee
  * `message` - The pointer to a char array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -2638,6 +2669,7 @@ void balance_destroy(TariBalance *balance);
 unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            TariPublicKey *dest_public_key,
                                            unsigned long long amount,
+                                           struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
                                            const char *message,
                                            bool one_sided,
@@ -2649,6 +2681,8 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `amount` - The amount
+ * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
  * `fee_per_gram` - The fee per gram
  * `num_kernels` - The number of transaction kernels
  * `num_outputs` - The number of outputs
@@ -2663,6 +2697,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  */
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet,
                                            unsigned long long amount,
+                                           struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
                                            unsigned long long num_kernels,
                                            unsigned long long num_outputs,
