@@ -34,7 +34,12 @@ use tari_common_types::types::{PublicKey, Signature};
 use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction_components::{side_chain::SideChainFeatures, CodeTemplateRegistration, OutputType},
+    transactions::transaction_components::{
+        side_chain::SideChainFeature,
+        CodeTemplateRegistration,
+        OutputType,
+        ValidatorNodeRegistration,
+    },
 };
 
 /// Options for UTXO's
@@ -47,9 +52,7 @@ pub struct OutputFeatures {
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
     pub metadata: Vec<u8>,
-    pub sidechain_features: Option<SideChainFeatures>,
-    pub validator_node_public_key: Option<PublicKey>,
-    pub validator_node_signature: Option<Signature>,
+    pub sidechain_feature: Option<SideChainFeature>,
 }
 
 impl OutputFeatures {
@@ -58,18 +61,14 @@ impl OutputFeatures {
         output_type: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
-        sidechain_features: Option<SideChainFeatures>,
-        validator_node_public_key: Option<PublicKey>,
-        validator_node_signature: Option<Signature>,
+        sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
             output_type,
             maturity,
             metadata,
-            sidechain_features,
-            validator_node_public_key,
-            validator_node_signature,
+            sidechain_feature,
         }
     }
 
@@ -77,18 +76,14 @@ impl OutputFeatures {
         flags: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
-        sidechain_features: Option<SideChainFeatures>,
-        validator_node_public_key: Option<PublicKey>,
-        validator_node_signature: Option<Signature>,
+        sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
             flags,
             maturity,
             metadata,
-            sidechain_features,
-            validator_node_public_key,
-            validator_node_signature,
+            sidechain_feature,
         )
     }
 
@@ -112,18 +107,21 @@ impl OutputFeatures {
     pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
-            sidechain_features: Some(SideChainFeatures::TemplateRegistration(template_registration)),
+            sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
             ..Default::default()
         }
     }
 
-    pub fn create_validator_node_registration(
+    pub fn for_validator_node_registration(
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
     ) -> OutputFeatures {
         OutputFeatures {
-            validator_node_public_key: Some(validator_node_public_key),
-            validator_node_signature: Some(validator_node_signature),
+            output_type: OutputType::ValidatorNodeRegistration,
+            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(ValidatorNodeRegistration {
+                public_key: validator_node_public_key,
+                signature: validator_node_signature,
+            })),
             ..Default::default()
         }
     }
@@ -138,7 +136,7 @@ impl ConsensusEncoding for OutputFeatures {
         self.version.consensus_encode(writer)?;
         self.maturity.consensus_encode(writer)?;
         self.output_type.consensus_encode(writer)?;
-        self.sidechain_features.consensus_encode(writer)?;
+        self.sidechain_feature.consensus_encode(writer)?;
         self.metadata.consensus_encode(writer)?;
 
         Ok(())
@@ -154,26 +152,22 @@ impl ConsensusDecoding for OutputFeatures {
         let version = OutputFeaturesVersion::consensus_decode(reader)?;
         let maturity = u64::consensus_decode(reader)?;
         let flags = OutputType::consensus_decode(reader)?;
-        let sidechain_features = ConsensusDecoding::consensus_decode(reader)?;
+        let sidechain_feature = ConsensusDecoding::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
-        let validator_node_public_key = None;
-        let validator_node_signature = None;
         Ok(Self {
             version,
             output_type: flags,
             maturity,
-            sidechain_features,
+            sidechain_feature,
             metadata: metadata.into(),
-            validator_node_public_key,
-            validator_node_signature,
         })
     }
 }
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, None, None)
+        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None)
     }
 }
 
@@ -217,7 +211,7 @@ mod test {
             output_type: OutputType::Standard,
             maturity: u64::MAX,
             metadata: vec![1; 1024],
-            sidechain_features: Some(SideChainFeatures::TemplateRegistration(CodeTemplateRegistration {
+            sidechain_feature: Some(SideChainFeature::TemplateRegistration(CodeTemplateRegistration {
                 author_public_key: Default::default(),
                 author_signature: Default::default(),
                 template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),
@@ -238,8 +232,6 @@ mod test {
                     .try_into()
                     .unwrap(),
             })),
-            validator_node_public_key: None,
-            validator_node_signature: None,
         }
     }
 
@@ -255,7 +247,7 @@ mod test {
     #[test]
     fn it_encodes_and_decodes_correctly_in_none_case() {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        subject.sidechain_features = None;
+        subject.sidechain_feature = None;
         check_consensus_encoding_correctness(subject).unwrap();
     }
 }

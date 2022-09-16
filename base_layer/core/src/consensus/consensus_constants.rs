@@ -413,7 +413,8 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
-            permitted_output_types: Self::current_permitted_output_types(),
+            // igor is the first network to support the new output types
+            permitted_output_types: OutputType::all(),
             validator_node_timeout: 0,
         }]
     }

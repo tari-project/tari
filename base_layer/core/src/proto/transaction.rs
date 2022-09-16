@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, Signature};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -44,7 +44,7 @@ use crate::{
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
-            SideChainFeatures,
+            SideChainFeature,
             Transaction,
             TransactionInput,
             TransactionInputVersion,
@@ -294,14 +294,11 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_features = features
-            .sidechain_features
-            .and_then(|features| features.side_chain_features)
-            .map(SideChainFeatures::try_from)
+        let sidechain_feature = features
+            .sidechain_feature
+            .and_then(|features| features.side_chain_feature)
+            .map(SideChainFeature::try_from)
             .transpose()?;
-
-        let validator_node_public_key = PublicKey::from_bytes(features.validator_node_public_key.as_bytes()).ok();
-        let validator_node_signature = features.validator_node_signature.map(Signature::try_from).transpose()?;
 
         let flags = features
             .flags
@@ -315,9 +312,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             features.metadata,
-            sidechain_features,
-            validator_node_public_key,
-            validator_node_signature,
+            sidechain_feature,
         ))
     }
 }
@@ -329,12 +324,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             version: features.version as u32,
-            sidechain_features: features.sidechain_features.map(Into::into),
-            validator_node_public_key: features
-                .validator_node_public_key
-                .map(|pk| pk.as_bytes().to_vec())
-                .unwrap_or_default(),
-            validator_node_signature: features.validator_node_signature.map(Into::into),
+            sidechain_feature: features.sidechain_feature.map(Into::into),
         }
     }
 }

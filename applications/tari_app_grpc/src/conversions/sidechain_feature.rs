@@ -25,37 +25,73 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{PublicKey, Signature};
 use tari_core::{
     consensus::MaxSizeString,
-    transactions::transaction_components::{BuildInfo, CodeTemplateRegistration, SideChainFeatures, TemplateType},
+    transactions::transaction_components::{
+        BuildInfo,
+        CodeTemplateRegistration,
+        SideChainFeature,
+        TemplateType,
+        ValidatorNodeRegistration,
+    },
 };
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-//---------------------------------- SideChainFeatures --------------------------------------------//
-impl From<SideChainFeatures> for grpc::SideChainFeatures {
-    fn from(value: SideChainFeatures) -> Self {
+//---------------------------------- SideChainFeature --------------------------------------------//
+impl From<SideChainFeature> for grpc::SideChainFeature {
+    fn from(value: SideChainFeature) -> Self {
         value.into()
     }
 }
 
-impl From<SideChainFeatures> for grpc::side_chain_features::SideChainFeatures {
-    fn from(value: SideChainFeatures) -> Self {
+impl From<SideChainFeature> for grpc::side_chain_feature::SideChainFeature {
+    fn from(value: SideChainFeature) -> Self {
         match value {
-            SideChainFeatures::TemplateRegistration(template_reg) => {
-                grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
+            SideChainFeature::ValidatorNodeRegistration(template_reg) => {
+                grpc::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
+            },
+            SideChainFeature::TemplateRegistration(template_reg) => {
+                grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
         }
     }
 }
 
-impl TryFrom<grpc::side_chain_features::SideChainFeatures> for SideChainFeatures {
+impl TryFrom<grpc::side_chain_feature::SideChainFeature> for SideChainFeature {
     type Error = String;
 
-    fn try_from(features: grpc::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
+    fn try_from(features: grpc::side_chain_feature::SideChainFeature) -> Result<Self, Self::Error> {
         match features {
-            grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
-                Ok(SideChainFeatures::TemplateRegistration(template_reg.try_into()?))
+            grpc::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(vn_reg) => {
+                Ok(SideChainFeature::ValidatorNodeRegistration(vn_reg.try_into()?))
             },
+            grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
+                Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+            },
+        }
+    }
+}
+
+// -------------------------------- ValidatorNodeRegistration -------------------------------- //
+impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
+    type Error = String;
+
+    fn try_from(value: grpc::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
+        Ok(Self {
+            public_key: PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            signature: value
+                .signature
+                .map(Signature::try_from)
+                .ok_or("signature not provided")??,
+        })
+    }
+}
+
+impl From<ValidatorNodeRegistration> for grpc::ValidatorNodeRegistration {
+    fn from(value: ValidatorNodeRegistration) -> Self {
+        Self {
+            public_key: value.public_key.to_vec(),
+            signature: Some(value.signature.into()),
         }
     }
 }

@@ -29,7 +29,7 @@ use crate::{
         transaction_components::{
             BuildInfo,
             CodeTemplateRegistration,
-            SideChainFeatures,
+            SideChainFeature,
             TemplateType,
             TransactionInput,
             TransactionOutput,
@@ -58,7 +58,7 @@ pub fn create_context<'a>(covenant: &Covenant, input: &'a TransactionInput, bloc
     CovenantContext::new(tokens.into(), input, block_height)
 }
 
-pub fn make_sample_sidechain_features() -> SideChainFeatures {
+pub fn make_sample_sidechain_feature() -> SideChainFeature {
     let template_reg = CodeTemplateRegistration {
         author_public_key: Default::default(),
         author_signature: Default::default(),
@@ -72,5 +72,5 @@ pub fn make_sample_sidechain_features() -> SideChainFeatures {
         binary_sha: Default::default(),
         binary_url: "https://github.com/tari-project/tari.git".try_into().unwrap(),
     };
-    SideChainFeatures::TemplateRegistration(template_reg)
+    SideChainFeature::TemplateRegistration(template_reg)
 }

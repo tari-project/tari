@@ -22,14 +22,12 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::{
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
-    SideChainFeatures,
+    SideChainFeature,
 };
-use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -37,19 +35,16 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_features = features
-            .sidechain_features
-            .and_then(|f| f.side_chain_features)
-            .map(SideChainFeatures::try_from)
+        let sidechain_feature = features
+            .sidechain_feature
+            .and_then(|f| f.side_chain_feature)
+            .map(SideChainFeature::try_from)
             .transpose()?;
 
         let output_type = features
             .output_type
             .try_into()
             .map_err(|_| "Invalid output type: overflow")?;
-
-        let validator_node_public_key = PublicKey::from_vec(&features.validator_node_public_key).ok();
-        let validator_node_signature = features.validator_node_signature.map(|s| s.try_into()).transpose()?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -58,9 +53,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             features.metadata,
-            sidechain_features,
-            validator_node_public_key,
-            validator_node_signature,
+            sidechain_feature,
         ))
     }
 }
@@ -72,15 +65,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             metadata: features.metadata,
-            sidechain_features: features.sidechain_features.map(Into::into),
-            validator_node_public_key: features
-                .validator_node_public_key
-                .map(|pk| pk.as_bytes().to_vec())
-                .unwrap_or_default(),
-            validator_node_signature: features.validator_node_signature.map(|s| grpc::Signature {
-                public_nonce: Vec::from(s.get_public_nonce().as_bytes()),
-                signature: Vec::from(s.get_signature().as_bytes()),
-            }),
+            sidechain_feature: features.sidechain_feature.map(Into::into),
         }
     }
 }

@@ -1533,15 +1533,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let decoded_metadata = (*metadata).0.clone();
 
-    let output_features = TariOutputFeatures::new(
-        decoded_version,
-        output_type,
-        maturity,
-        decoded_metadata,
-        None,
-        None,
-        None,
-    );
+    let output_features = TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None);
     Box::into_raw(Box::new(output_features))
 }
 

@@ -87,13 +87,7 @@ use tari_common_types::{
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::{MicroTari, T},
-    transaction_components::{
-        CodeTemplateRegistration,
-        OutputFeatures,
-        OutputType,
-        SideChainFeatures,
-        UnblindedOutput,
-    },
+    transaction_components::{CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput},
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
@@ -912,7 +906,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
-                sidechain_features: Some(SideChainFeatures::TemplateRegistration(template_registration)),
+                sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
                 ..Default::default()
             })
             .await
