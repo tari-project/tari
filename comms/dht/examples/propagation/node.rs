@@ -31,7 +31,7 @@ use tari_comms::{
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo},
     tor,
-    tor::{HsFlags, TorIdentity},
+    tor::TorIdentity,
     CommsBuilder,
     CommsNode,
     NodeIdentity,
