@@ -74,7 +74,7 @@ use tari_script::{inputs, script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
-    sync::{mpsc, mpsc::Sender, oneshot},
+    sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
 };
 
@@ -171,6 +171,7 @@ pub struct TransactionService<
     wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
+    validation_in_progress: Arc<Mutex<()>>,
 }
 
 impl<
@@ -269,6 +270,7 @@ where
             base_node_service,
             wallet_db,
             last_seen_tip_height: None,
+            validation_in_progress: Arc::new(Mutex::new(())),
         }
     }
 
@@ -2199,8 +2201,11 @@ where
         );
 
         let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
-
+        let validation_in_progress = self.validation_in_progress.clone();
         let join_handle = tokio::spawn(async move {
+            let mut _lock = validation_in_progress.try_lock().map_err(|_| {
+                TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
+            })?;
             let exec_fut = protocol.execute();
             tokio::pin!(exec_fut);
             loop {
