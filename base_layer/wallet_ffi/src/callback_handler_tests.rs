@@ -74,6 +74,7 @@ mod test {
         pub callback_txo_validation_completed: bool,
         pub callback_txo_validation_communication_failure: bool,
         pub callback_txo_validation_internal_failure: bool,
+        pub callback_txo_validation_already_busy: bool,
         pub callback_contacts_liveness_data_updated: u32,
         pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
@@ -98,6 +99,7 @@ mod test {
                 callback_txo_validation_completed: false,
                 callback_txo_validation_communication_failure: false,
                 callback_txo_validation_internal_failure: false,
+                callback_txo_validation_already_busy: false,
                 callback_contacts_liveness_data_updated: 0,
                 callback_balance_updated: 0,
                 callback_transaction_validation_complete: 0,
@@ -206,8 +208,9 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match result {
             0 => lock.callback_txo_validation_completed = true,
-            1 => lock.callback_txo_validation_communication_failure = true,
-            2 => lock.callback_txo_validation_internal_failure = true,
+            1 => lock.callback_txo_validation_already_busy = true,
+            2 => lock.callback_txo_validation_communication_failure = true,
+            3 => lock.callback_txo_validation_internal_failure = true,
             _ => (),
         }
         drop(lock);
@@ -613,7 +616,9 @@ mod test {
         oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationInternalFailure(1u64)))
             .unwrap();
-
+        oms_event_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationAlreadyBusy(1u64)))
+            .unwrap();
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationCompleted(3u64.into())))
             .unwrap();
@@ -728,6 +733,7 @@ mod test {
         assert!(lock.saf_messages_received);
         assert!(lock.callback_txo_validation_completed);
         assert!(lock.callback_txo_validation_communication_failure);
+        assert!(lock.callback_txo_validation_already_busy);
         assert!(lock.callback_txo_validation_internal_failure);
         assert_eq!(lock.callback_contacts_liveness_data_updated, 2);
         assert_eq!(lock.callback_balance_updated, 7);

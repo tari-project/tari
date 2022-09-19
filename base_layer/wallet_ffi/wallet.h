@@ -2234,11 +2234,12 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
  * }
  * `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
  * when a TXO validation process is completed. The request_key is used to identify which request this
- * callback references and the second parameter the second contains, weather it was successful, failed due to an
- * internal failure or failed due to a communication failure.
+ * callback references and the second parameter the second contains, weather it was successful, already busy, failed
+ * due to an internal failure or failed due to a communication failure.
  *     TxoValidationSuccess,               // 0
- *     TxoValidationInternalFailure        // 1
- *     TxoValidationCommunicationFailure   // 2
+ *     TxoValidationAlreadyBusy            // 1
+ *     TxoValidationInternalFailure        // 2
+ *     TxoValidationCommunicationFailure   // 3
  * `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
  * called when a contact's liveness status changed. The data represents the contact's updated status information.
  * `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever

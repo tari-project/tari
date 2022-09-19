@@ -305,11 +305,14 @@ where TBackend: TransactionBackend + 'static
                                     self.output_validation_complete_event(request_key,  0);
                                     self.trigger_balance_refresh().await;
                                 },
-                                OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
+                                OutputManagerEvent::TxoValidationAlreadyBusy(request_key) => {
                                     self.output_validation_complete_event(request_key,  1);
                                 },
-                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
+                                OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
                                     self.output_validation_complete_event(request_key,  2);
+                                },
+                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
+                                    self.output_validation_complete_event(request_key,  3);
                                 },
                             }
                         },

@@ -560,8 +560,7 @@ where
             let mut _lock = match validation_in_progress.try_lock() {
                 Ok(val) => val,
                 _ => {
-                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationInternalFailure(id)))
-                    {
+                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationAlreadyBusy(id))) {
                         debug!(
                             target: LOG_TARGET,
                             "Error sending event because there are no subscribers: {:?}", e

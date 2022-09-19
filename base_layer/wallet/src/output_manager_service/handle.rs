@@ -282,6 +282,7 @@ pub enum OutputManagerEvent {
     TxoValidationSuccess(u64),
     TxoValidationInternalFailure(u64),
     TxoValidationCommunicationFailure(u64),
+    TxoValidationAlreadyBusy(u64),
 }
 
 impl fmt::Display for OutputManagerEvent {
@@ -295,6 +296,9 @@ impl fmt::Display for OutputManagerEvent {
             },
             OutputManagerEvent::TxoValidationCommunicationFailure(tx) => {
                 write!(f, "TxoValidationCommunicationFailure for {}", tx)
+            },
+            OutputManagerEvent::TxoValidationAlreadyBusy(tx) => {
+                write!(f, "Txo is already running, stopping {}", tx)
             },
         }
     }
