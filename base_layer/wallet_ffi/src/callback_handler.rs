@@ -311,8 +311,6 @@ where TBackend: TransactionBackend + 'static
                                 OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
                                     self.output_validation_complete_event(request_key,  2);
                                 },
-                                // Only the above variants are mapped to callbacks
-                                _ => (),
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),

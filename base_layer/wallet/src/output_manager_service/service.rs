@@ -567,9 +567,9 @@ where
                             "Error sending event because there are no subscribers: {:?}", e
                         );
                     }
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
-                        "UTXO Validation Protocol (Id: {}) spawned while another protocol was busy, ignored", id
+                        "UTXO Validation Protocol (Id: {}) spawned while a previous protocol was busy, ignored", id
                     );
                     return;
                 },
