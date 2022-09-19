@@ -217,10 +217,10 @@ where
             // we can use expect here as fetch_last_mined_transaction filters on mined_height and mined_in block is some
             let mined_height = last_mined_transaction
                 .mined_height
-                .expect(&"Tx validation mined height is missing".to_string());
+                .expect("Tx validation mined height is missing");
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
-                .expect(&"Tx validation mined in block is missing".to_string());
+                .expect("Tx validation mined in block is missing");
 
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)

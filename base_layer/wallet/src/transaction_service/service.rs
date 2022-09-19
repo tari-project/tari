@@ -2204,6 +2204,10 @@ where
         let validation_in_progress = self.validation_in_progress.clone();
         let join_handle = tokio::spawn(async move {
             let mut _lock = validation_in_progress.try_lock().map_err(|_| {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction Validation Protocol (Id: {}) spawned while a previous protocol was busy, ignored", id
+                );
                 TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
             })?;
             let exec_fut = protocol.execute();
