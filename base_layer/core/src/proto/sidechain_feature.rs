@@ -42,7 +42,9 @@ use crate::{
 //---------------------------------- SideChainFeature --------------------------------------------//
 impl From<SideChainFeature> for proto::types::SideChainFeature {
     fn from(value: SideChainFeature) -> Self {
-        value.into()
+        Self {
+            side_chain_feature: Some(value.into()),
+        }
     }
 }
 

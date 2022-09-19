@@ -552,6 +552,19 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Input",
         }));
     }
+    if header.validator_node_mr != mmr_roots.validator_node_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header validator node merkle root in {} do not match calculated root. Header.validator_node_mr: \
+             {}, Calculated: {}",
+            header.hash().to_hex(),
+            header.validator_node_mr.to_hex(),
+            mmr_roots.validator_node_mr.to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: "Validator Node",
+        }));
+    }
     Ok(())
 }
 

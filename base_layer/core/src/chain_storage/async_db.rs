@@ -110,7 +110,7 @@ macro_rules! make_async_fn {
      $(#[$outer:meta])*
      $fn:ident$(< $( $lt:tt $( : $clt:path )? ),+ >)?($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
         $(#[$outer])*
-        pub async fn $fn$(< $( $lt $( : $clt )? ),+ +Sync+Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
+        pub async fn $fn$(< $( $lt $( : $clt )? ),+ + Sync + Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
             let mut mdc = vec![];
             log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
@@ -270,9 +270,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_committee(height: u64, shard: [u8;32]) -> Vec<ActiveValidatorNode>, "fetch_committee");
 
-    make_async_fn!(get_validator_nodes_mr() -> Vec<u8>, "get_validator_nodes_mr");
-
-    make_async_fn!(get_shard_key(height:u64, public_key:PublicKey) -> [u8;32], "get_shard_key");
+    make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> [u8;32], "get_shard_key");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

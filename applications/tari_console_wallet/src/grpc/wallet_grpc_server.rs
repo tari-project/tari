@@ -936,7 +936,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
-        let validator_node_public_key = CommsPublicKey::from_hex(&request.validator_node_public_key)
+        let validator_node_public_key = CommsPublicKey::from_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature

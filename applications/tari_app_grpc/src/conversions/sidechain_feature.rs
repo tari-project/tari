@@ -40,7 +40,9 @@ use crate::tari_rpc as grpc;
 //---------------------------------- SideChainFeature --------------------------------------------//
 impl From<SideChainFeature> for grpc::SideChainFeature {
     fn from(value: SideChainFeature) -> Self {
-        value.into()
+        Self {
+            side_chain_feature: Some(value.into()),
+        }
     }
 }
 

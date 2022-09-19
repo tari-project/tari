@@ -45,7 +45,6 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
                 pow_algo: block.header.pow.pow_algo.as_u64(),
                 pow_data: block.header.pow.pow_data,
             }),
-            validator_node_merkle_root: block.header.validator_node_merkle_root,
         };
         Ok(Self {
             body: Some(grpc::AggregateBody {
@@ -92,7 +91,6 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
             total_kernel_offset,
             total_script_offset,
             pow,
-            validator_node_merkle_root: header.validator_node_merkle_root,
         };
         let body = block
             .body

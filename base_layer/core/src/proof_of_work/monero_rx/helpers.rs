@@ -203,7 +203,6 @@ mod test {
     use crate::{
         consensus::ConsensusEncoding,
         proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
-        ValidatorNodeMmr,
     };
 
     // This tests checks the hash of monero-rs
@@ -293,7 +292,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -309,7 +307,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -351,7 +349,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -367,7 +364,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -405,7 +402,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -421,7 +417,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -458,7 +454,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -474,7 +469,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = Hash::null();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -515,7 +510,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -531,7 +525,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -568,7 +562,6 @@ mod test {
 
     #[test]
     fn test_verify_header_no_data() {
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -584,7 +577,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let monero_data = MoneroPowData {
             header: Default::default(),
@@ -612,7 +605,6 @@ mod test {
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -628,7 +620,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();

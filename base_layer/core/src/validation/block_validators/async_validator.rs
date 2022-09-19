@@ -54,7 +54,6 @@ use crate::{
         BlockSyncBodyValidation,
         ValidationError,
     },
-    ValidatorNodeMmr,
 };
 
 /// This validator checks whether a block satisfies consensus rules.
@@ -101,8 +100,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let inputs_task =
             self.start_input_validation(&valid_header, outputs.iter().map(|o| o.hash()).collect(), inputs);
 
-        let validator_node_mmr_task = self.start_validator_node_mmr_validation(&valid_header);
-
         // Output order cannot be checked concurrently so it is checked here first
         if !helpers::is_all_unique_and_sorted(&outputs) {
             return Err(ValidationError::UnsortedOrDuplicateOutput);
@@ -113,7 +110,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let outputs_result = outputs_task.await??;
         let inputs_result = inputs_task.await??;
         let kernels_result = kernels_task.await??;
-        validator_node_mmr_task.await??;
 
         // Perform final checks using validation outputs
         helpers::check_coinbase_maturity(&self.rules, valid_header.height, outputs_result.coinbase())?;
@@ -467,25 +463,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 aggregate_offset_pubkey,
                 coinbase_index,
             })
-        })
-        .into()
-    }
-
-    fn start_validator_node_mmr_validation(
-        &self,
-        header: &BlockHeader,
-    ) -> AbortOnDropJoinHandle<Result<(), ValidationError>> {
-        let vn_root = header.validator_node_merkle_root.clone();
-        let height = header.height;
-        let db = self.db.inner().clone();
-        task::spawn(async move {
-            let vns = db.fetch_active_validator_nodes(height)?;
-            let mmr = ValidatorNodeMmr::new(vns.iter().map(|vn| vn.shard_key.to_vec()).collect());
-            if mmr.get_merkle_root().unwrap() == vn_root {
-                Ok(())
-            } else {
-                Err(ValidationError::ValidatorNodeMmmrError)
-            }
         })
         .into()
     }
