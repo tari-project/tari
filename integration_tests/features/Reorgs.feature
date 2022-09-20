@@ -37,7 +37,8 @@ Feature: Reorgs
     And I have a base node B connected to seed SEED_B
     And I have wallet WB connected to base node B
     And I have mining node BM connected to base node B and wallet WB
-    And mining node BM mines 15 blocks with min difficulty 1 and max difficulty 50
+    And mining node BM mines 10 blocks with min difficulty 1 and max difficulty 1
+
     When I wait for wallet WB to have at least 55000000000 uT
     When I create a burn transaction of 1000000 uT from WB at fee 100
     And mining node BM mines 5 blocks with min difficulty 1 and max difficulty 50
