@@ -28,7 +28,12 @@ use std::{
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use diesel::{
+    prelude::*,
+    r2d2::{ConnectionManager, PooledConnection},
+    result::Error as DieselError,
+    SqliteConnection,
+};
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
@@ -662,28 +667,34 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
-
-        for i in outputs_to_send {
-            let output = OutputSql::find_by_commitment_and_cancelled(i.commitment.as_bytes(), false, &conn)?;
-            if output.status != (OutputStatus::Unspent as i32) {
-                return Err(OutputManagerStorageError::OutputAlreadySpent);
-            }
-            if output.status == (OutputStatus::EncumberedToBeSpent as i32) {
-                return Err(OutputManagerStorageError::OutputAlreadyEncumbered);
-            }
-            outputs_to_be_spent.push(output);
+        let mut commitments = Vec::with_capacity(outputs_to_send.len());
+        for output in outputs_to_send {
+            commitments.push(output.commitment.as_bytes());
         }
+        // Any output in the list without the `Unspent` status will invalidate the encumberance
+        if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, &conn)?
+            .is_empty()
+        {
+            return Err(OutputManagerStorageError::OutputAlreadySpent);
+        };
 
-        for o in outputs_to_be_spent {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::ShortTermEncumberedToBeSpent),
-                    spent_in_tx_id: Some(Some(tx_id)),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
+        let count = OutputSql::update_by_commitments(
+            commitments,
+            UpdateOutput {
+                status: Some(OutputStatus::ShortTermEncumberedToBeSpent),
+                spent_in_tx_id: Some(Some(tx_id)),
+                ..Default::default()
+            },
+            &conn,
+        )?;
+        if count != outputs_to_send.len() {
+            let msg = format!(
+                "Inconsistent short term encumbering! Lengths do not match - {} vs {}",
+                count,
+                outputs_to_send.len()
+            );
+            error!(target: LOG_TARGET, "{}", msg,);
+            return Err(OutputManagerStorageError::UnexpectedResult(msg));
         }
 
         for co in outputs_to_receive {
@@ -715,29 +726,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let outputs_to_be_received =
-            OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::ShortTermEncumberedToBeReceived, &conn)?;
-        for o in &outputs_to_be_received {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::EncumberedToBeReceived),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
-        }
+        update_outputs_with_tx_id_and_status_to_new_status(
+            &conn,
+            tx_id,
+            OutputStatus::ShortTermEncumberedToBeReceived,
+            OutputStatus::EncumberedToBeReceived,
+        )?;
 
-        let outputs_to_be_spent =
-            OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::ShortTermEncumberedToBeSpent, &conn)?;
-        for o in &outputs_to_be_spent {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::EncumberedToBeSpent),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
-        }
+        update_outputs_with_tx_id_and_status_to_new_status(
+            &conn,
+            tx_id,
+            OutputStatus::ShortTermEncumberedToBeSpent,
+            OutputStatus::EncumberedToBeSpent,
+        )?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -757,27 +759,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let outputs_to_be_received = OutputSql::index_status(OutputStatus::ShortTermEncumberedToBeReceived, &conn)?;
-        for o in &outputs_to_be_received {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::CancelledInbound),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
-        }
+        diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeReceived as i32)))
+            .set((outputs::status.eq(OutputStatus::CancelledInbound as i32),))
+            .execute(&conn)?;
 
-        let outputs_to_be_spent = OutputSql::index_status(OutputStatus::ShortTermEncumberedToBeSpent, &conn)?;
-        for o in &outputs_to_be_spent {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::Unspent),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
-        }
+        diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeSpent as i32)))
+            .set((outputs::status.eq(OutputStatus::Unspent as i32),))
+            .execute(&conn)?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -922,12 +911,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    // This is typically used by a receiver after the finalized transaction has been broadcast/returned by the sender
+    // as the sender has to finalize the signature that was partially constructed by the receiver
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
         db_output.update(
+            // Note: Only the `nonce` and `u` portion needs to be updated at this time as the `v` portion is already
+            // correct
             UpdateOutput {
                 metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
                 metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
@@ -1095,16 +1088,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
         } else {
-            let output = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::AbandonedCoinbase, &conn)?;
-            for o in output {
-                o.update(
-                    UpdateOutput {
-                        status: Some(OutputStatus::EncumberedToBeReceived),
-                        ..Default::default()
-                    },
-                    &conn,
-                )?;
-            }
+            update_outputs_with_tx_id_and_status_to_new_status(
+                &conn,
+                tx_id,
+                OutputStatus::AbandonedCoinbase,
+                OutputStatus::EncumberedToBeReceived,
+            )?;
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1123,17 +1112,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let outputs = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::CancelledInbound, &conn)?;
 
-        for o in outputs {
-            o.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::EncumberedToBeReceived),
-                    ..Default::default()
-                },
-                &conn,
-            )?;
-        }
+        update_outputs_with_tx_id_and_status_to_new_status(
+            &conn,
+            tx_id,
+            OutputStatus::CancelledInbound,
+            OutputStatus::EncumberedToBeReceived,
+        )?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1231,6 +1217,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             })
             .collect())
     }
+}
+
+fn update_outputs_with_tx_id_and_status_to_new_status(
+    conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    tx_id: TxId,
+    from_status: OutputStatus,
+    to_status: OutputStatus,
+) -> Result<(), OutputManagerStorageError> {
+    diesel::update(
+        outputs::table
+            .filter(
+                outputs::received_in_tx_id
+                    .eq(Some(tx_id.as_u64() as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
+            )
+            .filter(outputs::status.eq(from_status as i32)),
+    )
+    .set(outputs::status.eq(to_status as i32))
+    .execute(conn)?;
+    Ok(())
 }
 
 /// These are the fields that can be updated for an Output
