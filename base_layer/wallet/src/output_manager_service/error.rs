@@ -66,8 +66,8 @@ pub enum OutputManagerError {
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
     IncompleteTransaction(&'static str),
-    #[error("Inconsistent data found: {0}")]
-    InconsistentDataError(&'static str),
+    #[error("Inconsistent data received from BaseNode: {0}")]
+    InconsistentBaseNodeDataError(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
     #[error("Funds are still pending. Unable to fulfil transaction right now.")]
@@ -135,6 +135,8 @@ pub enum OutputManagerError {
     NoCommitmentsProvided,
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+    #[error("Validation in progress")]
+    ValidationInProgress,
 }
 
 #[derive(Debug, Error)]

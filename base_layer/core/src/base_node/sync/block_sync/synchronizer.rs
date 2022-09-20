@@ -81,6 +81,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
     }
 
+    pub fn on_starting<H>(&mut self, hook: H)
+    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
+        self.hooks.add_on_starting_hook(hook);
+    }
+
     pub fn on_progress<H>(&mut self, hook: H)
     where H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_progress_block_hook(hook);
@@ -123,6 +128,8 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
+            let sync_peer = &self.sync_peers[i];
+            self.hooks.call_on_starting_hook(sync_peer);
             let mut conn = self.connect_to_sync_peer(node_id.clone()).await?;
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
@@ -199,10 +206,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         max_latency: Duration,
     ) -> Result<(), BlockSyncError> {
         info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer);
-        self.hooks.call_on_starting_hook();
 
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
+
         if tip_header.height <= local_metadata.height_of_longest_chain() {
             debug!(
                 target: LOG_TARGET,

@@ -92,8 +92,8 @@ try {
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txCancelled: ", ptr);
   });
-  // callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const txoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
+  // callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
+  const txoValidation = ffi.Callback("void", [u64, u64], function (i, j) {
     console.log("txoValidation: ", i, j);
   });
   // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut TariContactsLivenessData),

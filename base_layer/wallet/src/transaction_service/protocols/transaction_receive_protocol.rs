@@ -390,7 +390,7 @@ where
 
             let finalized_outputs = finalized_transaction.body.outputs();
 
-            // Update output metadata signature if not valid
+            // Update output metadata signature if not valid (typically the receiver after the sender finalized)
             match finalized_outputs
                 .iter()
                 .find(|output| output.hash() == rtp_output.hash())

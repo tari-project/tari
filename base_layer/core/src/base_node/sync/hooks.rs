@@ -31,7 +31,7 @@ use crate::{
 
 #[derive(Default)]
 pub(super) struct Hooks {
-    on_starting: Vec<Box<dyn FnOnce() + Send + Sync>>,
+    on_starting: Vec<Box<dyn FnOnce(&SyncPeer) + Send + Sync>>,
     on_progress_header: Vec<Box<dyn Fn(u64, u64, &SyncPeer) + Send + Sync>>,
     on_progress_block: Vec<Box<dyn Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync>>,
     on_progress_horizon_sync: Vec<Box<dyn Fn(HorizonSyncInfo) + Send + Sync>>,
@@ -41,12 +41,12 @@ pub(super) struct Hooks {
 
 impl Hooks {
     pub fn add_on_starting_hook<H>(&mut self, hook: H)
-    where H: FnOnce() + Send + Sync + 'static {
+    where H: FnOnce(&SyncPeer) + Send + Sync + 'static {
         self.on_starting.push(Box::new(hook));
     }
 
-    pub fn call_on_starting_hook(&mut self) {
-        self.on_starting.drain(..).for_each(|f| (f)());
+    pub fn call_on_starting_hook(&mut self, sync_peer: &SyncPeer) {
+        self.on_starting.drain(..).for_each(|f| (f)(sync_peer));
     }
 
     pub fn add_on_progress_header_hook<H>(&mut self, hook: H)

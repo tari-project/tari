@@ -298,13 +298,13 @@ where B: BlockchainBackend + 'static
             let result = handle_incoming_block(inbound_nch, new_block).await;
 
             match result {
+                Ok(()) => {},
                 Err(BaseNodeServiceError::CommsInterfaceError(CommsInterfaceError::ChainStorageError(
                     ChainStorageError::AddBlockOperationLocked,
                 ))) => {
                     // Special case, dont log this again as an error
                 },
-                Err(e) => error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", e),
-                _ => {},
+                Err(e) => error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e),
             }
         });
     }
@@ -324,10 +324,11 @@ where B: BlockchainBackend + 'static
                 );
             }
             let result = reply_tx.send(res);
-            if let Err(e) = result {
+            if let Err(res) = result {
                 error!(
                     target: LOG_TARGET,
-                    "BaseNodeService failed to send reply to local request {:?}", e
+                    "BaseNodeService failed to send reply to local request {:?}",
+                    res.map(|r| r.to_string()).map_err(|e| e.to_string())
                 );
             }
         });
@@ -339,10 +340,11 @@ where B: BlockchainBackend + 'static
             let (block, reply_tx) = block_context.split();
             let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), None).await);
 
-            if let Err(e) = result {
+            if let Err(res) = result {
                 error!(
                     target: LOG_TARGET,
-                    "BaseNodeService failed to send reply to local block submitter {:?}", e
+                    "BaseNodeService failed to send reply to local block submitter {:?}",
+                    res.map(|r| r.to_string()).map_err(|e| e.to_string())
                 );
             }
         });

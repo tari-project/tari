@@ -4133,7 +4133,12 @@ unsafe fn init_logging(
 /// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// callback references and the second parameter the second contains, weather it was successful, already busy, failed
+/// due to an internal failure or failed due to a communication failure.
+///     TxoValidationSuccess,               // 0
+///     TxoValidationAlreadyBusy            // 1
+///     TxoValidationInternalFailure        // 2
+///     TxoValidationCommunicationFailure   // 3
 /// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
 /// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
@@ -4182,7 +4187,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
@@ -7934,7 +7939,7 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u64) {
         // assert!(true); //optimized out by compiler
     }
 

@@ -107,12 +107,12 @@ impl MempoolService {
                 // Incoming transaction messages from the Comms layer
                 Some(transaction_msg) = inbound_transaction_stream.next() => {
                     let result = handle_incoming_tx(&mut self.inbound_handlers, transaction_msg).await;
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
-                );
-            }
+                    if let Err(e) = result {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to handle incoming transaction message: {:?}", e
+                        );
+                    }
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -152,10 +152,11 @@ impl MempoolService {
             let (request, reply_tx) = request_context.split();
             let result = reply_tx.send(inbound_handlers.handle_request(request).await);
 
-            if let Err(e) = result {
+            if let Err(res) = result {
                 error!(
                     target: LOG_TARGET,
-                    "MempoolService failed to send reply to local request {:?}", e
+                    "MempoolService failed to send reply to local request {:?}",
+                    res.map(|r| r.to_string()).map_err(|e| e.to_string())
                 );
             }
         });
@@ -166,7 +167,7 @@ impl MempoolService {
         task::spawn(async move {
             let result = inbound_handlers.handle_block_event(&block_event).await;
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle base node block event: {}", e);
             }
         });
     }
