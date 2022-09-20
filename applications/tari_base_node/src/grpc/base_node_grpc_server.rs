@@ -115,10 +115,11 @@ impl BaseNodeGrpcServer {
     }
 }
 
-pub fn report_error(report: bool, status: Status) -> Status {
+pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
     if report {
         status
     } else {
+        warn!(target: LOG_TARGET, "Obscured status error: {}", status);
         Status::new(status.code(), "Error has occurred. Details are obscured.")
     }
 }
@@ -161,13 +162,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // Overflow safety: checked in get_heights
         let num_requested = end_height - start_height;
         if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
-            return Err(report_error(
-                report_error_flag,
-                Status::invalid_argument(format!(
-                    "Number of headers requested exceeds maximum. Expected less than {} but got {}",
-                    GET_DIFFICULTY_MAX_HEIGHTS, num_requested
-                )),
-            ));
+            return Err(Status::invalid_argument(format!(
+                "Number of headers requested exceeds maximum. Expected less than {} but got {}",
+                GET_DIFFICULTY_MAX_HEIGHTS, num_requested
+            )));
         }
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
@@ -185,7 +183,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
                         let _ = tx
-                            .send(Err(report_error(
+                            .send(Err(obscure_error_if_true(
                                 report_error_flag,
                                 Status::internal("Internal error when fetching blocks"),
                             )))
@@ -195,10 +193,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 if headers.is_empty() {
-                    let _network_difficulty_response = tx.send(Err(report_error(
-                        report_error_flag,
-                        Status::invalid_argument(format!("No blocks found within range {} - {}", start, end)),
-                    )));
+                    let _network_difficulty_response = tx.send(Err(Status::invalid_argument(format!(
+                        "No blocks found within range {} - {}",
+                        start, end
+                    ))));
                     return;
                 }
 
@@ -267,52 +265,33 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let transaction = match tari_rpc::Transaction::try_from(transaction) {
                     Ok(t) => t,
                     Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending converting transaction for GRPC:  {}", e
-                        );
-                        match tx
-                            .send(Err(report_error(
+                        if tx
+                            .send(Err(obscure_error_if_true(
                                 report_error_flag,
-                                Status::internal("Error converting transaction"),
+                                Status::internal(format!("Error converting transaction: {}", e)),
                             )))
                             .await
+                            .is_err()
                         {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
+                            // Sender has closed i.e the connection has dropped/request was abandoned
+                            warn!(
+                                target: LOG_TARGET,
+                                "[get_mempool_transactions] GRPC request cancelled while sending response"
+                            );
                         }
                         return;
                     },
                 };
 
-                match tx
+                if tx
                     .send(Ok(tari_rpc::GetMempoolTransactionsResponse {
                         transaction: Some(transaction),
                     }))
                     .await
+                    .is_err()
                 {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending mempool transaction via GRPC:  {}", err
-                        );
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                    // Sender has closed i.e the connection has dropped/request was abandoned
+                    warn!(target: LOG_TARGET, "GRPC request cancelled while sending response");
                 }
             }
         });
@@ -339,7 +318,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let tip = match handler.get_metadata().await {
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                return Err(report_error(report_error_flag, Status::internal(err.to_string())));
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(err.to_string()),
+                ));
             },
             Ok(data) => data.height_of_longest_chain(),
         };
@@ -454,24 +436,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         "Sending block header: {}",
                         response.header.as_ref().map(|h| h.height).unwrap_or(0)
                     );
-                    match tx.send(Ok(response)).await {
-                        Ok(_) => (),
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error sending block header via GRPC:  {}", err);
-                            match tx
-                                .send(Err(report_error(
-                                    report_error_flag,
-                                    Status::unknown("Error sending data"),
-                                )))
-                                .await
-                            {
-                                Ok(_) => (),
-                                Err(send_err) => {
-                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                                },
-                            }
-                            return;
-                        },
+                    if tx.send(Ok(response)).await.is_err() {
+                        // Sender has closed i.e the connection has dropped/request was abandoned
+                        warn!(
+                            target: LOG_TARGET,
+                            "[list_headers] GRPC request cancelled while sending response"
+                        );
+                        return;
                     }
                 }
             }
@@ -489,24 +460,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
-        let algo: PowAlgorithm = (u64::try_from(
-            (request.algo)
-                .ok_or_else(|| {
-                    report_error(
-                        report_error_flag,
-                        Status::invalid_argument("No valid pow algo selected".to_string()),
-                    )
-                })?
-                .pow_algo,
-        )
-        .unwrap())
-        .try_into()
-        .map_err(|_| {
-            report_error(
-                report_error_flag,
-                Status::invalid_argument("No valid pow algo selected".to_string()),
-            )
-        })?;
+        let algo = request
+            .algo
+            .map(|algo| u64::try_from(algo.pow_algo))
+            .ok_or_else(|| Status::invalid_argument("PoW algo not provided"))?
+            .map_err(|_| Status::invalid_argument("Invalid PoW algo"))?;
+
+        let algo = PowAlgorithm::try_from(algo).map_err(|_| Status::invalid_argument("Invalid PoW algo"))?;
+
         let mut handler = self.node_service.clone();
 
         let new_template = handler
@@ -518,7 +479,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     "Could not get new block template: {}",
                     e.to_string()
                 );
-                report_error(report_error_flag, Status::internal(e.to_string()))
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?;
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
@@ -533,7 +494,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             new_block_template: Some(
                 new_template
                     .try_into()
-                    .map_err(|e| report_error(report_error_flag, Status::internal(e)))?,
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
             ),
 
             initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
@@ -550,19 +511,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
-        let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
-            report_error(
-                report_error_flag,
-                Status::invalid_argument(format!("Invalid block template: {}", s)),
-            )
-        })?;
+        let block_template: NewBlockTemplate = request
+            .try_into()
+            .map_err(|s| Status::invalid_argument(format!("Malformed block template provided: {}", s)))?;
 
         let mut handler = self.node_service.clone();
 
         let new_block = match handler.get_new_block(block_template).await {
             Ok(b) => b,
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
-                return Err(report_error(report_error_flag, Status::invalid_argument(message)));
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(message),
+                ));
             },
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
@@ -570,9 +531,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     msg,
                     Bytes::from_static(b"CannotCalculateNonTipMmr"),
                 );
-                return Err(report_error(report_error_flag, status));
+                return Err(obscure_error_if_true(report_error_flag, status));
             },
-            Err(e) => return Err(report_error(report_error_flag, Status::internal(e.to_string()))),
+            Err(e) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(e.to_string()),
+                ))
+            },
         };
         // construct response
         let block_hash = new_block.hash().to_vec();
@@ -580,7 +546,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
-                .map_err(|e| report_error(report_error_flag, Status::internal(e)))?,
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
         );
 
         let response = tari_rpc::GetNewBlockResult {
@@ -645,12 +611,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        let block = Block::try_from(request).map_err(|e| {
-            report_error(
-                report_error_flag,
-                Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)),
-            )
-        })?;
+        let block =
+            Block::try_from(request).map_err(|e| Status::invalid_argument(format!("Invalid block provided: {}", e)))?;
         let block_height = block.header.height;
         debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
         info!(
@@ -662,7 +624,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = handler
             .submit_block(block)
             .await
-            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
             .to_vec();
 
         debug!(
@@ -717,14 +679,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let txn: Transaction = request
             .transaction
-            .ok_or_else(|| report_error(report_error_flag, Status::invalid_argument("Transaction is empty")))?
+            .ok_or_else(|| Status::invalid_argument("Transaction is empty"))?
             .try_into()
-            .map_err(|e| {
-                report_error(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Failed to convert arguments. Invalid transaction.{}", e)),
-                )
-            })?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid transaction provided: {}", e)))?;
         debug!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
@@ -736,7 +693,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.mempool_service.clone();
         let res = handler.submit_transaction(txn).await.map_err(|e| {
             error!(target: LOG_TARGET, "Error submitting:{}", e);
-            report_error(report_error_flag, Status::internal(e.to_string()))
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
         let response = match res {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
@@ -767,19 +724,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let excess_sig: Signature = request
             .excess_sig
-            .ok_or_else(|| {
-                report_error(
-                    report_error_flag,
-                    Status::invalid_argument("excess_sig not provided".to_string()),
-                )
-            })?
+            .ok_or_else(|| Status::invalid_argument("excess_sig not provided".to_string()))?
             .try_into()
-            .map_err(|_| {
-                report_error(
-                    report_error_flag,
-                    Status::invalid_argument("excess_sig could not be converted".to_string()),
-                )
-            })?;
+            .map_err(|_| Status::invalid_argument("excess_sig could not be converted".to_string()))?;
         debug!(
             target: LOG_TARGET,
             "Received TransactionState request from client ({} excess_sig)",
@@ -795,7 +742,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Error submitting query:{}", e);
-                report_error(report_error_flag, Status::internal(e.to_string()))
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?;
 
         if !base_node_response.is_empty() {
@@ -815,7 +762,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Error submitting query:{}", e);
-                report_error(report_error_flag, Status::internal(e.to_string()))
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?;
         let response = match res {
             TxStorageResponse::UnconfirmedPool => tari_rpc::TransactionStateResponse {
@@ -855,30 +802,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .peer_manager()
             .all()
             .await
-            .map_err(|e| report_error(report_error_flag, Status::unknown(e.to_string())))?;
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         let peers: Vec<tari_rpc::Peer> = peers.into_iter().map(|p| p.into()).collect();
         let (mut tx, rx) = mpsc::channel(peers.len());
         task::spawn(async move {
             for peer in peers {
                 let response = tari_rpc::GetPeersResponse { peer: Some(peer) };
-                match tx.send(Ok(response)).await {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending peer via GRPC:  {}", err);
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                if tx.send(Ok(response)).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[get_peers] Request was cancelled while sending a response"
+                    );
+                    return;
                 }
             }
         });
@@ -900,10 +835,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut heights = request.heights;
         if heights.is_empty() {
-            return Err(report_error(
-                report_error_flag,
-                Status::invalid_argument("heights cannot be empty"),
-            ));
+            return Err(Status::invalid_argument("heights cannot be empty"));
         }
 
         heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
@@ -938,32 +870,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         "GetBlock GRPC sending block #{}",
                         block.header().height
                     );
-                    match tx
-                        .send(block.try_into().map_err(|err| {
-                            report_error(
-                                report_error_flag,
-                                Status::internal(format!("Could not provide block: {}", err)),
-                            )
-                        }))
-                        .await
-                    {
-                        Ok(_) => (),
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
-                            match tx
-                                .send(Err(report_error(
-                                    report_error_flag,
-                                    Status::unknown("Error sending data"),
-                                )))
-                                .await
-                            {
-                                Ok(_) => (),
-                                Err(send_err) => {
-                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                                },
-                            }
-                            return;
-                        },
+                    let result = block.try_into().map_err(|err| {
+                        obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Could not provide block: {}", err)),
+                        )
+                    });
+                    if tx.send(result).await.is_err() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "[get_blocks] Request was cancelled while sending a response"
+                        );
                     }
                 }
             }
@@ -985,7 +902,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let meta = handler
             .get_metadata()
             .await
-            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?;
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
 
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
@@ -1008,13 +925,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
 
-        let converted: Result<Vec<_>, _> = request.signatures.into_iter().map(|s| s.try_into()).collect();
-        let kernels = converted.map_err(|_| {
-            report_error(
-                report_error_flag,
-                Status::internal("Failed to convert one or more arguments."),
-            )
-        })?;
+        let kernels = request
+            .signatures
+            .into_iter()
+            .map(|s| s.try_into())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| Status::invalid_argument(format!("Invalid signatures provided: {}", e)))?;
 
         let mut handler = self.node_service.clone();
 
@@ -1031,32 +947,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for block in blocks {
-                match tx
-                    .send(block.try_into().map_err(|err| {
-                        report_error(
-                            report_error_flag,
-                            Status::internal(format!("Could not provide block:{}", err)),
-                        )
-                    }))
-                    .await
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                let result = block.try_into().map_err(|err| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal(format!("Could not provide block:{}", err)),
+                    )
+                });
+                if tx.send(result).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[search_kernels] Request was cancelled while sending a response"
+                    );
+                    return;
                 }
             }
         });
@@ -1073,17 +975,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
 
-        let converted: Result<Vec<_>, _> = request
+        let outputs = request
             .commitments
             .into_iter()
             .map(|s| Commitment::from_bytes(&s))
-            .collect();
-        let outputs = converted.map_err(|_| {
-            report_error(
-                report_error_flag,
-                Status::internal("Failed to convert one or more arguments."),
-            )
-        })?;
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| Status::invalid_argument("Invalid commitments provided"))?;
 
         let mut handler = self.node_service.clone();
 
@@ -1100,32 +997,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for block in blocks {
-                match tx
-                    .send(block.try_into().map_err(|err| {
-                        report_error(
-                            report_error_flag,
-                            Status::internal(format!("Could not provide block:{}", err)),
-                        )
-                    }))
-                    .await
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                let result = block.try_into().map_err(|err| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal(format!("Could not provide block:{}", err)),
+                    )
+                });
+                if tx.send(result).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[search_utxos] Request was cancelled while sending a response"
+                    );
                 }
             }
         });
@@ -1143,13 +1025,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
 
-        let converted: Result<Vec<_>, _> = request.hashes.into_iter().map(|s| s.try_into()).collect();
-        let hashes = converted.map_err(|_| {
-            report_error(
-                report_error_flag,
-                Status::internal("Failed to convert one or more arguments."),
-            )
-        })?;
+        let hashes = request
+            .hashes
+            .into_iter()
+            .map(|s| s.try_into())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| Status::invalid_argument("Invalid hashes provided"))?;
 
         let mut handler = self.node_service.clone();
 
@@ -1161,35 +1042,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
+                    let _ignore = tx.send(Err(obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal(format!("Error communicating with local base node: {}", err)),
+                    )));
                     return;
                 },
                 Ok(data) => data,
             };
             for output in outputs {
-                match tx
-                    .send(Ok(tari_rpc::FetchMatchingUtxosResponse {
-                        output: Some(output.into()),
-                    }))
-                    .await
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending output via GRPC:  {}", err);
-
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                let resp = tari_rpc::FetchMatchingUtxosResponse {
+                    output: Some(output.into()),
+                };
+                if tx.send(Ok(resp)).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[fetch_matching_utxos] Request was cancelled while sending a response"
+                    );
+                    return;
                 }
             }
         });
@@ -1226,19 +1096,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 num_requested,
                 BLOCK_TIMING_MAX_BLOCKS
             );
-            return Err(report_error(
-                report_error_flag,
-                Status::invalid_argument("Max request size exceeded."),
-            ));
+            return Err(Status::invalid_argument(format!(
+                "Exceeded max blocks request limit of {}",
+                BLOCK_TIMING_MAX_BLOCKS
+            )));
         }
 
-        let headers = match handler.get_headers(start..=end).await {
-            Ok(headers) => headers.into_iter().map(|h| h.into_header()).rev().collect::<Vec<_>>(),
-            Err(err) => {
-                warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
-                Vec::new()
-            },
-        };
+        let headers = handler.get_headers(start..=end).await.map_err(|err| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::internal(format!("Could not provide headers:{}", err)),
+            )
+        })?;
+        let headers = headers.into_iter().map(|h| h.into_header()).rev().collect::<Vec<_>>();
+
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
         let response = tari_rpc::BlockTimingResponse { max, min, avg };
@@ -1310,7 +1181,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
         let mut heights = request.heights;
@@ -1340,24 +1210,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .collect();
                 let result_size = values.len();
                 for value in values {
-                    match tx.send(Ok(value)).await {
-                        Ok(_) => (),
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error sending value via GRPC:  {}", err);
-                            match tx
-                                .send(Err(report_error(
-                                    report_error_flag,
-                                    Status::unknown("Error sending data"),
-                                )))
-                                .await
-                            {
-                                Ok(_) => (),
-                                Err(send_err) => {
-                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                                },
-                            }
-                            return;
-                        },
+                    if tx.send(Ok(value)).await.is_err() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "[get_tokens_in_circulation] Request was cancelled while sending a response"
+                        );
+                        return;
                     }
                 }
                 if result_size < GET_TOKENS_IN_CIRCULATION_PAGE_SIZE {
@@ -1452,34 +1310,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let hash_hex = hash.to_hex();
         let block_hash = hash
             .try_into()
-            .map_err(|_| report_error(report_error_flag, Status::internal("Malformed block hash".to_string())))?;
+            .map_err(|_| Status::invalid_argument("Malformed block hash".to_string()))?;
         let block = node_service
             .get_block_by_hash(block_hash)
             .await
-            .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?
+            .ok_or_else(|| Status::not_found(format!("Header not found with hash `{}`", hash_hex)))?;
 
-        match block {
-            Some(block) => {
-                let (block, acc_data, confirmations, _) = block.dissolve();
-                let total_block_reward = self
-                    .consensus_rules
-                    .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+        let (block, acc_data, confirmations, _) = block.dissolve();
+        let total_block_reward = self
+            .consensus_rules
+            .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
 
-                let resp = tari_rpc::BlockHeaderResponse {
-                    difficulty: acc_data.achieved_difficulty.into(),
-                    num_transactions: block.body.kernels().len() as u32,
-                    confirmations,
-                    header: Some(block.header.into()),
-                    reward: total_block_reward.into(),
-                };
+        let resp = tari_rpc::BlockHeaderResponse {
+            difficulty: acc_data.achieved_difficulty.into(),
+            num_transactions: block.body.kernels().len() as u32,
+            confirmations,
+            header: Some(block.header.into()),
+            reward: total_block_reward.into(),
+        };
 
-                Ok(Response::new(resp))
-            },
-            None => Err(report_error(
-                report_error_flag,
-                Status::not_found(format!("Header not found with hash `{}`", hash_hex)),
-            )),
-        }
+        Ok(Response::new(resp))
     }
 
     async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
@@ -1501,14 +1352,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .connectivity()
             .get_connectivity_status()
             .await
-            .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
         let latency = self
             .liveness
             .clone()
             .get_network_avg_latency()
             .await
-            .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
@@ -1531,7 +1382,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let connected_peers = connectivity
             .get_active_connections()
             .await
-            .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
         let mut peers = Vec::with_capacity(connected_peers.len());
         for peer in connected_peers {
@@ -1539,9 +1390,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 peer_manager
                     .find_by_node_id(peer.peer_node_id())
                     .await
-                    .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?
+                    .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?
                     .ok_or_else(|| {
-                        report_error(
+                        obscure_error_if_true(
                             report_error_flag,
                             Status::not_found(format!("Peer {} not found", peer.peer_node_id())),
                         )
@@ -1565,7 +1416,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mempool_stats = mempool_handle.get_mempool_stats().await.map_err(|e| {
             error!(target: LOG_TARGET, "Error submitting query:{}", e);
-            report_error(report_error_flag, Status::internal(e.to_string()))
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
 
         let response = tari_rpc::MempoolStatsResponse {
@@ -1622,13 +1473,13 @@ async fn get_block_group(
         CalcType::Median => median(values).map(|v| vec![v]),
         CalcType::Mean => mean(values).map(|v| vec![v]),
         CalcType::Quantile => {
-            return Err(report_error(
+            return Err(obscure_error_if_true(
                 report_error_flag,
                 Status::unimplemented("Quantile has not been implemented"),
             ))
         },
         CalcType::Quartile => {
-            return Err(report_error(
+            return Err(obscure_error_if_true(
                 report_error_flag,
                 Status::unimplemented("Quartile has not been implemented"),
             ))
