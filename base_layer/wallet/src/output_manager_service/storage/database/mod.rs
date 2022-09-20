@@ -228,16 +228,13 @@ where T: OutputManagerBackend + 'static
         Ok(result)
     }
 
-    pub fn fetch_by_commitment(
-        &self,
-        commitment: Commitment,
-    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let result = match self.db.fetch(&DbKey::AnyOutputByCommitment(commitment))? {
-            Some(DbValue::UnspentOutputs(outputs)) => outputs,
-            Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
-            None => vec![],
-        };
-        Ok(result)
+    pub fn fetch_by_commitment(&self, commitment: Commitment) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        let req = DbKey::AnyOutputByCommitment(commitment);
+        match self.db.fetch(&req)? {
+            Some(DbValue::AnyOutput(output)) => Ok(*output),
+            Some(other) => unexpected_result(req, other),
+            None => Err(OutputManagerStorageError::ValueNotFound),
+        }
     }
 
     pub fn fetch_with_features(

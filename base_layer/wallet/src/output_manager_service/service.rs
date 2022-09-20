@@ -1109,15 +1109,7 @@ where
 
         // If there is no existing output available, we store the one we produced.
         match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
-            Ok(outs) => {
-                if outs.is_empty() {
-                    self.resources
-                        .db
-                        .add_output_to_be_received(tx_id, output, Some(block_height))?;
-
-                    self.confirm_encumberance(tx_id)?;
-                }
-            },
+            Ok(_) => {},
             Err(OutputManagerStorageError::ValueNotFound) => {
                 self.resources
                     .db

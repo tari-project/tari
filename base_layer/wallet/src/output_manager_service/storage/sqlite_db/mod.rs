@@ -206,7 +206,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
                     Ok(mut o) => {
                         self.decrypt_if_necessary(&mut o)?;
-                        Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                        Some(DbValue::AnyOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
                     },
                     Err(e) => {
                         match e {
