@@ -214,13 +214,23 @@ where
         );
         let op_id = self.operation_id;
         while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().for_protocol(op_id)? {
-            // we can use expect here as fetch_last_mined_transaction filters on mined_height and mined_in block is some
             let mined_height = last_mined_transaction
                 .mined_height
-                .expect("Tx validation mined height is missing");
+                .ok_or_else(|| {
+                    TransactionServiceError::ServiceError(
+                        "fetch_last_mined_transaction() should return a transaction with a mined_height".to_string(),
+                    )
+                })
+                .for_protocol(op_id)?;
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
-                .expect("Tx validation mined in block is missing");
+                .ok_or_else(|| {
+                    TransactionServiceError::ServiceError(
+                        "fetch_last_mined_transaction() should return a transaction with a mined_in_block hash"
+                            .to_string(),
+                    )
+                })
+                .for_protocol(op_id)?;
 
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
