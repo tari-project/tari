@@ -472,7 +472,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn set_received_output_mined_height(
+    fn set_received_output_mined_height_and_status(
         &self,
         hash: FixedHash,
         mined_height: u64,
@@ -495,14 +495,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         );
         let hash = hash.to_vec();
         let mined_in_block = mined_in_block.to_vec();
-        // Only allow updating of non-deleted utxos
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash).and(outputs::marked_deleted_at_height.is_null())))
+        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((
                 outputs::mined_height.eq(mined_height as i64),
                 outputs::mined_in_block.eq(mined_in_block),
                 outputs::mined_mmr_position.eq(mmr_position as i64),
                 outputs::status.eq(status),
                 outputs::mined_timestamp.eq(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
@@ -523,15 +524,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        // Only allow updating of non-deleted utxos
         let hash = hash.to_vec();
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash).and(outputs::marked_deleted_at_height.is_null())))
+        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
@@ -552,13 +554,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        // Only update non-deleted utxos
-        let result = diesel::update(outputs::table.filter(outputs::marked_deleted_at_height.is_null()))
+        let result = diesel::update(outputs::table)
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::mined_mmr_position.eq::<Option<i64>>(None),
+                outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&conn)?;
 
@@ -593,23 +597,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         } else {
             OutputStatus::SpentMinedUnconfirmed as i32
         };
-        // Only allow updating of non-deleted utxos
-        diesel::update(
-            outputs::table.filter(
-                outputs::hash.eq(hash).and(
-                    outputs::marked_deleted_in_block
-                        .is_null()
-                        .or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)),
-                ),
-            ),
-        )
-        .set((
-            outputs::marked_deleted_at_height.eq(mark_deleted_at_height as i64),
-            outputs::marked_deleted_in_block.eq(mark_deleted_in_block),
-            outputs::status.eq(status),
-        ))
-        .execute(&conn)
-        .num_rows_affected_or_not_found(1)?;
+        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
+            .set((
+                outputs::marked_deleted_at_height.eq(mark_deleted_at_height as i64),
+                outputs::marked_deleted_in_block.eq(mark_deleted_in_block),
+                outputs::status.eq(status),
+            ))
+            .execute(&conn)
+            .num_rows_affected_or_not_found(1)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -629,21 +624,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
         debug!(target: LOG_TARGET, "mark_output_as_unspent({})", hash.to_hex());
-        diesel::update(
-            outputs::table.filter(
-                outputs::hash
-                    .eq(hash)
-                    .and(outputs::marked_deleted_at_height.is_not_null())
-                    .and(outputs::mined_height.is_not_null()),
-            ),
-        )
-        .set((
-            outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
-            outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-            outputs::status.eq(OutputStatus::Unspent as i32),
-        ))
-        .execute(&conn)
-        .num_rows_affected_or_not_found(1)?;
+        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
+            .set((
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::Unspent as i32),
+            ))
+            .execute(&conn)
+            .num_rows_affected_or_not_found(1)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1249,7 +1237,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
-    mined_height: Option<Option<i64>>,
+    mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
 
@@ -1278,7 +1266,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             metadata_signature_u_key: u.metadata_signature_u_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
-            mined_height: u.mined_height,
+            mined_height: u.mined_height.map(|t| t.map(|h| h as i64)),
             mined_in_block: u.mined_in_block,
         }
     }

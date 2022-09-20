@@ -299,7 +299,8 @@ impl OutputSql {
             .filter(
                 outputs::status
                     .eq(OutputStatus::UnspentMinedUnconfirmed as i32)
-                    .or(outputs::mined_in_block.is_null()),
+                    .or(outputs::mined_in_block.is_null())
+                    .or(outputs::mined_height.is_null()),
             )
             .order(outputs::id.asc())
             .load(conn)?)
@@ -329,7 +330,7 @@ impl OutputSql {
             // Return outputs not marked as deleted or confirmed
             .filter(outputs::marked_deleted_in_block.is_null().or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)))
             // Only return mined
-            .filter(outputs::mined_in_block.is_not_null())
+            .filter(outputs::mined_in_block.is_not_null().and(outputs::mined_height.is_not_null()))
             .order(outputs::id.asc())
             .load(conn)?)
     }

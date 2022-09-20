@@ -37,7 +37,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
-    fn set_received_output_mined_height(
+    fn set_received_output_mined_height_and_status(
         &self,
         hash: FixedHash,
         mined_height: u64,
