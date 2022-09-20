@@ -399,6 +399,30 @@ mod test {
     }
 
     #[test]
+    fn test_remove_all() {
+        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
+
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
+        reorg_pool.insert(1, tx1.clone());
+        reorg_pool.insert(1, tx2.clone());
+        reorg_pool.insert(1, tx3.clone());
+
+        let txs = reorg_pool.clear_and_retrieve_all();
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.txs_by_height.is_empty());
+        assert!(reorg_pool.tx_by_key.is_empty());
+        assert!(reorg_pool.txs_by_signature.is_empty());
+
+        assert!(txs.contains(&tx1));
+        assert!(txs.contains(&tx2));
+        assert!(txs.contains(&tx3));
+    }
+
+    #[test]
     fn remove_scan_for_and_remove_reorged_txs() {
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build();
