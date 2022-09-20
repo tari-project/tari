@@ -93,11 +93,10 @@ use crate::{
         PrunedOutput,
         Reorg,
     },
-    consensus::{ConsensusManager, DomainSeparatedConsensusHasher},
+    consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        TransactionHashDomain,
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
@@ -1299,11 +1298,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                let shard_key = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
-                    // <pk, sig>
-                    .chain(vn_reg)
-                    .chain(&block_hash)
-                    .finalize();
+                let shard_key = vn_reg.derive_shard_key(&block_hash);
 
                 let validator_node = ActiveValidatorNode {
                     shard_key,

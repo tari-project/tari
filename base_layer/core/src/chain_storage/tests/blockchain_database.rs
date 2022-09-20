@@ -70,6 +70,7 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block.header.validator_node_mr = mmr_roots.validator_node_mr;
     block
 }
 
@@ -496,8 +497,7 @@ mod prepare_new_block {
     fn it_errors_for_non_tip_template() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        let next_block =
-            BlockHeader::from_previous(genesis.header(), genesis.header().validator_node_merkle_root.clone());
+        let next_block = BlockHeader::from_previous(genesis.header());
         let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         // This would cause a panic if the sanity checks were not there
         template.header.height = 100;
@@ -512,8 +512,7 @@ mod prepare_new_block {
     fn it_prepares_the_first_block() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        let next_block =
-            BlockHeader::from_previous(genesis.header(), genesis.header().validator_node_merkle_root.clone());
+        let next_block = BlockHeader::from_previous(genesis.header());
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
@@ -633,10 +632,7 @@ mod clear_all_pending_headers {
         let mut prev_header = prev_block.try_into_chain_block().unwrap().to_chain_header();
         let headers = (0..5)
             .map(|_| {
-                let mut header = BlockHeader::from_previous(
-                    prev_header.header(),
-                    prev_header.header().validator_node_merkle_root.clone(),
-                );
+                let mut header = BlockHeader::from_previous(prev_header.header());
                 header.kernel_mmr_size += 1;
                 header.output_mmr_size += 1;
                 let accum = BlockHeaderAccumulatedData::builder(&prev_accum)

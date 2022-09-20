@@ -61,6 +61,14 @@ impl ValidatorNodeRegistration {
             .finalize()
             .into()
     }
+
+    pub fn derive_shard_key(&self, block_hash: &FixedHash) -> [u8; 32] {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
+            // <pk, sig>
+            .chain(self)
+            .chain(block_hash)
+            .finalize()
+    }
 }
 
 impl ConsensusEncoding for ValidatorNodeRegistration {

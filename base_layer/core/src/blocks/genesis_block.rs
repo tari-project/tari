@@ -46,7 +46,6 @@ use crate::{
             TransactionOutputVersion,
         },
     },
-    ValidatorNodeMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -161,7 +160,6 @@ fn get_igor_genesis_block_raw() -> Block {
     let genesis = DateTime::parse_from_rfc2822("30 Aug 2022 11:48:00 +0100").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
-    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
     Block {
         header: BlockHeader {
             version: 0,
@@ -188,7 +186,8 @@ fn get_igor_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
         },
         body,
     }
@@ -234,14 +233,27 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // for o in block.body.outputs() {
     //     witness_mmr.push(o.witness_hash().to_vec()).unwrap();
     //     output_mmr.push(o.hash().to_vec()).unwrap();
+    // if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+    //     let reg = o
+    //         .features
+    //         .sidechain_feature
+    //         .as_ref()
+    //         .and_then(|f| f.validator_node_registration())
+    //         .unwrap();
+    //     vn_mmr.push(reg.derive_shard_key(block.hash()).to_vec()).unwrap();
     // }
+    // }
+
+    // let vn_mmr = ValidatorNodeMmr::new(Vec::new());
 
     // block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     // block.header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     // block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+    // block.header.validator_node_mr = FixedHash::try_from(vn_mmr.get_merkle_root().unwrap()).unwrap();
     // println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     // println!("witness mr: {}", block.header.witness_mr.to_hex());
     // println!("output mr: {}", block.header.output_mr.to_hex());
+    // println!("vn mr: {}", block.header.validator_node_mr.to_hex());
 
     // Hardcode the Merkle roots once they've been computed above
     block.header.kernel_mr =
@@ -250,6 +262,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         FixedHash::from_hex("8e6bb075239bf307e311f497d35c12c77c4563f218c156895e6630a7d9633de3").unwrap();
     block.header.output_mr =
         FixedHash::from_hex("163304b3fe0f9072170db341945854bf88c8e23e23ecaac3ed86b9231b20e16f").unwrap();
+    block.header.validator_node_mr =
+        FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -307,7 +321,6 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let genesis = DateTime::parse_from_rfc2822("30 Aug 2022 11:45:00 +0100").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
-    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
     Block {
         header: BlockHeader {
             version: 0,
@@ -334,7 +347,8 @@ fn get_esmeralda_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
         },
         body,
     }
@@ -354,6 +368,7 @@ mod test {
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
         MutableOutputMmr,
+        ValidatorNodeMmr,
         WitnessMmr,
     };
 
@@ -362,82 +377,19 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        assert_eq!(block.block().body.outputs().len(), 4001);
-
-        let factories = CryptoFactories::default();
-        assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
-        let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
-        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
-        // Coinbase and faucet kernel
-        assert_eq!(
-            block.block().body.kernels().len() as u64,
-            block.header().kernel_mmr_size
-        );
-        assert_eq!(
-            block.block().body.outputs().len() as u64,
-            block.header().output_mmr_size
-        );
-
-        for kernel in block.block().body.kernels() {
-            kernel.verify_signature().unwrap();
-        }
-        assert!(block
-            .block()
-            .body
-            .kernels()
-            .iter()
-            .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
-
-        // Check MMR
-        let mut kernel_mmr = KernelMmr::new(Vec::new());
-        for k in block.block().body.kernels() {
-            kernel_mmr.push(k.hash().to_vec()).unwrap();
-        }
-
-        let mut witness_mmr = WitnessMmr::new(Vec::new());
-        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-
-        for o in block.block().body.outputs() {
-            o.verify_metadata_signature().unwrap();
-
-            witness_mmr.push(o.witness_hash().to_vec()).unwrap();
-            output_mmr.push(o.hash().to_vec()).unwrap();
-        }
-
-        assert_eq!(
-            kernel_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().kernel_mr.as_slice()
-        );
-        assert_eq!(
-            witness_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().witness_mr.as_slice()
-        );
-        assert_eq!(
-            output_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().output_mr.as_slice()
-        );
-
-        // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
-        // is correct)
-
-        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
-        let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
-
-        let db = create_new_blockchain_with_network(Network::Esmeralda);
-
-        let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(
-            ConsensusManager::builder(Network::Esmeralda).build(),
-            Default::default(),
-        )
-        .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
-        .unwrap();
+        check_block(Network::Esmeralda, &block, 4001, 2);
     }
 
     #[test]
     fn igor_genesis_sanity_check() {
         let block = get_igor_genesis_block();
-        assert_eq!(block.block().body.outputs().len(), 1);
+        check_block(Network::Igor, &block, 1, 1);
+    }
+
+    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
+        assert!(block.block().body.inputs().is_empty());
+        assert_eq!(block.block().body.kernels().len(), expected_kernels);
+        assert_eq!(block.block().body.outputs().len(), expected_outputs);
 
         let factories = CryptoFactories::default();
         assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
@@ -471,25 +423,25 @@ mod test {
 
         let mut witness_mmr = WitnessMmr::new(Vec::new());
         let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-        assert_eq!(block.block().body.kernels().len(), 1);
-        assert_eq!(block.block().body.outputs().len(), 1);
+        let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
         for o in block.block().body.outputs() {
             witness_mmr.push(o.witness_hash().to_vec()).unwrap();
             output_mmr.push(o.hash().to_vec()).unwrap();
+            if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+                let reg = o
+                    .features
+                    .sidechain_feature
+                    .as_ref()
+                    .and_then(|f| f.validator_node_registration())
+                    .unwrap();
+                vn_mmr.push(reg.derive_shard_key(block.hash()).to_vec()).unwrap();
+            }
         }
 
-        assert_eq!(
-            kernel_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().kernel_mr.as_slice()
-        );
-        assert_eq!(
-            witness_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().witness_mr.as_slice()
-        );
-        assert_eq!(
-            output_mmr.get_merkle_root().unwrap().as_slice(),
-            block.header().output_mr.as_slice()
-        );
+        assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
+        assert_eq!(witness_mmr.get_merkle_root().unwrap(), block.header().witness_mr,);
+        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
+        assert_eq!(vn_mmr.get_merkle_root().unwrap(), block.header().validator_node_mr);
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
         // is correct)
@@ -500,7 +452,7 @@ mod test {
         let db = create_new_blockchain_with_network(Network::Igor);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(Network::Igor).build(), Default::default())
+        ChainBalanceValidator::new(ConsensusManager::builder(network).build(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }

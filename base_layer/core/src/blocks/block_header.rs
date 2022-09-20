@@ -57,7 +57,6 @@ use crate::{
     blocks::BlocksHashDomain,
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
-    ValidatorNodeMmr,
 };
 
 #[derive(Debug, Error)]
@@ -111,14 +110,13 @@ pub struct BlockHeader {
     pub nonce: u64,
     /// Proof of work summary
     pub pow: ProofOfWork,
-    // Merkle root of all active validator node.
-    pub validator_node_merkle_root: Vec<u8>,
+    /// Merkle root of all active validator node.
+    pub validator_node_mr: FixedHash,
 }
 
 impl BlockHeader {
     /// Create a new, default header with the given version.
     pub fn new(blockchain_version: u16) -> BlockHeader {
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
         BlockHeader {
             version: blockchain_version,
             height: 0,
@@ -134,7 +132,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root: vn_mmr.get_merkle_root().unwrap(),
+            validator_node_mr: FixedHash::zero(),
         }
     }
 
@@ -150,7 +148,7 @@ impl BlockHeader {
     /// Create a new block header using relevant data from the previous block. The height is incremented by one, the
     /// previous block hash is set, the timestamp is set to the current time, and the kernel/output mmr sizes are set to
     /// the previous block. All other fields, including proof of work are set to defaults.
-    pub fn from_previous(prev: &BlockHeader, validator_node_merkle_root: Vec<u8>) -> BlockHeader {
+    pub fn from_previous(prev: &BlockHeader) -> BlockHeader {
         let prev_hash = prev.hash();
         BlockHeader {
             version: prev.version,
@@ -167,7 +165,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-            validator_node_merkle_root,
+            validator_node_mr: FixedHash::zero(),
         }
     }
 
@@ -269,7 +267,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             total_script_offset: header_template.total_script_offset,
             nonce: 0,
             pow: header_template.pow,
-            validator_node_merkle_root: header_template.validator_node_merkle_root,
+            validator_node_mr: FixedHash::zero(),
         }
     }
 }
@@ -369,7 +367,7 @@ mod test {
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let h2 = BlockHeader::from_previous(&h1, h1.validator_node_merkle_root.clone());
+        let h2 = BlockHeader::from_previous(&h1);
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");

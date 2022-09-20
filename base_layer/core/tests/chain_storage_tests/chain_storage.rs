@@ -89,10 +89,7 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let mut header1 = BlockHeader::from_previous(
-        genesis_block.header(),
-        genesis_block.header().validator_node_merkle_root.clone(),
-    );
+    let mut header1 = BlockHeader::from_previous(genesis_block.header());
 
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
@@ -100,7 +97,7 @@ fn insert_and_fetch_header() {
     let chain1 = create_chain_header(header1.clone(), genesis_block.accumulated_data());
 
     store.insert_valid_headers(vec![chain1.clone()]).unwrap();
-    let mut header2 = BlockHeader::from_previous(&header1, header1.validator_node_merkle_root.clone());
+    let mut header2 = BlockHeader::from_previous(&header1);
     header2.kernel_mmr_size += 2;
     header2.output_mmr_size += 2;
     let chain2 = create_chain_header(header2.clone(), chain1.accumulated_data());

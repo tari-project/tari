@@ -110,8 +110,6 @@ message NewBlockHeaderTemplate {
     ProofOfWork pow = 5;
     // Sum of script offsets for all kernels in this block.
     bytes total_script_offset = 6;
-    // Merkle root of validator nodes
-    bytes validator_node_merkle_root = 7;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
