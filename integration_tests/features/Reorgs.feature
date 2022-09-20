@@ -28,6 +28,35 @@ Feature: Reorgs
     And node B is at height 10
     And node C is at height 10
 
+
+  @critical
+  Scenario: Simple reorg with burned output
+        # Chain 1
+        #     Note: Use more than 1 base node to speed up the test
+    Given I have a seed node SEED_B
+    And I have a base node B connected to seed SEED_B
+    And I have wallet WB connected to base node B
+    And I have mining node BM connected to base node B and wallet WB
+    And mining node BM mines 10 blocks with min difficulty 1 and max difficulty 1
+
+    When I wait for wallet WB to have at least 55000000000 uT
+    When I create a burn transaction of 1000000 uT from WB at fee 100
+    And mining node BM mines 5 blocks with min difficulty 1 and max difficulty 1
+        # Chain 2
+        #     Note: Use more than 1 base node to speed up the test
+    Given I have a seed node SEED_C
+    And I have a base node C connected to seed SEED_C
+    And I have wallet WC connected to base node C
+    And I have mining node CM connected to base node C and wallet WC
+    And mining node CM mines 17 blocks with min difficulty 1 and max difficulty 1
+        # Connect chain 1 and 2
+    Then node B is at height 15
+    And node C is at height 17
+    Given I have a base node SA connected to nodes B,C
+    Then node SA is at height 17
+    And node B is at height 17
+    And node C is at height 17
+
   @critical
   Scenario: Node rolls back reorg on invalid block
     Given I have a seed node SA

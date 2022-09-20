@@ -949,6 +949,10 @@ impl LMDBDatabase {
                 if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
                     continue;
                 }
+                // if an output was burned, it was never created as an unspent utxo
+                if output.is_burned() {
+                    continue;
+                }
                 lmdb_delete(
                     txn,
                     &*self.utxo_commitment_index,
