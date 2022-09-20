@@ -101,6 +101,17 @@ impl Mempool {
             .await
     }
 
+    /// In the event of a Rewind for a block sync, all transactions to the orphan pool
+    pub async fn process_rewind(&self, removed_blocks: Vec<Arc<Block>>) -> Result<(), MempoolError> {
+        self.with_write_access(move |storage| storage.process_rewind(&removed_blocks))
+            .await
+    }
+
+    /// After a sync event, we can move all orphan transactions to the unconfirmed pool after validation
+    pub async fn process_sync(&self) -> Result<(), MempoolError> {
+        self.with_write_access(move |storage| storage.process_sync()).await
+    }
+
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
     pub async fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         self.with_read_access(|storage| Ok(storage.snapshot())).await

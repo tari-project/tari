@@ -130,6 +130,17 @@ impl ReorgPool {
         }
     }
 
+    /// This will clear the reorg pool and return all transactions contained within
+    pub fn clear_and_retrieve_all(&mut self) -> Vec<Arc<Transaction>> {
+        let mut result = Vec::new();
+        for (_, tx) in self.tx_by_key.drain() {
+            result.push(tx);
+        }
+        self.txs_by_signature.clear();
+        self.txs_by_height.clear();
+        result
+    }
+
     pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();

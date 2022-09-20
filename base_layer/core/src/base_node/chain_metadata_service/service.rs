@@ -136,7 +136,7 @@ impl ChainMetadataService {
         match event {
             BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok(_)) |
             BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { .. }) |
-            BlockEvent::BlockSyncComplete(_) => {
+            BlockEvent::BlockSyncComplete() => {
                 self.update_liveness_chain_metadata().await?;
             },
             _ => {},

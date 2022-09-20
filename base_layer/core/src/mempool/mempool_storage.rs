@@ -186,45 +186,48 @@ impl MempoolStorage {
         new_blocks: &[Arc<Block>],
     ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
-        let previous_tip = removed_blocks.last().map(|block| block.header.height);
-        let new_tip = new_blocks.last().map(|block| block.header.height);
 
         // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
         // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
         // after a reorg.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
-        self.insert_txs(removed_txs);
+        // this returns all orphaned transaction, but because we know the new blocks are already added, they will still
+        // be orphaned, we can drop them here
+        let _ = self.insert_txs(removed_txs);
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
-        self.insert_txs(removed_txs);
-        // Update the Mempool based on the received set of new blocks.
-        for block in new_blocks {
-            self.process_published_block(block)?;
-        }
+        let _ = self.insert_txs(removed_txs);
+        Ok(())
+    }
 
-        if let (Some(previous_tip_height), Some(new_tip_height)) = (previous_tip, new_tip) {
-            if new_tip_height < previous_tip_height {
-                debug!(
-                    target: LOG_TARGET,
-                    "Checking for time locked transactions in unconfirmed pool as chain height was reduced from {} to \
-                     {} during reorg.",
-                    previous_tip_height,
-                    new_tip_height,
-                );
-                self.unconfirmed_pool.remove_timelocked(new_tip_height);
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "No need to check for time locked transactions in unconfirmed pool. Previous tip height: {}. New \
-                     tip height: {}.",
-                    previous_tip_height,
-                    new_tip_height,
-                );
-            }
-        }
+    /// In the event of a Rewind for a block sync. Move all transactions to the orphan pool
+    pub fn process_rewind(&mut self, removed_blocks: &[Arc<Block>]) -> Result<(), MempoolError> {
+        debug!(target: LOG_TARGET, "Mempool processing rewind");
+        let current_tip = removed_blocks
+            .first()
+            .map(|block| block.header.height)
+            .unwrap_or_default()
+            .checked_sub(1)
+            .unwrap_or_default();
 
+        // Clear out all transactions from the unconfirmed pool and save them in the reorg pool. We dont reinsert valid
+        // transactions here as we will need to revalidate them again after the sync was done and the mempool and
+        // blockchain does not yet know how the blocks will look.
+        let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        // lets save to the reorg pool
+        self.reorg_pool.insert_all(current_tip, removed_txs);
+        Ok(())
+    }
+
+    /// After a sync event, we need to try to add in all the transaction form the reorg pool.
+    pub fn process_sync(&mut self) -> Result<(), MempoolError> {
+        debug!(target: LOG_TARGET, "Mempool processing sync finished");
+        // lets retrieve all the transactions from the reorg pool and try to reinsert them.
+        let txs = self.reorg_pool.clear_and_retrieve_all();
+        // lets add them all back into the mempool
+        self.insert_txs(txs);
         Ok(())
     }
 

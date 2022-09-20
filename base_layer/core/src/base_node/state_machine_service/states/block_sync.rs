@@ -93,8 +93,8 @@ impl BlockSync {
         });
 
         let local_nci = shared.local_node_interface.clone();
-        synchronizer.on_complete(move |block| {
-            local_nci.publish_block_event(BlockEvent::BlockSyncComplete(block));
+        synchronizer.on_complete(move |_| {
+            local_nci.publish_block_event(BlockEvent::BlockSyncComplete());
         });
 
         let timer = Instant::now();
