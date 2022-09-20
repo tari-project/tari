@@ -156,7 +156,7 @@ enum BaseNodeState{
     START_UP = 0;
     HEADER_SYNC = 1;
     HORIZON_SYNC = 2;
-    BLOCK_SYNC_STARTING= 3;
+    CONNECTING = 3;
     BLOCK_SYNC = 4;
     LISTENING = 5;
 }

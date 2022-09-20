@@ -22,7 +22,7 @@
 
 use tari_core::base_node::state_machine_service::states::{
     StateInfo,
-    StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp},
+    StateInfo::{BlockSync, Connecting, HeaderSync, HorizonSync, Listening, StartUp},
 };
 
 use crate::tari_rpc as grpc;
@@ -33,7 +33,7 @@ impl From<StateInfo> for grpc::BaseNodeState {
             StartUp => grpc::BaseNodeState::HeaderSync,
             HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
             HorizonSync(_) => grpc::BaseNodeState::HorizonSync,
-            BlockSyncStarting => grpc::BaseNodeState::BlockSyncStarting,
+            Connecting(_) => grpc::BaseNodeState::Connecting,
             BlockSync(_) => grpc::BaseNodeState::BlockSync,
             Listening(_) => grpc::BaseNodeState::Listening,
         }
@@ -46,7 +46,7 @@ impl From<&StateInfo> for grpc::BaseNodeState {
             StartUp => grpc::BaseNodeState::HeaderSync,
             HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
             HorizonSync(_) => grpc::BaseNodeState::HorizonSync,
-            BlockSyncStarting => grpc::BaseNodeState::BlockSyncStarting,
+            Connecting(_) => grpc::BaseNodeState::Connecting,
             BlockSync(_) => grpc::BaseNodeState::BlockSync,
             Listening(_) => grpc::BaseNodeState::Listening,
         }

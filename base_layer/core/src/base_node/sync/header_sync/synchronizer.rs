@@ -88,7 +88,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     pub fn on_starting<H>(&mut self, hook: H)
-    where for<'r> H: FnOnce() + Send + Sync + 'static {
+    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_starting_hook(hook);
     }
 
@@ -104,7 +104,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     pub async fn synchronize(&mut self) -> Result<SyncPeer, BlockHeaderSyncError> {
         debug!(target: LOG_TARGET, "Starting header sync.",);
-        self.hooks.call_on_starting_hook();
 
         info!(
             target: LOG_TARGET,
@@ -127,9 +126,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn try_sync_from_all_peers(&mut self, max_latency: Duration) -> Result<SyncPeer, BlockHeaderSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
+            {
+                let sync_peer = &self.sync_peers[i];
+                self.hooks.call_on_starting_hook(sync_peer);
+            }
             let mut conn = self.dial_sync_peer(node_id).await?;
             debug!(
                 target: LOG_TARGET,
