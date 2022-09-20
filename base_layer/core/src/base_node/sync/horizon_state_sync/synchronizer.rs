@@ -128,7 +128,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     pub fn on_starting<H>(&mut self, hook: H)
-    where for<'r> H: FnOnce() + Send + Sync + 'static {
+    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_starting_hook(hook);
     }
 
@@ -181,6 +181,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn sync(&mut self, header: &BlockHeader) -> Result<(), HorizonSyncError> {
         for (i, sync_peer) in self.sync_peers.iter().enumerate() {
+            self.hooks.call_on_starting_hook(sync_peer);
             let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
@@ -220,7 +221,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Initializing");
         self.initialize().await?;
-        self.hooks.call_on_starting_hook();
+
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(sync_peer.clone(), client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");

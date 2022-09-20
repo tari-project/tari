@@ -1394,7 +1394,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Header.into(),
             },
-            StateInfo::BlockSyncStarting => tari_rpc::SyncProgressResponse {
+            StateInfo::Connecting(_) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
                 state: tari_rpc::SyncState::BlockStarting.into(),
