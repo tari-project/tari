@@ -85,7 +85,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
             witness_mr: FixedHash::try_from(header.witness_mr).map_err(|err| err.to_string())?,
             output_mmr_size: header.output_mmr_size,
-            kernel_mr: FixedHash::try_from(header.kernel_mr).expect("Array size 32 cannot fail"),
+            kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
             total_script_offset,
