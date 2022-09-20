@@ -48,7 +48,7 @@ Feature: Reorgs
     And I have a base node C connected to seed SEED_C
     And I have wallet WC connected to base node C
     And I have mining node CM connected to base node C and wallet WC
-    And mining node CM mines 30 blocks with min difficulty 51 and max difficulty 9999999999
+    And mining node CM mines 11 blocks with min difficulty 1 and max difficulty 1
         # Connect chain 1 and 2
     Then node B is at height 20
     And node C is at height 30
