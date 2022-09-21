@@ -27,7 +27,7 @@ use std::{
 };
 
 use croaring::Bitmap;
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
 use super::ActiveValidatorNode;

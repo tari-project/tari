@@ -26,7 +26,7 @@
 #![allow(clippy::ptr_arg)]
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     convert::TryFrom,
     fmt,
     fs,
@@ -1593,23 +1593,6 @@ impl LMDBDatabase {
             &validator_node.public_key.as_bytes(),
             "validator_nodes_mapping",
         )
-    }
-
-    fn get_vn_mapping(
-        &self,
-        txn: &ConstTransaction<'_>,
-        public_key: &PublicKey,
-        output_hash: &HashOutput,
-    ) -> Result<[u8; 32], ChainStorageError> {
-        let mut key = public_key.to_vec();
-        key.extend(output_hash.as_slice());
-        let x: ActiveValidatorNode =
-            lmdb_get(txn, &self.validator_nodes, &key)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "ActiveValidatorNode",
-                field: "public_key and outputhash",
-                value: key.to_hex(),
-            })?;
-        Ok(x.shard_key)
     }
 
     fn delete_validator_node(
