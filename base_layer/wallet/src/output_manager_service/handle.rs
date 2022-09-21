@@ -280,8 +280,9 @@ pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputManagerEvent {
     TxoValidationSuccess(u64),
-    TxoValidationFailure(u64),
-    Error(String),
+    TxoValidationInternalFailure(u64),
+    TxoValidationCommunicationFailure(u64),
+    TxoValidationAlreadyBusy(u64),
 }
 
 impl fmt::Display for OutputManagerEvent {
@@ -290,11 +291,14 @@ impl fmt::Display for OutputManagerEvent {
             OutputManagerEvent::TxoValidationSuccess(tx) => {
                 write!(f, "TxoValidationSuccess for {}", tx)
             },
-            OutputManagerEvent::TxoValidationFailure(tx) => {
-                write!(f, "TxoValidationFailure for {}", tx)
+            OutputManagerEvent::TxoValidationInternalFailure(tx) => {
+                write!(f, "TxoValidationInternalFailure for {}", tx)
             },
-            OutputManagerEvent::Error(error) => {
-                write!(f, "Error {}", error)
+            OutputManagerEvent::TxoValidationCommunicationFailure(tx) => {
+                write!(f, "TxoValidationCommunicationFailure for {}", tx)
+            },
+            OutputManagerEvent::TxoValidationAlreadyBusy(tx) => {
+                write!(f, "Txo is already running, stopping {}", tx)
             },
         }
     }

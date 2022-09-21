@@ -80,57 +80,43 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 
         match op {
             WriteOperation::Upsert(kvp) => match *kvp {
-                DbKeyValuePair::Contact(k, c) => match ContactSql::find_by_public_key(&k.to_vec(), &conn) {
-                    Ok(found_c) => {
-                        let _contact_sql = found_c.update(
-                            UpdateContact {
-                                alias: Some(c.alias),
-                                last_seen: None,
-                                latency: None,
-                            },
-                            &conn,
-                        )?;
-                    },
-                    Err(_) => {
+                DbKeyValuePair::Contact(k, c) => {
+                    if ContactSql::find_by_public_key_and_update(&conn, &k.to_vec(), UpdateContact {
+                        alias: Some(c.clone().alias),
+                        last_seen: None,
+                        latency: None,
+                    })
+                    .is_err()
+                    {
                         ContactSql::from(c).commit(&conn)?;
-                    },
+                    }
                 },
                 DbKeyValuePair::LastSeen(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::UpdateLastSeen(kvp) => match *kvp {
                 DbKeyValuePair::LastSeen(node_id, date_time, latency) => {
-                    match ContactSql::find_by_node_id(&node_id.to_vec(), &conn) {
-                        Ok(found_c) => {
-                            let contact = found_c.update(
-                                UpdateContact {
-                                    alias: None,
-                                    last_seen: Some(Some(date_time)),
-                                    latency: Some(latency),
-                                },
-                                &conn,
-                            )?;
-                            return Ok(Some(DbValue::PublicKey(Box::new(
-                                PublicKey::from_vec(&contact.public_key)
-                                    .map_err(|_| ContactsServiceStorageError::ConversionError)?,
-                            ))));
-                        },
-                        Err(e) => return Err(e),
-                    }
+                    let contact = ContactSql::find_by_node_id_and_update(&conn, &node_id.to_vec(), UpdateContact {
+                        alias: None,
+                        last_seen: Some(Some(date_time)),
+                        latency: Some(latency),
+                    })?;
+                    return Ok(Some(DbValue::PublicKey(Box::new(
+                        PublicKey::from_vec(&contact.public_key)
+                            .map_err(|_| ContactsServiceStorageError::ConversionError)?,
+                    ))));
                 },
                 DbKeyValuePair::Contact(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find_by_public_key(&k.to_vec(), &conn) {
+                DbKey::Contact(k) => match ContactSql::find_by_public_key_and_delete(&conn, &k.to_vec()) {
                     Ok(c) => {
-                        c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 },
-                DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &conn) {
+                DbKey::ContactId(id) => match ContactSql::find_by_node_id_and_delete(&conn, &id.to_vec()) {
                     Ok(c) => {
-                        c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
@@ -186,28 +172,58 @@ impl ContactSql {
             .first::<ContactSql>(conn)?)
     }
 
-    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), ContactsServiceStorageError> {
-        let num_deleted =
-            diesel::delete(contacts::table.filter(contacts::public_key.eq(&self.public_key))).execute(conn)?;
-
-        if num_deleted == 0 {
-            return Err(ContactsServiceStorageError::ValuesNotFound);
-        }
-
-        Ok(())
-    }
-
-    pub fn update(
-        &self,
-        updated_contact: UpdateContact,
+    /// Find a particular Contact by their public key, and update it if it exists, returning the affected record
+    pub fn find_by_public_key_and_update(
         conn: &SqliteConnection,
+        public_key: &[u8],
+        updated_contact: UpdateContact,
     ) -> Result<ContactSql, ContactsServiceStorageError> {
-        diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
+        // Note: `get_result` not implemented for SQLite
+        diesel::update(contacts::table.filter(contacts::public_key.eq(public_key)))
             .set(updated_contact)
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
+        ContactSql::find_by_public_key(public_key, conn)
+    }
 
-        ContactSql::find_by_public_key(&self.public_key, conn)
+    /// Find a particular Contact by their public key, and delete it if it exists, returning the affected record
+    pub fn find_by_public_key_and_delete(
+        conn: &SqliteConnection,
+        public_key: &[u8],
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
+        // Note: `get_result` not implemented for SQLite
+        let contact = ContactSql::find_by_public_key(public_key, conn)?;
+        if diesel::delete(contacts::table.filter(contacts::public_key.eq(public_key))).execute(conn)? == 0 {
+            return Err(ContactsServiceStorageError::ValuesNotFound);
+        }
+        Ok(contact)
+    }
+
+    /// Find a particular Contact by their node ID, and update it if it exists, returning the affected record
+    pub fn find_by_node_id_and_update(
+        conn: &SqliteConnection,
+        node_id: &[u8],
+        updated_contact: UpdateContact,
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
+        // Note: `get_result` not implemented for SQLite
+        diesel::update(contacts::table.filter(contacts::node_id.eq(node_id)))
+            .set(updated_contact)
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+        ContactSql::find_by_node_id(node_id, conn)
+    }
+
+    /// Find a particular Contact by their node ID, and delete it if it exists, returning the affected record
+    pub fn find_by_node_id_and_delete(
+        conn: &SqliteConnection,
+        node_id: &[u8],
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
+        // Note: `get_result` not implemented for SQLite
+        let contact = ContactSql::find_by_node_id(node_id, conn)?;
+        if diesel::delete(contacts::table.filter(contacts::node_id.eq(node_id))).execute(conn)? == 0 {
+            return Err(ContactsServiceStorageError::ValuesNotFound);
+        }
+        Ok(contact)
     }
 }
 
@@ -306,7 +322,7 @@ mod test {
                     .unwrap()
             );
 
-            ContactSql::from(contacts[0].clone()).delete(&conn).unwrap();
+            ContactSql::find_by_public_key_and_delete(&conn, &contacts[0].public_key.clone().to_vec()).unwrap();
 
             let retrieved_contacts = ContactSql::index(&conn).unwrap();
             assert_eq!(retrieved_contacts.len(), 2);
@@ -315,16 +331,13 @@ mod test {
                 .iter()
                 .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
-            let c = ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap();
-            c.update(
-                UpdateContact {
+            let _c =
+                ContactSql::find_by_public_key_and_update(&conn, &contacts[1].public_key.to_vec(), UpdateContact {
                     alias: Some("Fred".to_string()),
                     last_seen: None,
                     latency: None,
-                },
-                &conn,
-            )
-            .unwrap();
+                })
+                .unwrap();
 
             let c_updated = ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());

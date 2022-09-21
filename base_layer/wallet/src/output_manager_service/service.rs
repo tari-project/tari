@@ -69,6 +69,7 @@ use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
+use tokio::sync::Mutex;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -113,6 +114,7 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
     node_identity: Arc<NodeIdentity>,
+    validation_in_progress: Arc<Mutex<()>>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -168,6 +170,7 @@ where
             base_node_service,
             last_seen_tip_height: None,
             node_identity,
+            validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
 
@@ -551,7 +554,26 @@ where
         let mut shutdown = self.resources.shutdown_signal.clone();
         let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
+        let validation_in_progress = self.validation_in_progress.clone();
         tokio::spawn(async move {
+            // Note: We do not want the validation task to be queued
+            let mut _lock = match validation_in_progress.try_lock() {
+                Ok(val) => val,
+                _ => {
+                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationAlreadyBusy(id))) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Error sending event because there are no subscribers: {:?}", e
+                        );
+                    }
+                    debug!(
+                        target: LOG_TARGET,
+                        "UTXO Validation Protocol (Id: {}) spawned while a previous protocol was busy, ignored", id
+                    );
+                    return;
+                },
+            };
+
             let exec_fut = txo_validation.execute();
             tokio::pin!(exec_fut);
             loop {
@@ -570,7 +592,15 @@ where
                                     target: LOG_TARGET,
                                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                                 );
-                                if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
+                                let event_payload = match error {
+                                    OutputManagerError::InconsistentBaseNodeDataError(_) |
+                                    OutputManagerError::BaseNodeChanged |
+                                    OutputManagerError::Shutdown |
+                                    OutputManagerError::RpcError(_) =>
+                                        OutputManagerEvent::TxoValidationCommunicationFailure(id),
+                                    _ => OutputManagerEvent::TxoValidationInternalFailure(id),
+                                };
+                                if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
                                     debug!(
                                         target: LOG_TARGET,
                                         "Error sending event because there are no subscribers: {:?}", e
@@ -582,7 +612,8 @@ where
                         }
                     },
                     _ = shutdown.wait() => {
-                        debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system is shutting down", id);
+                        debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
+                            is shutting down", id);
                         return;
                     },
                     _ = base_node_watch.changed() => {
@@ -600,6 +631,7 @@ where
                 }
             }
         });
+
         Ok(id)
     }
 
@@ -1077,15 +1109,7 @@ where
 
         // If there is no existing output available, we store the one we produced.
         match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
-            Ok(outs) => {
-                if outs.is_empty() {
-                    self.resources
-                        .db
-                        .add_output_to_be_received(tx_id, output, Some(block_height))?;
-
-                    self.confirm_encumberance(tx_id)?;
-                }
-            },
+            Ok(_) => {},
             Err(OutputManagerStorageError::ValueNotFound) => {
                 self.resources
                     .db

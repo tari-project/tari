@@ -353,11 +353,6 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 if output_hashes.iter().any(|output| output == &output_hash) {
                     continue;
                 }
-
-                warn!(
-                    target: LOG_TARGET,
-                    "Validation failed due to input: {} which does not exist yet", input
-                );
                 not_found_inputs.push(output_hash);
             },
             Err(err) => {

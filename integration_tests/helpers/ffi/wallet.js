@@ -54,6 +54,7 @@ class Wallet {
   callback_faux_transaction_unconfirmed;
   callback_transaction_send_result;
   callback_transaction_cancellation;
+  callback_txo_validation_complete;
   callback_contacts_liveness_data_updated;
   callback_balance_updated;
   callback_transaction_validation_complete;

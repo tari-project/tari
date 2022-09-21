@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.4](https://github.com/tari-project/tari/compare/v0.38.3...v0.38.4) (2022-09-16)
+
+
+### Features
+
+* **ci:** add default CI and FFI testing with custom dispatch ([#4672](https://github.com/tari-project/tari/issues/4672)) ([9242051](https://github.com/tari-project/tari/commit/92420516f464146ffdbf16b7a3759012da79cf0d))
+
+
+### Bug Fixes
+
+* add burn funds command to console wallet (see issue [#4547](https://github.com/tari-project/tari/issues/4547)) ([#4655](https://github.com/tari-project/tari/issues/4655)) ([0242b1d](https://github.com/tari-project/tari/commit/0242b1d435a62433229e3e3752febca84aca7dae))
+* **comms:** simplify and remove possibility of deadlock from pipelines and substream close ([#4676](https://github.com/tari-project/tari/issues/4676)) ([f41bcf9](https://github.com/tari-project/tari/commit/f41bcf930ddcfaa622c5f859b8e82331fa8981a8))
+* fix potential race condition between add_block and sync ([#4677](https://github.com/tari-project/tari/issues/4677)) ([55f2b9c](https://github.com/tari-project/tari/commit/55f2b9cfe3ed254d0927f4ecc57484320eedca60))
+* **p2p:** remove DETACH flag usage ([#4682](https://github.com/tari-project/tari/issues/4682)) ([947f64f](https://github.com/tari-project/tari/commit/947f64fc84e664d927ccc1043d8cff136b0e2449))
+* reinsert transactions from failed block ([#4675](https://github.com/tari-project/tari/issues/4675)) ([8030364](https://github.com/tari-project/tari/commit/8030364ec67f3c9102d47fdc8e5bb45ee47cabc3))
+* stray clippy error ([#4685](https://github.com/tari-project/tari/issues/4685)) ([a709282](https://github.com/tari-project/tari/commit/a709282c8729807781b45302ee8e87d235ca2d61))
+* **wallet:** mark mined_height as null when pending outputs are cancelled ([#4686](https://github.com/tari-project/tari/issues/4686)) ([209ee3d](https://github.com/tari-project/tari/commit/209ee3d27d78c95f37fcdd731b34a846611dd458))
+
 ### [0.38.3](https://github.com/tari-project/tari/compare/v0.38.2...v0.38.3) (2022-09-13)
 
 
