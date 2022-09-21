@@ -21,13 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     fmt::{self, Display, Formatter},
     sync::Arc,
 };
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 
 use crate::{
@@ -71,7 +72,7 @@ pub enum NodeCommsResponse {
     FetchOutputsByContractIdResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
-    FetchValidatorNodesKeysResponse(Vec<ActiveValidatorNode>),
+    FetchValidatorNodesKeysResponse(HashMap<PublicKey, [u8; 32]>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse([u8; 32]),
 }

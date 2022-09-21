@@ -34,6 +34,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{Commitment, HashOutput, PublicKey, Signature},
 };
+use tari_mmr::Hash;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
@@ -414,10 +415,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(
-        &self,
-        height: u64,
-    ) -> Result<Vec<crate::chain_storage::ActiveValidatorNode>, ChainStorageError> {
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<HashMap<PublicKey, [u8; 32]>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
     }
 

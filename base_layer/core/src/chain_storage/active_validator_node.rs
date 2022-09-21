@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{HashOutput, PublicKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActiveValidatorNode {
@@ -29,4 +29,5 @@ pub struct ActiveValidatorNode {
     pub from_height: u64,
     pub to_height: u64,
     pub public_key: PublicKey,
+    pub output_hash: HashOutput,
 }

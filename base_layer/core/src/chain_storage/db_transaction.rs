@@ -362,9 +362,6 @@ pub enum WriteOperation {
     InsertValidatorNode {
         validator_node: ActiveValidatorNode,
     },
-    DeleteValidatorNode {
-        public_key: PublicKey,
-    },
 }
 
 impl fmt::Display for WriteOperation {
@@ -464,7 +461,6 @@ impl fmt::Display for WriteOperation {
             InsertValidatorNode { validator_node } => {
                 write!(f, "Inserting VN {:?}", validator_node)
             },
-            DeleteValidatorNode { public_key } => write!(f, "Delete VN key {}", public_key),
         }
     }
 }

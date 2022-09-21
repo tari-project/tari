@@ -135,7 +135,7 @@ impl BaseNodeGrpcServer {}
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
-    type GetActiveValidatorNodesStream = mpsc::Receiver<Result<tari_rpc::ActiveValidatorNode, Status>>;
+    type GetActiveValidatorNodesStream = mpsc::Receiver<Result<tari_rpc::GetActiveValidatorNodesResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
@@ -1475,6 +1475,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
+        dbg!(&request);
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
@@ -1487,28 +1488,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 },
                 Ok(data) => data,
             };
-            for active_validator_node in active_validator_nodes {
-                let active_validator_node = match tari_rpc::ActiveValidatorNode::try_from(active_validator_node) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending converting active validator node for GRPC: {}", e
-                        );
-                        match tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal("Error converting active validator node"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+            dbg!(&active_validator_nodes);
+            for (public_key, shard_key) in active_validator_nodes {
+                let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
+                    public_key: public_key.to_vec(),
+                    shard_key: shard_key.to_vec(),
                 };
 
                 match tx.send(Ok(active_validator_node)).await {

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::RangeInclusive, sync::Arc};
+use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -276,7 +276,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_active_validator_nodes(
         &mut self,
         height: u64,
-    ) -> Result<Vec<ActiveValidatorNode>, CommsInterfaceError> {
+    ) -> Result<HashMap<PublicKey, [u8; 32]>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchValidatorNodesKeys { height })
