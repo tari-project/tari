@@ -1442,7 +1442,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Error {}", e);
-                report_error(report_error_flag, Status::internal(e.to_string()))
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?
             .iter()
             .map(|a| a.shard_key.to_vec())
@@ -1458,10 +1458,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
         let public_key = PublicKey::from_bytes(&request.public_key)
-            .map_err(|e| report_error(report_error_flag, Status::invalid_argument(e.to_string())))?;
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
         let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {
             error!(target: LOG_TARGET, "Error {}", e);
-            report_error(report_error_flag, Status::internal(e.to_string()))
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
         Ok(Response::new(tari_rpc::GetShardKeyResponse {
             shard_key: shard_key.to_vec(),
@@ -1496,7 +1496,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             "Error sending converting active validator node for GRPC: {}", e
                         );
                         match tx
-                            .send(Err(report_error(
+                            .send(Err(obscure_error_if_true(
                                 report_error_flag,
                                 Status::internal("Error converting active validator node"),
                             )))
@@ -1519,7 +1519,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             "Error sending mempool transaction via GRPC:  {}", err
                         );
                         match tx
-                            .send(Err(report_error(
+                            .send(Err(obscure_error_if_true(
                                 report_error_flag,
                                 Status::unknown("Error sending data"),
                             )))
