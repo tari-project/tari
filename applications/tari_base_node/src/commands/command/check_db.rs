@@ -54,7 +54,7 @@ impl CommandContext {
             io::stdout().flush().await?;
             // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
             if height > horizon_height {
-                match self.node_service.get_block(height).await {
+                match self.node_service.get_block(height, false).await {
                     Err(err) => {
                         // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
                         // logging it.

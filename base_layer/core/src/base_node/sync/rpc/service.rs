@@ -206,7 +206,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         "Sending blocks #{} - #{} to '{}'", start, end, peer_node_id
                     );
                     let blocks = db
-                        .fetch_blocks(start..=end)
+                        .fetch_blocks(start..=end, true)
                         .await
                         .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
@@ -225,12 +225,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks
                                 .into_iter()
-                                .map(|hb| {
-                                    match hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)) {
-                                        Ok(b) => Ok(b.to_compact()),
-                                        Err(e) => Err(e),
-                                    }
-                                })
+                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
                                 .map(|block| match block {
                                     Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
                                         log::error!(target: LOG_TARGET, "Internal error: {}", e);

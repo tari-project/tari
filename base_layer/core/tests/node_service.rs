@@ -57,9 +57,9 @@ use tempfile::tempdir;
 
 use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
 
-#[allow(dead_code)]
 mod helpers;
 
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn propagate_and_forward_many_valid_blocks() {
     let temp_dir = tempdir().unwrap();
@@ -81,7 +81,12 @@ async fn propagate_and_forward_many_valid_blocks() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
+
+    let (tx01, _tx01_out) = spend_utxos(
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
+    );
+
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -140,7 +145,14 @@ async fn propagate_and_forward_many_valid_blocks() {
     let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
     let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
 
-    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules, 5);
+    let mut blocks = Vec::with_capacity(6);
+    blocks.push(append_block(&alice_node.blockchain_db, &block0, vec![tx01], &rules, 1.into()).unwrap());
+    blocks.extend(construct_chained_blocks(
+        &alice_node.blockchain_db,
+        blocks[0].clone(),
+        &rules,
+        5,
+    ));
 
     for block in &blocks {
         alice_node
@@ -178,6 +190,7 @@ async fn propagate_and_forward_many_valid_blocks() {
     carol_node.shutdown().await;
     dan_node.shutdown().await;
 }
+
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test]
 async fn propagate_and_forward_invalid_block_hash() {
@@ -423,7 +436,7 @@ async fn local_get_metadata() {
         .start(temp_dir.path().to_str().unwrap())
         .await;
     let db = &node.blockchain_db;
-    let block0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();
+    let block0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
     let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into()).unwrap();
 
@@ -634,7 +647,7 @@ async fn local_submit_block() {
 
     let db = &node.blockchain_db;
     let mut event_stream = node.local_nci.get_block_event_stream();
-    let block0 = db.fetch_block(0).unwrap().block().clone();
+    let block0 = db.fetch_block(0, true).unwrap().block().clone();
     let mut block1 = db
         .prepare_new_block(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
