@@ -25,8 +25,9 @@
 use std::cmp;
 
 use log::*;
-use tari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc as grpc};
+use tari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
+use tari_wallet_grpc_client::WalletGrpcClient;
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
@@ -38,18 +39,14 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
-    base_node_client: &'a mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-    wallet_client: &'a mut grpc::wallet_client::WalletClient<
-        tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
-    >,
+    base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
+    wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
 }
 
 impl<'a> BlockTemplateProtocol<'a> {
     pub fn new(
-        base_node_client: &'a mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-        wallet_client: &'a mut grpc::wallet_client::WalletClient<
-            tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
-        >,
+        base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
+        wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
     ) -> Self {
         Self {
             base_node_client,
@@ -160,7 +157,7 @@ impl BlockTemplateProtocol<'_> {
         let tip = self
             .base_node_client
             .clone()
-            .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
+            .get_tip_info(grpc::Empty {})
             .await?
             .into_inner();
         let tip_height = tip.metadata.as_ref().map(|m| m.height_of_longest_chain).unwrap_or(0);

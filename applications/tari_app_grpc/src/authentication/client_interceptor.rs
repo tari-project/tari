@@ -40,11 +40,9 @@ impl ClientAuthenticationInterceptor {
     pub fn create(auth: &GrpcAuthentication) -> Result<Self, BasicAuthError> {
         let authorization_header = match auth {
             GrpcAuthentication::None => None,
-            GrpcAuthentication::Basic { username, password } => Some(
-                BasicAuthCredentials::generate_header(username, password.reveal())?
-                    .parse()
-                    .unwrap(),
-            ),
+            GrpcAuthentication::Basic { username, password } => {
+                Some(BasicAuthCredentials::generate_header(username, password.reveal())?)
+            },
         };
         Ok(Self { authorization_header })
     }

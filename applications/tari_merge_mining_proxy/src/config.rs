@@ -22,8 +22,8 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::StringList, SubConfigPath};
-use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
+use tari_wallet_grpc_client::GrpcAuthentication;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

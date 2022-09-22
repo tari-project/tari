@@ -27,7 +27,7 @@ use std::{collections::HashMap, sync::Arc};
 #[cfg(not(test))]
 use chrono::Duration;
 use chrono::{self, DateTime, Utc};
-use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::grpc;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
 use tracing::trace;
