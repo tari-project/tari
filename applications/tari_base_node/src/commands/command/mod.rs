@@ -222,14 +222,13 @@ impl CommandContext {
                 Command::HeaderStats(_) |
                 Command::SearchUtxo(_) |
                 Command::SearchKernel(_) |
-                Command::Quit(_) |
-                Command::Exit(_) => 30,
-                // Depending on the state and busyness of the mempool, these commands can take a fairly long time
-                Command::Status(_) |
-                Command::Watch(_) |
                 Command::GetMempoolStats(_) |
                 Command::GetMempoolState(_) |
-                Command::GetMempoolTx(_) => 180,
+                Command::GetMempoolTx(_) |
+                Command::Status(_) |
+                Command::Watch(_) |
+                Command::Quit(_) |
+                Command::Exit(_) => 30,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
                 Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
             };
