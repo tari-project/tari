@@ -80,7 +80,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{CodeTemplateRegistration, TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -1180,6 +1180,14 @@ where B: BlockchainBackend
     pub fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_committee(height, shard)
+    }
+
+    pub fn fetch_template_registrations(
+        &self,
+        from_height: u64,
+    ) -> Result<Vec<CodeTemplateRegistration>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_template_registrations(from_height)
     }
 }
 

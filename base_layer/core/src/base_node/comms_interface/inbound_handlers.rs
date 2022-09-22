@@ -376,6 +376,12 @@ where B: BlockchainBackend + 'static
                 let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
                 Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
             },
+            NodeCommsRequest::FetchTemplateRegistrations { from_height } => {
+                let template_registrations = self.blockchain_db.fetch_template_registrations(from_height).await?;
+                Ok(NodeCommsResponse::FetchTemplateRegistrationsResponse(
+                    template_registrations,
+                ))
+            },
         }
     }
 

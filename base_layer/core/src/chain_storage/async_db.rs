@@ -62,7 +62,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -271,6 +271,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_committee(height: u64, shard: [u8;32]) -> Vec<ActiveValidatorNode>, "fetch_committee");
 
     make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> [u8;32], "get_shard_key");
+
+    make_async_fn!(fetch_template_registrations(from_height: u64) -> Vec<CodeTemplateRegistration>, "fetch_template_registrations");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

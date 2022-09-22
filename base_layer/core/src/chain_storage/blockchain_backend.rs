@@ -31,7 +31,7 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{CodeTemplateRegistration, TransactionInput, TransactionKernel},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -196,4 +196,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
     fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError>;
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError>;
+    fn fetch_template_registrations(
+        &self,
+        from_height: u64,
+    ) -> Result<Vec<CodeTemplateRegistration>, ChainStorageError>;
 }

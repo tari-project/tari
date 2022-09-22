@@ -470,5 +470,5 @@ message GetShardKeyResponse {
 }
 
 message GetTemplateRegistrationsRequest {
-    uint64 height = 1;
+    uint64 from_height = 1;
 }

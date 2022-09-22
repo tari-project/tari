@@ -74,7 +74,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_components::{TransactionInput, TransactionKernel, UnblindedOutput},
+        transaction_components::{CodeTemplateRegistration, TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -427,6 +427,13 @@ impl BlockchainBackend for TempDatabase {
 
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
         self.db.as_ref().unwrap().get_shard_key(height, public_key)
+    }
+
+    fn fetch_template_registrations(
+        &self,
+        from_height: u64,
+    ) -> Result<Vec<CodeTemplateRegistration>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_template_registrations(from_height)
     }
 }
 

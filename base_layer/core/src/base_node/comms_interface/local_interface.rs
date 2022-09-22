@@ -40,7 +40,7 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::ActiveValidatorNode,
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -309,6 +309,20 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::GetShardKeyResponse(shard_key) => Ok(shard_key),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_template_registrations(
+        &mut self,
+        from_height: u64,
+    ) -> Result<Vec<CodeTemplateRegistration>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchTemplateRegistrations { from_height })
+            .await??
+        {
+            NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

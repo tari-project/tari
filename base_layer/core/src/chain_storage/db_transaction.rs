@@ -34,7 +34,7 @@ use super::ActiveValidatorNode;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
 };
 
 #[derive(Debug)]
@@ -365,6 +365,9 @@ pub enum WriteOperation {
     DeleteValidatorNode {
         public_key: PublicKey,
     },
+    InsertTemplateRegistration {
+        template_registration: CodeTemplateRegistration,
+    },
 }
 
 impl fmt::Display for WriteOperation {
@@ -465,6 +468,9 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Inserting VN {:?}", validator_node)
             },
             DeleteValidatorNode { public_key } => write!(f, "Delete VN key {}", public_key),
+            InsertTemplateRegistration { template_registration } => {
+                write!(f, "Inserting Template {:?}", template_registration)
+            },
         }
     }
 }

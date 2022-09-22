@@ -48,10 +48,7 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{CodeTemplateRegistration, Transaction},
-    },
+    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
@@ -1558,8 +1555,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (mut tx, rx) = mpsc::channel(1000);
 
         task::spawn(async move {
-            // TODO: fetch the templates from the db
-            let template_registrations: Vec<CodeTemplateRegistration> = vec![];
+            let template_registrations = match handler.get_template_registrations(request.from_height).await {
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => data,
+            };
 
             for template_registration in template_registrations {
                 let template_registration = match tari_rpc::TemplateRegistration::try_from(template_registration) {
