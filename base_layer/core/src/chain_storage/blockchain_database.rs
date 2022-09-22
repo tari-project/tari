@@ -41,7 +41,7 @@ use tari_common_types::{
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::ActiveValidatorNode;
+use super::{ActiveValidatorNode, TemplateRegistration};
 use crate::{
     blocks::{
         Block,
@@ -80,7 +80,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{CodeTemplateRegistration, TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -1185,7 +1185,7 @@ where B: BlockchainBackend
     pub fn fetch_template_registrations(
         &self,
         from_height: u64,
-    ) -> Result<Vec<CodeTemplateRegistration>, ChainStorageError> {
+    ) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_template_registrations(from_height)
     }

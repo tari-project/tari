@@ -82,3 +82,6 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ActiveValidatorNode;
+
+mod template_registation;
+pub use template_registation::TemplateRegistration;

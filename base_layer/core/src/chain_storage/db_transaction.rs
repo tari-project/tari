@@ -30,11 +30,11 @@ use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PublicKey};
 use tari_utilities::hex::Hex;
 
-use super::ActiveValidatorNode;
+use super::{ActiveValidatorNode, TemplateRegistration};
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
-    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
 #[derive(Debug)]
@@ -366,7 +366,7 @@ pub enum WriteOperation {
         public_key: PublicKey,
     },
     InsertTemplateRegistration {
-        template_registration: CodeTemplateRegistration,
+        template_registration: TemplateRegistration,
     },
 }
 

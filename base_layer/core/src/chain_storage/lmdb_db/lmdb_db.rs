@@ -92,17 +92,12 @@ use crate::{
         MmrTree,
         PrunedOutput,
         Reorg,
+        TemplateRegistration,
     },
     consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{
-            CodeTemplateRegistration,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
+        transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
@@ -247,7 +242,7 @@ pub struct LMDBDatabase {
     validator_nodes: DatabaseRef,
     /// Maps VN Shard Key -> VN Public Key
     validator_nodes_mapping: DatabaseRef,
-    /// Maps CodeTemplateRegistration hash-> CodeTemplateRegistration
+    /// Maps CodeTemplateRegistration hash-> TemplateRegistration
     template_registrations: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
@@ -1337,7 +1332,12 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.template_registration())
             {
-                self.insert_template_registration(txn, template_reg)?;
+                let record = TemplateRegistration {
+                    registration_data: template_reg.clone(),
+                    height: header.height,
+                };
+
+                self.insert_template_registration(txn, &record)?;
             }
             self.insert_output(
                 txn,
@@ -1626,9 +1626,9 @@ impl LMDBDatabase {
     fn insert_template_registration(
         &self,
         txn: &WriteTransaction<'_>,
-        template_registration: &CodeTemplateRegistration,
+        template_registration: &TemplateRegistration,
     ) -> Result<(), ChainStorageError> {
-        let key = template_registration.hash();
+        let key = template_registration.registration_data.hash();
         lmdb_insert(
             txn,
             &self.template_registrations,
@@ -2534,13 +2534,15 @@ impl BlockchainBackend for LMDBDatabase {
             })
     }
 
-    fn fetch_template_registrations(
-        &self,
-        _from_height: u64,
-    ) -> Result<Vec<CodeTemplateRegistration>, ChainStorageError> {
+    fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        // TODO: filter by block height
-        lmdb_filter_map_values(&txn, &self.template_registrations, Some)
+        lmdb_filter_map_values(&txn, &self.template_registrations, |tr: TemplateRegistration| {
+            if tr.height >= from_height {
+                Some(tr)
+            } else {
+                None
+            }
+        })
     }
 }
 
