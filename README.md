@@ -100,7 +100,7 @@ First you'll need to make sure you have a full development environment set up:
 
 ```
 brew update
-brew install cmake openssl tor coreutils
+brew install cmake openssl tor coreutils automake
 brew install --cask powershell
 ```
 
