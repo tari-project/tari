@@ -202,31 +202,16 @@ impl MempoolStorage {
         Ok(())
     }
 
-    /// In the event of a Rewind for a block sync. Move all transactions to the orphan pool
-    pub fn process_rewind(&mut self, removed_blocks: &[Arc<Block>]) -> Result<(), MempoolError> {
-        debug!(target: LOG_TARGET, "Mempool processing rewind");
-        let current_tip = removed_blocks
-            .first()
-            .map(|block| block.header.height)
-            .unwrap_or_default()
-            .checked_sub(1)
-            .unwrap_or_default();
-
-        // Clear out all transactions from the unconfirmed pool and save them in the reorg pool. We dont reinsert valid
-        // transactions here as we will need to revalidate them again after the sync was done and the mempool and
-        // blockchain does not yet know how the blocks will look.
-        let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
-        // lets save to the reorg pool
-        self.reorg_pool.insert_all(current_tip, removed_txs);
-        Ok(())
-    }
-
     /// After a sync event, we need to try to add in all the transaction form the reorg pool.
-    pub fn process_sync(&mut self) -> Result<(), MempoolError> {
+    pub fn process_sync(&mut self, blocks_added: u64) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing sync finished");
-        // lets retrieve all the transactions from the reorg pool and try to reinsert them.
-        let txs = self.reorg_pool.clear_and_retrieve_all();
+        // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
+        // we dont have the data to know what.
+        let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         // lets add them all back into the mempool
+        self.insert_txs(txs);
+        //let retrieve all re-org pool transactions as well as make sure they are mined as well
+        let txs = self.reorg_pool.clear_and_retrieve_all();
         self.insert_txs(txs);
         Ok(())
     }

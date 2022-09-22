@@ -173,13 +173,10 @@ impl MempoolInboundHandlers {
                     .await?;
             },
             ValidBlockAdded(_, _) => {},
-            BlockSyncRewind(removed_blocks) => {
-                self.mempool
-                    .process_rewind(removed_blocks.iter().map(|b| b.to_arc_block()).collect())
-                    .await?;
-            },
-            BlockSyncComplete() => {
-                self.mempool.process_sync().await?;
+            BlockSyncRewind(_) => {},
+            BlockSyncComplete(tip_block, starting_sync_height) => {
+                let height_diff = tip_block.height() - starting_sync_height;
+                self.mempool.process_sync(height_diff).await?;
             },
             AddBlockValidationFailed {
                 block: failed_block,
