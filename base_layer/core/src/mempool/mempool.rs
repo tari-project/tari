@@ -102,8 +102,8 @@ impl Mempool {
     }
 
     /// After a sync event, we can move all orphan transactions to the unconfirmed pool after validation
-    pub async fn process_sync(&self, blocks_added: u64) -> Result<(), MempoolError> {
-        self.with_write_access(move |storage| storage.process_sync(blocks_added))
+    pub async fn process_sync(&self) -> Result<(), MempoolError> {
+        self.with_write_access(move |storage| storage.process_sync())
             .await
     }
 

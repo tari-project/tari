@@ -203,7 +203,7 @@ impl MempoolStorage {
     }
 
     /// After a sync event, we need to try to add in all the transaction form the reorg pool.
-    pub fn process_sync(&mut self, blocks_added: u64) -> Result<(), MempoolError> {
+    pub fn process_sync(&mut self) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing sync finished");
         // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
         // we dont have the data to know what.
