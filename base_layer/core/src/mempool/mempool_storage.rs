@@ -191,14 +191,13 @@ impl MempoolStorage {
         // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
         // after a reorg.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
-        // this returns all orphaned transaction, but because we know the new blocks are already added, they will still
-        // be orphaned, we can drop them here
-        let _ = self.insert_txs(removed_txs);
+        // Try to add in all the transactions again.
+        self.insert_txs(removed_txs);
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
-        let _ = self.insert_txs(removed_txs);
+        self.insert_txs(removed_txs);
         Ok(())
     }
 
@@ -210,7 +209,7 @@ impl MempoolStorage {
         let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         // lets add them all back into the mempool
         self.insert_txs(txs);
-        //let retrieve all re-org pool transactions as well as make sure they are mined as well
+        // let retrieve all re-org pool transactions as well as make sure they are mined as well
         let txs = self.reorg_pool.clear_and_retrieve_all();
         self.insert_txs(txs);
         Ok(())

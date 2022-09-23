@@ -174,7 +174,7 @@ impl MempoolInboundHandlers {
             },
             ValidBlockAdded(_, _) => {},
             BlockSyncRewind(_) => {},
-            BlockSyncComplete(_,_) => {
+            BlockSyncComplete(_, _) => {
                 self.mempool.process_sync().await?;
             },
             AddBlockValidationFailed {
