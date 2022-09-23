@@ -79,7 +79,7 @@ pub use initializer::MempoolSyncInitializer;
 use log::*;
 use prost::Message;
 use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityEventRx},
+    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester, ConnectivitySelection},
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
@@ -97,6 +97,8 @@ use tokio::{
 };
 
 use crate::{
+    base_node::comms_interface::{BlockEvent, BlockEventReceiver},
+    chain_storage::BlockAddResult,
     mempool::{metrics, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
     transactions::transaction_components::Transaction,
@@ -113,13 +115,19 @@ const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
 
+pub struct MempoolSyncStreams {
+    pub block_event_stream: BlockEventReceiver,
+    pub connectivity_events: ConnectivityEventRx,
+}
+
 pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,
     protocol_notifier: ProtocolNotificationRx<TSubstream>,
-    connectivity_events: ConnectivityEventRx,
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
+    connectivity: ConnectivityRequester,
+    block_event_stream: BlockEventReceiver
 }
 
 impl<TSubstream> MempoolSyncProtocol<TSubstream>
@@ -128,25 +136,30 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     pub fn new(
         config: MempoolServiceConfig,
         protocol_notifier: ProtocolNotificationRx<TSubstream>,
-        connectivity_events: ConnectivityEventRx,
         mempool: Mempool,
+        connectivity: ConnectivityRequester,
+        block_event_stream: BlockEventReceiver
     ) -> Self {
         Self {
             config,
             protocol_notifier,
-            connectivity_events,
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
+            connectivity,block_event_stream
         }
     }
 
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
 
+        let mut connectivity_events = self.connectivity.get_event_subscription();
         loop {
             tokio::select! {
-                Ok(event) = self.connectivity_events.recv() => {
+                Ok(block_event) = self.block_event_stream.recv() => {
+                    self.handle_block_event(&block_event).await;
+                },
+                Ok(event) = connectivity_events.recv() => {
                     self.handle_connectivity_event(event).await;
                 },
 
@@ -172,6 +185,55 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             },
             _ => {},
         }
+    }
+
+    async fn handle_block_event(&mut self, block_event: &BlockEvent) {
+        use BlockEvent::{BlockSyncComplete, ValidBlockAdded};
+        if self.permits.available_permits() < 1 {
+            // Sync is already in progress, so we should not bother trying to sync.
+            return;
+        }
+        match block_event {
+            ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed: _ }) => {
+                if added.len() < self.config.block_sync_trigger {
+                    return;
+                }
+            },
+            BlockSyncComplete(tip, starting_sync_height) => {
+                let added = tip.height() - starting_sync_height;
+                if added < self.config.block_sync_trigger as u64 {
+                    return;
+                }
+            },
+            _ => {
+                return;
+            },
+        }
+        // we need to make sure the service can start a sync
+        if self.num_synched.load(Ordering::Acquire) >= self.config.initial_sync_num_peers {
+            self.num_synched.fetch_sub(1, Ordering::Release);
+        }
+        let connection = match self
+            .connectivity
+            .select_connections(ConnectivitySelection::random_nodes(1, vec![]))
+            .await
+        {
+            Ok(mut v) => {
+                if v.is_empty() {
+                    error!(target: LOG_TARGET, "Mempool sync could not get a peer to sync to");
+                    return;
+                };
+                v.pop().unwrap()
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Mempool sync could not get a peer to sync to: {}", e
+                );
+                return;
+            },
+        };
+        self.spawn_initiator_protocol(connection).await;
     }
 
     fn is_synched(&self) -> bool {

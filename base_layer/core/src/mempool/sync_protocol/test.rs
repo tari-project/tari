@@ -31,7 +31,10 @@ use tari_comms::{
     message::MessageExt,
     peer_manager::PeerFeatures,
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationTx},
-    test_utils::{mocks::create_peer_connection_mock_pair, node_identity::build_node_identity},
+    test_utils::{
+        mocks::{create_connectivity_mock, create_peer_connection_mock_pair},
+        node_identity::build_node_identity,
+    },
     Bytes,
     BytesMut,
 };
@@ -87,14 +90,19 @@ async fn setup(
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
     let (connectivity_events_tx, connectivity_events_rx) = broadcast::channel(10);
     let (mempool, transactions) = new_mempool_with_transactions(num_txns).await;
+    let (connectivity, _) = create_connectivity_mock();
+    let (block_event_sender, _) = broadcast::channel(1);
+    let block_receiver = block_event_sender.subscribe();
+
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
         connectivity_events_rx,
         mempool.clone(),
+        connectivity,
     );
 
-    task::spawn(protocol.run());
+    task::spawn(protocol.run(block_receiver));
 
     (protocol_notif_tx, connectivity_events_tx, mempool, transactions)
 }
