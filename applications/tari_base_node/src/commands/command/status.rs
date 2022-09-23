@@ -85,7 +85,7 @@ impl CommandContext {
             .consensus_constants(metadata.height_of_longest_chain());
         // TODO: This code enables a status line display even if the mempool stats times out
         let fut = self.mempool_service.get_mempool_stats();
-        if let Ok(mempool_stats) = time::timeout(Duration::from_secs(15), fut).await? {
+        if let Ok(mempool_stats) = time::timeout(Duration::from_secs(5), fut).await? {
             status_line.add_field(
                 "Mempool",
                 format!(
