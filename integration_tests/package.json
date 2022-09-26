@@ -44,7 +44,7 @@
     "sha3": "^2.1.3",
     "tari_crypto": "v0.14.0",
     "utf8": "^3.0.0",
-    "wallet-grpc-client": "file:../clients/wallet_grpc_client",
+    "wallet-grpc-client": "file:../clients/nodejs/wallet_grpc_client",
     "varint": "^6.0.0"
   }
 }

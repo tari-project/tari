@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,30 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Add coinbase TX to the block template.
+use tari_wallet_grpc_client::{grpc, WalletGrpcClient};
 
-use std::convert::{TryFrom, TryInto};
-
-use tari_base_node_grpc_client::grpc;
-use tari_core::{
-    blocks::NewBlockTemplate,
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
-};
-
-use crate::error::MmProxyError;
-
-/// Add [coinbase](grpc::Transaction) to [block template](grpc::NewBlockTemplate)
-pub fn add_coinbase(
-    coinbase: grpc::Transaction,
-    block_template: grpc::NewBlockTemplate,
-) -> Result<grpc::NewBlockTemplate, MmProxyError> {
-    let mut block_template = NewBlockTemplate::try_from(block_template)
-        .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
-    let output = TransactionOutput::try_from(coinbase.body.as_ref().unwrap().outputs[0].clone())
-        .map_err(MmProxyError::MissingDataError)?;
-    let kernel = TransactionKernel::try_from(coinbase.body.as_ref().unwrap().kernels[0].clone())
-        .map_err(MmProxyError::MissingDataError)?;
-    block_template.body.add_output(output);
-    block_template.body.add_kernel(kernel);
-    block_template.try_into().map_err(MmProxyError::ConversionError)
+#[tokio::test]
+async fn it_works() {
+    // Basic test that only works if a wallet is running on localhost:18143
+    match WalletGrpcClient::connect("http://127.0.0.1:18143").await {
+        Ok(mut client) => {
+            let _res = client.identify(grpc::GetIdentityRequest {}).await;
+            #[cfg(debug_assertions)]
+            eprintln!("Wallet identify: {:?}", _res);
+        },
+        Err(_err) => {
+            #[cfg(debug_assertions)]
+            eprintln!("Could not connect: {:?}", _err);
+        },
+    }
 }

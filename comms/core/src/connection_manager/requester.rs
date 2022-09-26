@@ -107,13 +107,6 @@ impl ConnectionManagerRequester {
         Ok(())
     }
 
-    /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
-        self.send_dial_peer(node_id, None).await?;
-        Ok(())
-    }
-
     /// Return the ListenerInfo for the configured listener once the listener(s) are bound to the socket.
     ///
     /// This is useful when using "assigned port" addresses, such as /ip4/0.0.0.0/tcp/0 or /memory/0 for listening and

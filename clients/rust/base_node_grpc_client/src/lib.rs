@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2022, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::borrow::Borrow;
-
-use tari_core::base_node::state_machine_service::states::{
-    StateInfo,
-    StateInfo::{BlockSync, Connecting, HeaderSync, HorizonSync, Listening, StartUp, SyncFailed},
-};
-
-use crate::tari_rpc as grpc;
-
-impl<T: Borrow<StateInfo>> From<T> for grpc::BaseNodeState {
-    fn from(info: T) -> Self {
-        match info.borrow() {
-            StartUp => grpc::BaseNodeState::HeaderSync,
-            HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
-            HorizonSync(_) => grpc::BaseNodeState::HorizonSync,
-            Connecting(_) => grpc::BaseNodeState::Connecting,
-            BlockSync(_) => grpc::BaseNodeState::BlockSync,
-            Listening(_) => grpc::BaseNodeState::Listening,
-            SyncFailed(_) => grpc::BaseNodeState::SyncFailed,
-        }
-    }
-}
+pub use tari_app_grpc::tari_rpc as grpc;
+pub type BaseNodeGrpcClient<TChannel> = grpc::base_node_client::BaseNodeClient<TChannel>;

@@ -40,12 +40,13 @@ use json::json;
 use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use tari_core::{
     consensus::ConsensusEncoding,
     proof_of_work::{monero_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
+use tari_wallet_grpc_client::WalletGrpcClient;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
@@ -54,7 +55,6 @@ use crate::{
     common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     config::MergeMiningProxyConfig,
     error::MmProxyError,
-    WalletGrpcClient,
 };
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
@@ -72,8 +72,8 @@ impl MergeMiningProxyService {
     pub fn new(
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
-        base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-        wallet_client: WalletGrpcClient,
+        base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
+        wallet_client: WalletGrpcClient<tonic::transport::Channel>,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
     ) -> Self {
@@ -154,8 +154,8 @@ struct InnerService {
     config: MergeMiningProxyConfig,
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
-    base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-    wallet_client: WalletGrpcClient,
+    base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
+    wallet_client: WalletGrpcClient<tonic::transport::Channel>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
@@ -394,10 +394,7 @@ impl InnerService {
                 initial_sync_achieved,
                 metadata,
                 ..
-            } = grpc_client
-                .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
-                .await?
-                .into_inner();
+            } = grpc_client.get_tip_info(grpc::Empty {}).await?.into_inner();
 
             if initial_sync_achieved {
                 self.initial_sync_achieved.store(true, Ordering::Relaxed);
