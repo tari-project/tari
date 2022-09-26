@@ -30,7 +30,7 @@ mod test;
 
 /// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
 /// This can be thought of as the hard limit on message size.
-pub const RPC_MAX_FRAME_SIZE: usize = 2 * 1024 * 1024; // 2 MiB
+pub const RPC_MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 /// Maximum number of chunks into which a message can be broken up.
 const RPC_CHUNKING_MAX_CHUNKS: usize = 16; // 16 x 256 Kib = 4 MiB max combined message size
 const RPC_CHUNKING_THRESHOLD: usize = 256 * 1024;
