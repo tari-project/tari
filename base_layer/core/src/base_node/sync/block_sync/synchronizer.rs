@@ -127,6 +127,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync blocks({} sync peers)",
+            sync_peer_node_ids.len()
+        );
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             let sync_peer = &self.sync_peers[i];
             self.hooks.call_on_starting_hook(sync_peer);

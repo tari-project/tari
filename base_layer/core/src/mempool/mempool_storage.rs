@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_common_types::types::{PrivateKey, Signature};
@@ -79,15 +79,25 @@ impl MempoolStorage {
             .first()
             .map(|k| k.excess_sig.get_signature().to_hex())
             .unwrap_or_else(|| "None?!".into());
+        let timer = Instant::now();
         debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
         match self.validator.validate(&tx) {
             Ok(()) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction {} is VALID, inserting in unconfirmed pool", tx_id
+                    "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool in",
+                    tx_id,
+                    timer.elapsed()
                 );
+                let timer = Instant::now();
                 let weight = self.get_transaction_weighting(0);
                 self.unconfirmed_pool.insert(tx, None, &weight);
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} inserted in {:.2?}",
+                    tx_id,
+                    timer.elapsed()
+                );
                 TxStorageResponse::UnconfirmedPool
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
@@ -146,16 +156,36 @@ impl MempoolStorage {
             published_block.header.hash().to_hex(),
             published_block.body.to_counts_string()
         );
+        let timer = Instant::now();
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(published_block);
+        debug!(
+            target: LOG_TARGET,
+            "{} transactions removed from unconfirmed pool in {:.2?}, moving them to reorg pool for block #{} ({}) {}",
+            removed_transactions.len(),
+            timer.elapsed(),
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+            published_block.body.to_counts_string()
+        );
+        let timer = Instant::now();
         self.reorg_pool
             .insert_all(published_block.header.height, removed_transactions);
-
+        debug!(
+            target: LOG_TARGET,
+            "Transactions added to reorg pool in {:.2?} for block #{} ({}) {}",
+            timer.elapsed(),
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+            published_block.body.to_counts_string()
+        );
+        let timer = Instant::now();
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
+        debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         debug!(target: LOG_TARGET, "{}", self.stats());
         Ok(())
     }

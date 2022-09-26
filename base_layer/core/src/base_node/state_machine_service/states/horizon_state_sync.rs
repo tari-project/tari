@@ -126,6 +126,12 @@ impl HorizonStateSync {
                 StateEvent::HorizonStateSynchronized
             },
             Err(err) => {
+                let _ignore = shared.status_event_sender.send(StatusInfo {
+                    bootstrapped,
+                    state_info: StateInfo::SyncFailed("HorizonSyncFailed".to_string()),
+                    randomx_vm_cnt,
+                    randomx_vm_flags,
+                });
                 warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {}", err);
                 StateEvent::HorizonStateSyncFailure
             },
