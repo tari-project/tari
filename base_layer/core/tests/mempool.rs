@@ -1191,7 +1191,7 @@ async fn consensus_validation_unique_excess_sig() {
     let tx = Arc::new(tx1);
     let response = mempool.insert(tx).await.unwrap();
     dbg!(&response);
-    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+    assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
 }
 
 #[tokio::test]
