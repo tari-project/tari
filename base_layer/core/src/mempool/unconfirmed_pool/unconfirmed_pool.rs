@@ -510,21 +510,6 @@ impl UnconfirmedPool {
         Some(prioritized_transaction.transaction)
     }
 
-    /// Remove all unconfirmed transactions that have become time locked. This can happen when the chain height was
-    /// reduced on some reorgs.
-    pub fn remove_timelocked(&mut self, tip_height: u64) {
-        debug!(target: LOG_TARGET, "Removing time-locked inputs from unconfirmed pool");
-        let to_remove = self
-            .tx_by_key
-            .iter()
-            .filter(|(_, ptx)| ptx.transaction.min_spendable_height() > tip_height + 1)
-            .map(|(k, _)| *k)
-            .collect::<Vec<_>>();
-        for tx_key in to_remove {
-            self.remove_transaction(tx_key);
-        }
-    }
-
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.
     pub fn len(&self) -> usize {
         self.txs_by_signature.len()

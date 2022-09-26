@@ -92,7 +92,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     }
 
     pub fn on_complete<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>) + Send + Sync + 'static {
+    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
         self.hooks.add_on_complete_hook(hook);
     }
 
@@ -382,7 +382,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            self.hooks.call_on_complete_hooks(block);
+            self.hooks.call_on_complete_hooks(block, best_height);
         }
 
         debug!(target: LOG_TARGET, "Completed block sync with peer `{}`", sync_peer);
