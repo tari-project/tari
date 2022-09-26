@@ -34,7 +34,7 @@ use tokio::{sync::mpsc, time::sleep};
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
-        sync_protocol::{MempoolSyncProtocol,  MEMPOOL_SYNC_PROTOCOL},
+        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
         MempoolServiceConfig,
     },
@@ -102,7 +102,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 }
                 log_mdc::extend(mdc.clone());
             }
-           let base_node_events = base_node.get_block_event_stream();
+            let base_node_events = base_node.get_block_event_stream();
 
             MempoolSyncProtocol::new(config, notif_rx, mempool, connectivity, base_node_events)
                 .run()

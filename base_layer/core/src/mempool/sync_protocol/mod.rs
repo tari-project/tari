@@ -79,7 +79,7 @@ pub use initializer::MempoolSyncInitializer;
 use log::*;
 use prost::Message;
 use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester, ConnectivitySelection},
+    connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
@@ -115,11 +115,6 @@ const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
 
-pub struct MempoolSyncStreams {
-    pub block_event_stream: BlockEventReceiver,
-    pub connectivity_events: ConnectivityEventRx,
-}
-
 pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,
     protocol_notifier: ProtocolNotificationRx<TSubstream>,
@@ -127,7 +122,7 @@ pub struct MempoolSyncProtocol<TSubstream> {
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
     connectivity: ConnectivityRequester,
-    block_event_stream: BlockEventReceiver
+    block_event_stream: BlockEventReceiver,
 }
 
 impl<TSubstream> MempoolSyncProtocol<TSubstream>
@@ -138,7 +133,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         protocol_notifier: ProtocolNotificationRx<TSubstream>,
         mempool: Mempool,
         connectivity: ConnectivityRequester,
-        block_event_stream: BlockEventReceiver
+        block_event_stream: BlockEventReceiver,
     ) -> Self {
         Self {
             config,
@@ -146,7 +141,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
-            connectivity,block_event_stream
+            connectivity,
+            block_event_stream,
         }
     }
 

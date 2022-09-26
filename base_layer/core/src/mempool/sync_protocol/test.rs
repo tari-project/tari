@@ -88,7 +88,7 @@ async fn setup(
     Vec<Transaction>,
 ) {
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
-    let (connectivity_events_tx, connectivity_events_rx) = broadcast::channel(10);
+    let (connectivity_events_tx, _) = broadcast::channel(10);
     let (mempool, transactions) = new_mempool_with_transactions(num_txns).await;
     let (connectivity, _) = create_connectivity_mock();
     let (block_event_sender, _) = broadcast::channel(1);
@@ -97,12 +97,11 @@ async fn setup(
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
-        connectivity_events_rx,
         mempool.clone(),
-        connectivity,
+        connectivity,block_receiver
     );
 
-    task::spawn(protocol.run(block_receiver));
+    task::spawn(protocol.run());
 
     (protocol_notif_tx, connectivity_events_tx, mempool, transactions)
 }
