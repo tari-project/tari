@@ -23,6 +23,7 @@
 use std::{
     fmt::{Display, Formatter},
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tari_common_types::types::{HashOutput, PrivateKey, PublicKey};
@@ -46,7 +47,11 @@ impl FeePriority {
         // Big-endian used here, the MSB is in the starting index. The ordering for Vec<u8> is big-endian and the
         // unconfirmed pool expects the lowest priority to be sorted lowest to highest in the BTreeMap
         let fee_priority = fee_per_byte.to_be_bytes();
-        let maturity_priority = (u64::MAX - transaction.min_input_maturity()).to_be_bytes();
+        let age = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(n) => n.as_secs(),
+            Err(_) => 0,
+        };
+        let maturity_priority = (u64::MAX - age).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority[..8].copy_from_slice(&fee_priority[..]);
