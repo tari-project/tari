@@ -127,7 +127,7 @@ impl MempoolStorage {
                     target: LOG_TARGET,
                     "Validation failed due to already mined kernel: {}", msg
                 );
-                TxStorageResponse::NotStoredConsensus
+                TxStorageResponse::NotStoredAlreadyMined
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);

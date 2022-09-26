@@ -50,6 +50,7 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
             NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
             NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
             NotStoredConsensus => proto::TxStorageResponse::NotStored,
+            NotStoredAlreadyMined => proto::TxStorageResponse::NotStored,
         }
     }
 }
