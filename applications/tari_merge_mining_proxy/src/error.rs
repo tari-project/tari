@@ -26,9 +26,10 @@ use std::io;
 
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
-use tari_app_grpc::authentication::BasicAuthError;
+// use tari_app_grpc::authentication::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{proof_of_work::monero_rx::MergeMineError, transactions::CoinbaseBuildError};
+use tari_wallet_grpc_client::BasicAuthError;
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
 

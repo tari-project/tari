@@ -1,0 +1,20 @@
+[package]
+name = "tari_wallet_grpc_client"
+version = "0.1.0"
+edition = "2021"
+description = "Base node GRPC client"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+
+[dependencies]
+tari_app_grpc = { path = "../../../applications/tari_app_grpc" }
+tari_common_types = { path = "../../../base_layer/common_types" }
+
+thiserror = "1.0.35"
+tonic = { version = "0.6", default-features = false, features = ["codegen", "transport"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros"] }
