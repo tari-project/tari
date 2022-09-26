@@ -51,7 +51,7 @@ impl FeePriority {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
         };
-        let maturity_priority = (u64::MAX - age).to_be_bytes();
+        let age_priority = (u64::MAX - age).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority[..8].copy_from_slice(&fee_priority[..]);
