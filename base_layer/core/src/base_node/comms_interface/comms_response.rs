@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
     fmt::{self, Display, Formatter},
     sync::Arc,
 };
@@ -72,7 +71,7 @@ pub enum NodeCommsResponse {
     FetchOutputsByContractIdResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
-    FetchValidatorNodesKeysResponse(HashMap<PublicKey, [u8; 32]>),
+    FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse([u8; 32]),
 }

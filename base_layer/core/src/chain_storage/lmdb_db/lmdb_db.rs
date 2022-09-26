@@ -2436,7 +2436,11 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<HashMap<PublicKey, [u8; 32]>, ChainStorageError> {
+    // The clippy warning is because PublicKey has a public inner type that could change. In this case
+    // it should be fine to ignore the warning. You could also change the logic to use something
+    // other than a hashmap.
+    #[allow(clippy::mutable_key_type)]
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let validator_node_timeout = self
             .consensus_manager
@@ -2458,17 +2462,16 @@ impl BlockchainBackend for LMDBDatabase {
                             if start > v.from_height {
                                 pub_keys.insert(v.public_key, (shard_key, start));
                             }
-                            // ChainStorageError::DataInconsistencyDetected {
-                            //     function: "fetch active validator nodes",
-                            //     details: format!("Duplicate validator node public key found: {}", v.to_hex()),
-                            // }
                         }
                     }
                 });
         }
 
         // now remove the heights
-        Ok(pub_keys.into_iter().map(|(k, (shard_key, _))| (k, shard_key)).collect())
+        Ok(pub_keys
+            .into_iter()
+            .map(|(pk, (shard_key, _))| (pk, shard_key))
+            .collect())
     }
 
     fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {

@@ -23,7 +23,7 @@
 use std::{
     cmp,
     cmp::Ordering,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
@@ -1172,7 +1172,7 @@ where B: BlockchainBackend
         db.write(txn)
     }
 
-    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<HashMap<PublicKey, [u8; 32]>, ChainStorageError> {
+    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height)
     }
