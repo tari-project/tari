@@ -129,6 +129,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     #[allow(clippy::too_many_lines)]
     pub async fn try_sync_from_all_peers(&mut self, max_latency: Duration) -> Result<SyncPeer, BlockHeaderSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync headers ({} sync peers)",
+            sync_peer_node_ids.len()
+        );
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             {
                 let sync_peer = &self.sync_peers[i];
