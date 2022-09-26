@@ -92,7 +92,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     }
 
     pub fn on_complete<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>) + Send + Sync + 'static {
+    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
         self.hooks.add_on_complete_hook(hook);
     }
 
@@ -127,6 +127,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync blocks({} sync peers)",
+            sync_peer_node_ids.len()
+        );
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             let sync_peer = &self.sync_peers[i];
             self.hooks.call_on_starting_hook(sync_peer);
@@ -377,7 +382,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            self.hooks.call_on_complete_hooks(block);
+            self.hooks.call_on_complete_hooks(block, best_height);
         }
 
         debug!(target: LOG_TARGET, "Completed block sync with peer `{}`", sync_peer);

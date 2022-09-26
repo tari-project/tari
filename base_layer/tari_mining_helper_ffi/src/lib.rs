@@ -99,7 +99,7 @@ pub unsafe extern "C" fn byte_vector_create(
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
     if !bytes.is_null() {
-        Box::from_raw(bytes);
+        drop(Box::from_raw(bytes));
     }
 }
 

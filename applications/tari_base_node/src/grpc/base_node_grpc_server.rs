@@ -700,10 +700,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Accepted.into(),
             },
-            TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadySpent => {
-                tari_rpc::SubmitTransactionResponse {
-                    result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
-                }
+            TxStorageResponse::ReorgPool |
+            TxStorageResponse::NotStoredAlreadySpent |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredOrphan |
@@ -779,7 +779,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredTimeLocked => tari_rpc::TransactionStateResponse {
+            TxStorageResponse::NotStoredTimeLocked |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
             },
         };

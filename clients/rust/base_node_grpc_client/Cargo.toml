@@ -1,0 +1,25 @@
+[package]
+name = "tari_base_node_grpc_client"
+version = "0.1.0"
+edition = "2021"
+description = "Base node GRPC client"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+
+[dependencies]
+tari_app_grpc = { path = "../../../applications/tari_app_grpc" }
+
+#tonic = { version = "0.8", default-features = false, features = ["codegen", "transport", "prost"] }
+#prost = "0.11.0"
+#prost-types = "0.11.1"
+#thiserror = "1.0.35"
+#url = "2.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros"] }
+
+#[build-dependencies]
+#tonic-build = "0.8.0"

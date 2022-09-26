@@ -162,6 +162,7 @@ enum BaseNodeState{
     CONNECTING = 3;
     BLOCK_SYNC = 4;
     LISTENING = 5;
+    SYNC_FAILED = 6;
 }
 
 /// return type of GetNewBlockTemplate

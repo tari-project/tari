@@ -659,31 +659,35 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for output in outputs_to_send {
             commitments.push(output.commitment.as_bytes());
         }
-        // Any output in the list without the `Unspent` status will invalidate the encumberance
-        if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, &conn)?
-            .is_empty()
-        {
-            return Err(OutputManagerStorageError::OutputAlreadySpent);
-        };
+        conn.transaction::<_, _, _>(|| {
+            // Any output in the list without the `Unspent` status will invalidate the encumberance
+            if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, &conn)?
+                .is_empty()
+            {
+                return Err(OutputManagerStorageError::OutputAlreadySpent);
+            };
 
-        let count = OutputSql::update_by_commitments(
-            commitments,
-            UpdateOutput {
-                status: Some(OutputStatus::ShortTermEncumberedToBeSpent),
-                spent_in_tx_id: Some(Some(tx_id)),
-                ..Default::default()
-            },
-            &conn,
-        )?;
-        if count != outputs_to_send.len() {
-            let msg = format!(
-                "Inconsistent short term encumbering! Lengths do not match - {} vs {}",
-                count,
-                outputs_to_send.len()
-            );
-            error!(target: LOG_TARGET, "{}", msg,);
-            return Err(OutputManagerStorageError::UnexpectedResult(msg));
-        }
+            let count = OutputSql::update_by_commitments(
+                commitments,
+                UpdateOutput {
+                    status: Some(OutputStatus::ShortTermEncumberedToBeSpent),
+                    spent_in_tx_id: Some(Some(tx_id)),
+                    ..Default::default()
+                },
+                &conn,
+            )?;
+            if count != outputs_to_send.len() {
+                let msg = format!(
+                    "Inconsistent short term encumbering! Lengths do not match - {} vs {}",
+                    count,
+                    outputs_to_send.len()
+                );
+                error!(target: LOG_TARGET, "{}", msg,);
+                return Err(OutputManagerStorageError::UnexpectedResult(msg));
+            }
+
+            Ok(())
+        })?;
 
         for co in outputs_to_receive {
             let mut new_output = NewOutputSql::new(
@@ -714,19 +718,21 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        update_outputs_with_tx_id_and_status_to_new_status(
-            &conn,
-            tx_id,
-            OutputStatus::ShortTermEncumberedToBeReceived,
-            OutputStatus::EncumberedToBeReceived,
-        )?;
+        conn.transaction::<_, _, _>(|| {
+            update_outputs_with_tx_id_and_status_to_new_status(
+                &conn,
+                tx_id,
+                OutputStatus::ShortTermEncumberedToBeReceived,
+                OutputStatus::EncumberedToBeReceived,
+            )?;
 
-        update_outputs_with_tx_id_and_status_to_new_status(
-            &conn,
-            tx_id,
-            OutputStatus::ShortTermEncumberedToBeSpent,
-            OutputStatus::EncumberedToBeSpent,
-        )?;
+            update_outputs_with_tx_id_and_status_to_new_status(
+                &conn,
+                tx_id,
+                OutputStatus::ShortTermEncumberedToBeSpent,
+                OutputStatus::EncumberedToBeSpent,
+            )
+        })?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -747,13 +753,17 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeReceived as i32)))
+        conn.transaction::<_, _, _>(|| {
+            diesel::update(
+                outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeReceived as i32)),
+            )
             .set((outputs::status.eq(OutputStatus::CancelledInbound as i32),))
             .execute(&conn)?;
 
-        diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeSpent as i32)))
-            .set((outputs::status.eq(OutputStatus::Unspent as i32),))
-            .execute(&conn)?;
+            diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeSpent as i32)))
+                .set((outputs::status.eq(OutputStatus::Unspent as i32),))
+                .execute(&conn)
+        })?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
