@@ -70,7 +70,7 @@ pub enum BlockEvent {
     AddBlockErrored {
         block: Arc<Block>,
     },
-    BlockSyncComplete(Arc<ChainBlock>),
+    BlockSyncComplete(Arc<ChainBlock>, u64),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
 }
 

@@ -28,8 +28,8 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PrivateKey, Signature};
-use tari_utilities::hex::Hex;
+use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, Signature};
+use tokio::time::Instant;
 
 use crate::{
     blocks::Block,
@@ -333,14 +333,15 @@ impl UnconfirmedPool {
         current_transactions: &HashMap<TransactionKey, Arc<Transaction>>,
         transactions_to_insert: &HashMap<TransactionKey, Arc<Transaction>>,
     ) -> bool {
-        for (_, tx_to_insert) in transactions_to_insert.iter() {
-            for (_, transaction) in current_transactions.iter() {
-                for input in transaction.body.inputs() {
-                    for tx_input in tx_to_insert.body.inputs() {
-                        if tx_input.output_hash() == input.output_hash() {
-                            return true;
-                        }
-                    }
+        let insert_set = transactions_to_insert
+            .values()
+            .flat_map(|tx| tx.body.inputs())
+            .map(|i| i.output_hash())
+            .collect::<HashSet<_>>();
+        for (_, transaction) in current_transactions.iter() {
+            for input in transaction.body.inputs() {
+                if insert_set.contains(&input.output_hash()) {
+                    return true;
                 }
             }
         }
@@ -377,65 +378,99 @@ impl UnconfirmedPool {
             target: LOG_TARGET,
             "Searching for transactions to remove from unconfirmed pool in block {} ({})",
             published_block.header.height,
-            published_block.header.hash().to_hex(),
+            published_block.header.hash()
         );
 
-        // Remove all transactions that contain the kernels found in this block
-        let mut to_remove = published_block
-            .body
-            .kernels()
-            .iter()
-            .map(|kernel| kernel.excess_sig.get_signature())
-            .filter_map(|sig| self.txs_by_signature.get(sig))
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>();
+        let mut to_remove;
+        let mut removed_transactions;
+        {
+            // Remove all transactions that contain the kernels found in this block
+            let timer = Instant::now();
+            to_remove = published_block
+                .body
+                .kernels()
+                .iter()
+                .map(|kernel| kernel.excess_sig.get_signature())
+                .filter_map(|sig| self.txs_by_signature.get(sig))
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>();
 
-        let mut removed_transactions = to_remove
-            .iter()
-            .filter_map(|key| self.remove_transaction(*key))
-            .collect::<Vec<_>>();
-
+            removed_transactions = to_remove
+                .iter()
+                .filter_map(|key| self.remove_transaction(*key))
+                .collect::<Vec<_>>();
+            debug!(
+                target: LOG_TARGET,
+                "Found {} transactions with matching kernel sigs from unconfirmed pool in {:.2?}",
+                to_remove.len(),
+                timer.elapsed()
+            );
+        }
         // Reuse the buffer, clear is very cheap
         to_remove.clear();
 
-        // Remove all transactions that contain the inputs found in this block
-        to_remove.extend(
-            self.tx_by_key
+        {
+            // Remove all transactions that contain the inputs found in this block
+            let timer = Instant::now();
+            let published_block_hash_set = published_block
+                .body
+                .inputs()
                 .iter()
-                .filter(|(_, tx)| UnconfirmedPool::find_matching_block_input(tx, published_block))
-                .map(|(key, _)| *key),
-        );
+                .map(|i| i.output_hash())
+                .collect::<HashSet<_>>();
 
-        removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            to_remove.extend(
+                self.tx_by_key
+                    .iter()
+                    .filter(|(_, tx)| UnconfirmedPool::find_matching_block_input(tx, &published_block_hash_set))
+                    .map(|(key, _)| *key),
+            );
+
+            removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            debug!(
+                target: LOG_TARGET,
+                "Found {} transactions with matching inputs from unconfirmed pool in {:.2?}",
+                to_remove.len(),
+                timer.elapsed()
+            );
+        }
+
         to_remove.clear();
 
-        // Remove all transactions that contain the outputs found in this block
-        to_remove.extend(
-            published_block
-                .body
-                .outputs()
-                .iter()
-                .filter_map(|output| self.txs_by_output.get(&output.hash()))
-                .flatten()
-                .copied(),
-        );
+        {
+            // Remove all transactions that contain the outputs found in this block
+            let timer = Instant::now();
+            to_remove.extend(
+                published_block
+                    .body
+                    .outputs()
+                    .iter()
+                    .filter_map(|output| self.txs_by_output.get(&output.hash()))
+                    .flatten()
+                    .copied(),
+            );
 
-        removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            debug!(
+                target: LOG_TARGET,
+                "Found {} transactions with matching outputs from unconfirmed pool in {:.2?}",
+                to_remove.len(),
+                timer.elapsed()
+            );
+        }
 
         removed_transactions
     }
 
     /// Searches a block and transaction for matching inputs
-    fn find_matching_block_input(transaction: &PrioritizedTransaction, published_block: &Block) -> bool {
-        for input in transaction.transaction.body.inputs() {
-            for published_input in published_block.body.inputs() {
-                if published_input.output_hash() == input.output_hash() {
-                    return true;
-                }
-            }
-        }
-        false
+    fn find_matching_block_input(transaction: &PrioritizedTransaction, published_block: &HashSet<FixedHash>) -> bool {
+        transaction
+            .transaction
+            .body
+            .inputs()
+            .iter()
+            .any(|input| published_block.contains(&input.output_hash()))
     }
 
     /// Ensures that all transactions are safely deleted in order and from all storage
@@ -473,21 +508,6 @@ impl UnconfirmedPool {
             &prioritized_transaction.transaction
         );
         Some(prioritized_transaction.transaction)
-    }
-
-    /// Remove all unconfirmed transactions that have become time locked. This can happen when the chain height was
-    /// reduced on some reorgs.
-    pub fn remove_timelocked(&mut self, tip_height: u64) {
-        debug!(target: LOG_TARGET, "Removing time-locked inputs from unconfirmed pool");
-        let to_remove = self
-            .tx_by_key
-            .iter()
-            .filter(|(_, ptx)| ptx.transaction.min_spendable_height() > tip_height + 1)
-            .map(|(k, _)| *k)
-            .collect::<Vec<_>>();
-        for tx_key in to_remove {
-            self.remove_transaction(tx_key);
-        }
     }
 
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_common_types::types::{PrivateKey, Signature};
@@ -79,15 +79,25 @@ impl MempoolStorage {
             .first()
             .map(|k| k.excess_sig.get_signature().to_hex())
             .unwrap_or_else(|| "None?!".into());
+        let timer = Instant::now();
         debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
         match self.validator.validate(&tx) {
             Ok(()) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction {} is VALID, inserting in unconfirmed pool", tx_id
+                    "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool in",
+                    tx_id,
+                    timer.elapsed()
                 );
+                let timer = Instant::now();
                 let weight = self.get_transaction_weighting(0);
                 self.unconfirmed_pool.insert(tx, None, &weight);
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} inserted in {:.2?}",
+                    tx_id,
+                    timer.elapsed()
+                );
                 TxStorageResponse::UnconfirmedPool
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
@@ -146,16 +156,36 @@ impl MempoolStorage {
             published_block.header.hash().to_hex(),
             published_block.body.to_counts_string()
         );
+        let timer = Instant::now();
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(published_block);
+        debug!(
+            target: LOG_TARGET,
+            "{} transactions removed from unconfirmed pool in {:.2?}, moving them to reorg pool for block #{} ({}) {}",
+            removed_transactions.len(),
+            timer.elapsed(),
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+            published_block.body.to_counts_string()
+        );
+        let timer = Instant::now();
         self.reorg_pool
             .insert_all(published_block.header.height, removed_transactions);
-
+        debug!(
+            target: LOG_TARGET,
+            "Transactions added to reorg pool in {:.2?} for block #{} ({}) {}",
+            timer.elapsed(),
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+            published_block.body.to_counts_string()
+        );
+        let timer = Instant::now();
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
+        debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         debug!(target: LOG_TARGET, "{}", self.stats());
         Ok(())
     }
@@ -186,45 +216,32 @@ impl MempoolStorage {
         new_blocks: &[Arc<Block>],
     ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
-        let previous_tip = removed_blocks.last().map(|block| block.header.height);
-        let new_tip = new_blocks.last().map(|block| block.header.height);
 
         // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
         // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
         // after a reorg.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        // Try to add in all the transactions again.
         self.insert_txs(removed_txs);
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs);
-        // Update the Mempool based on the received set of new blocks.
-        for block in new_blocks {
-            self.process_published_block(block)?;
-        }
+        Ok(())
+    }
 
-        if let (Some(previous_tip_height), Some(new_tip_height)) = (previous_tip, new_tip) {
-            if new_tip_height < previous_tip_height {
-                debug!(
-                    target: LOG_TARGET,
-                    "Checking for time locked transactions in unconfirmed pool as chain height was reduced from {} to \
-                     {} during reorg.",
-                    previous_tip_height,
-                    new_tip_height,
-                );
-                self.unconfirmed_pool.remove_timelocked(new_tip_height);
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "No need to check for time locked transactions in unconfirmed pool. Previous tip height: {}. New \
-                     tip height: {}.",
-                    previous_tip_height,
-                    new_tip_height,
-                );
-            }
-        }
-
+    /// After a sync event, we need to try to add in all the transaction form the reorg pool.
+    pub fn process_sync(&mut self) -> Result<(), MempoolError> {
+        debug!(target: LOG_TARGET, "Mempool processing sync finished");
+        // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
+        // we dont have the data to know what.
+        let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        // lets add them all back into the mempool
+        self.insert_txs(txs);
+        // let retrieve all re-org pool transactions as well as make sure they are mined as well
+        let txs = self.reorg_pool.clear_and_retrieve_all();
+        self.insert_txs(txs);
         Ok(())
     }
 
