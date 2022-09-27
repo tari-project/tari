@@ -202,9 +202,6 @@ impl DbTransaction {
     /// Insert a "chained" orphan block.
     /// The transaction will rollback and write will return an error if the orphan already exists.
     pub fn insert_chained_orphan(&mut self, orphan: Arc<ChainBlock>) -> &mut Self {
-        if orphan.block().body.inputs().iter().any(|b| b.is_compact()) {
-            panic!("Compact inputs are not supported in the blockchain");
-        }
         self.operations.push(WriteOperation::InsertChainOrphanBlock(orphan));
         self
     }
