@@ -1,26 +1,26 @@
 ---
 name: Integration tests
 
-'on':
+"on":
   push:
     paths-ignore:
-      - '**/*.md'
+      - "**/*.md"
   schedule:
-    - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
-    - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)
+    - cron: "0 2 * * *" # daily @ 02h00 (non-critical)
+    - cron: "0 12 * * 6" # weekly - Saturday @ noon (long-running)
   workflow_dispatch:
     inputs:
       ci_bins:
         type: boolean
         default: true
-        description: 'run ci on binaries'
+        description: "run ci on binaries"
       ci_ffi:
         type: boolean
         default: true
-        description: 'run ci on ffi'
+        description: "run ci on ffi"
       ci_profile:
         default: ci
-        description: 'ci profile to run'
+        description: "ci profile to run"
         type: string
 
 env:
@@ -121,7 +121,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: integration_tests/package-lock.json
 
       - name: Run npm ci and lint
@@ -133,11 +133,10 @@ jobs:
           npm run check-fmt
           npm run lint
           npm ci
-          cd ../clients/base_node_grpc_client
+          cd ../clients/nodejs/base_node_grpc_client
           npm install
           cd ../wallet_grpc_client
           npm install
-          npm ci
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
