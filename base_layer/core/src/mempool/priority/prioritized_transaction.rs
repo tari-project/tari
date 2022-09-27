@@ -55,7 +55,7 @@ impl FeePriority {
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority[..8].copy_from_slice(&fee_priority[..]);
-        priority[8..16].copy_from_slice(&maturity_priority[..]);
+        priority[8..16].copy_from_slice(&age_priority[..]);
         // Use the aggregate signature and nonce.
         // If a transaction has many kernels, unless they are all identical, the fee priority will be different.
         let (agg_sig, agg_nonce) = transaction
