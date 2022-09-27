@@ -2578,6 +2578,7 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
+        // TODO: we can optimise this query by making using a compound key <reg_height, hash>
         let txn = self.read_transaction()?;
         lmdb_filter_map_values(&txn, &self.template_registrations, |tr: TemplateRegistration| {
             if tr.height >= from_height {
