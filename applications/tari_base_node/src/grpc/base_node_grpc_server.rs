@@ -1476,7 +1476,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
-        dbg!(&request);
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);

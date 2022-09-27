@@ -502,11 +502,6 @@ impl LMDBDatabase {
                 InsertValidatorNode { validator_node } => {
                     self.insert_validator_node(&write_txn, validator_node)?;
                 },
-                // DeleteValidatorNode { public_key } => {
-                //     let txn = self.read_transaction()?;
-                //     let shard_key = self.get_vn_mapping(&txn, public_key)?;
-                //     self.delete_validator_node(&write_txn, public_key, &shard_key)?;
-                // },
             }
         }
         write_txn.commit()?;
@@ -1600,15 +1595,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         public_key: &PublicKey,
         output_hash: &HashOutput,
-        // shard_key: &[u8; 32],
     ) -> Result<(), ChainStorageError> {
-        // let x: ActiveValidatorNode = lmdb_get(txn, &self.validator_nodes_mapping, shard_key)?.ok_or_else(|| {
-        //     ChainStorageError::ValueNotFound {
-        //         entity: "ActiveValidatorNode",
-        //         field: "shard_key",
-        //         value: shard_key.to_hex(),
-        //     }
-        // })?;
         let mut key = public_key.to_vec();
         key.extend(output_hash.as_slice());
         let x: ActiveValidatorNode =
