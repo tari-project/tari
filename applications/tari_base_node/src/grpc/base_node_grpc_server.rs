@@ -135,7 +135,7 @@ impl BaseNodeGrpcServer {}
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
-    type GetActiveValidatorNodesStream = mpsc::Receiver<Result<tari_rpc::ActiveValidatorNode, Status>>;
+    type GetActiveValidatorNodesStream = mpsc::Receiver<Result<tari_rpc::GetActiveValidatorNodesResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
@@ -701,10 +701,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Accepted.into(),
             },
-            TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadySpent => {
-                tari_rpc::SubmitTransactionResponse {
-                    result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
-                }
+            TxStorageResponse::ReorgPool |
+            TxStorageResponse::NotStoredAlreadySpent |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredOrphan |
@@ -780,7 +780,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredTimeLocked => tari_rpc::TransactionStateResponse {
+            TxStorageResponse::NotStoredTimeLocked |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
             },
         };
@@ -1488,28 +1489,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 },
                 Ok(data) => data,
             };
-            for active_validator_node in active_validator_nodes {
-                let active_validator_node = match tari_rpc::ActiveValidatorNode::try_from(active_validator_node) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending converting active validator node for GRPC: {}", e
-                        );
-                        match tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal("Error converting active validator node"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+            dbg!(&active_validator_nodes);
+            for (public_key, shard_key) in active_validator_nodes {
+                let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
+                    public_key: public_key.to_vec(),
+                    shard_key: shard_key.to_vec(),
                 };
 
                 match tx.send(Ok(active_validator_node)).await {

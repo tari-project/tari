@@ -27,7 +27,7 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 
 use crate::{
@@ -76,7 +76,7 @@ pub enum NodeCommsResponse {
     FetchOutputsByContractIdResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
-    FetchValidatorNodesKeysResponse(Vec<ActiveValidatorNode>),
+    FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse([u8; 32]),
     FetchTemplateRegistrationsResponse(Vec<CodeTemplateRegistration>),

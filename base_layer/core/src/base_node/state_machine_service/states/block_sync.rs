@@ -93,8 +93,8 @@ impl BlockSync {
         });
 
         let local_nci = shared.local_node_interface.clone();
-        synchronizer.on_complete(move |block| {
-            local_nci.publish_block_event(BlockEvent::BlockSyncComplete(block));
+        synchronizer.on_complete(move |block, starting_height| {
+            local_nci.publish_block_event(BlockEvent::BlockSyncComplete(block, starting_height));
         });
 
         let timer = Instant::now();
@@ -108,6 +108,12 @@ impl BlockSync {
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
+                let _ignore = shared.status_event_sender.send(StatusInfo {
+                    bootstrapped,
+                    state_info: StateInfo::SyncFailed(err.to_short_str().to_string()),
+                    randomx_vm_cnt,
+                    randomx_vm_flags,
+                });
                 log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed

@@ -28,6 +28,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
 use tari_comms::connectivity::ConnectivitySelection;
+use tokio::time;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::status_line::{StatusLine, StatusLineOutput};
@@ -82,20 +83,25 @@ impl CommandContext {
         let constants = self
             .consensus_rules
             .consensus_constants(metadata.height_of_longest_chain());
-        let mempool_stats = self.mempool_service.get_mempool_stats().await?;
-        status_line.add_field(
-            "Mempool",
-            format!(
-                "{}tx ({}g, +/- {}blks)",
-                mempool_stats.unconfirmed_txs,
-                mempool_stats.unconfirmed_weight,
-                if mempool_stats.unconfirmed_weight == 0 {
-                    0
-                } else {
-                    1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
-                },
-            ),
-        );
+        // TODO: This code enables a status line display even if the mempool stats times out
+        let fut = self.mempool_service.get_mempool_stats();
+        if let Ok(mempool_stats) = time::timeout(Duration::from_secs(5), fut).await? {
+            status_line.add_field(
+                "Mempool",
+                format!(
+                    "{}tx ({}g, +/- {}blks)",
+                    mempool_stats.unconfirmed_txs,
+                    mempool_stats.unconfirmed_weight,
+                    if mempool_stats.unconfirmed_weight == 0 {
+                        0
+                    } else {
+                        1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
+                    },
+                ),
+            );
+        } else {
+            status_line.add_field("Mempool", "query timed out");
+        };
 
         let conns = self
             .connectivity

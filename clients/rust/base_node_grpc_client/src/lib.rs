@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2022, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,40 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
-
-use tari_common_types::types::PublicKey;
-use tari_core::chain_storage::ActiveValidatorNode;
-use tari_utilities::ByteArray;
-
-use crate::tari_rpc as grpc;
-
-impl TryFrom<tari_core::chain_storage::ActiveValidatorNode> for grpc::ActiveValidatorNode {
-    type Error = String;
-
-    fn try_from(active_validator_node: ActiveValidatorNode) -> Result<Self, Self::Error> {
-        Ok(Self {
-            shard_key: active_validator_node.shard_key.to_vec(),
-            from_height: active_validator_node.from_height,
-            to_height: active_validator_node.to_height,
-            public_key: active_validator_node.public_key.to_vec(),
-        })
-    }
-}
-
-impl TryFrom<grpc::ActiveValidatorNode> for ActiveValidatorNode {
-    type Error = String;
-
-    fn try_from(active_validator_node: grpc::ActiveValidatorNode) -> Result<Self, Self::Error> {
-        let shard_key = active_validator_node.shard_key.try_into().unwrap();
-        let public_key =
-            PublicKey::from_vec(&active_validator_node.public_key).map_err(|_| "Could not public key".to_string())?;
-
-        Ok(Self {
-            shard_key,
-            from_height: active_validator_node.from_height,
-            to_height: active_validator_node.to_height,
-            public_key,
-        })
-    }
-}
+pub use tari_app_grpc::tari_rpc as grpc;
+pub type BaseNodeGrpcClient<TChannel> = grpc::base_node_client::BaseNodeClient<TChannel>;

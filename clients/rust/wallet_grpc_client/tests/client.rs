@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,14 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PublicKey};
+use tari_wallet_grpc_client::{grpc, WalletGrpcClient};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ActiveValidatorNode {
-    pub shard_key: [u8; 32],
-    pub from_height: u64,
-    pub to_height: u64,
-    pub public_key: PublicKey,
-    pub output_hash: HashOutput,
+#[tokio::test]
+async fn it_works() {
+    // Basic test that only works if a wallet is running on localhost:18143
+    match WalletGrpcClient::connect("http://127.0.0.1:18143").await {
+        Ok(mut client) => {
+            let _res = client.identify(grpc::GetIdentityRequest {}).await;
+            #[cfg(debug_assertions)]
+            eprintln!("Wallet identify: {:?}", _res);
+        },
+        Err(_err) => {
+            #[cfg(debug_assertions)]
+            eprintln!("Could not connect: {:?}", _err);
+        },
+    }
 }

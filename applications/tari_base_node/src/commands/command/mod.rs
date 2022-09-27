@@ -193,8 +193,49 @@ impl CommandContext {
         if let Command::Watch(command) = args.command {
             Ok(Some(command))
         } else {
+            let time_out = match args.command {
+                // These commands should complete quickly, some of them like 'discover-peer' returns immediately
+                // although the requested action can take a long time
+                Command::Version(_) |
+                Command::Whoami(_) |
+                Command::CheckForUpdates(_) |
+                Command::AddPeer(_) |
+                Command::BanPeer(_) |
+                Command::UnbanAllPeers(_) |
+                Command::UnbanPeer(_) |
+                Command::GetPeer(_) |
+                Command::ResetOfflinePeers(_) |
+                Command::DialPeer(_) |
+                Command::PingPeer(_) |
+                Command::DiscoverPeer(_) |
+                Command::ListPeers(_) |
+                Command::ListBannedPeers(_) |
+                Command::ListConnections(_) |
+                Command::GetNetworkStats(_) |
+                Command::BlockTiming(_) |
+                Command::GetChainMetadata(_) |
+                Command::GetDbStats(_) |
+                Command::GetStateInfo(_) |
+                Command::ListReorgs(_) |
+                Command::GetBlock(_) |
+                Command::ListHeaders(_) |
+                Command::HeaderStats(_) |
+                Command::SearchUtxo(_) |
+                Command::SearchKernel(_) |
+                Command::GetMempoolStats(_) |
+                Command::GetMempoolState(_) |
+                Command::GetMempoolTx(_) |
+                Command::Status(_) |
+                Command::Watch(_) |
+                Command::Quit(_) |
+                Command::Exit(_) => 30,
+                // These commands involve intense blockchain db operations and needs a lot of time to complete
+                Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+            };
             let fut = self.handle_command(args.command);
-            time::timeout(Duration::from_secs(70), fut).await??;
+            if let Err(e) = time::timeout(Duration::from_secs(time_out), fut).await? {
+                return Err(Error::msg(format!("{} ({} s)", e, time_out)));
+            };
             Ok(None)
         }
     }

@@ -276,7 +276,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_active_validator_nodes(
         &mut self,
         height: u64,
-    ) -> Result<Vec<ActiveValidatorNode>, CommsInterfaceError> {
+    ) -> Result<Vec<(PublicKey, [u8; 32])>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchValidatorNodesKeys { height })

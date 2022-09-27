@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,14 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PublicKey};
+use tari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ActiveValidatorNode {
-    pub shard_key: [u8; 32],
-    pub from_height: u64,
-    pub to_height: u64,
-    pub public_key: PublicKey,
-    pub output_hash: HashOutput,
+#[tokio::test]
+async fn it_works() {
+    match BaseNodeGrpcClient::connect("http://127.0.0.1:18142").await {
+        Ok(mut client) => {
+            let _tip_info = client.get_tip_info(grpc::Empty {}).await;
+            #[cfg(debug_assertions)]
+            eprintln!("Tip info: {:?}", _tip_info);
+        },
+        Err(_err) => {
+            #[cfg(debug_assertions)]
+            eprintln!("Could not connect: {:?}", _err);
+        },
+    }
 }
