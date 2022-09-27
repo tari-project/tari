@@ -302,7 +302,11 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    pub async fn get_shard_key(&mut self, height: u64, public_key: PublicKey) -> Result<[u8; 32], CommsInterfaceError> {
+    pub async fn get_shard_key(
+        &mut self,
+        height: u64,
+        public_key: PublicKey,
+    ) -> Result<Option<[u8; 32]>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetShardKey { height, public_key })

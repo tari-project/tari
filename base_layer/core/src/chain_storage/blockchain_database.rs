@@ -841,7 +841,7 @@ where B: BlockchainBackend
         db.fetch_mmr_size(tree)
     }
 
-    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.get_shard_key(height, public_key)
     }

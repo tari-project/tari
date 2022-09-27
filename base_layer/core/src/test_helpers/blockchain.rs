@@ -422,7 +422,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_committee(height, shard)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
         self.db.as_ref().unwrap().get_shard_key(height, public_key)
     }
 }
