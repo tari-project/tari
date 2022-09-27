@@ -6,7 +6,7 @@ const protoLoader = require("@grpc/proto-loader");
 const { promisifyAll } = require("grpc-promise");
 
 const packageDefinition = protoLoader.loadSync(
-  `${__dirname}/../../applications/tari_app_grpc/proto/wallet.proto`,
+  `${__dirname}/../../../applications/tari_app_grpc/proto/wallet.proto`,
   {
     keepCase: true,
     longs: String,
@@ -21,7 +21,7 @@ const tariGrpc = protoDescriptor.tari.rpc;
 function connect(address, options = {}) {
   const client = new tariGrpc.Wallet(
     address,
-    createAuth(options.authentication || {}),
+    createAuth(options.authentication || {})
   );
   promisifyAll(client, { metadata: new grpc.Metadata() });
   return client;
@@ -68,20 +68,16 @@ Client.connect = (address) => new Client(address);
 
 function createAuth(auth = {}) {
   if (auth.type === "basic") {
-    const {
-      username,
-      password
-    } = auth;
+    const { username, password } = auth;
     return grpc.credentials.createFromMetadataGenerator((params, callback) => {
-        const md = new grpc.Metadata();
-        let token = new Buffer(`${username}:${password}`).toString("base64");
-        md.set('authorization', 'Basic ' + token);
-        return callback(null, md);
+      const md = new grpc.Metadata();
+      let token = new Buffer(`${username}:${password}`).toString("base64");
+      md.set("authorization", "Basic " + token);
+      return callback(null, md);
     });
-  } else{
+  } else {
     return grpc.credentials.createInsecure();
   }
-
 }
 
 module.exports = {
