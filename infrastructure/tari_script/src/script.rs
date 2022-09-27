@@ -19,14 +19,16 @@
 use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, ops::Deref};
 
 use digest::Digest;
+use rand::{distributions::Uniform, thread_rng, Rng};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
     hash::blake2::Blake256,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey}, signatures::CommitmentSignature,
 };
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
+    message_format,
     ByteArray,
 };
 
@@ -259,6 +261,12 @@ impl TariScript {
                 } else {
                     Err(ScriptError::VerifyFailed)
                 }
+            },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                let mut rng = thread_rng();
+                let leader_index = rng.sample::<u8, _>(Uniform::new(0, n)) as usize;
+                let leader_pubkey = public_keys[leader_index].clone();
+                Ok(())
             },
             Return => Err(ScriptError::Return),
             IfThen => TariScript::handle_if_then(stack, state),
@@ -536,6 +544,49 @@ impl TariScript {
         }
 
         Ok(sig_set.len() == m)
+    }
+
+    fn handle_multisig_verify_aggregate_signature(
+        stack: &mut ExecutionStack,
+        m: u8,
+        n: u8,
+        public_keys: &[RistrettoPublicKey],
+        message: Message,
+    ) -> Result<(), ScriptError> {
+        if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT {
+            return Err(ScriptError::InvalidData);
+        }
+
+        let mut rng = thread_rng();
+        let leader_index = rng.sample::<u8, _>(Uniform::new(0, n)) as usize;
+        let leader_pubkey = public_keys[leader_index].clone();
+
+        let m = m as usize;
+
+        let signatures = stack
+            .pop_num_items(m)?
+            .into_iter()
+            .map(|item| match item {
+                StackItem::Signature(s) => Ok(s),
+                _ => Err(ScriptError::IncompatibleTypes),
+            })
+            .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>();
+
+        let value = match stack.pop() {
+            Some(StackItem::Number(val)) => val,
+            Some(_) => return Err(ScriptError::IncompatibleTypes),
+            None => return Err(ScriptError::StackUnderflow),
+        };
+
+        let sender_key = match stack.pop() {
+            Some(StackItem::PublicKey(p)) => p,
+            Some(_) => return Err(ScriptError::IncompatibleTypes),
+            None => return Err(ScriptError::StackUnderflow),
+        };
+
+        // TODO: broadcast message among the m wallets 
+
+        Ok(())
     }
 }
 

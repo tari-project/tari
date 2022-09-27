@@ -232,6 +232,8 @@ pub enum Opcode {
     /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the m signatures are valid, and the
     /// operation fails with VERIFY_FAILED if any of the signatures are invalid.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    /// Pop m signatures from the stack. A leader aggregates n public keys and adds them to the script.
+    CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
 
     // Miscellaneous
     /// Always fails with VERIFY_FAILED.
