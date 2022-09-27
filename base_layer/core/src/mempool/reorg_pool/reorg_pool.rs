@@ -130,6 +130,17 @@ impl ReorgPool {
         }
     }
 
+    /// This will clear the reorg pool and return all transactions contained within
+    pub fn clear_and_retrieve_all(&mut self) -> Vec<Arc<Transaction>> {
+        let mut result = Vec::new();
+        for (_, tx) in self.tx_by_key.drain() {
+            result.push(tx);
+        }
+        self.txs_by_signature.clear();
+        self.txs_by_height.clear();
+        result
+    }
+
     pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
@@ -385,6 +396,30 @@ mod test {
         assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+    }
+
+    #[test]
+    fn test_remove_all() {
+        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
+
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
+        reorg_pool.insert(1, tx1.clone());
+        reorg_pool.insert(1, tx2.clone());
+        reorg_pool.insert(1, tx3.clone());
+
+        let txs = reorg_pool.clear_and_retrieve_all();
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.txs_by_height.is_empty());
+        assert!(reorg_pool.tx_by_key.is_empty());
+        assert!(reorg_pool.txs_by_signature.is_empty());
+
+        assert!(txs.contains(&tx1));
+        assert!(txs.contains(&tx2));
+        assert!(txs.contains(&tx3));
     }
 
     #[test]

@@ -384,7 +384,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             for (start, end) in page_iter {
                 debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
                 // TODO: Better error handling
-                let result_data = match handler.get_blocks(start..=end).await {
+                let result_data = match handler.get_blocks(start..=end, true).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
                         return;
@@ -699,10 +699,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Accepted.into(),
             },
-            TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadySpent => {
-                tari_rpc::SubmitTransactionResponse {
-                    result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
-                }
+            TxStorageResponse::ReorgPool |
+            TxStorageResponse::NotStoredAlreadySpent |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredOrphan |
@@ -778,7 +778,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredTimeLocked => tari_rpc::TransactionStateResponse {
+            TxStorageResponse::NotStoredTimeLocked |
+            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
             },
         };
@@ -849,7 +850,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE);
             for (start, end) in page_iter {
-                let blocks = match handler.get_blocks(start..=end).await {
+                let blocks = match handler.get_blocks(start..=end, false).await {
                     Err(err) => {
                         warn!(
                             target: LOG_TARGET,
@@ -1454,7 +1455,7 @@ async fn get_block_group(
 
     let (start, end) = get_heights(&height_request, handler.clone()).await?;
 
-    let blocks = match handler.get_blocks(start..=end).await {
+    let blocks = match handler.get_blocks(start..=end, false).await {
         Err(err) => {
             warn!(
                 target: LOG_TARGET,

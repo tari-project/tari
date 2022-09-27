@@ -3841,9 +3841,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.11.11"
+version = "0.11.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b75aa69a3f06bbcc66ede33af2af253c6f7a86b1ca0033f60c580a27074fbf92"
+checksum = "431949c384f4e2ae07605ccaa56d1d9d2ecdb5cadd4f9577ccfab29f2e5149fc"
 dependencies = [
  "base64 0.13.0",
  "bytes 1.2.1",
@@ -3857,10 +3857,10 @@ dependencies = [
  "hyper-tls",
  "ipnet",
  "js-sys",
- "lazy_static",
  "log",
  "mime",
  "native-tls",
+ "once_cell",
  "percent-encoding 2.2.0",
  "pin-project-lite",
  "serde",
@@ -4649,6 +4649,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_base_node_grpc_client"
+version = "0.1.0"
+dependencies = [
+ "tari_app_grpc",
+ "tokio",
+]
+
+[[package]]
 name = "tari_bulletproofs"
 version = "4.2.1"
 source = "git+https://github.com/tari-project/bulletproofs?tag=v4.2.1#b7118625aeaf1a5f42301ca293fd89e5e783a2a8"
@@ -5060,14 +5068,14 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "tari_app_grpc",
  "tari_app_utilities",
+ "tari_base_node_grpc_client",
  "tari_common",
- "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
  "tari_utilities",
+ "tari_wallet_grpc_client",
  "thiserror",
  "tokio",
  "tonic",
@@ -5369,6 +5377,17 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "tari_wallet_grpc_client"
+version = "0.1.0"
+dependencies = [
+ "tari_app_grpc",
+ "tari_common_types",
+ "thiserror",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]

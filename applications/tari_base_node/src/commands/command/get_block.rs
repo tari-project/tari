@@ -70,7 +70,7 @@ impl CommandContext {
     pub async fn get_block(&self, height: u64, format: Format) -> Result<(), Error> {
         let block = self
             .blockchain_db
-            .fetch_blocks(height..=height)
+            .fetch_blocks(height..=height, false)
             .await?
             .pop()
             .ok_or(ArgsError::NotFoundAt { height })?;
@@ -90,7 +90,7 @@ impl CommandContext {
     pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) -> Result<(), Error> {
         let block = self
             .blockchain_db
-            .fetch_block_by_hash(hash)
+            .fetch_block_by_hash(hash, false)
             .await?
             .ok_or(ArgsError::NotFound)?;
         match format {

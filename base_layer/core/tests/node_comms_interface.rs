@@ -83,7 +83,7 @@ async fn inbound_get_metadata() {
         outbound_nci,
         connectivity,
     );
-    let block = store.fetch_block(0).unwrap().block().clone();
+    let block = store.fetch_block(0, true).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
         inbound_nch.handle_request(NodeCommsRequest::GetChainMetadata).await
@@ -116,7 +116,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         outbound_nci,
         connectivity,
     );
-    let block = store.fetch_block(0).unwrap().block().clone();
+    let block = store.fetch_block(0, true).unwrap().block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
 
     if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
@@ -149,7 +149,7 @@ async fn inbound_fetch_headers() {
         outbound_nci,
         connectivity,
     );
-    let header = store.fetch_block(0).unwrap().header().clone();
+    let header = store.fetch_block(0, true).unwrap().header().clone();
 
     if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) =
         inbound_nch.handle_request(NodeCommsRequest::FetchHeaders(0..=0)).await
@@ -182,7 +182,7 @@ async fn inbound_fetch_utxos() {
         outbound_nci,
         connectivity,
     );
-    let block = store.fetch_block(0).unwrap().block().clone();
+    let block = store.fetch_block(0, true).unwrap().block().clone();
     let utxo_1 = block.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
@@ -227,10 +227,13 @@ async fn inbound_fetch_blocks() {
         outbound_nci,
         connectivity,
     );
-    let block = store.fetch_block(0).unwrap().block().clone();
+    let block = store.fetch_block(0, true).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(0..=0))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            range: 0..=0,
+            compact: true,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -328,7 +331,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(1..=1))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            range: 1..=1,
+            compact: true,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -338,7 +344,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     }
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(2..=2))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            range: 2..=2,
+            compact: true,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);

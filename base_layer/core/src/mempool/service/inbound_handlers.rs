@@ -173,13 +173,9 @@ impl MempoolInboundHandlers {
                     .await?;
             },
             ValidBlockAdded(_, _) => {},
-            BlockSyncRewind(removed_blocks) => {
-                self.mempool
-                    .process_reorg(removed_blocks.iter().map(|b| b.to_arc_block()).collect(), vec![])
-                    .await?;
-            },
-            BlockSyncComplete(tip_block) => {
-                self.mempool.process_published_block(tip_block.to_arc_block()).await?;
+            BlockSyncRewind(_) => {},
+            BlockSyncComplete(_, _) => {
+                self.mempool.process_sync().await?;
             },
             AddBlockValidationFailed {
                 block: failed_block,

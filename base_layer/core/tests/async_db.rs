@@ -84,9 +84,9 @@ fn async_rewind_to_height() {
         let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
             db.rewind_to_height(2).await.unwrap();
-            let result = db.fetch_block(3).await;
+            let result = db.fetch_block(3, true).await;
             assert!(result.is_err());
-            let block = db.fetch_block(2).await.unwrap();
+            let block = db.fetch_block(2, true).await.unwrap();
             assert_eq!(block.confirmations(), 1);
             assert_eq!(blocks[2].block(), block.block());
         });
@@ -122,7 +122,7 @@ fn fetch_async_block() {
         rt.spawn(async move {
             for block in blocks {
                 let height = block.height();
-                let block_check = db.fetch_block(height).await.unwrap();
+                let block_check = db.fetch_block(height, true).await.unwrap();
                 assert_eq!(block.block(), block_check.block());
             }
         });
@@ -154,7 +154,7 @@ fn async_add_new_block() {
         let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
             let result = db.add_block(new_block.clone().into()).await.unwrap();
-            let block = db.fetch_block(1).await.unwrap();
+            let block = db.fetch_block(1, true).await.unwrap();
             match result {
                 BlockAddResult::Ok(_) => assert_eq!(Block::from(block).hash(), new_block.hash()),
                 _ => panic!("Unexpected result"),

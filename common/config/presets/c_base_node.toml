@@ -110,6 +110,8 @@ track_reorgs = true
 #service.initial_sync_num_peers = 2
 # The maximum number of transactions to sync in a single sync session Default: 10_000
 #service.initial_sync_max_transactions = 10_000
+# The maximum number of blocks added via sync or re-org to triggering a sync
+#block_sync_trigger = 5
 
 [base_node.state_machine]
 # The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be

@@ -180,6 +180,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn sync(&mut self, header: &BlockHeader) -> Result<(), HorizonSyncError> {
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync blocks({} sync peers)",
+            self.sync_peers.len()
+        );
         for (i, sync_peer) in self.sync_peers.iter().enumerate() {
             self.hooks.call_on_starting_hook(sync_peer);
             let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;

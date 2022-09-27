@@ -24,7 +24,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},

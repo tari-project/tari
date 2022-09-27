@@ -109,7 +109,7 @@ fn test_monero_blocks() {
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
     );
-    let block_0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();
+    let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
 

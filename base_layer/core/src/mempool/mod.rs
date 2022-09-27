@@ -111,6 +111,7 @@ pub enum TxStorageResponse {
     NotStoredAlreadySpent,
     NotStoredConsensus,
     NotStored,
+    NotStoredAlreadyMined,
 }
 
 impl TxStorageResponse {
@@ -129,6 +130,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
             TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
             TxStorageResponse::NotStored => "Not stored",
+            TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined",
         };
         fmt.write_str(storage)
     }
