@@ -1489,7 +1489,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 },
                 Ok(data) => data,
             };
-            dbg!(&active_validator_nodes);
+            // dbg!(&active_validator_nodes);
             for (public_key, shard_key) in active_validator_nodes {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
