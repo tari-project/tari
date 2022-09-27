@@ -185,10 +185,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
 
     async fn handle_block_event(&mut self, block_event: &BlockEvent) {
         use BlockEvent::{BlockSyncComplete, ValidBlockAdded};
-        if self.permits.available_permits() < 1 {
-            // Sync is already in progress, so we should not bother trying to sync.
-            return;
-        }
         match block_event {
             ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed: _ }) => {
                 if added.len() < self.config.block_sync_trigger {
@@ -205,21 +201,24 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 return;
             },
         }
-        // we need to make sure the service can start a sync
-        if self.num_synched.load(Ordering::Acquire) >= self.config.initial_sync_num_peers {
-            self.num_synched.fetch_sub(1, Ordering::Release);
-        }
-        let connection = match self
+        // we want to at least sync initial_sync_num_peers, so we reset the num_synced to 0, so it can run till
+        // initial_sync_num_peers again. This is made to run as a best effort in that it will at least run the
+        // initial_sync_num_peers
+        self.num_synched.store(0, Ordering::Release);
+        let connections = match self
             .connectivity
-            .select_connections(ConnectivitySelection::random_nodes(1, vec![]))
+            .select_connections(ConnectivitySelection::random_nodes(
+                self.config.initial_sync_num_peers,
+                vec![],
+            ))
             .await
         {
-            Ok(mut v) => {
+            Ok(v) => {
                 if v.is_empty() {
-                    error!(target: LOG_TARGET, "Mempool sync could not get a peer to sync to");
+                    error!(target: LOG_TARGET, "Mempool sync could not get any peers to sync to");
                     return;
                 };
-                v.pop().unwrap()
+                v
             },
             Err(e) => {
                 error!(
@@ -229,7 +228,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 return;
             },
         };
-        self.spawn_initiator_protocol(connection).await;
+        for connection in connections {
+            self.spawn_initiator_protocol(connection).await;
+        }
     }
 
     fn is_synched(&self) -> bool {
