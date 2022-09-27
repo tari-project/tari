@@ -32,7 +32,7 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use tokio::{sync::mpsc, time::sleep};
 
 use crate::{
-    base_node::StateMachineHandle,
+    base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
@@ -83,8 +83,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             log_mdc::extend(mdc.clone());
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            // Ensure that we get an subscription ASAP so that we don't miss any connectivity events
-            let connectivity_event_subscription = connectivity.get_event_subscription();
+            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let mut status_watch = state_machine.get_status_info_watch();
             if !status_watch.borrow().bootstrapped {
@@ -103,8 +102,9 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 }
                 log_mdc::extend(mdc.clone());
             }
+            let base_node_events = base_node.get_block_event_stream();
 
-            MempoolSyncProtocol::new(config, notif_rx, connectivity_event_subscription, mempool)
+            MempoolSyncProtocol::new(config, notif_rx, mempool, connectivity, base_node_events)
                 .run()
                 .await;
         });
