@@ -1172,7 +1172,7 @@ where B: BlockchainBackend
         db.write(txn)
     }
 
-    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height)
     }
@@ -1322,7 +1322,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     output_mmr.compress();
 
     let validator_nodes = db.fetch_active_validator_nodes(metadata.height_of_longest_chain() + 1)?;
-    let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.shard_key.to_vec()).collect());
+    let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.1.to_vec()).collect());
 
     let mmr_roots = MmrRoots {
         kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,

@@ -25,7 +25,18 @@
 
 #![allow(clippy::ptr_arg)]
 
-use std::{convert::TryFrom, fmt, fs, fs::File, mem, ops::Deref, path::Path, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    fmt,
+    fs,
+    fs::File,
+    mem,
+    ops::Deref,
+    path::Path,
+    sync::Arc,
+    time::Instant,
+};
 
 use croaring::Bitmap;
 use fs2::FileExt;
@@ -133,6 +144,7 @@ const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
 const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
+const LMDB_DB_VALIDATOR_NODE_ENDING: &str = "validator_node_ending";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
@@ -177,6 +189,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_VALIDATOR_NODES, flags | db::DUPSORT)
         .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags | db::DUPSORT)
+        .add_database(LMDB_DB_VALIDATOR_NODE_ENDING, flags | db::INTEGERKEY |  db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -239,6 +252,8 @@ pub struct LMDBDatabase {
     validator_nodes: DatabaseRef,
     /// Maps VN Shard Key -> VN Public Key
     validator_nodes_mapping: DatabaseRef,
+    /// Maps the end block height of nodes
+    validator_nodes_ending: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
 }
@@ -281,6 +296,7 @@ impl LMDBDatabase {
             reorgs: get_database(store, LMDB_DB_REORGS)?,
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
+            validator_nodes_ending: get_database(store, LMDB_DB_VALIDATOR_NODE_ENDING)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -485,11 +501,6 @@ impl LMDBDatabase {
                 },
                 InsertValidatorNode { validator_node } => {
                     self.insert_validator_node(&write_txn, validator_node)?;
-                },
-                DeleteValidatorNode { public_key } => {
-                    let txn = self.read_transaction()?;
-                    let shard_key = self.get_vn_mapping(&txn, public_key)?;
-                    self.delete_validator_node(&write_txn, public_key, &shard_key)?;
                 },
             }
         }
@@ -1272,9 +1283,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                let read_txn = self.read_transaction()?;
-                let shard_key = self.get_vn_mapping(&read_txn, &vn_reg.public_key)?;
-                self.delete_validator_node(txn, &vn_reg.public_key, &shard_key)?;
+                self.delete_validator_node(txn, &vn_reg.public_key, &input.output_hash())?;
             }
 
             if !output_mmr.delete(index) {
@@ -1311,8 +1320,9 @@ impl LMDBDatabase {
                         1 +
                         self.consensus_manager
                             .consensus_constants(header.height)
-                            .get_validator_node_timeout(),
+                            .validator_node_timeout(),
                     public_key: vn_reg.public_key.clone(),
+                    output_hash: output.hash(),
                 };
                 self.insert_validator_node(txn, &validator_node)?;
             }
@@ -1562,12 +1572,14 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         validator_node: &ActiveValidatorNode,
     ) -> Result<(), ChainStorageError> {
-        lmdb_insert(
+        let mut key = validator_node.public_key.to_vec();
+        key.extend(validator_node.output_hash.as_slice());
+        lmdb_insert(txn, &self.validator_nodes, &key, validator_node, "validator_nodes")?;
+        lmdb_insert_dup(
             txn,
-            &self.validator_nodes,
-            validator_node.public_key.as_bytes(),
+            &self.validator_nodes_ending,
+            &validator_node.to_height.to_le_bytes(),
             validator_node,
-            "validator_nodes",
         )?;
         lmdb_insert(
             txn,
@@ -1578,25 +1590,29 @@ impl LMDBDatabase {
         )
     }
 
-    fn get_vn_mapping(&self, txn: &ReadTransaction<'_>, public_key: &PublicKey) -> Result<[u8; 32], ChainStorageError> {
-        let x: ActiveValidatorNode = lmdb_get(txn, &self.validator_nodes, public_key.as_bytes())?.ok_or_else(|| {
-            ChainStorageError::ValueNotFound {
-                entity: "ActiveValidatorNode",
-                field: "public_key",
-                value: public_key.to_hex(),
-            }
-        })?;
-        Ok(x.shard_key)
-    }
-
     fn delete_validator_node(
         &self,
         txn: &WriteTransaction<'_>,
         public_key: &PublicKey,
-        shard_key: &[u8; 32],
+        output_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
-        lmdb_delete(txn, &self.validator_nodes, public_key.as_bytes(), "validator_nodes")?;
-        lmdb_delete(txn, &self.validator_nodes, shard_key, "validator_nodes_mapping")?;
+        let mut key = public_key.to_vec();
+        key.extend(output_hash.as_slice());
+        let x: ActiveValidatorNode =
+            lmdb_get(txn, &self.validator_nodes, &key)?.ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "ActiveValidatorNode",
+                field: "public_key and outputhash",
+                value: key.to_hex(),
+            })?;
+
+        lmdb_delete_key_value(txn, &self.validator_nodes_ending, &x.to_height.to_le_bytes(), &x)?;
+        lmdb_delete(txn, &self.validator_nodes, &key, "validator_nodes")?;
+        lmdb_delete(
+            txn,
+            &self.validator_nodes_mapping,
+            &x.shard_key,
+            "validator_nodes_mapping",
+        )?;
         Ok(())
     }
 
@@ -2407,15 +2423,42 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+    // The clippy warning is because PublicKey has a public inner type that could change. In this case
+    // it should be fine to ignore the warning. You could also change the logic to use something
+    // other than a hashmap.
+    #[allow(clippy::mutable_key_type)]
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_filter_map_values(&txn, &self.validator_nodes, |vn: ActiveValidatorNode| {
-            if vn.from_height <= height && vn.to_height >= height {
-                Some(vn)
-            } else {
-                None
-            }
-        })
+        let validator_node_timeout = self
+            .consensus_manager
+            .consensus_constants(height)
+            .validator_node_timeout();
+        let mut pub_keys = HashMap::new();
+
+        let end = height + validator_node_timeout;
+        for h in height..end {
+            lmdb_get_multiple(&txn, &self.validator_nodes_ending, &h.to_le_bytes())?
+                .into_iter()
+                .for_each(|v: ActiveValidatorNode| {
+                    if v.from_height <= height {
+                        if let Some((shard_key, start)) =
+                            pub_keys.insert(v.public_key.clone(), (v.shard_key, v.from_height))
+                        {
+                            // If the node is already in the map, check if the start height is higher. If it is, replace
+                            // the old value with the new one.
+                            if start > v.from_height {
+                                pub_keys.insert(v.public_key, (shard_key, start));
+                            }
+                        }
+                    }
+                });
+        }
+
+        // now remove the heights
+        Ok(pub_keys
+            .into_iter()
+            .map(|(pk, (shard_key, _))| (pk, shard_key))
+            .collect())
     }
 
     fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {

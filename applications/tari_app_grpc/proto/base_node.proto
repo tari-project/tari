@@ -89,7 +89,7 @@ service BaseNode {
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
     // Get VNs
-    rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream ActiveValidatorNode);
+    rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
     rpc GetCommittee(GetCommitteeRequest) returns (GetCommitteeResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
 }
@@ -442,12 +442,11 @@ message GetActiveValidatorNodesRequest {
     uint64 height = 1;
 }
 
-message ActiveValidatorNode {
+message GetActiveValidatorNodesResponse {
     bytes shard_key = 1;
-    uint64 from_height = 2;
-    uint64 to_height = 3;
-    bytes public_key = 4;
+    bytes public_key = 2;
 }
+
 
 message GetCommitteeRequest {
     uint64 height = 1;

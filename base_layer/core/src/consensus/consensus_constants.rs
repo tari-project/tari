@@ -288,7 +288,7 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
-    pub fn get_validator_node_timeout(&self) -> u64 {
+    pub fn validator_node_timeout(&self) -> u64 {
         self.validator_node_timeout
     }
 
@@ -415,7 +415,7 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
-            validator_node_timeout: 0,
+            validator_node_timeout: 100,
         }]
     }
 
