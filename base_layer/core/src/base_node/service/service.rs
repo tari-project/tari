@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, time::Duration};
+use std::{convert::TryInto, time::Duration};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -338,7 +338,7 @@ where B: BlockchainBackend + 'static
         let mut inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (block, reply_tx) = block_context.split();
-            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), None).await);
+            let result = reply_tx.send(inbound_nch.handle_block(block, None).await);
 
             if let Err(res) = result {
                 error!(
