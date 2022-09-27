@@ -25,6 +25,7 @@ import "types.proto";
 import "transaction.proto";
 import "block.proto";
 import "network.proto";
+import "sidechain_types.proto";
 
 package tari.rpc;
 
@@ -92,6 +93,8 @@ service BaseNode {
     rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
     rpc GetCommittee(GetCommitteeRequest) returns (GetCommitteeResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
+    // Get templates
+    rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream TemplateRegistration);
 }
 
 message GetAssetMetadataRequest {
@@ -464,4 +467,8 @@ message GetShardKeyRequest {
 
 message GetShardKeyResponse {
     bytes shard_key = 1;
+}
+
+message GetTemplateRegistrationsRequest {
+    uint64 from_height = 1;
 }
