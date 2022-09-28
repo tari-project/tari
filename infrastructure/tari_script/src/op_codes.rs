@@ -452,14 +452,14 @@ impl Opcode {
             CheckMultiSig(m, n, public_keys, msg) => {
                 array.extend_from_slice(&[OP_CHECK_MULTI_SIG, *m, *n]);
                 for public_key in public_keys {
-                    array.extend(public_key.to_vec());
+                    array.extend(public_key.as_bytes());
                 }
                 array.extend_from_slice(msg.deref());
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
                 array.extend_from_slice(&[OP_CHECK_MULTI_SIG_VERIFY, *m, *n]);
                 for public_key in public_keys {
-                    array.extend(public_key.to_vec());
+                    array.extend(public_key.as_bytes());
                 }
                 array.extend_from_slice(msg.deref());
             },
