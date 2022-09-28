@@ -52,11 +52,13 @@ pub const TYPE_HASH: u8 = 2;
 pub const TYPE_COMMITMENT: u8 = 3;
 pub const TYPE_PUBKEY: u8 = 4;
 pub const TYPE_SIG: u8 = 5;
+pub const TYPE_SCALAR: u8 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StackItem {
     Number(i64),
     Hash(HashValue),
+    Scalar([u8; 32]),
     Commitment(PedersenCommitment),
     PublicKey(RistrettoPublicKey),
     Signature(RistrettoSchnorr),
@@ -89,6 +91,10 @@ impl StackItem {
                 array.extend_from_slice(s.get_public_nonce().as_bytes());
                 array.extend_from_slice(s.get_signature().as_bytes());
             },
+            StackItem::Scalar(scalar) => {
+                array.push(TYPE_SCALAR);
+                array.extend_from_slice(scalar);
+            },
         };
         &array[n..]
     }
@@ -103,6 +109,7 @@ impl StackItem {
             TYPE_COMMITMENT => StackItem::b_to_commitment(&bytes[1..]),
             TYPE_PUBKEY => StackItem::b_to_pubkey(&bytes[1..]),
             TYPE_SIG => StackItem::b_to_sig(&bytes[1..]),
+            TYPE_SCALAR => StackItem::b_to_scalar(&bytes[1..]),
             _ => None,
         }
     }
@@ -123,6 +130,15 @@ impl StackItem {
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&b[..32]);
         Some((StackItem::Hash(arr), &b[32..]))
+    }
+
+    fn b_to_scalar(b: &[u8]) -> Option<(Self, &[u8])> {
+        if b.len() < 32 {
+            return None;
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&b[..32]);
+        Some((StackItem::Scalar(arr), &b[32..]))
     }
 
     fn b_to_commitment(b: &[u8]) -> Option<(Self, &[u8])> {
@@ -156,6 +172,7 @@ stack_item_from!(i64 => Number);
 stack_item_from!(PedersenCommitment => Commitment);
 stack_item_from!(RistrettoPublicKey => PublicKey);
 stack_item_from!(RistrettoSchnorr => Signature);
+stack_item_from!([u8; 32] => Scalar);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionStack {
@@ -211,7 +228,7 @@ impl ExecutionStack {
 
         // check that all popped items are of the same variant
         // first count each variant
-        let counts = items.iter().fold([0; 5], counter);
+        let counts = items.iter().fold([0; 6], counter);
         // also check the n + 1 item
         let counts = counter(counts, &item);
 
@@ -302,29 +319,34 @@ impl Hex for ExecutionStack {
 
 /// Utility function that given a count of `StackItem` variants, adds 1 for the given item.
 #[allow(clippy::many_single_char_names)]
-fn counter(values: [u8; 5], item: &StackItem) -> [u8; 5] {
-    let [n, h, c, p, s] = values;
-    use StackItem::{Commitment, Hash, Number, PublicKey, Signature};
+fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
+    let [n, h, c, p, s, z] = values;
+    #[allow(clippy::enum_glob_use)]
+    use StackItem::*;
     match item {
         Number(_) => {
             let n = n + 1;
-            [n, h, c, p, s]
+            [n, h, c, p, s, z]
         },
         Hash(_) => {
             let h = h + 1;
-            [n, h, c, p, s]
+            [n, h, c, p, s, z]
         },
         Commitment(_) => {
             let c = c + 1;
-            [n, h, c, p, s]
+            [n, h, c, p, s, z]
         },
         PublicKey(_) => {
             let p = p + 1;
-            [n, h, c, p, s]
+            [n, h, c, p, s, z]
         },
         Signature(_) => {
             let s = s + 1;
-            [n, h, c, p, s]
+            [n, h, c, p, s, z]
+        },
+        Scalar(_) => {
+            let z = z + 1;
+            [n, h, c, p, s, z]
         },
     }
 }
@@ -337,7 +359,7 @@ mod test {
         keys::{PublicKey, SecretKey},
         ristretto::{utils, utils::SignatureSet, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
-    use tari_utilities::hex::Hex;
+    use tari_utilities::hex::{from_hex, Hex};
 
     use crate::{ExecutionStack, StackItem};
 
@@ -366,19 +388,33 @@ mod test {
         let p = RistrettoPublicKey::from_secret_key(&k);
         let m = Blake256::digest(b"Hello Tari Script");
         let sig = RistrettoSchnorr::sign(k, r, m.as_slice()).unwrap();
-        let inputs = inputs!(sig, p);
-        assert_eq!(inputs.to_hex(), "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c");
+        let scalar: [u8; 32] = m.into();
+        let inputs = inputs!(sig, p, scalar);
+        assert_eq!(inputs.to_hex(), "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da5");
     }
 
     #[test]
     fn serialisation() {
-        let s = "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5\
-        a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c";
+        // let p =
+        //     RistrettoPublicKey::from_hex("56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c").
+        // unwrap(); let r =
+        //     RistrettoPublicKey::from_hex("00f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c31").
+        // unwrap(); let s =
+        //     RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").
+        // unwrap(); let sig = RistrettoSchnorr::new(r, s);
+        // let m: [u8; 32] = Blake256::digest(b"Hello Tari Script").into();
+        // let inputs = inputs!(m, sig, p);
+        // eprintln!("to_hex(&m) = {:?}", tari_utilities::hex::to_hex(&m));
+        // eprintln!("inputs.to_hex() = {:?}", inputs.to_hex());
+
+        let s = "06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da50500f7c695528c858cde76dab3076908e0122\
+        8b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa2\
+        6b48e745de834571534ca253ea82435f08ebbc7c";
         let mut stack = ExecutionStack::from_hex(s).unwrap();
-        assert_eq!(stack.size(), 2);
+        assert_eq!(stack.size(), 3);
         if let Some(StackItem::PublicKey(p)) = stack.pop() {
             assert_eq!(
-                &p.to_hex(),
+                p.to_hex(),
                 "56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c"
             );
         } else {
@@ -386,15 +422,23 @@ mod test {
         }
         if let Some(StackItem::Signature(s)) = stack.pop() {
             assert_eq!(
-                &s.get_public_nonce().to_hex(),
+                s.get_public_nonce().to_hex(),
                 "00f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c31"
             );
             assert_eq!(
-                &s.get_signature().to_hex(),
+                s.get_signature().to_hex(),
                 "6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109"
             );
         } else {
             panic!("Expected signature")
+        }
+        if let Some(StackItem::Scalar(s)) = stack.pop() {
+            assert_eq!(
+                s.as_slice(),
+                from_hex("fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da5").unwrap()
+            );
+        } else {
+            panic!("Expected scalar")
         }
     }
 }
