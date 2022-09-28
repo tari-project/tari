@@ -120,7 +120,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: lts/erbium
           cache: 'npm'
           cache-dependency-path: integration_tests/package-lock.json
 
