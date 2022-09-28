@@ -132,10 +132,12 @@ jobs:
           npm install
           npm run check-fmt
           npm run lint
-          cd ../clients/nodejs/base_node_grpc_client
+          npm ci
+          cd ../clients/base_node_grpc_client
           npm install
           cd ../wallet_grpc_client
           npm install
+          npm ci
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
