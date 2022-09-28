@@ -120,7 +120,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: lts/erbium
           cache: 'npm'
           cache-dependency-path: integration_tests/package-lock.json
 
@@ -132,12 +132,10 @@ jobs:
           npm install
           npm run check-fmt
           npm run lint
-          npm ci
-          cd ../clients/base_node_grpc_client
+          cd ../clients/nodejs/base_node_grpc_client
           npm install
           cd ../wallet_grpc_client
           npm install
-          npm ci
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
