@@ -24,7 +24,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-use crate::key_manager_service::error::KeyManagerServiceError;
+use crate::key_manager_service::{error::KeyManagerServiceError, handle::KeyComboPair};
 
 /// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created,
 /// otherwise `NewEntry` is returned.
@@ -71,6 +71,9 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError>;
+
+    /// Gets new key combo pair out of a key seed
+    async fn create_key_combo(&self, key_seed: String) -> Result<KeyComboPair, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(

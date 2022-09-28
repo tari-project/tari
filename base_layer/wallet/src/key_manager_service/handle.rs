@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use chacha20poly1305::XChaCha20Poly1305;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
@@ -43,6 +43,12 @@ use crate::key_manager_service::{
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
+}
+
+/// Simple structure to encapsulate a private/public pair
+pub struct KeyComboPair {
+    pub sk: PrivateKey,
+    pub pk: PublicKey,
 }
 
 impl<TBackend> KeyManagerHandle<TBackend>
@@ -71,6 +77,20 @@ where TBackend: KeyManagerBackend + 'static
 
     async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.apply_encryption(cipher)
+    }
+
+    async fn create_key_combo(&self, key_seed: String) -> Result<KeyComboPair, KeyManagerServiceError> {
+        (*self.key_manager_inner)
+            .write()
+            .await
+            .add_key_manager_branch(key_seed.clone())?;
+
+        let next_key = self.get_next_key(key_seed).await?;
+        let sk = next_key.key.clone();
+        let pk = next_key.to_public_key();
+        // (*self.key_manager_inner).read().await.get_next_key(branch).await;
+
+        Ok(KeyComboPair { sk, pk })
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {

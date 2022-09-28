@@ -24,7 +24,7 @@ mod error;
 pub use error::KeyManagerServiceError;
 
 mod handle;
-pub use handle::KeyManagerHandle;
+pub use handle::{KeyComboPair, KeyManagerHandle};
 
 mod initializer;
 pub use initializer::KeyManagerInitializer;

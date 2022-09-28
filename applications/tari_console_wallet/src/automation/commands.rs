@@ -49,10 +49,13 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
+use tari_core::{
+    transactions::{
+        tari_amount::{uT, MicroTari, Tari},
+        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
+    },
 };
+use tari_wallet::key_manager_service::{KeyManagerHandle, KeyComboPair, storage::database::KeyManagerBackend, KeyManagerInterface};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -84,6 +87,7 @@ pub enum WalletCommand {
     GetBalance,
     SendTari,
     SendOneSided,
+    CreateKeyCombo,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -137,6 +141,16 @@ pub async fn burn_tari(
         .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
+}
+
+pub async fn create_key_combo<TBackend: KeyManagerBackend + 'static>(
+    key_manager_service: KeyManagerHandle<TBackend>,
+    key_seed: String,
+) -> Result<KeyComboPair, CommandError> {
+    key_manager_service
+        .create_key_combo(key_seed)
+        .await
+        .map_err(CommandError::KeyManagerError)
 }
 
 /// publishes a tari-SHA atomic swap HTLC transaction
@@ -583,6 +597,7 @@ pub async fn command_runner(
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
+    let key_manager_service = wallet.key_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
     let mut online = false;
@@ -635,6 +650,14 @@ pub async fn command_runner(
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("BurnTari error! {}", e),
+                }
+            },
+            CreateKeyCombo(args) => {
+                match create_key_combo(key_manager_service.clone(), args.key_seed).await {
+                    Ok(KeyComboPair { sk, pk }) => {
+                        debug!(target: LOG_TARGET, "create new key combo pair: sk {:?}, pk {:?} ", sk, pk)
+                    }
+                    Err(e) => eprintln!("CreateKeyCombo error! {}", e),
                 }
             },
             SendTari(args) => {

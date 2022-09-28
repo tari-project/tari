@@ -27,7 +27,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 
 use crate::{
-    key_manager_service::{interface::NextKeyResult, AddResult, KeyManagerInterface},
+    key_manager_service::{handle::KeyComboPair, interface::NextKeyResult, AddResult, KeyManagerInterface},
     types::KeyDigest,
 };
 
@@ -159,6 +159,10 @@ impl KeyManagerInterface for KeyManagerMock {
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
+        unimplemented!("Not supported");
+    }
+
+    async fn create_key_combo(&self, _key_seed: String) -> Result<KeyComboPair, KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 
