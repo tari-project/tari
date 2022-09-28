@@ -651,7 +651,12 @@ pub async fn command_runner(
             },
             CreateKeyCombo(args) => match create_key_combo(key_manager_service.clone(), args.key_seed).await {
                 Ok((sk, pk)) => {
-                    println!("create new key combo pair: sk {:?}, pk {:?} ", sk, pk)
+                    println!(
+                        "create new key combo pair: 
+                                1. secret key: {:?}, 
+                                2. public key {:?}",
+                        sk, pk
+                    )
                 },
                 Err(e) => eprintln!("CreateKeyCombo error! {}", e),
             },
