@@ -49,18 +49,21 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    transactions::{
-        tari_amount::{uT, MicroTari, Tari},
-        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari, Tari},
+    transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_wallet::key_manager_service::{KeyManagerHandle, KeyComboPair, storage::database::KeyManagerBackend, KeyManagerInterface};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::NextKeyResult,
+    key_manager_service::{
+        storage::database::KeyManagerBackend,
+        KeyComboPair,
+        KeyManagerHandle,
+        KeyManagerInterface,
+        NextKeyResult,
+    },
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -652,13 +655,14 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnTari error! {}", e),
                 }
             },
-            CreateKeyCombo(args) => {
-                match create_key_combo(key_manager_service.clone(), args.key_seed).await {
-                    Ok(KeyComboPair { sk, pk }) => {
-                        debug!(target: LOG_TARGET, "create new key combo pair: sk {:?}, pk {:?} ", sk, pk)
-                    }
-                    Err(e) => eprintln!("CreateKeyCombo error! {}", e),
-                }
+            CreateKeyCombo(args) => match create_key_combo(key_manager_service.clone(), args.key_seed).await {
+                Ok(KeyComboPair { sk, pk }) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "create new key combo pair: sk {:?}, pk {:?} ", sk, pk
+                    )
+                },
+                Err(e) => eprintln!("CreateKeyCombo error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(
