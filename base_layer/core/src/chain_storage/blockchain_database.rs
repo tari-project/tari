@@ -1653,8 +1653,6 @@ fn rewind_to_height<T: BlockchainBackend>(
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
-    let mut txn = DbTransaction::new();
-
     // Delete headers
     let last_header_height = last_header.height;
     let metadata = db.fetch_chain_metadata()?;
@@ -1681,20 +1679,20 @@ fn rewind_to_height<T: BlockchainBackend>(
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
-    (0..steps_back).for_each(|h| {
+    for h in 0..steps_back {
+        let mut txn = DbTransaction::new();
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
             last_header_height - h
         );
         txn.delete_header(last_header_height - h);
-    });
-
+        db.write(txn)?;
+    }
     // Delete blocks
     let mut steps_back = last_block_height.saturating_sub(height);
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
-        db.write(txn)?;
         return Ok(vec![]);
     }
 
@@ -1719,18 +1717,21 @@ fn rewind_to_height<T: BlockchainBackend>(
     }
 
     for h in 0..steps_back {
+        let mut txn = DbTransaction::new();
         info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
         txn.delete_block(*block.hash());
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
-            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we can't
-            // recover from this apart from resync from another peer. Failure here should not be common as
-            // this chain has a valid proof of work that has been tested at this point in time.
+            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
+            // can't recover from this apart from resync from another peer. Failure here
+            // should not be common as this chain has a valid proof of work that has been
+            // tested at this point in time.
             txn.insert_chained_orphan(block.clone());
         }
         removed_blocks.push(block);
+        db.write(txn)?;
     }
 
     if prune_past_horizon {
@@ -1739,6 +1740,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
         // mempool add reorg'ed tx.
         for h in 0..(last_block_height - steps_back) {
+            let mut txn = DbTransac4tion::new();
             debug!(
                 target: LOG_TARGET,
                 "Deleting blocks and utxos {}",
@@ -1746,6 +1748,7 @@ fn rewind_to_height<T: BlockchainBackend>(
             );
             let header = fetch_header(db, last_block_height - h - steps_back)?;
             txn.delete_block(header.hash());
+            db.write(txn)?;
         }
     }
 
@@ -1758,6 +1761,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         chain_header.accumulated_data().total_accumulated_difficulty
     );
 
+    let mut txn = DbTransaction::new();
     txn.set_best_block(
         chain_header.height(),
         chain_header.accumulated_data().hash,
