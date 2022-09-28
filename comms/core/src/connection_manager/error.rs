@@ -89,6 +89,8 @@ pub enum ConnectionManagerError {
     PeerIdentityNoSignature,
     #[error("Peer did not provide any public addresses")]
     PeerIdentityNoAddresses,
+    #[error("Onion v2 is no longer supported")]
+    OnionV2NotSupported,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

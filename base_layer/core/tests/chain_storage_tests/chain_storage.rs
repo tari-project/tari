@@ -136,7 +136,7 @@ fn store_and_retrieve_block() {
     assert_eq!(metadata.best_block(), hash);
     assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain()), 0);
     // Fetch the block back
-    let block0 = db.fetch_block(0).unwrap();
+    let block0 = db.fetch_block(0, true).unwrap();
     assert_eq!(block0.confirmations(), 1);
     // Compare the blocks
     let block0 = Block::from(block0);
@@ -151,7 +151,7 @@ fn add_multiple_blocks() {
     let store = create_store_with_consensus(consensus_manager.clone());
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     assert_eq!(metadata.best_block(), block0.hash());
     // Add another block
     let block1 = append_block(
@@ -189,10 +189,10 @@ fn test_checkpoints() {
     let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, 1.into()).unwrap();
     // Get the checkpoint
-    let block_a = db.fetch_block(0).unwrap();
+    let block_a = db.fetch_block(0, false).unwrap();
     assert_eq!(block_a.confirmations(), 2);
     assert_eq!(blocks[0].block(), block_a.block());
-    let block_b = db.fetch_block(1).unwrap();
+    let block_b = db.fetch_block(1, false).unwrap();
     assert_eq!(block_b.confirmations(), 1);
     let block1 = serde_json::to_string(block1.block()).unwrap();
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
@@ -258,7 +258,7 @@ fn test_coverage_chain_storage() {
     )
     .unwrap();
 
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     append_block(
         &store,
         &block0.clone().try_into_chain_block().unwrap(),
@@ -583,29 +583,29 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A1
     let txs = vec![txn_schema!(from: vec![a_outputs[0][0].clone()], to: vec![50 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[1].to_arc_block()).unwrap().assert_added();
 
     // Block A2
     let txs = vec![txn_schema!(from: vec![a_outputs[1][1].clone()], to: vec![30 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(3),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[2].to_arc_block()).unwrap().assert_added();
     let a2_hash = *a_blocks[2].hash();
@@ -617,15 +617,15 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B1
     let txs = vec![txn_schema!(from: vec![b_outputs[0][0].clone()], to: vec![50 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(2),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[1].to_arc_block()).unwrap().assert_orphaned();
     let b1_hash = *b_blocks[1].hash();
@@ -641,15 +641,15 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B2
     let txs = vec![txn_schema!(from: vec![b_outputs[1][0].clone()], to: vec![40 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(4),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[2].to_arc_block()).unwrap().assert_reorg(2, 2);
     let b2_hash = *b_blocks[2].hash();
@@ -673,7 +673,7 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A3
     let txs = vec![txn_schema!(from: vec![a_outputs[2][0].clone()], to: vec![25 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
@@ -681,7 +681,7 @@ fn reorgs_should_update_orphan_tips() {
         Difficulty::from(5), // A chain accumulated difficulty 9
         &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[3].to_arc_block()).unwrap().assert_reorg(3, 2);
     let a3_hash = *a_blocks[3].hash();
@@ -705,30 +705,30 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B3
     let txs = vec![txn_schema!(from: vec![b_outputs[2][0].clone()], to: vec![30 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(1), // B chain accumulated difficulty 7
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[3].to_arc_block()).unwrap().assert_orphaned();
     let b3_hash = *b_blocks[3].hash();
 
     // Block B4
     let txs = vec![txn_schema!(from: vec![b_outputs[3][0].clone()], to: vec![20 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(5), // B chain accumulated difficulty 12
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[4].to_arc_block()).unwrap().assert_reorg(4, 3);
     let b4_hash = *b_blocks[4].hash();
@@ -752,29 +752,29 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A4
     let txs = vec![txn_schema!(from: vec![a_outputs[3][0].clone()], to: vec![20 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(2), // A chain accumulated difficulty 11
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[4].to_arc_block()).unwrap().assert_orphaned();
 
     // Block A5
     let txs = vec![txn_schema!(from: vec![a_outputs[4][0].clone()], to: vec![10 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(4), // A chain accumulated difficulty 15
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[5].to_arc_block()).unwrap().assert_reorg(5, 4);
 
@@ -825,15 +825,15 @@ fn handle_reorg_with_no_removed_blocks() {
         from: vec![outputs[0][0].clone()],
         to: vec![10 * T, 10 * T, 10 * T, 10 * T]
     )];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(consensus_manager.clone());
@@ -842,29 +842,29 @@ fn handle_reorg_with_no_removed_blocks() {
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
     let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][0].clone()], to: vec![5 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut orphan1_store,
         &mut orphan1_blocks,
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
     // Block B3
     let txs = vec![
         txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
         txn_schema!(from: vec![orphan1_outputs[2][0].clone()], to: vec![3 * T]),
     ];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut orphan1_store,
         &mut orphan1_blocks,
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
@@ -1020,7 +1020,7 @@ fn store_and_retrieve_blocks() {
     )
     .unwrap();
 
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     let block1 = append_block(
         &store,
         &block0.clone().try_into_chain_block().unwrap(),
@@ -1031,20 +1031,35 @@ fn store_and_retrieve_blocks() {
     .unwrap();
     let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.clone().try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
+    assert_eq!(
+        store.fetch_block(1, true).unwrap().try_into_chain_block().unwrap(),
+        block1
+    );
+    assert_eq!(
+        store.fetch_block(2, true).unwrap().try_into_chain_block().unwrap(),
+        block2
+    );
 
     let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
-    assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
+    assert_eq!(
+        store.fetch_block(1, true).unwrap().try_into_chain_block().unwrap(),
+        block1
+    );
+    assert_eq!(
+        store.fetch_block(2, true).unwrap().try_into_chain_block().unwrap(),
+        block2
+    );
+    assert_eq!(
+        store.fetch_block(3, true).unwrap().try_into_chain_block().unwrap(),
+        block3
+    );
 }
 
 #[test]
@@ -1184,8 +1199,8 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
-    assert!(store.fetch_block(1).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().block().hash(), block0_hash);
+    assert!(store.fetch_block(1, true).is_err());
 
     // Block 1
     let txs = vec![txn_schema!(
@@ -1209,9 +1224,9 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert!(store.fetch_block(2).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert!(store.fetch_block(2, true).is_err());
 
     // Invalid Block 2 - Double spends genesis block output
     is_valid.set(false);
@@ -1232,9 +1247,9 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert!(store.fetch_block(2).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert!(store.fetch_block(2, true).is_err());
 
     // Valid Block 2
     is_valid.set(true);
@@ -1256,10 +1271,10 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 2);
     assert_eq!(metadata.best_block(), block2_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert_eq!(store.fetch_block(2).unwrap().hash(), block2_hash);
-    assert!(store.fetch_block(3).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert_eq!(store.fetch_block(2, true).unwrap().hash(), block2_hash);
+    assert!(store.fetch_block(3, true).is_err());
 }
 
 #[test]

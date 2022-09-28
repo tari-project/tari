@@ -57,8 +57,7 @@ impl OutboundNodeCommsInterface {
         }
     }
 
-    /// Fetch the Blocks corresponding to the provided block hashes from a specific base node. The requested blocks
-    /// could be chain blocks or orphan blocks.
+    /// Fetch the Blocks corresponding to the provided block hashes from a specific base node.
     pub async fn request_blocks_by_hashes_from_peer(
         &mut self,
         block_hashes: Vec<BlockHash>,
@@ -66,7 +65,14 @@ impl OutboundNodeCommsInterface {
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
-            .call((NodeCommsRequest::FetchBlocksByHash(block_hashes), node_id))
+            .call((
+                NodeCommsRequest::FetchBlocksByHash {
+                    block_hashes,
+                    // We always request compact inputs from peer
+                    compact: true,
+                },
+                node_id,
+            ))
             .await??
         {
             Ok(blocks)

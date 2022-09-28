@@ -80,7 +80,7 @@ fn add_many_chained_blocks(
 ) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
     let last_header = db.fetch_last_header().unwrap();
     let mut prev_block = db
-        .fetch_block(last_header.height)
+        .fetch_block(last_header.height, true)
         .unwrap()
         .try_into_block()
         .map(Arc::new)
@@ -104,7 +104,7 @@ mod fetch_blocks {
     #[test]
     fn it_returns_genesis() {
         let db = setup();
-        let blocks = db.fetch_blocks(0..).unwrap();
+        let blocks = db.fetch_blocks(0.., true).unwrap();
         assert_eq!(blocks.len(), 1);
     }
 
@@ -112,7 +112,7 @@ mod fetch_blocks {
     fn it_returns_all() {
         let db = setup();
         add_many_chained_blocks(4, &db);
-        let blocks = db.fetch_blocks(..).unwrap();
+        let blocks = db.fetch_blocks(.., true).unwrap();
         assert_eq!(blocks.len(), 5);
         for (i, item) in blocks.iter().enumerate().take(4 + 1) {
             assert_eq!(item.header().height, i as u64);
@@ -123,7 +123,7 @@ mod fetch_blocks {
     fn it_returns_one() {
         let db = setup();
         let (new_blocks, _) = add_many_chained_blocks(1, &db);
-        let blocks = db.fetch_blocks(1..=1).unwrap();
+        let blocks = db.fetch_blocks(1..=1, true).unwrap();
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].block().hash(), new_blocks[0].hash());
     }
@@ -132,7 +132,7 @@ mod fetch_blocks {
     fn it_returns_nothing_if_asking_for_blocks_out_of_range() {
         let db = setup();
         add_many_chained_blocks(1, &db);
-        let blocks = db.fetch_blocks(2..).unwrap();
+        let blocks = db.fetch_blocks(2.., true).unwrap();
         assert!(blocks.is_empty());
     }
 
@@ -140,7 +140,7 @@ mod fetch_blocks {
     fn it_returns_blocks_between_bounds_exclusive() {
         let db = setup();
         add_many_chained_blocks(5, &db);
-        let blocks = db.fetch_blocks(3..5).unwrap();
+        let blocks = db.fetch_blocks(3..5, true).unwrap();
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].header().height, 3);
         assert_eq!(blocks[1].header().height, 4);
@@ -150,7 +150,7 @@ mod fetch_blocks {
     fn it_returns_blocks_between_bounds_inclusive() {
         let db = setup();
         add_many_chained_blocks(5, &db);
-        let blocks = db.fetch_blocks(3..=5).unwrap();
+        let blocks = db.fetch_blocks(3..=5, true).unwrap();
         assert_eq!(blocks.len(), 3);
         assert_eq!(blocks[0].header().height, 3);
         assert_eq!(blocks[1].header().height, 4);
@@ -161,7 +161,7 @@ mod fetch_blocks {
     fn it_returns_blocks_to_the_tip() {
         let db = setup();
         add_many_chained_blocks(5, &db);
-        let blocks = db.fetch_blocks(3..).unwrap();
+        let blocks = db.fetch_blocks(3.., true).unwrap();
         assert_eq!(blocks.len(), 3);
         assert_eq!(blocks[0].header().height, 3);
         assert_eq!(blocks[1].header().height, 4);
@@ -172,7 +172,7 @@ mod fetch_blocks {
     fn it_returns_blocks_from_genesis() {
         let db = setup();
         add_many_chained_blocks(5, &db);
-        let blocks = db.fetch_blocks(..=3).unwrap();
+        let blocks = db.fetch_blocks(..=3, true).unwrap();
         assert_eq!(blocks.len(), 4);
         assert_eq!(blocks[0].header().height, 0);
         assert_eq!(blocks[1].header().height, 1);
@@ -276,7 +276,7 @@ mod find_headers_after_hash {
     #[test]
     fn it_returns_from_genesis() {
         let db = setup();
-        let genesis_hash = db.fetch_block(0).unwrap().block().hash();
+        let genesis_hash = db.fetch_block(0, true).unwrap().block().hash();
         add_many_chained_blocks(1, &db);
         let hashes = vec![genesis_hash];
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
@@ -291,12 +291,12 @@ mod find_headers_after_hash {
         add_many_chained_blocks(5, &db);
         let hashes = (1..=3)
             .rev()
-            .map(|i| db.fetch_block(i).unwrap().block().hash())
+            .map(|i| db.fetch_block(i, true).unwrap().block().hash())
             .collect::<Vec<_>>();
         let (index, headers) = db.find_headers_after_hash(hashes, 10).unwrap().unwrap();
         assert_eq!(index, 0);
         assert_eq!(headers.len(), 2);
-        assert_eq!(&headers[0], db.fetch_block(4).unwrap().header());
+        assert_eq!(&headers[0], db.fetch_block(4, true).unwrap().header());
     }
 
     #[test]
@@ -304,13 +304,13 @@ mod find_headers_after_hash {
         let db = setup();
         add_many_chained_blocks(5, &db);
         let hashes = (2..=4)
-            .map(|i| db.fetch_block(i).unwrap().block().hash())
+            .map(|i| db.fetch_block(i, true).unwrap().block().hash())
             .chain(vec![FixedHash::zero(), FixedHash::zero()])
             .rev();
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 2);
         assert_eq!(headers.len(), 1);
-        assert_eq!(&headers[0], db.fetch_block(5).unwrap().header());
+        assert_eq!(&headers[0], db.fetch_block(5, true).unwrap().header());
     }
 }
 
@@ -487,7 +487,7 @@ mod prepare_new_block {
     #[test]
     fn it_errors_for_genesis_block() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
         let err = db.prepare_new_block(template).unwrap_err();
         assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
@@ -496,7 +496,7 @@ mod prepare_new_block {
     #[test]
     fn it_errors_for_non_tip_template() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         // This would cause a panic if the sanity checks were not there
@@ -511,7 +511,7 @@ mod prepare_new_block {
     #[test]
     fn it_prepares_the_first_block() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
@@ -525,7 +525,7 @@ mod fetch_header_containing_utxo_mmr {
     #[test]
     fn it_returns_genesis() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         assert!(!genesis.block().body.outputs().is_empty());
         let mut mmr_position = 0;
         genesis.block().body.outputs().iter().for_each(|_| {
@@ -540,7 +540,7 @@ mod fetch_header_containing_utxo_mmr {
     #[test]
     fn it_returns_corresponding_header() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         let _block_and_outputs = add_many_chained_blocks(5, &db);
         let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
 
@@ -565,7 +565,7 @@ mod fetch_header_containing_kernel_mmr {
     #[test]
     fn it_returns_genesis() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         assert_eq!(genesis.block().body.kernels().len(), 2);
         let mut mmr_position = 0;
         genesis.block().body.kernels().iter().for_each(|_| {
@@ -580,7 +580,7 @@ mod fetch_header_containing_kernel_mmr {
     #[test]
     fn it_returns_corresponding_header() {
         let db = setup();
-        let genesis = db.fetch_block(0).unwrap();
+        let genesis = db.fetch_block(0, true).unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
         let num_genesis_kernels = genesis.block().body.kernels().len() as u64;
         let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![50 * T])]);
@@ -627,7 +627,7 @@ mod clear_all_pending_headers {
     fn it_clears_headers_after_tip() {
         let db = setup();
         let _blocks_and_outputs = add_many_chained_blocks(2, &db);
-        let prev_block = db.fetch_block(2).unwrap();
+        let prev_block = db.fetch_block(2, true).unwrap();
         let mut prev_accum = prev_block.accumulated_data.clone();
         let mut prev_header = prev_block.try_into_chain_block().unwrap().to_chain_header();
         let headers = (0..5)

@@ -12,7 +12,7 @@ commands:
           command: node -v
       - run:
           name: npm ci
-          command: cd integration_tests && npm ci
+          command: cd clients/nodejs/base_node_grpc_client && npm install && cd ../wallet_grpc_client && npm install && cd ../../../integration_tests && npm install
       - run:
           name: Check formatting
           command: cd integration_tests && npm run check-fmt
@@ -54,7 +54,7 @@ commands:
           command: node -v
       - run:
           name: npm ci
-          command: cd integration_tests && npm ci
+          command: cd clients/nodejs/base_node_grpc_client && npm install && cd ../wallet_grpc_client && npm install && cd ../../../integration_tests && npm install
       - run:
           name: Check eslint
           command: cd integration_tests && npm run lint

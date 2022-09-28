@@ -268,7 +268,8 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
         Protocol::Onion3(addr) if addr.port() == 0 => Err(ConnectionManagerError::InvalidMultiaddr(
             "A zero onion port is not valid in the onion spec".to_string(),
         )),
-        Protocol::Onion(_, _) | Protocol::Onion3(_) => expect_end_of_address(addr_iter),
+        Protocol::Onion(_, _) => Err(ConnectionManagerError::OnionV2NotSupported),
+        Protocol::Onion3(_) => expect_end_of_address(addr_iter),
         p => Err(ConnectionManagerError::InvalidMultiaddr(format!(
             "Unsupported address type '{}'",
             p
@@ -300,7 +301,6 @@ mod test {
         let valid = [
             multiaddr!(Ip4([172, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(1u16)),
-            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
             "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
                 .parse()
                 .unwrap(),
@@ -308,6 +308,7 @@ mod test {
         ];
 
         let invalid = &[
+            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
             multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([172, 0, 0, 1])),
@@ -330,7 +331,6 @@ mod test {
             multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([172, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(1u16)),
-            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
             "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
                 .parse()
                 .unwrap(),
@@ -339,6 +339,7 @@ mod test {
         ];
 
         let invalid = &[
+            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
             multiaddr!(Ip4([172, 0, 0, 1])),
             "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
             multiaddr!(Dnsaddr("mike-magic-nodes.com")),
