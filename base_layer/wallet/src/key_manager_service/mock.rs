@@ -22,12 +22,12 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 
 use crate::{
-    key_manager_service::{handle::KeyComboPair, interface::NextKeyResult, AddResult, KeyManagerInterface},
+    key_manager_service::{interface::NextKeyResult, AddResult, KeyManagerInterface},
     types::KeyDigest,
 };
 
@@ -162,7 +162,7 @@ impl KeyManagerInterface for KeyManagerMock {
         unimplemented!("Not supported");
     }
 
-    async fn create_key_combo(&self, _key_seed: String) -> Result<KeyComboPair, KeyManagerServiceError> {
+    async fn create_key_combo(&self, _key_seed: String) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 

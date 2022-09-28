@@ -45,12 +45,6 @@ pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
 }
 
-/// Simple structure to encapsulate a private/public pair
-pub struct KeyComboPair {
-    pub sk: PrivateKey,
-    pub pk: PublicKey,
-}
-
 impl<TBackend> KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
@@ -79,7 +73,7 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner).write().await.apply_encryption(cipher)
     }
 
-    async fn create_key_combo(&self, key_seed: String) -> Result<KeyComboPair, KeyManagerServiceError> {
+    async fn create_key_combo(&self, key_seed: String) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
         (*self.key_manager_inner)
             .write()
             .await
@@ -90,7 +84,7 @@ where TBackend: KeyManagerBackend + 'static
         let pk = next_key.to_public_key();
         // (*self.key_manager_inner).read().await.get_next_key(branch).await;
 
-        Ok(KeyComboPair { sk, pk })
+        Ok((sk, pk))
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {

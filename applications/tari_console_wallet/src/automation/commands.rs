@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PublicKey},
+    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -57,13 +57,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::{
-        storage::database::KeyManagerBackend,
-        KeyComboPair,
-        KeyManagerHandle,
-        KeyManagerInterface,
-        NextKeyResult,
-    },
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -149,7 +143,7 @@ pub async fn burn_tari(
 pub async fn create_key_combo<TBackend: KeyManagerBackend + 'static>(
     key_manager_service: KeyManagerHandle<TBackend>,
     key_seed: String,
-) -> Result<KeyComboPair, CommandError> {
+) -> Result<(PrivateKey, PublicKey), CommandError> {
     key_manager_service
         .create_key_combo(key_seed)
         .await
@@ -656,11 +650,8 @@ pub async fn command_runner(
                 }
             },
             CreateKeyCombo(args) => match create_key_combo(key_manager_service.clone(), args.key_seed).await {
-                Ok(KeyComboPair { sk, pk }) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "create new key combo pair: sk {:?}, pk {:?} ", sk, pk
-                    )
+                Ok((sk, pk)) => {
+                    println!("create new key combo pair: sk {:?}, pk {:?} ", sk, pk)
                 },
                 Err(e) => eprintln!("CreateKeyCombo error! {}", e),
             },
