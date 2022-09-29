@@ -116,6 +116,7 @@ pub const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
 pub const OP_HASH_BLAKE256: u8 = 0xb0;
 pub const OP_HASH_SHA256: u8 = 0xb1;
 pub const OP_HASH_SHA3: u8 = 0xb2;
+pub const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb3;
 
 // Opcode constants: Miscellaneous
 pub const OP_RETURN: u8 = 0x60;
@@ -232,6 +233,9 @@ pub enum Opcode {
     /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the m signatures are valid, and the
     /// operation fails with VERIFY_FAILED if any of the signatures are invalid.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
+    /// push the aggregate of the public keys to the stack, otherwise fails with VERIFY_FAILED.
+    CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
 
     // Miscellaneous
     /// Always fails with VERIFY_FAILED.
@@ -350,6 +354,10 @@ impl Opcode {
                 let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
                 Ok((CheckMultiSigVerify(m, n, keys, msg), &bytes[end..]))
             },
+            OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY => {
+                let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
+                Ok((CheckMultiSigVerifyAggregatePubKey(m, n, keys, msg), &bytes[end..]))
+            },
             OP_RETURN => Ok((Return, &bytes[1..])),
             OP_IF_THEN => Ok((IfThen, &bytes[1..])),
             OP_ELSE => Ok((Else, &bytes[1..])),
@@ -458,6 +466,13 @@ impl Opcode {
                 }
                 array.extend_from_slice(msg.deref());
             },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                array.extend_from_slice(&[OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY, *m, *n]);
+                for public_key in public_keys {
+                    array.extend(public_key.to_vec());
+                }
+                array.extend_from_slice(msg.deref());
+            },
             Return => array.push(OP_RETURN),
             IfThen => array.push(OP_IF_THEN),
             Else => array.push(OP_ELSE),
@@ -515,6 +530,16 @@ impl fmt::Display for Opcode {
                 let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
                 fmt.write_str(&format!(
                     "CheckMultiSigVerify({}, {}, [{}], {})",
+                    *m,
+                    *n,
+                    keys.join(", "),
+                    (*msg).to_hex()
+                ))
+            },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
+                fmt.write_str(&format!(
+                    "CheckMultiSigVerifyAggregatePubKey({}, {}, [{}], {})",
                     *m,
                     *n,
                     keys.join(", "),
@@ -761,9 +786,17 @@ mod test {
              6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
         );
         test_checkmultisig(
-            &Opcode::CheckMultiSigVerify(1, 2, keys, Box::new(*msg)),
+            &Opcode::CheckMultiSigVerify(1, 2, keys.clone(), Box::new(*msg)),
             OP_CHECK_MULTI_SIG_VERIFY,
             "CheckMultiSigVerify(1, 2, [9c8bc5f90d221191748e8dd7686f09e1114b4bada4c367ed58ae199c51eb100b, \
+             56e9f018b138ba843521b3243a29d81730c3a4c25108b108b1ca47c2132db569], \
+             6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
+        );
+        test_checkmultisig(
+            &Opcode::CheckMultiSigVerifyAggregatePubKey(1, 2, keys, Box::new(*msg)),
+            OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY,
+            "CheckMultiSigVerifyAggregatePubKey(1, 2, \
+             [9c8bc5f90d221191748e8dd7686f09e1114b4bada4c367ed58ae199c51eb100b, \
              56e9f018b138ba843521b3243a29d81730c3a4c25108b108b1ca47c2132db569], \
              6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
         );
