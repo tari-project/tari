@@ -480,7 +480,7 @@ impl ConnectivityManagerActor {
         entry.failed_attempts()
     }
 
-    async fn handle_peer_connection_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
+    async fn on_peer_connection_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
         if self.status.is_offline() {
             debug!(
                 target: LOG_TARGET,
@@ -533,11 +533,21 @@ impl ConnectivityManagerActor {
         &mut self,
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
+        self.update_state_on_connectivity_event(event).await?;
+        self.update_connectivity_status();
+        self.update_connectivity_metrics();
+        Ok(())
+    }
+
+    async fn update_state_on_connectivity_event(
+        &mut self,
+        event: &ConnectionManagerEvent,
+    ) -> Result<(), ConnectivityError> {
         use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
         debug!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
-                match self.handle_new_connection_tie_break(new_conn).await {
+                match self.on_new_connection(new_conn).await {
                     TieBreak::KeepExisting => {
                         // Ignore event, we discarded the new connection and keeping the current one
                         return Ok(());
@@ -572,6 +582,7 @@ impl ConnectivityManagerActor {
                             target: LOG_TARGET,
                             "Ignoring DialCancelled({}) event because an inbound connection already exists", node_id
                         );
+
                         return Ok(());
                     }
                 }
@@ -586,7 +597,7 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Connection to peer '{}' failed because '{:?}'", node_id, err
                 );
-                self.handle_peer_connection_failure(node_id).await?;
+                self.on_peer_connection_failure(node_id).await?;
                 (&*node_id, ConnectionStatus::Failed, None)
             },
             _ => return Ok(()),
@@ -635,12 +646,10 @@ impl ConnectivityManagerActor {
             },
         }
 
-        self.update_connectivity_status();
-        self.update_connectivity_metrics();
         Ok(())
     }
 
-    async fn handle_new_connection_tie_break(&mut self, new_conn: &PeerConnection) -> TieBreak {
+    async fn on_new_connection(&mut self, new_conn: &PeerConnection) -> TieBreak {
         match self.pool.get_connection(new_conn.peer_node_id()).cloned() {
             Some(existing_conn) if !existing_conn.is_connected() => {
                 debug!(
