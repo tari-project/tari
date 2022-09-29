@@ -144,7 +144,7 @@ impl Default for BaseNodeConfig {
         Self {
             override_from: None,
             network: Network::default(),
-            grpc_address: Some("/ip4/127.0.0.1/tcp/18142".parse().unwrap()),
+            grpc_address: None,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
