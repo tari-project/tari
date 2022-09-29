@@ -34,7 +34,12 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{ActiveValidatorNode, UtxoMinedInfo},
     proof_of_work::Difficulty,
-    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{
+        CodeTemplateRegistration,
+        Transaction,
+        TransactionKernel,
+        TransactionOutput,
+    },
 };
 
 /// API Response enum
@@ -74,6 +79,7 @@ pub enum NodeCommsResponse {
     FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse(Option<[u8; 32]>),
+    FetchTemplateRegistrationsResponse(Vec<CodeTemplateRegistration>),
 }
 
 impl Display for NodeCommsResponse {
@@ -115,6 +121,7 @@ impl Display for NodeCommsResponse {
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
             FetchCommitteeResponse(_) => write!(f, "FetchCommitteeResponse"),
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
+            FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
         }
     }
 }

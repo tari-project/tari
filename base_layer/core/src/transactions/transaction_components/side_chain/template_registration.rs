@@ -23,15 +23,19 @@
 use std::io::{Error, ErrorKind, Read, Write};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 
-use crate::consensus::{
-    read_byte,
-    ConsensusDecoding,
-    ConsensusEncoding,
-    ConsensusEncodingSized,
-    MaxSizeBytes,
-    MaxSizeString,
+use crate::{
+    consensus::{
+        read_byte,
+        ConsensusDecoding,
+        ConsensusEncoding,
+        ConsensusEncodingSized,
+        DomainSeparatedConsensusHasher,
+        MaxSizeBytes,
+        MaxSizeString,
+    },
+    transactions::TransactionHashDomain,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
@@ -44,6 +48,22 @@ pub struct CodeTemplateRegistration {
     pub build_info: BuildInfo,
     pub binary_sha: MaxSizeBytes<32>,
     pub binary_url: MaxSizeString<255>,
+}
+
+impl CodeTemplateRegistration {
+    pub fn hash(&self) -> FixedHash {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("template_registration")
+            .chain(&self.author_public_key)
+            .chain(&self.author_signature)
+            .chain(&self.template_name)
+            .chain(&self.template_version)
+            .chain(&self.template_type)
+            .chain(&self.build_info)
+            .chain(&self.binary_sha)
+            .chain(&self.binary_url)
+            .finalize()
+            .into()
+    }
 }
 
 impl ConsensusEncoding for CodeTemplateRegistration {

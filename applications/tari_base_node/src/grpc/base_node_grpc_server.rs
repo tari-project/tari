@@ -140,6 +140,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
+    type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::TemplateRegistration, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
@@ -1497,7 +1498,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 },
                 Ok(data) => data,
             };
-            dbg!(&active_validator_nodes);
+            // dbg!(&active_validator_nodes);
             for (public_key, shard_key) in active_validator_nodes {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
@@ -1531,6 +1532,81 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(
             target: LOG_TARGET,
             "Sending GetActiveValidatorNodes response stream to client"
+        );
+        Ok(Response::new(rx))
+    }
+
+    async fn get_template_registrations(
+        &self,
+        request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
+    ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
+
+        let mut handler = self.node_service.clone();
+        let (mut tx, rx) = mpsc::channel(1000);
+
+        task::spawn(async move {
+            let template_registrations = match handler.get_template_registrations(request.from_height).await {
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => data,
+            };
+
+            for template_registration in template_registrations {
+                let template_registration = match tari_rpc::TemplateRegistration::try_from(template_registration) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending converting template registration for GRPC: {}", e
+                        );
+                        match tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal("Error converting template_registration"),
+                            )))
+                            .await
+                        {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                };
+
+                match tx.send(Ok(template_registration)).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending template registration via GRPC:  {}", err
+                        );
+                        match tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::unknown("Error sending data"),
+                            )))
+                            .await
+                        {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+        debug!(
+            target: LOG_TARGET,
+            "Sending GetTemplateRegistrations response stream to client"
         );
         Ok(Response::new(rx))
     }

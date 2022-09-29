@@ -103,6 +103,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
         Reorg,
+        TemplateRegistration,
     },
     consensus::ConsensusManager,
     transactions::{
@@ -145,6 +146,7 @@ const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_VALIDATOR_NODE_ENDING: &str = "validator_node_ending";
+const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
@@ -190,6 +192,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES, flags | db::DUPSORT)
         .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags | db::DUPSORT)
         .add_database(LMDB_DB_VALIDATOR_NODE_ENDING, flags | db::INTEGERKEY |  db::DUPSORT)
+        .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -254,6 +257,8 @@ pub struct LMDBDatabase {
     validator_nodes_mapping: DatabaseRef,
     /// Maps the end block height of nodes
     validator_nodes_ending: DatabaseRef,
+    /// Maps CodeTemplateRegistration hash-> TemplateRegistration
+    template_registrations: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
 }
@@ -297,6 +302,7 @@ impl LMDBDatabase {
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
             validator_nodes_ending: get_database(store, LMDB_DB_VALIDATOR_NODE_ENDING)?,
+            template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -502,6 +508,9 @@ impl LMDBDatabase {
                 InsertValidatorNode { validator_node } => {
                     self.insert_validator_node(&write_txn, validator_node)?;
                 },
+                InsertTemplateRegistration { template_registration } => {
+                    self.insert_template_registration(&write_txn, template_registration)?;
+                },
             }
         }
         write_txn.commit()?;
@@ -509,7 +518,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 26] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 27] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -543,6 +552,7 @@ impl LMDBDatabase {
             ("reorgs", &self.reorgs),
             ("validator_nodes", &self.validator_nodes),
             ("validator_nodes_mapping", &self.validator_nodes_mapping),
+            ("template_registrations", &self.template_registrations),
         ]
     }
 
@@ -1326,6 +1336,19 @@ impl LMDBDatabase {
                 };
                 self.insert_validator_node(txn, &validator_node)?;
             }
+            if let Some(template_reg) = output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.template_registration())
+            {
+                let record = TemplateRegistration {
+                    registration_data: template_reg.clone(),
+                    height: header.height,
+                };
+
+                self.insert_template_registration(txn, &record)?;
+            }
             self.insert_output(
                 txn,
                 &block_hash,
@@ -1614,6 +1637,21 @@ impl LMDBDatabase {
             "validator_nodes_mapping",
         )?;
         Ok(())
+    }
+
+    fn insert_template_registration(
+        &self,
+        txn: &WriteTransaction<'_>,
+        template_registration: &TemplateRegistration,
+    ) -> Result<(), ChainStorageError> {
+        let key = template_registration.registration_data.hash();
+        lmdb_insert(
+            txn,
+            &self.template_registrations,
+            key.as_bytes(),
+            template_registration,
+            "template_registrations",
+        )
     }
 
     fn fetch_output_in_txn(
@@ -2536,6 +2574,18 @@ impl BlockchainBackend for LMDBDatabase {
         validator_nodes.sort_by(|a, b| a.from_height.cmp(&b.from_height));
 
         Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
+    }
+
+    fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
+        // TODO: we can optimise this query by making using a compound key <reg_height, hash>
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.template_registrations, |tr: TemplateRegistration| {
+            if tr.height >= from_height {
+                Some(tr)
+            } else {
+                None
+            }
+        })
     }
 }
 
