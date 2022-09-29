@@ -91,10 +91,12 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
     type Error = String;
 
     fn try_from(input: TransactionInput) -> Result<Self, Self::Error> {
-        let script_signature = Some(grpc::ComSignature {
-            public_nonce_commitment: Vec::from(input.script_signature.public_nonce().as_bytes()),
-            signature_u: Vec::from(input.script_signature.u().as_bytes()),
-            signature_v: Vec::from(input.script_signature.v().as_bytes()),
+        let script_signature = Some(grpc::ComAndPubSignature {
+            ephemeral_commitment: Vec::from(input.script_signature.ephemeral_commitment().as_bytes()),
+            ephemeral_pubkey: Vec::from(input.script_signature.ephemeral_pubkey().as_bytes()),
+            u_a: Vec::from(input.script_signature.u_a().as_bytes()),
+            u_x: Vec::from(input.script_signature.u_x().as_bytes()),
+            u_y: Vec::from(input.script_signature.u_y().as_bytes()),
         });
         if input.is_compact() {
             let output_hash = input.output_hash().to_vec();

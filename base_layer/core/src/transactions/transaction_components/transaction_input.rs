@@ -31,7 +31,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::Hex};
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
@@ -64,7 +64,7 @@ pub struct TransactionInput {
     /// The script input data, if any
     pub input_data: ExecutionStack,
     /// A signature with k_s, signing the script, input data, and mined height
-    pub script_signature: ComSignature,
+    pub script_signature: ComAndPubSignature,
 }
 
 /// An input for a transaction that spends an existing output
@@ -73,7 +73,7 @@ impl TransactionInput {
         version: TransactionInputVersion,
         spent_output: SpentOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput {
             version,
@@ -86,7 +86,7 @@ impl TransactionInput {
     pub fn new_current_version(
         spent_output: SpentOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput::new(
             TransactionInputVersion::get_current_version(),
@@ -100,7 +100,7 @@ impl TransactionInput {
     pub fn new_with_output_hash(
         output_hash: HashOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput::new_current_version(SpentOutput::OutputHash(output_hash), input_data, script_signature)
     }
@@ -112,7 +112,7 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
@@ -161,7 +161,8 @@ impl TransactionInput {
 
     pub(super) fn build_script_challenge(
         version: TransactionInputVersion,
-        nonce_commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
         script: &TariScript,
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
@@ -170,7 +171,8 @@ impl TransactionInput {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
-                    .chain(nonce_commitment)
+                    .chain(ephemeral_commitment)
+                    .chain(ephemeral_pubkey)
                     .chain(script)
                     .chain(input_data)
                     .chain(script_public_key)
@@ -282,7 +284,7 @@ impl TransactionInput {
 
     pub fn validate_script_signature(
         &self,
-        public_script_key: &PublicKey,
+        script_public_key: &PublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         match self.spent_output {
@@ -294,15 +296,16 @@ impl TransactionInput {
             } => {
                 let challenge = TransactionInput::build_script_challenge(
                     self.version,
-                    self.script_signature.public_nonce(),
+                    self.script_signature.ephemeral_commitment(),
+                    self.script_signature.ephemeral_pubkey(),
                     script,
                     &self.input_data,
-                    public_script_key,
+                    script_public_key,
                     commitment,
                 );
                 if self
                     .script_signature
-                    .verify_challenge(&(commitment + public_script_key), &challenge, factory)
+                    .verify_challenge(commitment, script_public_key, &challenge, factory)
                 {
                     Ok(())
                 } else {
@@ -474,7 +477,7 @@ impl ConsensusDecoding for TransactionInput {
         let version = TransactionInputVersion::consensus_decode(reader)?;
         let spent_output = SpentOutput::consensus_decode(reader)?;
         let input_data = ExecutionStack::consensus_decode(reader)?;
-        let script_signature = ComSignature::consensus_decode(reader)?;
+        let script_signature = ComAndPubSignature::consensus_decode(reader)?;
         let input = TransactionInput::new(version, spent_output, input_data, script_signature);
         Ok(input)
     }

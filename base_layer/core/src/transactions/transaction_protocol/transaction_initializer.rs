@@ -229,14 +229,16 @@ impl SenderTransactionInitializer {
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
-            output.metadata_signature.public_nonce(),
+            output.metadata_signature.ephemeral_commitment(),
+            output.metadata_signature.ephemeral_pubkey(),
             &commitment,
             &output.covenant,
             &output.encrypted_value,
             output.minimum_value_promise,
         );
         if !output.metadata_signature.verify_challenge(
-            &(&commitment + &output.sender_offset_public_key),
+            &commitment,
+            &output.sender_offset_public_key,
             &e,
             &commitment_factory,
         ) {

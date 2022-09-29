@@ -29,7 +29,7 @@ use tari_crypto::{
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
-        RistrettoComSig,
+        RistrettoComAndPubSig,
         RistrettoPublicKey,
         RistrettoSchnorr,
         RistrettoSecretKey,
@@ -44,7 +44,7 @@ pub use fixed_hash::{FixedHash, FixedHashSizeError};
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
 /// Define the explicit Commitment Signature implementation for the Tari base layer.
-pub type ComSignature = RistrettoComSig;
+pub type ComAndPubSignature = RistrettoComAndPubSig;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
 pub type Commitment = PedersenCommitment;

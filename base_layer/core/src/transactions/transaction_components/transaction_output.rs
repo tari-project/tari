@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
-    ComSignature,
+    ComAndPubSignature,
     Commitment,
     CommitmentFactory,
     FixedHash,
@@ -85,7 +85,7 @@ pub struct TransactionOutput {
     /// Tari script offset pubkey, K_O
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
-    pub metadata_signature: ComSignature,
+    pub metadata_signature: ComAndPubSignature,
     /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
@@ -107,7 +107,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
         minimum_value_promise: MicroTari,
@@ -132,7 +132,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
         minimum_value_promise: MicroTari,
@@ -198,14 +198,16 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            self.metadata_signature.public_nonce(),
+            self.metadata_signature.ephemeral_commitment(),
+            self.metadata_signature.ephemeral_pubkey(),
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
             self.minimum_value_promise,
         );
         if !self.metadata_signature.verify_challenge(
-            &(&self.commitment + &self.sender_offset_public_key),
+            &self.commitment,
+            &self.sender_offset_public_key,
             &challenge,
             &CommitmentFactory::default(),
         ) {
@@ -277,14 +279,16 @@ impl TransactionOutput {
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
-        public_commitment_nonce: &Commitment,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
         commitment: &Commitment,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
-            .chain(public_commitment_nonce)
+            .chain(ephemeral_commitment)
+            .chain(ephemeral_pubkey)
             .chain(script)
             .chain(features)
             .chain(sender_offset_public_key)

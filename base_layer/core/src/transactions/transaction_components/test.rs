@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{self, rngs::OsRng};
-use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{BlindingFactor, ComAndPubSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
@@ -263,7 +263,7 @@ fn check_timelocks() {
 
     let script = TariScript::default();
     let input_data = ExecutionStack::default();
-    let script_signature = ComSignature::default();
+    let script_signature = ComAndPubSignature::default();
     let offset_pub_key = PublicKey::default();
     let mut input = TransactionInput::new_with_output_data(
         TransactionInputVersion::get_current_version(),
