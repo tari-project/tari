@@ -655,7 +655,7 @@ pub async fn command_runner(
                         "create new key combo pair: 
                                 1. secret key: {:?}, 
                                 2. public key {:?}",
-                        sk, pk
+                        sk.to_hex(), pk.to_hex()
                     )
                 },
                 Err(e) => eprintln!("CreateKeyCombo error! {}", e),
