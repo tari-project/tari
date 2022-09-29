@@ -36,6 +36,7 @@ use tari_test_utils::{paths::create_temporary_data_path, random};
 
 use crate::{
     crypt,
+    crypt::prepare_message,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
     message_signature::MessageSignature,
@@ -123,9 +124,9 @@ pub fn make_valid_message_signature(node_identity: &NodeIdentity, message: &[u8]
         .to_encoded_bytes()
 }
 
-pub fn make_dht_inbound_message(
+pub fn make_dht_inbound_message<T: prost::Message>(
     node_identity: &NodeIdentity,
-    body: Vec<u8>,
+    body: &T,
     flags: DhtMessageFlags,
     include_origin: bool,
     include_destination: bool,
@@ -148,24 +149,65 @@ pub fn make_dht_inbound_message(
     ))
 }
 
+pub fn make_dht_inbound_message_raw(
+    node_identity: &NodeIdentity,
+    body: Vec<u8>,
+    flags: DhtMessageFlags,
+    include_origin: bool,
+    include_destination: bool,
+) -> Result<DhtInboundMessage, DhtOutboundError> {
+    let msg_tag = MessageTag::new();
+    let (e_secret_key, e_public_key) = make_keypair();
+    let header = make_dht_header(
+        node_identity,
+        &e_public_key,
+        &e_secret_key,
+        &body,
+        flags,
+        include_origin,
+        msg_tag,
+        include_destination,
+    )?
+    .into();
+    let envelope = DhtEnvelope::new(header, &body);
+    Ok(DhtInboundMessage::new(
+        msg_tag,
+        envelope.header.unwrap().try_into().unwrap(),
+        Arc::new(Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            Vec::<Multiaddr>::new().into(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            Default::default(),
+            Default::default(),
+        )),
+        envelope.body,
+    ))
+}
+
 pub fn make_keypair() -> (CommsSecretKey, CommsPublicKey) {
     CommsPublicKey::random_keypair(&mut OsRng)
 }
 
-pub fn make_dht_envelope(
+pub fn make_dht_envelope<T: prost::Message>(
     node_identity: &NodeIdentity,
-    mut message: Vec<u8>,
+    message: &T,
     flags: DhtMessageFlags,
     include_origin: bool,
     trace: MessageTag,
     include_destination: bool,
 ) -> Result<DhtEnvelope, DhtOutboundError> {
     let (e_secret_key, e_public_key) = make_keypair();
-    if flags.is_encrypted() {
+    let message = if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
-        message = crypt::encrypt(&key_message, &message).unwrap();
-    }
+        let mut message = prepare_message(true, message);
+        crypt::encrypt(&key_message, &mut message).unwrap();
+        message.freeze()
+    } else {
+        prepare_message(false, message).freeze()
+    };
     let header = make_dht_header(
         node_identity,
         &e_public_key,
@@ -177,7 +219,7 @@ pub fn make_dht_envelope(
         include_destination,
     )?
     .into();
-    Ok(DhtEnvelope::new(header, &message.into()))
+    Ok(DhtEnvelope::new(header, &message))
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {

@@ -22,7 +22,6 @@
 
 use std::{sync::Arc, task::Poll};
 
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::{
     future,
@@ -37,6 +36,8 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
     types::CommsPublicKey,
+    Bytes,
+    BytesMut,
 };
 use tari_crypto::{keys::PublicKey, tari_utilities::epoch_time::EpochTime};
 use tari_utilities::{hex::Hex, ByteArray};
@@ -238,7 +239,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn handle_send_message(
         &mut self,
         params: FinalSendMessageParams,
-        body: Bytes,
+        body: BytesMut,
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         trace!(target: LOG_TARGET, "Send params: {:?}", params);
@@ -405,7 +406,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         extra_flags: DhtMessageFlags,
         force_origin: bool,
         is_broadcast: bool,
-        body: Bytes,
+        body: BytesMut,
         expires: Option<DateTime<Utc>>,
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
@@ -485,7 +486,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         message_type: DhtMessageType,
         flags: DhtMessageFlags,
         expires: Option<EpochTime>,
-        body: Bytes,
+        mut body: BytesMut,
     ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {
@@ -497,7 +498,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate key message for encryption of message
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
                 // Encrypt the message with the body with key message above
-                let encrypted_body = crypt::encrypt(&key_message, &body)?;
+                crypt::encrypt(&key_message, &mut body)?;
+                let encrypted_body = body.freeze();
 
                 // Produce domain separated signature signature
                 let mac_signature = crypt::create_message_domain_separated_hash_parts(
@@ -525,7 +527,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 Ok((
                     Some(Arc::new(e_public_key)),
                     Some(encrypted_message_signature.into()),
-                    encrypted_body.into(),
+                    encrypted_body,
                 ))
             },
             OutboundEncryption::ClearText => {
@@ -546,9 +548,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         &binding_message_representation,
                     )
                     .to_proto();
-                    Ok((None, Some(signature.to_encoded_bytes().into()), body))
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze()))
                 } else {
-                    Ok((None, None, body))
+                    Ok((None, None, body.freeze()))
                 }
             },
         }
@@ -633,7 +635,7 @@ mod test {
         service
             .call(DhtOutboundRequest::SendMessage(
                 Box::new(SendMessageParams::new().flood(vec![]).finish()),
-                b"custom_msg".to_vec().into(),
+                b"custom_msg".as_slice().into(),
                 reply_tx,
             ))
             .await
@@ -680,7 +682,7 @@ mod test {
                         .with_discovery(false)
                         .finish(),
                 ),
-                Bytes::from_static(b"custom_msg"),
+                BytesMut::from(b"custom_msg".as_slice()),
                 reply_tx,
             ))
             .await
@@ -728,7 +730,7 @@ mod test {
                         .with_discovery(true)
                         .finish(),
                 ),
-                b"custom_msg".to_vec().into(),
+                b"custom_msg".as_slice().into(),
                 reply_tx,
             ))
             .await

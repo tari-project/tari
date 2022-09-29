@@ -234,7 +234,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
-                    body.to_encoded_bytes(),
+                    body.encode_into_bytes_mut(),
                 )
                 .await?;
         }
