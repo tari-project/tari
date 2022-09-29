@@ -758,6 +758,8 @@ impl ConnectivityManagerActor {
             n if n == 0 => {
                 if num_connected_clients == 0 {
                     self.transition(ConnectivityStatus::Offline, min_peers);
+                } else {
+                    self.transition(ConnectivityStatus::Degraded(n), min_peers);
                 }
             },
             _ => unreachable!("num_connected is unsigned and only negative pattern covered on this branch"),
