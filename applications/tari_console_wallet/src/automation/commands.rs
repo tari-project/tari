@@ -653,8 +653,8 @@ pub async fn command_runner(
                 Ok((sk, pk)) => {
                     println!(
                         "create new key combo pair: 
-                                1. secret key: {:?}, 
-                                2. public key {:?}",
+                                1. secret key: {}, 
+                                2. public key {}",
                         sk.to_hex(),
                         pk.to_hex()
                     )
