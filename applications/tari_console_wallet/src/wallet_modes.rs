@@ -429,7 +429,7 @@ mod test {
             
             burn-tari --message Ups_these_funds_will_be_burned! 100T
 
-            create-key-combo pie 
+            create-key-pair pie 
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
