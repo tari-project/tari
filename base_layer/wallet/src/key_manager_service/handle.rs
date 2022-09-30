@@ -73,7 +73,7 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner).write().await.apply_encryption(cipher)
     }
 
-    async fn create_key_combo(&self, key_seed: String) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
+    async fn create_key_pair(&self, key_seed: String) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
         (*self.key_manager_inner)
             .write()
             .await
@@ -82,7 +82,6 @@ where TBackend: KeyManagerBackend + 'static
         let next_key = self.get_next_key(key_seed).await?;
         let sk = next_key.key.clone();
         let pk = next_key.to_public_key();
-        // (*self.key_manager_inner).read().await.get_next_key(branch).await;
 
         Ok((sk, pk))
     }

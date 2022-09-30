@@ -84,7 +84,7 @@ pub enum WalletCommand {
     GetBalance,
     SendTari,
     SendOneSided,
-    CreateKeyCombo,
+    CreateKeyPair,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -140,12 +140,12 @@ pub async fn burn_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
-pub async fn create_key_combo<TBackend: KeyManagerBackend + 'static>(
+pub async fn create_key_pair<TBackend: KeyManagerBackend + 'static>(
     key_manager_service: KeyManagerHandle<TBackend>,
     key_seed: String,
 ) -> Result<(PrivateKey, PublicKey), CommandError> {
     key_manager_service
-        .create_key_combo(key_seed)
+        .create_key_pair(key_seed)
         .await
         .map_err(CommandError::KeyManagerError)
 }
@@ -649,7 +649,7 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnTari error! {}", e),
                 }
             },
-            CreateKeyCombo(args) => match create_key_combo(key_manager_service.clone(), args.key_seed).await {
+            CreateKeyPair(args) => match create_key_pair(key_manager_service.clone(), args.key_seed).await {
                 Ok((sk, pk)) => {
                     println!(
                         "create new key combo pair: 
@@ -659,7 +659,7 @@ pub async fn command_runner(
                         pk.to_hex()
                     )
                 },
-                Err(e) => eprintln!("CreateKeyCombo error! {}", e),
+                Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(
