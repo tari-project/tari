@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryInto,
+    convert::{From, TryInto},
     fs,
     fs::File,
     io,
@@ -159,9 +159,12 @@ pub async fn create_n_m_utxo(
     m: u8,
     public_keys: Vec<PublicKey>,
     message: String,
-) -> Result<TxId, CommandError> {
+) -> Result<(TxId, FixedHash), CommandError> {
+    let mut msg = [0u8; 32];
+    msg.copy_from_slice(message.as_bytes());
+
     wallet_transaction_service
-        .create_n_m_utxo(amount, fee_per_gram, n, m, public_keys, message)
+        .create_n_m_utxo(amount, fee_per_gram, n, m, public_keys, msg)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -683,15 +686,25 @@ pub async fn command_runner(
                 args.fee_per_gram,
                 args.n,
                 args.m,
-                args.public_keys,
+                args.public_keys
+                    .iter()
+                    .map(|pk| (PublicKey::from(pk.clone())))
+                    .collect(),
                 args.message,
             )
             .await
             {
-                Ok(pk) => {
-                    println!()
+                Ok((tx_id, output_hash)) => {
+                    println!(
+                        "Create a utxo with n-of-m aggregate public key, with: 
+                            1. n = {},
+                            2. m = {}, 
+                            3. tx id = {},
+                            4. output hash = {}",
+                        args.n, args.m, tx_id, output_hash
+                    )
                 },
-                Err(e) => {},
+                Err(e) => eprintln!("CreateNMUtxo error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(

@@ -165,6 +165,7 @@ pub struct CreateKeyComboArgs {
 #[derive(Debug, Args, Clone)]
 pub struct CreateNMUtxoArgs {
     pub amount: MicroTari,
+    pub fee_per_gram: MicroTari,
     pub n: u8,
     pub m: u8,
     pub public_keys: Vec<UniPublicKey>,

@@ -70,7 +70,7 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script, slice_to_boxed_message, Opcode, TariScript};
+use tari_script::{inputs, script, slice_to_boxed_message, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -1020,12 +1020,8 @@ where
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
-        // CreateAggregatePublicKey + Number(m) + Number(n) + PushPubKey(...) + PushString(message)
-        let capacity = 1 + 1 + 1 + public_keys.len() + 1;
-        let mut opcodes = Vec::<Opcode>::with_capacity(capacity);
-
         let msg = slice_to_boxed_message(message.as_bytes());
-        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys, Box::new(message)));
+        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys, msg));
 
         // Empty covenant
         let covenant = Covenant::default();
@@ -1034,7 +1030,7 @@ where
         let minimum_value_promise = MicroTari::zero();
 
         // Prepare sender part of transaction
-        let stp = self
+        let mut stp = self
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1044,7 +1040,7 @@ where
                 fee_per_gram,
                 TransactionMetadata::default(),
                 "".to_string(),
-                script,
+                script.clone(),
                 covenant,
                 minimum_value_promise,
             )
@@ -1063,14 +1059,11 @@ where
 
         // Prepare receiver part of the transaction
 
-        // In generating a aggregate public key utxo, we can use a randomly generated sender offset private key
-        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-
         // In generating an aggregate public key utxo, we can use a randomly generated spend key
         let spend_key = PrivateKey::random(&mut OsRng);
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key.clone()))?;
         let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
 
         let rewind_data = RewindData {
@@ -1096,17 +1089,20 @@ where
             .resources
             .factories
             .commitment
-            .commit_value(&spend_key, amount.into());
+            .commit_value(&spend_key.clone(), amount.into());
 
         let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
         let minimum_value_promise = MicroTari::zero();
 
+        let covenant = Covenant::default();
+
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
-            spend_key,
+            spend_key.clone(),
             output.features.clone(),
             script,
-            inputs!(spend_key), // TODO: refactor this, when we have implemented the necessary logic
+            inputs!(PublicKey::from_secret_key(&spend_key)), /* TODO: refactor this, when we have implemented the
+                                                              * necessary logic */
             self.node_identity.secret_key().clone(),
             output.sender_offset_public_key.clone(),
             output.metadata_signature.clone(),

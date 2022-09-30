@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{FixedHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -166,11 +166,11 @@ impl fmt::Display for TransactionServiceRequest {
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
             Self::CreateNMUtxo {
                 amount,
-                fee_per_gram,
+                fee_per_gram: _,
                 n,
                 m,
-                public_keys,
-                message,
+                public_keys: _,
+                message: _,
             } => f.write_str(&format!(
                 "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
                 amount, n, m
@@ -247,6 +247,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionSentWithOutputHash(TxId, FixedHash),
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -531,7 +532,7 @@ impl TransactionServiceHandle {
         m: u8,
         public_keys: Vec<PublicKey>,
         message: [u8; 32],
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::CreateNMUtxo {
@@ -544,7 +545,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
