@@ -88,6 +88,14 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    CreateNMUtxo {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
@@ -156,6 +164,17 @@ impl fmt::Display for TransactionServiceRequest {
                 message
             )),
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
+            Self::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+            } => f.write_str(&format!(
+                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
+                amount, n, m
+            )),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
@@ -495,6 +514,32 @@ impl TransactionServiceHandle {
                 amount,
                 selection_criteria,
                 fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_n_m_utxo(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
                 message,
             })
             .await??

@@ -85,6 +85,7 @@ pub enum WalletCommand {
     SendTari,
     SendOneSided,
     CreateKeyCombo,
+    CreateNMUtxo,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -148,6 +149,21 @@ pub async fn create_key_combo<TBackend: KeyManagerBackend + 'static>(
         .create_key_combo(key_seed)
         .await
         .map_err(CommandError::KeyManagerError)
+}
+
+pub async fn create_n_m_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    amount: MicroTari,
+    fee_per_gram: MicroTari,
+    n: u8,
+    m: u8,
+    public_keys: Vec<PublicKey>,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .create_n_m_utxo(amount, fee_per_gram, n, m, public_keys, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)
 }
 
 /// publishes a tari-SHA atomic swap HTLC transaction
@@ -660,6 +676,22 @@ pub async fn command_runner(
                     )
                 },
                 Err(e) => eprintln!("CreateKeyCombo error! {}", e),
+            },
+            CreateNMUtxo(args) => match create_n_m_utxo(
+                transaction_service.clone(),
+                args.amount,
+                args.fee_per_gram,
+                args.n,
+                args.m,
+                args.public_keys,
+                args.message,
+            )
+            .await
+            {
+                Ok(pk) => {
+                    println!()
+                },
+                Err(e) => {},
             },
             SendTari(args) => {
                 match send_tari(
