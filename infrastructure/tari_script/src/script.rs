@@ -547,8 +547,8 @@ impl TariScript {
             StackItem::Scalar(scalar) => scalar.as_slice(),
             _ => return Err(ScriptError::IncompatibleTypes),
         };
-        let scalar = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
-        let ristretto_pk = RistrettoPublicKey::from_secret_key(&scalar);
+        let ristretto_sk = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
     }

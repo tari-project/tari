@@ -24,6 +24,7 @@ use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use super::ScriptError;
 
 pub type HashValue = [u8; 32];
+pub type ScalarValue = [u8; 32];
 pub type Message = [u8; MESSAGE_LENGTH];
 
 const PUBLIC_KEY_LENGTH: usize = 32;

@@ -24,7 +24,11 @@ use tari_utilities::{
     ByteArray,
 };
 
-use crate::{error::ScriptError, op_codes::HashValue};
+use crate::{
+    error::ScriptError,
+    op_codes::{HashValue, ScalarValue},
+};
+
 pub const MAX_STACK_SIZE: usize = 255;
 
 #[macro_export]
@@ -58,7 +62,7 @@ pub const TYPE_SCALAR: u8 = 6;
 pub enum StackItem {
     Number(i64),
     Hash(HashValue),
-    Scalar([u8; 32]),
+    Scalar(ScalarValue),
     Commitment(PedersenCommitment),
     PublicKey(RistrettoPublicKey),
     Signature(RistrettoSchnorr),
@@ -172,7 +176,7 @@ stack_item_from!(i64 => Number);
 stack_item_from!(PedersenCommitment => Commitment);
 stack_item_from!(RistrettoPublicKey => PublicKey);
 stack_item_from!(RistrettoSchnorr => Signature);
-stack_item_from!([u8; 32] => Scalar);
+stack_item_from!(ScalarValue => Scalar);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionStack {
@@ -361,7 +365,7 @@ mod test {
     };
     use tari_utilities::hex::{from_hex, Hex};
 
-    use crate::{ExecutionStack, StackItem};
+    use crate::{op_codes::ScalarValue, ExecutionStack, StackItem};
 
     #[test]
     fn as_bytes_roundtrip() {
@@ -388,7 +392,7 @@ mod test {
         let p = RistrettoPublicKey::from_secret_key(&k);
         let m = Blake256::digest(b"Hello Tari Script");
         let sig = RistrettoSchnorr::sign(k, r, m.as_slice()).unwrap();
-        let scalar: [u8; 32] = m.into();
+        let scalar: ScalarValue = m.into();
         let inputs = inputs!(sig, p, scalar);
         assert_eq!(inputs.to_hex(), "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da5");
     }
@@ -402,7 +406,7 @@ mod test {
         // unwrap(); let s =
         //     RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").
         // unwrap(); let sig = RistrettoSchnorr::new(r, s);
-        // let m: [u8; 32] = Blake256::digest(b"Hello Tari Script").into();
+        // let m: HashValue = Blake256::digest(b"Hello Tari Script").into();
         // let inputs = inputs!(m, sig, p);
         // eprintln!("to_hex(&m) = {:?}", tari_utilities::hex::to_hex(&m));
         // eprintln!("inputs.to_hex() = {:?}", inputs.to_hex());
