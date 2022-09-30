@@ -467,6 +467,7 @@ message GetShardKeyRequest {
 
 message GetShardKeyResponse {
     bytes shard_key = 1;
+    bool found = 2;
 }
 
 message GetTemplateRegistrationsRequest {

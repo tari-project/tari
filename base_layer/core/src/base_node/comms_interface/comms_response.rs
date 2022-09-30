@@ -78,7 +78,7 @@ pub enum NodeCommsResponse {
     },
     FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
-    GetShardKeyResponse([u8; 32]),
+    GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<CodeTemplateRegistration>),
 }
 

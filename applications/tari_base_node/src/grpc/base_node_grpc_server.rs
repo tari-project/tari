@@ -1461,13 +1461,22 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let public_key = PublicKey::from_bytes(&request.public_key)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
+
         let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {
             error!(target: LOG_TARGET, "Error {}", e);
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
-        Ok(Response::new(tari_rpc::GetShardKeyResponse {
-            shard_key: shard_key.to_vec(),
-        }))
+        if let Some(shard_key) = shard_key {
+            Ok(Response::new(tari_rpc::GetShardKeyResponse {
+                shard_key: shard_key.to_vec(),
+                found: true,
+            }))
+        } else {
+            Ok(Response::new(tari_rpc::GetShardKeyResponse {
+                shard_key: vec![],
+                found: false,
+            }))
+        }
     }
 
     async fn get_active_validator_nodes(

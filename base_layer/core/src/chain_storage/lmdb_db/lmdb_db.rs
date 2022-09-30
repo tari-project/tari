@@ -2562,19 +2562,18 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(result)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<[u8; 32], ChainStorageError> {
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let validator_nodes: Vec<ActiveValidatorNode> =
-            lmdb_get_multiple(&txn, &self.validator_nodes, public_key.as_bytes())?;
-        validator_nodes
-            .iter()
-            .find(|a| a.from_height <= height && height <= a.to_height)
-            .map(|a| a.shard_key)
-            .ok_or(ChainStorageError::ValueNotFound {
-                entity: "ShardKey",
-                field: "public_key",
-                value: public_key.to_hex(),
-            })
+        let mut validator_nodes: Vec<ActiveValidatorNode> =
+            lmdb_fetch_matching_after(&txn, &self.validator_nodes, public_key.as_bytes())?;
+        validator_nodes = validator_nodes
+            .into_iter()
+            .filter(|a| a.from_height <= height && height <= a.to_height)
+            .collect();
+        // get the last one
+        validator_nodes.sort_by(|a, b| a.from_height.cmp(&b.from_height));
+
+        Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
     }
 
     fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
