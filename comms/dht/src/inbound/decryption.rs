@@ -656,7 +656,7 @@ mod test {
             true,
         )
         .unwrap();
-        let envelope = DhtEnvelope::new(header.into(), &message);
+        let envelope = DhtEnvelope::new(header.into(), message.into());
         let msg_tag = MessageTag::new();
         let mut inbound_msg = DhtInboundMessage::new(
             msg_tag,
@@ -719,7 +719,7 @@ mod test {
             true,
         )
         .unwrap();
-        let envelope = DhtEnvelope::new(header.into(), &message);
+        let envelope = DhtEnvelope::new(header.into(), message.into());
         let msg_tag = MessageTag::new();
         let mut inbound_msg = DhtInboundMessage::new(
             msg_tag,

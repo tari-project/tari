@@ -169,7 +169,7 @@ pub fn make_dht_inbound_message_raw(
         include_destination,
     )?
     .into();
-    let envelope = DhtEnvelope::new(header, &body);
+    let envelope = DhtEnvelope::new(header, body);
     Ok(DhtInboundMessage::new(
         msg_tag,
         envelope.header.unwrap().try_into().unwrap(),
@@ -219,7 +219,7 @@ pub fn make_dht_envelope<T: prost::Message>(
         include_destination,
     )?
     .into();
-    Ok(DhtEnvelope::new(header, &message))
+    Ok(DhtEnvelope::new(header, message.into()))
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {

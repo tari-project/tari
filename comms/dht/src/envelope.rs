@@ -248,10 +248,10 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: &[u8]) -> Self {
+    pub fn new(header: DhtHeader, body: Vec<u8>) -> Self {
         Self {
             header: Some(header),
-            body: body.to_vec(),
+            body,
         }
     }
 }
