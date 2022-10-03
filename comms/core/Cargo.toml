@@ -10,12 +10,12 @@ version = "0.38.4"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto.git", rev = "348d9864574707af97bd33e759756917c618b307" }
 tari_common = {path = "../../common"}
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = { version = "^0.38", path = "../../infrastructure/storage" }
 tari_shutdown = { version = "^0.38", path = "../../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+tari_utilities = { git = "https://github.com/SWvheerden/tari_utilities.git", rev = "a289ef90bb60d23b8175a028ae37df647142d14e" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
@@ -39,7 +39,7 @@ once_cell = "1.8.0"
 pin-project = "1.0.8"
 prost = "=0.9.0"
 prost-types = "0.9.0"
-rand = "0.8"
+rand = "0.7.3"
 serde = "1.0.119"
 serde_derive = "1.0.119"
 snow = { version = "=0.9.0", features = ["default-resolver"] }

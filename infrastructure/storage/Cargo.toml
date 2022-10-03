@@ -18,5 +18,5 @@ serde = "1.0.80"
 serde_derive = "1.0.80"
 
 [dev-dependencies]
-rand = "0.8"
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+rand = "0.7.3"
+tari_utilities = { git = "https://github.com/SWvheerden/tari_utilities.git", rev = "a289ef90bb60d23b8175a028ae37df647142d14e" }

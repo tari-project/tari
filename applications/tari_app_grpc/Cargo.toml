@@ -11,9 +11,9 @@ edition = "2018"
 tari_common_types = { version = "^0.38", path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto.git", rev = "348d9864574707af97bd33e759756917c618b307" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+tari_utilities = { git = "https://github.com/SWvheerden/tari_utilities.git", rev = "a289ef90bb60d23b8175a028ae37df647142d14e" }
 
 argon2 = { version = "0.4.1", features = ["std"] }
 base64 = "0.13.0"
@@ -23,10 +23,10 @@ log = "0.4"
 num-traits = "0.2.15"
 prost = "0.9"
 prost-types = "0.9"
-rand = "0.8"
+rand = "0.8.5"
 thiserror = "1"
 tonic = "0.6.2"
-zeroize = "1.5"
+zeroize = "1.3"
 
 [build-dependencies]
 tonic-build = "0.6.2"

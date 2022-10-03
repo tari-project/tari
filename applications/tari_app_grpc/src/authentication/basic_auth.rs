@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{borrow::Cow, string::FromUtf8Error};
+use std::ops::Deref;
 
 use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
 use tari_utilities::SafePassword;
@@ -93,7 +94,7 @@ impl BasicAuthCredentials {
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         let password_str = String::from_utf8_lossy(password);
         let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
-        let mut token = base64::encode(token_str);
+        let mut token = base64::encode(token_str.deref());
         let header = format!("Basic {}", token);
         token.zeroize();
         match password_str {

@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::mem::size_of;
-
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use chacha20poly1305::aead::NewAead;
+use chacha20poly1305::{Key, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
