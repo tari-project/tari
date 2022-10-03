@@ -1,10 +1,10 @@
 //  Copyright 2020, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
 //  following disclaimer in the documentation and/or other materials provided with the distribution.
@@ -12,13 +12,14 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
 use std::{sync::Arc, time::Duration};
 
 use futures::{future, StreamExt};
@@ -137,8 +138,9 @@ async fn connecting_peers() {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[runtime::test]
-async fn online_then_offline() {
+async fn online_then_offline_then_online() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(ConnectivityConfig {
             min_connectivity: 2,
@@ -239,6 +241,32 @@ async fn online_then_offline() {
 
     let is_offline = connectivity.get_connectivity_status().await.unwrap().is_offline();
     assert!(is_offline);
+
+    // Create a fresh set of connections since the previous connections are now in a disconnected state
+    let connections = future::join_all(
+        (0..5)
+            .map(|i| peers[i].clone())
+            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
+    )
+    .await
+    .into_iter()
+    .map(|(conn, _, _, _)| conn)
+    .collect::<Vec<_>>();
+    for conn in connections.iter().skip(1) {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone()));
+    }
+
+    streams::assert_in_broadcast(
+        &mut event_stream,
+        |item| match item {
+            ConnectivityEvent::ConnectivityStateOnline(2) => Some(()),
+            _ => None,
+        },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    assert!(connectivity.get_connectivity_status().await.unwrap().is_online());
 }
 
 #[runtime::test]
