@@ -475,7 +475,7 @@ impl Opcode {
             CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
                 array.extend_from_slice(&[OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY, *m, *n]);
                 for public_key in public_keys {
-                    array.extend(public_key.to_vec());
+                    array.extend(public_key.as_bytes());
                 }
                 array.extend_from_slice(msg.deref());
             },
@@ -547,19 +547,15 @@ impl fmt::Display for Opcode {
             },
             CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
                 let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
-                fmt.write_str(&format!(
+                write!(
+                    fmt,
                     "CheckMultiSigVerifyAggregatePubKey({}, {}, [{}], {})",
                     *m,
                     *n,
                     keys.join(", "),
                     (*msg).to_hex()
-                ))
+                )
             },
-            Return => fmt.write_str("Return"),
-            IfThen => fmt.write_str("IfThen"),
-            Else => fmt.write_str("Else"),
-            EndIf => fmt.write_str("EndIf"),
-
             ToRistrettoPoint => write!(fmt, "ToRistrettoPoint"),
             Return => write!(fmt, "Return"),
             IfThen => write!(fmt, "IfThen"),
