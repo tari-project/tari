@@ -148,7 +148,6 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
     if let Some(network) = &cli.network {
         config.base_node.network = Network::from_str(network)?;
@@ -232,13 +231,15 @@ async fn run_node(
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
-    let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
-        let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
-        format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
-    });
-    // Go, GRPC, go go
-    let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-    task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+    if config.base_node.grpc_enabled {
+        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        });
+        // Go, GRPC, go go
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+    }
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);

@@ -83,6 +83,8 @@ pub struct BaseNodeConfig {
     override_from: Option<String>,
     /// Selected network
     pub network: Network,
+    /// Enable the base node GRPC server
+    pub grpc_enabled: bool,
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
     /// A path to the file that stores the base node identity and secret key
@@ -144,6 +146,7 @@ impl Default for BaseNodeConfig {
         Self {
             override_from: None,
             network: Network::default(),
+            grpc_enabled: true,
             grpc_address: None,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
