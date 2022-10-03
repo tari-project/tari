@@ -247,15 +247,22 @@ impl TariScript {
                 }
             },
             CheckMultiSig(m, n, public_keys, msg) => {
-                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())?.is_some() {
                     stack.push(Number(1))
                 } else {
                     stack.push(Number(0))
                 }
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
-                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())?.is_some() {
                     Ok(())
+                } else {
+                    Err(ScriptError::VerifyFailed)
+                }
+            },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                if let Some(agg_pub_key) = self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                    stack.push(PublicKey(agg_pub_key))
                 } else {
                     Err(ScriptError::VerifyFailed)
                 }
@@ -503,9 +510,9 @@ impl TariScript {
         n: u8,
         public_keys: &[RistrettoPublicKey],
         message: Message,
-    ) -> Result<bool, ScriptError> {
-        if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT {
-            return Err(ScriptError::InvalidData);
+    ) -> Result<Option<RistrettoPublicKey>, ScriptError> {
+        if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT || public_keys.len() != n as usize {
+            return Err(ScriptError::ValueExceedsBounds);
         }
         // pop m sigs
         let m = m as usize;
@@ -522,20 +529,25 @@ impl TariScript {
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
+        let mut agg_pub_key = RistrettoPublicKey::default();
         for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
                     key_signed[i] = true;
                     sig_set.insert(s);
+                    agg_pub_key = agg_pub_key + pk;
                     break;
                 }
             }
             if !sig_set.contains(s) {
-                return Ok(false);
+                return Ok(None);
             }
         }
-
-        Ok(sig_set.len() == m)
+        if sig_set.len() == m {
+            Ok(Some(agg_pub_key))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -610,6 +622,7 @@ mod test {
         inputs,
         op_codes::{slice_to_boxed_hash, slice_to_boxed_message, HashValue, Message},
         ExecutionStack,
+        Opcode::CheckMultiSigVerifyAggregatePubKey,
         ScriptContext,
         StackItem,
         StackItem::{Commitment, Hash, Number},
@@ -1130,21 +1143,21 @@ mod test {
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(1, 0, keys, msg.clone())];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSig(2, 1, keys, msg)];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // max n is 32
         let (msg, data) = multisig_data(33);
@@ -1154,7 +1167,7 @@ mod test {
         let items = sigs.map(StackItem::Signature).collect();
         let inputs = ExecutionStack::new(items);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // 3 of 4
         let (msg, data) = multisig_data(4);
@@ -1243,7 +1256,7 @@ mod test {
 
         // 1 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
-        let ops = vec![CheckMultiSigVerify(1, 2, keys, msg.clone())];
+        let ops = vec![CheckMultiSigVerify(1, 3, keys, msg.clone())];
         let script = TariScript::new(ops);
 
         let inputs = inputs!(Number(1), s_alice.clone());
@@ -1277,6 +1290,31 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
 
+        // 2 of 3 (returning the aggregate public key of the signatories)
+        let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
+        let ops = vec![CheckMultiSigVerifyAggregatePubKey(2, 3, keys, msg.clone())];
+        let script = TariScript::new(ops);
+
+        let inputs = inputs!(s_alice.clone(), s_bob.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_bob.clone()));
+
+        let inputs = inputs!(s_alice.clone(), s_carol.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_carol.clone()));
+
+        let inputs = inputs!(s_bob.clone(), s_carol.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
+
+        let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::NonUnitLengthStack);
+
+        let inputs = inputs!(p_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::StackUnderflow);
+
         // 3 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol];
         let ops = vec![CheckMultiSigVerify(3, 3, keys, msg.clone())];
@@ -1298,21 +1336,21 @@ mod test {
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(1, 0, keys, msg.clone())];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSigVerify(2, 1, keys, msg)];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // 3 of 4
         let (msg, data) = multisig_data(4);

@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{FixedHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -87,6 +87,14 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+    },
+    CreateNMUtxo {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
     },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
@@ -156,6 +164,17 @@ impl fmt::Display for TransactionServiceRequest {
                 message
             )),
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
+            Self::CreateNMUtxo {
+                amount,
+                fee_per_gram: _,
+                n,
+                m,
+                public_keys: _,
+                message: _,
+            } => f.write_str(&format!(
+                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
+                amount, n, m
+            )),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
@@ -228,6 +247,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionSentWithOutputHash(TxId, FixedHash),
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -500,6 +520,32 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_n_m_utxo(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

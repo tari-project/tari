@@ -431,6 +431,8 @@ mod test {
 
             create-key-pair pie 
 
+            create-n-m-utxo 1 1 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 --message signing
+
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
@@ -447,6 +449,7 @@ mod test {
         let mut send_tari = false;
         let mut burn_tari = false;
         let mut create_key_pair = false;
+        let mut create_n_m_utxo = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -457,6 +460,7 @@ mod test {
                 CliCommands::SendTari(_) => send_tari = true,
                 CliCommands::BurnTari(_) => burn_tari = true,
                 CliCommands::CreateKeyPair(_) => create_key_pair = true,
+                CliCommands::CreateNMUtxo(_) => create_n_m_utxo = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
@@ -481,6 +485,7 @@ mod test {
                 send_tari &&
                 burn_tari &&
                 create_key_pair &&
+                create_n_m_utxo &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&
