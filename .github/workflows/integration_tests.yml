@@ -133,7 +133,7 @@ jobs:
           npm run check-fmt
           npm run lint
           npm ci
-          cd ../clients/base_node_grpc_client
+          cd ../clients/nodejs/base_node_grpc_client
           npm install
           cd ../wallet_grpc_client
           npm install
