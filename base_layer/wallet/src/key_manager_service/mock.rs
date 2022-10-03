@@ -162,7 +162,10 @@ impl KeyManagerInterface for KeyManagerMock {
         unimplemented!("Not supported");
     }
 
-    async fn create_key_pair(&self, _key_seed: String) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
+    async fn create_key_pair<T: Clone + Into<String> + Send>(
+        &self,
+        _branch: T,
+    ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 
