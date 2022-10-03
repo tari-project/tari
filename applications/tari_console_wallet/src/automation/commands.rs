@@ -644,9 +644,9 @@ pub async fn command_runner(
                 Ok((sk, pk)) => {
                     println!(
                         "New key pair: 
-                                1. secret key: {:?}, 
+                                1. secret key: {}, 
                                 2. public key: {}",
-                        Zeroizing::new(sk.to_hex()),
+                        *Zeroizing::new(sk.to_hex()),
                         pk.to_hex()
                     )
                 },

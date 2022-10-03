@@ -73,7 +73,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<PrivateKey, KeyManagerServiceError>;
 
     /// Gets new key combo pair out of a key seed
-    async fn create_key_pair<T: Clone + Into<String> + Send>(
+    async fn create_key_pair<T: Into<String> + Send>(
         &self,
         branch: T,
     ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError>;

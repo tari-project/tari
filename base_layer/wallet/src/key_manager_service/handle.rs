@@ -73,14 +73,16 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner).write().await.apply_encryption(cipher)
     }
 
-    async fn create_key_pair<T: Clone + Into<String> + Send>(
+    async fn create_key_pair<T: Into<String> + Send>(
         &self,
         branch: T,
     ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
+        let branch: String = branch.into();
+
         self.key_manager_inner
             .write()
             .await
-            .add_key_manager_branch(branch.clone().into())?;
+            .add_key_manager_branch(branch.clone())?;
 
         let next_key = self.get_next_key(branch).await?;
         let sk = next_key.key.clone();
