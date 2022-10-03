@@ -1746,7 +1746,13 @@ fn rewind_to_height<T: BlockchainBackend>(
             expected_block_hash,
             chain_header.timestamp(),
         );
-
+        // Update metadata
+        debug!(
+            target: LOG_TARGET,
+            "Updating best block to height (#{}), total accumulated difficulty: {}",
+            chain_header.height(),
+            chain_header.accumulated_data().total_accumulated_difficulty
+        );
         db.write(txn)?;
     }
 
@@ -1767,15 +1773,6 @@ fn rewind_to_height<T: BlockchainBackend>(
             db.write(txn)?;
         }
     }
-
-    let chain_header = db.fetch_chain_header_by_height(height)?;
-    // Update metadata
-    debug!(
-        target: LOG_TARGET,
-        "Updating best block to height (#{}), total accumulated difficulty: {}",
-        chain_header.height(),
-        chain_header.accumulated_data().total_accumulated_difficulty
-    );
 
     Ok(removed_blocks)
 }
