@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{From},
+    convert::{From, TryInto},
     fs,
     fs::File,
     io,
@@ -87,6 +87,7 @@ pub enum WalletCommand {
     SendOneSided,
     CreateKeyPair,
     CreateNMUtxo,
+    CreateSignatureWithPubkey,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -671,6 +672,7 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
+            CreateSignatureWithPubkey(args) => {},
             CreateNMUtxo(args) => match create_n_m_utxo(
                 transaction_service.clone(),
                 args.amount,

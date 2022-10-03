@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_comms::types::Signature;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
@@ -89,6 +90,16 @@ where TBackend: KeyManagerBackend + 'static
         let pk = next_key.to_public_key();
 
         Ok((sk, pk))
+    }
+
+    async fn sign_message(
+        &self,
+        private_key: PrivateKey,
+        message: String,
+    ) -> Result<Signature, KeyManagerServiceError> {
+
+        self.key_manager_inner.read().await;
+        Ok(())
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
