@@ -8,6 +8,11 @@ name: Source Coverage
     branches:
       - development
       - ci-coverage-*
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 env:
   toolchain: nightly-2022-05-01
