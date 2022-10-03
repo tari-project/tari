@@ -24,4 +24,3 @@ thiserror = "1.0.30"
 
 [dev-dependencies]
 rand = "0.8.5"
-
