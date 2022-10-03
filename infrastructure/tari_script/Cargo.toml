@@ -21,5 +21,7 @@ serde = "1.0.136"
 sha2 = "0.9"
 sha3 = "0.9"
 thiserror = "1.0.30"
+
+[dev-dependencies]
 rand = "0.8.5"
 
