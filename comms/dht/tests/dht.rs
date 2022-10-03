@@ -33,7 +33,6 @@ use tari_comms::{
     protocol::messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
     transports::MemoryTransport,
     types::CommsDatabase,
-    wrap_in_envelope_body,
     CommsBuilder,
     CommsNode,
 };
@@ -419,16 +418,13 @@ async fn dht_store_forward() {
     node_A
         .dht
         .outbound_requester()
-        .send_raw(
-            params.clone(),
-            wrap_in_envelope_body!(secret_msg1.to_vec()).to_encoded_bytes(),
-        )
+        .send_message_no_header(params.clone(), secret_msg1.to_vec())
         .await
         .unwrap();
     node_A
         .dht
         .outbound_requester()
-        .send_raw(params, wrap_in_envelope_body!(secret_msg2.to_vec()).to_encoded_bytes())
+        .send_message_no_header(params, secret_msg2.to_vec())
         .await
         .unwrap();
 
@@ -722,7 +718,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
 
     // Get the message that was received by Node B
     let mut msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
-    let bytes = msg.decryption_result.unwrap().to_encoded_bytes();
+    let bytes = msg.decryption_result.unwrap().encode_into_bytes_mut();
 
     // Clone header without modification
     let header_unmodified = msg.dht_header.clone();
@@ -972,9 +968,9 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
 
     let msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
 
-    let mut bytes = msg.decryption_result.unwrap().to_encoded_bytes();
+    let mut envelope = msg.decryption_result.unwrap();
     // Change the message
-    bytes.push(0x42);
+    envelope.push_part([0x42].to_vec());
 
     let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
 
@@ -982,7 +978,7 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     node_B
         .dht
         .outbound_requester()
-        .send_raw(
+        .send_message_no_header(
             SendMessageParams::new()
                 .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
                     .source_peer
@@ -990,7 +986,7 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
                     .clone()])
                 .with_dht_header(msg.dht_header)
                 .finish(),
-            bytes,
+            envelope,
         )
         .await
         .unwrap();
@@ -1016,7 +1012,6 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
 #[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_header_not_malleable() {
-    env_logger::init();
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
     let mut node_B = make_node(
@@ -1081,14 +1076,14 @@ async fn dht_header_not_malleable() {
     // Modify the header
     msg.dht_header.message_type = DhtMessageType::from_i32(21i32).unwrap();
 
-    let bytes = msg.decryption_result.unwrap().to_encoded_bytes();
+    let envelope = msg.decryption_result.unwrap();
     let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
 
     // Propagate the changed message (to node C)
     node_B
         .dht
         .outbound_requester()
-        .send_raw(
+        .send_message_no_header(
             SendMessageParams::new()
                 .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
                     .source_peer
@@ -1096,7 +1091,7 @@ async fn dht_header_not_malleable() {
                     .clone()])
                 .with_dht_header(msg.dht_header)
                 .finish(),
-            bytes,
+            envelope,
         )
         .await
         .unwrap();
