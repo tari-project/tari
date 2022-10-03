@@ -69,7 +69,7 @@ impl EmissionSchedule {
     /// We can then apply a very fast multiplication using bitwise operations. If the decay factor, ϵ, is represented
     /// in the array `**k**` then
     /// ```
-    ///   intfloor(x, (1 - ϵ)) = x - sum(x >> k_i)
+    /// intfloor(x, (1 - ϵ)) = x - sum(x >> k_i)
     /// ```
     ///
     /// Now, why use (1 - ϵ), and not the decay rate, `f` directly?
