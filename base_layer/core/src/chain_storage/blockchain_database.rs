@@ -1723,14 +1723,30 @@ fn rewind_to_height<T: BlockchainBackend>(
         let block = Arc::new(block.try_into_chain_block()?);
         txn.delete_block(*block.hash());
         txn.delete_header(last_block_height - h);
-        if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
-            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
-            // can't recover from this apart from resync from another peer. Failure here
-            // should not be common as this chain has a valid proof of work that has been
-            // tested at this point in time.
-            txn.insert_chained_orphan(block.clone());
+        if !prune_past_horizon {
+            if !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
+                // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
+                // can't recover from this apart from resync from another peer. Failure here
+                // should not be common as this chain has a valid proof of work that has been
+                // tested at this point in time.
+                txn.insert_chained_orphan(block.clone());
+            }
         }
         removed_blocks.push(block);
+        // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
+        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
+            0
+        } else {
+            last_block_height - h - 1
+        })?;
+        txn.set_best_block(
+            chain_header.height(),
+            chain_header.accumulated_data().hash,
+            chain_header.accumulated_data().total_accumulated_difficulty,
+            expected_block_hash,
+            chain_header.timestamp(),
+        );
+
         db.write(txn)?;
     }
 
@@ -1740,7 +1756,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
         // mempool add reorg'ed tx.
         for h in 0..(last_block_height - steps_back) {
-            let mut txn = DbTransac4tion::new();
+            let mut txn = DbTransaction::new();
             debug!(
                 target: LOG_TARGET,
                 "Deleting blocks and utxos {}",
@@ -1760,16 +1776,6 @@ fn rewind_to_height<T: BlockchainBackend>(
         chain_header.height(),
         chain_header.accumulated_data().total_accumulated_difficulty
     );
-
-    let mut txn = DbTransaction::new();
-    txn.set_best_block(
-        chain_header.height(),
-        chain_header.accumulated_data().hash,
-        chain_header.accumulated_data().total_accumulated_difficulty,
-        expected_block_hash,
-        chain_header.timestamp(),
-    );
-    db.write(txn)?;
 
     Ok(removed_blocks)
 }
