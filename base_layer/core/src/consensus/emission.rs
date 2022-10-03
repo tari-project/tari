@@ -68,7 +68,7 @@ impl EmissionSchedule {
     ///
     /// We can then apply a very fast multiplication using bitwise operations. If the decay factor, ϵ, is represented
     /// in the array `**k**` then
-    /// ```
+    /// ```ignore
     /// intfloor(x, (1 - ϵ)) = x - sum(x >> k_i)
     /// ```
     ///
