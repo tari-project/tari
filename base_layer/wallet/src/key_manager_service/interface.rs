@@ -72,6 +72,12 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError>;
 
+    /// Gets new key combo pair out of a key seed
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError>;
+
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(
         &self,

@@ -57,7 +57,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::NextKeyResult,
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -68,6 +68,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+use zeroize::Zeroizing;
 
 use super::error::CommandError;
 use crate::{
@@ -84,6 +85,7 @@ pub enum WalletCommand {
     GetBalance,
     SendTari,
     SendOneSided,
+    CreateKeyPair,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -583,6 +585,7 @@ pub async fn command_runner(
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
+    let key_manager_service = wallet.key_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
     let mut online = false;
@@ -636,6 +639,18 @@ pub async fn command_runner(
                     },
                     Err(e) => eprintln!("BurnTari error! {}", e),
                 }
+            },
+            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
+                Ok((sk, pk)) => {
+                    println!(
+                        "New key pair: 
+                                1. secret key: {}, 
+                                2. public key: {}",
+                        *Zeroizing::new(sk.to_hex()),
+                        pk.to_hex()
+                    )
+                },
+                Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(

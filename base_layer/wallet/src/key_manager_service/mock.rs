@@ -22,7 +22,7 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 
@@ -159,6 +159,13 @@ impl KeyManagerInterface for KeyManagerMock {
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
+        unimplemented!("Not supported");
+    }
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        _branch: T,
+    ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 

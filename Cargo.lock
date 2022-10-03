@@ -4909,6 +4909,7 @@ dependencies = [
  "tui",
  "unicode-segmentation",
  "unicode-width",
+ "zeroize",
 ]
 
 [[package]]
