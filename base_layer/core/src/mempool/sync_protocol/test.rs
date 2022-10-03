@@ -25,13 +25,16 @@ use std::{fmt, io, iter::repeat_with, sync::Arc};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
 use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityEventTx},
+    connectivity::ConnectivityEvent,
     framing,
     memsocket::MemorySocket,
     message::MessageExt,
     peer_manager::PeerFeatures,
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationTx},
-    test_utils::{mocks::create_peer_connection_mock_pair, node_identity::build_node_identity},
+    test_utils::{
+        mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+        node_identity::build_node_identity,
+    },
     Bytes,
     BytesMut,
 };
@@ -80,28 +83,37 @@ async fn setup(
     num_txns: usize,
 ) -> (
     ProtocolNotificationTx<MemorySocket>,
-    ConnectivityEventTx,
+    ConnectivityManagerMockState,
     Mempool,
     Vec<Transaction>,
 ) {
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
-    let (connectivity_events_tx, connectivity_events_rx) = broadcast::channel(10);
     let (mempool, transactions) = new_mempool_with_transactions(num_txns).await;
+    let (connectivity, connectivity_manager_mock) = create_connectivity_mock();
+    let connectivity_manager_mock_state = connectivity_manager_mock.spawn();
+    let (block_event_sender, _) = broadcast::channel(1);
+    let block_receiver = block_event_sender.subscribe();
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
-        connectivity_events_rx,
         mempool.clone(),
+        connectivity,
+        block_receiver,
     );
 
     task::spawn(protocol.run());
-
-    (protocol_notif_tx, connectivity_events_tx, mempool, transactions)
+    connectivity_manager_mock_state.wait_until_event_receivers_ready().await;
+    (
+        protocol_notif_tx,
+        connectivity_manager_mock_state,
+        mempool,
+        transactions,
+    )
 }
 
 #[tokio::test]
 async fn empty_set() {
-    let (_, connectivity_events_tx, mempool1, _) = setup(0).await;
+    let (_, connectivity_manager_state, mempool1, _) = setup(0).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -109,9 +121,7 @@ async fn empty_set() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_events_tx
-        .send(ConnectivityEvent::PeerConnected(node2_conn))
-        .unwrap();
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -131,7 +141,7 @@ async fn empty_set() {
 
 #[tokio::test]
 async fn synchronise() {
-    let (_, connectivity_events_tx, mempool1, transactions1) = setup(5).await;
+    let (_, connectivity_manager_state, mempool1, transactions1) = setup(5).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -139,9 +149,7 @@ async fn synchronise() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_events_tx
-        .send(ConnectivityEvent::PeerConnected(node2_conn))
-        .unwrap();
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -165,17 +173,14 @@ async fn synchronise() {
 
 #[tokio::test]
 async fn duplicate_set() {
-    let (_, connectivity_events_tx, mempool1, transactions1) = setup(2).await;
-
+    let (_, connectivity_manager_state, mempool1, transactions1) = setup(2).await;
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_events_tx
-        .send(ConnectivityEvent::PeerConnected(node2_conn))
-        .unwrap();
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -269,7 +274,7 @@ async fn initiator_messages() {
 
 #[tokio::test]
 async fn responder_messages() {
-    let (_, connectivity_events_tx, _, transactions1) = setup(1).await;
+    let (_, connectivity_manager_state, _, transactions1) = setup(1).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -277,9 +282,7 @@ async fn responder_messages() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_events_tx
-        .send(ConnectivityEvent::PeerConnected(node2_conn))
-        .unwrap();
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let mut framed = framing::canonical(substream, MAX_FRAME_SIZE);

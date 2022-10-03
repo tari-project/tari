@@ -75,13 +75,13 @@ impl CommandContext {
 
             let block = self
                 .node_service
-                .get_block(height)
+                .get_block(height, true)
                 .await?
                 .ok_or_else(|| anyhow!("Error in db, block not found at height {}", height))?;
 
             let prev_block = self
                 .node_service
-                .get_block(height - 1)
+                .get_block(height - 1, true)
                 .await?
                 .ok_or_else(|| anyhow!("Error in db, block not found at height {}", height))?;
 

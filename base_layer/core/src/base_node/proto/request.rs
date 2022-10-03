@@ -22,7 +22,7 @@
 
 use std::convert::{From, TryFrom, TryInto};
 
-use tari_common_types::types::{HashOutput, PrivateKey};
+use tari_common_types::types::PrivateKey;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -37,13 +37,16 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
         let request = match self {
-            FetchBlocksByHash(block_hashes) => {
-                let hashes = block_hashes
-                    .outputs
+            FetchBlocksByHash(req) => {
+                let block_hashes = req
+                    .block_hashes
                     .into_iter()
                     .map(|hash| hash.try_into().map_err(|_| "Malformed hash".to_string()))
                     .collect::<Result<_, _>>()?;
-                NodeCommsRequest::FetchBlocksByHash(hashes)
+                NodeCommsRequest::FetchBlocksByHash {
+                    block_hashes,
+                    compact: req.compact,
+                }
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
@@ -65,7 +68,12 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
         use NodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
         match request {
-            FetchBlocksByHash(block_hashes) => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(block_hashes.into())),
+            FetchBlocksByHash { block_hashes, compact } => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(
+                proto::FetchBlocksByHashRequest {
+                    block_hashes: block_hashes.into_iter().map(|hash| hash.to_vec()).collect(),
+                    compact,
+                },
+            )),
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
                 ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
                     excess_sigs: excess_sigs.into_iter().map(|sig| sig.to_vec()).collect(),
@@ -77,13 +85,6 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
 }
 
 //---------------------------------- Wrappers --------------------------------------------//
-
-impl From<Vec<HashOutput>> for proto::HashOutputs {
-    fn from(outputs: Vec<HashOutput>) -> Self {
-        let hashes = outputs.iter().map(|v| v.to_vec()).collect();
-        Self { outputs: hashes }
-    }
-}
 
 impl From<Vec<u64>> for proto::BlockHeights {
     fn from(heights: Vec<u64>) -> Self {

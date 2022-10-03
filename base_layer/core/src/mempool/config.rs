@@ -50,6 +50,8 @@ pub struct MempoolServiceConfig {
     pub initial_sync_num_peers: usize,
     /// The maximum number of transactions to sync in a single sync session Default: 10_000
     pub initial_sync_max_transactions: usize,
+    /// The maximum number of blocks added via sync or re-org to triggering a sync
+    pub block_sync_trigger: usize,
 }
 
 impl Default for MempoolServiceConfig {
@@ -57,6 +59,7 @@ impl Default for MempoolServiceConfig {
         Self {
             initial_sync_num_peers: 2,
             initial_sync_max_transactions: 10_000,
+            block_sync_trigger: 5,
         }
     }
 }

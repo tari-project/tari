@@ -30,6 +30,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
+    BytesMut,
 };
 use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -406,11 +407,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
-        let decrypted =
-            crypt::decrypt(&key_message, message_body).map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
+        let mut decrypted = BytesMut::from(message_body);
+        crypt::decrypt(&key_message, &mut decrypted).map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
-        EnvelopeBody::decode(decrypted.as_slice())
+        EnvelopeBody::decode(decrypted.freeze())
             .and_then(|body| {
                 // Check if we received a body length of zero
                 //
@@ -477,10 +478,11 @@ mod test {
 
     use futures::{executor::block_on, future};
     use tari_comms::{
-        message::{MessageExt, MessageTag},
+        message::MessageTag,
         runtime,
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
+        BytesMut,
     };
     use tari_test_utils::{counter_context, unpack_enum};
     use tokio::time::sleep;
@@ -492,6 +494,7 @@ mod test {
         test_utils::{
             make_dht_header,
             make_dht_inbound_message,
+            make_dht_inbound_message_raw,
             make_keypair,
             make_node_identity,
             make_valid_message_signature,
@@ -527,14 +530,8 @@ mod test {
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let plain_text_msg = wrap_in_envelope_body!(b"Secret plans".to_vec());
-        let inbound_msg = make_dht_inbound_message(
-            &node_identity,
-            plain_text_msg.to_encoded_bytes(),
-            DhtMessageFlags::ENCRYPTED,
-            true,
-            true,
-        )
-        .unwrap();
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, &plain_text_msg, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
 
         block_on(service.call(inbound_msg)).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
@@ -560,7 +557,7 @@ mod test {
         let some_other_node_identity = make_node_identity();
         let inbound_msg = make_dht_inbound_message(
             &some_other_node_identity,
-            some_secret,
+            &some_secret,
             DhtMessageFlags::ENCRYPTED,
             true,
             true,
@@ -591,7 +588,7 @@ mod test {
 
         let nonsense = b"Cannot Decrypt this".to_vec();
         let inbound_msg =
-            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true, true).unwrap();
+            make_dht_inbound_message_raw(&node_identity, nonsense, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
@@ -615,14 +612,8 @@ mod test {
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let plain_text_msg = b"Secret message to nowhere".to_vec();
-        let inbound_msg = make_dht_inbound_message(
-            &node_identity,
-            plain_text_msg.to_encoded_bytes(),
-            DhtMessageFlags::ENCRYPTED,
-            true,
-            false,
-        )
-        .unwrap();
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, &plain_text_msg, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
@@ -645,13 +636,15 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
-        let plain_text_msg = b"Secret message".to_vec();
+        let plain_text_msg = BytesMut::from(b"Secret message".as_slice());
         let (e_secret_key, e_public_key) = make_keypair();
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 
-        let message = crypt::encrypt(&key_message, &plain_text_msg).unwrap();
+        let mut message = plain_text_msg.clone();
+        crypt::encrypt(&key_message, &mut message).unwrap();
+        let message = message.freeze();
         let header = make_dht_header(
             &node_identity,
             &e_public_key,
@@ -663,7 +656,7 @@ mod test {
             true,
         )
         .unwrap();
-        let envelope = DhtEnvelope::new(header.into(), &message.into());
+        let envelope = DhtEnvelope::new(header.into(), message.into());
         let msg_tag = MessageTag::new();
         let mut inbound_msg = DhtInboundMessage::new(
             msg_tag,
@@ -706,13 +699,15 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
-        let plain_text_msg = b"Public message".to_vec();
+        let plain_text_msg = BytesMut::from(b"Public message".as_slice());
         let (e_secret_key, e_public_key) = make_keypair();
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 
-        let message = crypt::encrypt(&key_message, &plain_text_msg).unwrap();
+        let mut message = plain_text_msg.clone();
+        crypt::encrypt(&key_message, &mut message).unwrap();
+        let message = message.freeze();
         let header = make_dht_header(
             &node_identity,
             &e_public_key,
@@ -724,7 +719,7 @@ mod test {
             true,
         )
         .unwrap();
-        let envelope = DhtEnvelope::new(header.into(), &message.into());
+        let envelope = DhtEnvelope::new(header.into(), message.into());
         let msg_tag = MessageTag::new();
         let mut inbound_msg = DhtInboundMessage::new(
             msg_tag,

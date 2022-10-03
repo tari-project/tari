@@ -177,7 +177,7 @@ impl BodyBytes {
     }
 
     pub fn into_vec(self) -> Vec<u8> {
-        self.0.map(|bytes| bytes.to_vec()).unwrap_or_else(Vec::new)
+        self.0.map(|bytes| bytes.into()).unwrap_or_else(Vec::new)
     }
 
     pub fn into_bytes(self) -> Option<Bytes> {

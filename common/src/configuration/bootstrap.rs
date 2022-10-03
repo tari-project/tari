@@ -10,6 +10,7 @@ use std::{
 };
 
 use super::error::ConfigError;
+use crate::configuration::Network;
 
 pub fn prompt(question: &str) -> bool {
     println!("{}", question);
@@ -94,6 +95,29 @@ impl Display for ApplicationType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())?;
         Ok(())
+    }
+}
+
+/// Gets the default grpc port for the given application and network
+pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
+    match app_type {
+        ApplicationType::BaseNode => match network {
+            Network::MainNet => 18102u16,
+            Network::Weatherwax => 18112,
+            Network::Dibbler => 18122,
+            Network::Esmeralda => 18142,
+            Network::Igor => 18152,
+            _ => unreachable!("Network {} not supported", network),
+        },
+        ApplicationType::ConsoleWallet => match network {
+            Network::MainNet => 18103u16,
+            Network::Weatherwax => 18113,
+            Network::Dibbler => 18123,
+            Network::Esmeralda => 18143,
+            Network::Igor => 18153,
+            _ => unreachable!("Network {} not supported", network),
+        },
+        _ => unreachable!("Application {} not supported", app_type),
     }
 }
 

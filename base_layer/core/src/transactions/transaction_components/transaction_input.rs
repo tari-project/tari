@@ -365,14 +365,14 @@ impl TransactionInput {
     }
 
     /// Implement the canonical hashing function for TransactionInput for use in ordering
-    pub fn canonical_hash(&self) -> Result<FixedHash, TransactionError> {
+    pub fn canonical_hash(&self) -> FixedHash {
         let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
             .chain(&self.version)
             .chain(&self.script_signature)
             .chain(&self.input_data)
             .chain(&self.output_hash());
 
-        Ok(writer.finalize().into())
+        writer.finalize().into()
     }
 
     pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {
@@ -426,7 +426,7 @@ impl Display for TransactionInput {
                 features,
                 script,
                 sender_offset_public_key.to_hex(),
-                self.canonical_hash().expect("unreachable: output data exists").to_hex(),
+                self.canonical_hash().to_hex(),
                 self.output_hash().to_hex()
             ),
         }
