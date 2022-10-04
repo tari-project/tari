@@ -197,7 +197,7 @@ mod test {
         assert!(dedup.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
         let inbound_message =
-            make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty(), false, false).unwrap();
+            make_dht_inbound_message(&node_identity, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
         let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
 
         rt.block_on(dedup.call(decrypted_msg.clone())).unwrap();
@@ -213,12 +213,12 @@ mod test {
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
-        const EXPECTED_HASH: &str = "d6333668f259f677703fbe4e89152ee41c7c01f6dec502befc63120246523ffe";
+        const EXPECTED_HASH: &str = "1c2bb1bcff443af4441b789bd1d6984bb8d7bed2c9f85e8cf4f45615fdd9e47d";
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(
             &node_identity,
-            TEST_MSG.to_vec(),
+            &TEST_MSG.to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,
@@ -229,7 +229,7 @@ mod test {
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(
             &node_identity,
-            TEST_MSG.to_vec(),
+            &TEST_MSG.to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,

@@ -23,6 +23,7 @@ use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
     hash::blake2::Blake256,
+    keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
 use tari_utilities::{
@@ -260,6 +261,7 @@ impl TariScript {
                     Err(ScriptError::VerifyFailed)
                 }
             },
+            ToRistrettoPoint => self.handle_to_ristretto_point(stack),
             CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
                 if let Some(agg_pub_key) = self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
                     stack.push(PublicKey(agg_pub_key))
@@ -548,6 +550,19 @@ impl TariScript {
         } else {
             Ok(None)
         }
+    }
+
+    fn handle_to_ristretto_point(&self, stack: &mut ExecutionStack) -> Result<(), ScriptError> {
+        let item = stack.pop().ok_or(ScriptError::StackUnderflow)?;
+        let scalar = match &item {
+            StackItem::Hash(hash) => hash.as_slice(),
+            StackItem::Scalar(scalar) => scalar.as_slice(),
+            _ => return Err(ScriptError::IncompatibleTypes),
+        };
+        let ristretto_sk = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
+        stack.push(StackItem::PublicKey(ristretto_pk))?;
+        Ok(())
     }
 }
 
@@ -1577,5 +1592,33 @@ mod test {
         let inputs = inputs!(s_eve);
         let result = script.execute(&inputs).unwrap_err();
         assert_eq!(result, ScriptError::Return);
+    }
+
+    #[test]
+    fn to_ristretto_point() {
+        use crate::StackItem::PublicKey;
+        let mut rng = rand::thread_rng();
+        let (k_1, p_1) = RistrettoPublicKey::random_keypair(&mut rng);
+
+        use crate::Opcode::ToRistrettoPoint;
+        let ops = vec![ToRistrettoPoint];
+        let script = TariScript::new(ops);
+
+        // Invalid stack type
+        let inputs = inputs!(RistrettoPublicKey::default());
+        let err = script.execute(&inputs).unwrap_err();
+        assert!(matches!(err, ScriptError::IncompatibleTypes));
+
+        // scalar
+        let mut scalar = [0u8; 32];
+        scalar.copy_from_slice(k_1.as_bytes());
+        let inputs = inputs!(scalar);
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, PublicKey(p_1.clone()));
+
+        // hash
+        let inputs = ExecutionStack::new(vec![Hash(scalar)]);
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, PublicKey(p_1));
     }
 }
