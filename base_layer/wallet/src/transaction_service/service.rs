@@ -1006,6 +1006,7 @@ where
     }
 
     /// Creates a utxo with aggregate public key out of m-of-n public keys
+    #[allow(clippy::too_many_lines)]
     pub async fn create_n_m_utxo(
         &mut self,
         amount: MicroTari,
