@@ -12,12 +12,12 @@ tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
 tari_comms = { version = "^0.38", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.38", path = "../../comms/dht", default-features = false }
-tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto.git", rev = "348d9864574707af97bd33e759756917c618b307" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
 tari_key_manager = { version = "^0.38", path = "../key_manager" }
 tari_p2p = { version = "^0.38", path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { version = "^0.38", path = "../../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/SWvheerden/tari_utilities.git", rev = "a289ef90bb60d23b8175a028ae37df647142d14e" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 tari_wallet = { version = "^0.38", path = "../wallet", features = ["c_integration"]}
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
