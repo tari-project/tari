@@ -27,7 +27,10 @@ use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
-    configuration::bootstrap::prompt,
+    configuration::{
+        bootstrap::{grpc_default_port, prompt, ApplicationType},
+        Network,
+    },
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{
@@ -41,7 +44,7 @@ use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::{hex::Hex, ByteArray, SafePassword};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -164,7 +167,7 @@ pub async fn get_base_node_peer_config(
 
     // If the user has not explicitly set a base node in the config, we try detect one
     if !non_interactive_mode && config.wallet.custom_base_node.is_none() {
-        if let Some(detected_node) = detect_local_base_node().await {
+        if let Some(detected_node) = detect_local_base_node(config.wallet.network).await {
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
                     // Skip asking because it's already set
@@ -407,15 +410,31 @@ pub async fn init_wallet(
     Ok(wallet)
 }
 
-async fn detect_local_base_node() -> Option<SeedPeer> {
+async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, Empty};
-    const COMMON_BASE_NODE_GRPC_ADDRESS: &str = "http://127.0.0.1:18142";
+    let addr = format!(
+        "http://127.0.0.1:{}",
+        grpc_default_port(ApplicationType::BaseNode, network)
+    );
+    debug!(target: LOG_TARGET, "Checking for local base node at {}", addr);
 
-    let mut node_conn = BaseNodeClient::connect(COMMON_BASE_NODE_GRPC_ADDRESS).await.ok()?;
+    let mut node_conn = match BaseNodeClient::connect(addr).await.ok() {
+        Some(conn) => conn,
+        None => {
+            debug!(target: LOG_TARGET, "No local base node detected");
+            return None;
+        },
+    };
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
     let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
     let address = Multiaddr::from_str(&identity.public_address).ok()?;
+    debug!(
+        target: LOG_TARGET,
+        "Local base node found with pk={} and addr={}",
+        public_key.to_hex(),
+        address
+    );
     Some(SeedPeer::new(public_key, vec![address]))
 }
 
