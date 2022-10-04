@@ -429,7 +429,8 @@ mod test {
 
             create-key-pair pie 
 
-            create-n-m-utxo --amount 125T --fee-per-gram 1T --n 1 --m 1 --public-keys 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 --message Our_secret!
+            create-n-m-utxo --amount 125T --fee-per-gram 1T --n 1 --m 1 --public-keys \
+                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 --message Our_secret!
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
