@@ -116,7 +116,7 @@ pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
-    CreateKeyCombo(CreateKeyComboArgs),
+    CreateKeyPair(CreateKeyPairArgs),
     CreateNMUtxo(CreateNMUtxoArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
@@ -158,7 +158,7 @@ pub struct BurnTariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateKeyComboArgs {
+pub struct CreateKeyPairArgs {
     pub key_seed: String,
 }
 
