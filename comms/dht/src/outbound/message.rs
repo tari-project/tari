@@ -22,11 +22,12 @@
 
 use std::{fmt, fmt::Display, sync::Arc};
 
-use bytes::Bytes;
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
     peer_manager::NodeId,
     types::CommsPublicKey,
+    Bytes,
+    BytesMut,
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -145,7 +146,11 @@ impl SendMessageResponse {
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMessage(Box<FinalSendMessageParams>, Bytes, oneshot::Sender<SendMessageResponse>),
+    SendMessage(
+        Box<FinalSendMessageParams>,
+        BytesMut,
+        oneshot::Sender<SendMessageResponse>,
+    ),
 }
 
 impl fmt::Display for DhtOutboundRequest {

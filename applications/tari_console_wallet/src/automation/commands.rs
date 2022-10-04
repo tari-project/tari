@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PublicKey},
+    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -53,6 +53,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -64,6 +65,7 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use rand::rngs::OsRng;
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -87,7 +89,7 @@ pub enum WalletCommand {
     SendOneSided,
     CreateKeyPair,
     CreateNMUtxo,
-    CreateSignatureWithPubkey,
+    SignMessage,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -271,6 +273,19 @@ pub async fn coin_split(
         .await?;
 
     Ok(tx_id)
+}
+
+pub fn sign_message(private_key: PrivateKey, challenge: &[u8]) -> Result<(Signature, RistrettoSecretKey), CommandError> {
+    if challenge.len() != 32usize {
+        return Err(CommandError::InvalidArgument(
+            "challenge is not 32-bytes long".to_string(),
+        ));
+    }
+
+    let nonce = PrivateKey::random(&mut OsRng);
+    let signature = Signature::sign(private_key, nonce, challenge).map_err(|e| CommandError::FailedSignature(e))?;
+
+    Ok((signature, nonce))
 }
 
 async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
@@ -598,7 +613,7 @@ pub async fn monitor_transactions(
 #[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
-    commands: Vec<CliCommands>,
+    commands: Vec<CliCommands<'_>>,
     wallet: WalletSqlite,
 ) -> Result<(), CommandError> {
     let wait_stage = config.command_send_wait_stage;
@@ -672,7 +687,18 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
-            CreateSignatureWithPubkey(args) => {},
+            SignMessage(args) => match sign_message(args.private_key, args.message).await {
+                Ok((sgn, nonce)) => {
+                    println!(
+                        "Sign message: 
+                                1. signature: {},
+                                2. public key: {}",
+                        sgn.to_hex(),
+                        nonce.to_hex(),
+                    )
+                },
+                Err(e) => eprintln!("SignMessage error! {}", e),
+            },
             CreateNMUtxo(args) => match create_n_m_utxo(
                 transaction_service.clone(),
                 args.amount,

@@ -22,6 +22,7 @@
 
 mod v5;
 mod v6;
+mod v7;
 
 use log::*;
 use tari_storage::lmdb_store::{LMDBDatabase, LMDBError};
@@ -32,7 +33,7 @@ pub(super) const MIGRATION_VERSION_KEY: u64 = u64::MAX;
 
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
     // Add migrations here in version order
-    let migrations = vec![v5::Migration.boxed(), v6::Migration.boxed()];
+    let migrations = vec![v5::Migration.boxed(), v6::Migration.boxed(), v7::Migration.boxed()];
     if migrations.is_empty() {
         return Ok(());
     }
@@ -81,10 +82,12 @@ pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
                 debug!(target: LOG_TARGET, "Migration {} complete", version);
             },
             None => {
-                error!(
-                    target: LOG_TARGET,
-                    "Migration {} not found. Unable to migrate peer db", version
-                );
+                if version - 1 != latest_version {
+                    error!(
+                        target: LOG_TARGET,
+                        "Migration {} not found. Unable to migrate peer db", version
+                    );
+                }
                 return Ok(());
             },
         }

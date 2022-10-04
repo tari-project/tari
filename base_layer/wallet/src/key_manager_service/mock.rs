@@ -170,14 +170,6 @@ impl KeyManagerInterface for KeyManagerMock {
         unimplemented!("Not supported");
     }
 
-    async fn sign_message(
-        &self,
-        _private_key: PrivateKey,
-        _message: String,
-    ) -> Result<Signature, KeyManagerServiceError> {
-        unimplemented!("Not supported");
-    }
-
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,

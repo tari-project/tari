@@ -48,7 +48,7 @@ impl EmissionSchedule {
     /// a constant tail emission rate.
     ///
     /// The block reward is given by
-    ///  $$ r_n = r_{n-1} * (1 - \epsilon) + t, n > 0 $$
+    ///  $$ r_n = \mathrm{MAX}(\mathrm(intfloor(r_{n-1} * (1 - \epsilon)), t) n > 0 $$
     ///  $$ r_0 = A_0 $$
     ///
     /// where
@@ -56,11 +56,42 @@ impl EmissionSchedule {
     ///  * $$1 - \epsilon$$ is the decay rate
     ///  * $$t$$ is the constant tail emission rate
     ///
-    /// The decay in this constructor is calculated as follows:
-    /// $$ \epsilon = \sum 2^{-k} \foreach k \in decay $$
+    /// The `intfloor` function is an integer-math-based multiplication of an integer by a fraction that's very close
+    /// to one (e.g. 0.998,987,123,432)` that
+    ///  1. provides the same result regardless of the CPU architecture (e.g. x86, ARM, etc.)
+    ///  2. Has minimal rounding error given the very high precision of the decay factor.
     ///
-    /// So for example, if the decay rate is 0.25, then $$\epsilon$$ is 0.75 or 1/2 + 1/4 i.e. `1 >> 1 + 1 >> 2`
-    /// and the decay array is `&[1, 2]`.
+    /// Firstly, the decay factor is represented in an array of its binary coefficients. In the same way that 65.4 in
+    /// decimal can be represented as `6 x 10 + 5 x 1 + 4 x 0.1`, we can write 0.75 in binary as `2^(-1) + 2^(-2)`.
+    /// The decay function is always less than one, so we dispense with signs and just represent the array as the set
+    /// of negative powers of 2 that most closely represent the decay factor.
+    ///
+    /// We can then apply a very fast multiplication using bitwise operations. If the decay factor, ϵ, is represented
+    /// in the array `**k**` then
+    /// ```
+    /// intfloor(x, (1 - ϵ)) = x - sum(x >> k_i)
+    /// ```
+    ///
+    /// Now, why use (1 - ϵ), and not the decay rate, `f` directly?
+    ///
+    /// The reason is to reduce rounding error. Every SHR operation is a "round down" operation. E.g. `7 >> 2` is 1,
+    /// whereas 7 / 4 = 1.75. So, we lose 0.75 there due to rounding. In general, the maximum error due to rounding
+    /// when doing integer division, `a / b` is `a % b`, which has a maximum of `b-1`. In binary terms, the maximum
+    /// error of the operation ` a >> b` is `2^-(b+1)`.
+    ///
+    /// Now compare the operation `x.f` where `f ~ 1` vs. `x.(1 - ϵ) = x - x.ϵ`, where `ϵ ~ 0`.
+    /// In both cases, the maximum error is $$ \sum_i 2^{k_i} = 1 - 2^{-(n+1)} $$
+    ///
+    /// Since `f` is close to one, `k` is something like 0.9989013671875, or `[1,2,3,4,5,6,7,8,9,11,12,13]`, with a
+    /// maximum error of 0.49945 μT per block. Too high.
+    ///
+    /// However, using the ϵ representation (1 - `f`) is `[10,14,15,...,64]`, which has a maximum error of
+    /// 0.0005493 μT per block, which is more than accurate enough for our purposes (1 μT difference over 2,000
+    /// blocks).
+    ///
+    /// **Note:** The word "error" has been used here, since this is technically what it is compared to an infinite
+    /// precision floating point operation. However, to be clear, the results given by `intfloor` are, by
+    /// **definition**, the correct and official emission values.
     ///
     /// ## Panics
     ///
@@ -78,10 +109,12 @@ impl EmissionSchedule {
     /// is provided as a convenience and for the record, but is kept as a separate step. For performance reasons the
     /// parameters are 'hard-coded' as a static array rather than a heap allocation.
     ///
+    /// See [`EmissionSchedule::new`] for more details on how the parameters are derived.
+    ///
     /// Input : `k`: A string representing a floating point number of (nearly) arbitrary precision, and less than one.
     ///
-    /// Returns: An array of powers of negative two when when applied as a shift right and sum operation is equal to
-    /// (1-k)*n (to 1/2^64 precision).
+    /// Returns: An array of powers of negative two when when applied as a shift right and sum operation is very
+    /// close to (1-k)*n.
     ///
     /// None - If k is not a valid floating point number less than one.
     pub fn decay_params(k: &str) -> Option<Vec<u64>> {

@@ -449,6 +449,7 @@ mod test {
         let mut send_tari = false;
         let mut burn_tari = false;
         let mut create_key_pair = false;
+        let mut sign_message = false;
         let mut create_n_m_utxo = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
@@ -460,6 +461,7 @@ mod test {
                 CliCommands::SendTari(_) => send_tari = true,
                 CliCommands::BurnTari(_) => burn_tari = true,
                 CliCommands::CreateKeyPair(_) => create_key_pair = true,
+                CliCommands::SignMessage(_) => sign_message = true,
                 CliCommands::CreateNMUtxo(_) => create_n_m_utxo = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},

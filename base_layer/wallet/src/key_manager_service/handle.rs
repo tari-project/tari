@@ -92,16 +92,6 @@ where TBackend: KeyManagerBackend + 'static
         Ok((sk, pk))
     }
 
-    async fn sign_message(
-        &self,
-        private_key: PrivateKey,
-        message: String,
-    ) -> Result<Signature, KeyManagerServiceError> {
-
-        self.key_manager_inner.read().await;
-        Ok(())
-    }
-
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.remove_encryption()
     }

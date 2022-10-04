@@ -29,6 +29,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_common_types::types::PrivateKey;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
@@ -117,7 +118,7 @@ pub enum CliCommands {
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
     CreateKeyPair(CreateKeyPairArgs),
-    CreateSignatureWithPubkey(CreateSignatureWithPubkeyArgs),
+    SignMessage(SignMessageArgs),
     CreateNMUtxo(CreateNMUtxoArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
@@ -164,9 +165,9 @@ pub struct CreateKeyPairArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateSignatureWithPubkeyArgs {
+pub struct SignMessageArgs<'a> {
     pub private_key: PrivateKey,
-    pub message: String,
+    pub challenge: String,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -23,7 +23,6 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Signature;
-
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
@@ -79,12 +78,6 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         branch: T,
     ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError>;
-
-    async fn sign_message(
-        &self,
-        private_key: PrivateKey,
-        message: String,
-    ) -> Result<Signature, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(
