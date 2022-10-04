@@ -22,7 +22,6 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::types::Signature;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
 use crate::key_manager_service::error::KeyManagerServiceError;

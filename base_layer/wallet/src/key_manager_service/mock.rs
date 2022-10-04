@@ -23,7 +23,6 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::types::Signature;
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 

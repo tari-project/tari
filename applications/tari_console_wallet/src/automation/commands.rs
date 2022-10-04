@@ -34,6 +34,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
@@ -53,7 +54,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -65,7 +66,6 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use rand::rngs::OsRng;
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -275,16 +275,16 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-pub fn sign_message(private_key: PrivateKey, challenge: &[u8]) -> Result<(Signature, RistrettoSecretKey), CommandError> {
-    if challenge.len() != 32usize {
-        return Err(CommandError::InvalidArgument(
-            "challenge is not 32-bytes long".to_string(),
-        ));
-    }
+pub fn sign_message(
+    private_key: String,
+    challenge: String,
+) -> Result<(Signature, RistrettoSecretKey), CommandError> {
+    let private_key = PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+    let challenge = challenge.as_bytes();
 
     let nonce = PrivateKey::random(&mut OsRng);
-    let signature = Signature::sign(private_key, nonce, challenge).map_err(|e| CommandError::FailedSignature(e))?;
-
+    let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(|e| CommandError::FailedSignature(e))?;
+    
     Ok((signature, nonce))
 }
 
@@ -613,7 +613,7 @@ pub async fn monitor_transactions(
 #[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
-    commands: Vec<CliCommands<'_>>,
+    commands: Vec<CliCommands>,
     wallet: WalletSqlite,
 ) -> Result<(), CommandError> {
     let wait_stage = config.command_send_wait_stage;
@@ -687,13 +687,13 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
-            SignMessage(args) => match sign_message(args.private_key, args.message).await {
+            SignMessage(args) => match sign_message(args.private_key, args.challenge) {
                 Ok((sgn, nonce)) => {
                     println!(
                         "Sign message: 
                                 1. signature: {},
                                 2. public key: {}",
-                        sgn.to_hex(),
+                        *Zeroizing::new(sgn.get_signature().to_hex()),
                         nonce.to_hex(),
                     )
                 },

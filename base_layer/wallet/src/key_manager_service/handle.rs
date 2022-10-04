@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::types::Signature;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
