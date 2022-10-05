@@ -1647,10 +1647,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
-fn rewind_to_height<T: BlockchainBackend>(
-    db: &mut T,
-    mut height: u64,
-) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
     // Delete headers
@@ -1713,7 +1710,6 @@ fn rewind_to_height<T: BlockchainBackend>(
             effective_pruning_horizon
         );
         steps_back = effective_pruning_horizon;
-        height = 0;
     }
 
     for h in 0..steps_back {
@@ -1723,14 +1719,12 @@ fn rewind_to_height<T: BlockchainBackend>(
         let block = Arc::new(block.try_into_chain_block()?);
         txn.delete_block(*block.hash());
         txn.delete_header(last_block_height - h);
-        if !prune_past_horizon {
-            if !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
-                // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
-                // can't recover from this apart from resync from another peer. Failure here
-                // should not be common as this chain has a valid proof of work that has been
-                // tested at this point in time.
-                txn.insert_chained_orphan(block.clone());
-            }
+        if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
+            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
+            // can't recover from this apart from resync from another peer. Failure here
+            // should not be common as this chain has a valid proof of work that has been
+            // tested at this point in time.
+            txn.insert_chained_orphan(block.clone());
         }
         removed_blocks.push(block);
         // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
