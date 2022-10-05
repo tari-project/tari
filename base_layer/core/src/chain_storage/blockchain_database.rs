@@ -1691,8 +1691,6 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     if steps_back == 0 {
         return Ok(vec![]);
     }
-    dbg!(steps_back);
-    dbg!(height);
 
     let mut removed_blocks = Vec::with_capacity(usize::try_from(steps_back).unwrap_or(usize::MAX));
     info!(
@@ -1712,37 +1710,27 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         );
         steps_back = effective_pruning_horizon;
     }
-    dbg!(last_block_height);
-    dbg!(steps_back);
     for h in 0..steps_back {
-        dbg!(h);
         let mut txn = DbTransaction::new();
         info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
-        dbg!();
         txn.delete_block(*block.hash());
-        dbg!();
         txn.delete_header(last_block_height - h);
-        dbg!();
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
             // can't recover from this apart from resync from another peer. Failure here
             // should not be common as this chain has a valid proof of work that has been
             // tested at this point in time.
-            dbg!();
             txn.insert_chained_orphan(block.clone());
         }
-        dbg!();
         removed_blocks.push(block);
-        dbg!();
         // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
         let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
             0
         } else {
             last_block_height - h - 1
         })?;
-        dbg!(chain_header.height());
         let metadata = db.fetch_chain_metadata()?;
         let expected_block_hash = *metadata.best_block();
         txn.set_best_block(
@@ -1752,7 +1740,6 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             expected_block_hash,
             chain_header.timestamp(),
         );
-        dbg!();
         // Update metadata
         debug!(
             target: LOG_TARGET,
@@ -1760,12 +1747,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             chain_header.height(),
             chain_header.accumulated_data().total_accumulated_difficulty
         );
-        let x = db.write(txn);
-        println!("x {:?}", x);
-        x?;
-        dbg!();
+        db.write(txn)?;
     }
-    dbg!();
 
     if prune_past_horizon {
         // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
