@@ -530,7 +530,7 @@ impl ConsensusConstants {
             effective_from_height: 19000,
             coinbase_lock_height: 6,
             blockchain_version: 1,
-            valid_blockchain_version_range: 0..=0,
+            valid_blockchain_version_range: 0..=1,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
