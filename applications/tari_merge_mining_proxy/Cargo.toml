@@ -15,8 +15,8 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 tari_base_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = {path="../../clients/rust/wallet_grpc_client" }
 
@@ -33,7 +33,7 @@ hex = "0.4.2"
 hyper = "0.14.12"
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
-rand = "0.8"
+rand = "0.7.3"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0.57"
