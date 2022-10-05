@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
-
-use sha3::{Digest, Sha3_256};
+use tari_core::proof_of_work::sha3_difficulty;
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
 use tari_core::{blocks::BlockHeader, large_ints::U256};
 use tari_utilities::epoch_time::EpochTime;
@@ -34,7 +33,6 @@ pub type Difficulty = u64;
 #[derive(Clone)]
 pub struct BlockHeaderSha3 {
     pub header: BlockHeader,
-    hash_merge_mining: Sha3_256,
     pub hashes: u64,
 }
 
@@ -43,19 +41,10 @@ impl BlockHeaderSha3 {
     #[allow(clippy::cast_sign_loss)]
     pub fn new(header: grpc_header) -> Result<Self, MinerError> {
         let header: BlockHeader = header.try_into().map_err(MinerError::BlockHeader)?;
-
-        let hash_merge_mining = Sha3_256::new().chain(header.mining_hash());
-
         Ok(Self {
-            hash_merge_mining,
             header,
             hashes: 0,
         })
-    }
-
-    #[inline]
-    fn get_hash_before_nonce(&self) -> Sha3_256 {
-        self.hash_merge_mining.clone()
     }
 
     /// This function will update the timestamp of the header, but only if the new timestamp is greater than the current
@@ -65,7 +54,6 @@ impl BlockHeaderSha3 {
         // should only change the timestamp if we move it forward.
         if timestamp > self.header.timestamp.as_u64() {
             self.header.timestamp = EpochTime::from(timestamp);
-            self.hash_merge_mining = Sha3_256::new().chain(self.header.mining_hash());
         }
     }
 
@@ -82,13 +70,7 @@ impl BlockHeaderSha3 {
     #[inline]
     pub fn difficulty(&mut self) -> Difficulty {
         self.hashes = self.hashes.saturating_add(1);
-        let hash = self
-            .get_hash_before_nonce()
-            .chain(self.header.nonce.to_le_bytes())
-            .chain(self.header.pow.to_bytes())
-            .finalize();
-        let hash = Sha3_256::digest(&hash);
-        big_endian_difficulty(&hash)
+        sha3_difficulty(&self.header).into()
     }
 
     #[allow(clippy::cast_possible_wrap)]
