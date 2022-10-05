@@ -161,7 +161,7 @@ mod test {
 
         let dht_envelope = make_dht_envelope(
             &node_identity,
-            b"A".to_vec(),
+            &b"A".to_vec(),
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
@@ -181,7 +181,7 @@ mod test {
             .unwrap();
 
         let msg = spy.pop_request().unwrap();
-        assert_eq!(msg.body, b"A".to_vec());
+        assert_eq!(msg.body, b"A".to_vec().to_encoded_bytes());
         assert_eq!(msg.dht_header, dht_envelope.header.unwrap().try_into().unwrap());
     }
 }

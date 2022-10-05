@@ -85,10 +85,11 @@ impl LocalNodeCommsInterface {
     pub async fn get_blocks(
         &mut self,
         range: RangeInclusive<u64>,
+        compact: bool,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingBlocks(range))
+            .call(NodeCommsRequest::FetchMatchingBlocks { range, compact })
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -97,10 +98,17 @@ impl LocalNodeCommsInterface {
     }
 
     /// Request the block header at the given height
-    pub async fn get_block(&mut self, height: u64) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
+    pub async fn get_block(
+        &mut self,
+        height: u64,
+        compact: bool,
+    ) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingBlocks(height..=height))
+            .call(NodeCommsRequest::FetchMatchingBlocks {
+                range: height..=height,
+                compact,
+            })
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(mut blocks) => Ok(blocks.pop()),

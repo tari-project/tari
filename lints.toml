@@ -57,6 +57,8 @@ deny = [
     'clippy::unnecessary_to_owned',
     'clippy::nonminimal_bool',
     'clippy::needless_question_mark',
+     # dbg! macro is intended as a debugging tool. It should not be in version control.
+    'clippy::dbg_macro'
 ]
 
 allow = [

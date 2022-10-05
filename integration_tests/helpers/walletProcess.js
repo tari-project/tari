@@ -285,6 +285,7 @@ class WalletProcess {
       "--non-interactive",
       "--network",
       "localnet",
+      "--enable-grpc",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);

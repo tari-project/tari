@@ -75,6 +75,17 @@ impl ConnectivityManagerMockState {
         }
     }
 
+    pub async fn wait_until_event_receivers_ready(&self) {
+        let mut timeout = 0;
+        while self.event_tx.receiver_count() == 0 {
+            time::sleep(Duration::from_millis(10)).await;
+            timeout += 10;
+            if timeout > 5000 {
+                panic!("Event receiver not ready after 5 secs");
+            }
+        }
+    }
+
     async fn add_call(&self, call_str: String) {
         self.with_state(|state| state.calls.push(call_str)).await
     }

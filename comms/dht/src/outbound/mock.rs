@@ -21,15 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    mem,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use bytes::Bytes;
+use chacha20::Nonce;
 use log::*;
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
     protocol::messaging::SendFailReason,
+    BytesMut,
 };
 use tokio::{
     sync::{mpsc, oneshot, watch, Mutex, RwLock},
@@ -61,7 +63,7 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
 #[derive(Clone)]
 pub struct OutboundServiceMockState {
     #[allow(clippy::type_complexity)]
-    calls: Arc<Mutex<Vec<(FinalSendMessageParams, Bytes)>>>,
+    calls: Arc<Mutex<Vec<(FinalSendMessageParams, BytesMut)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
     notif_sender: Arc<watch::Sender<()>>,
     notif_reciever: watch::Receiver<()>,
@@ -121,17 +123,36 @@ impl OutboundServiceMockState {
         self.next_response.write().await.take()
     }
 
-    pub async fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {
+    async fn add_call(&self, req: (FinalSendMessageParams, BytesMut)) {
         self.calls.lock().await.push(req);
         let _r = self.notif_sender.send(());
     }
 
-    pub async fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes)> {
-        self.calls.lock().await.drain(..).collect()
+    pub async fn take_calls(&self) -> Vec<(FinalSendMessageParams, BytesMut)> {
+        self.calls
+            .lock()
+            .await
+            .drain(..)
+            .map(|(p, mut b)| {
+                if p.encryption.is_encrypt() {
+                    // Remove prefix data
+                    (p, b.split_off(mem::size_of::<u32>() + mem::size_of::<Nonce>()))
+                } else {
+                    (p, b)
+                }
+            })
+            .collect()
     }
 
-    pub async fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes)> {
-        self.calls.lock().await.pop()
+    pub async fn pop_call(&self) -> Option<(FinalSendMessageParams, BytesMut)> {
+        self.calls.lock().await.pop().map(|(p, mut b)| {
+            if p.encryption.is_encrypt() {
+                // Remove prefix data
+                (p, b.split_off(mem::size_of::<u32>() + mem::size_of::<Nonce>()))
+            } else {
+                (p, b)
+            }
+        })
     }
 
     pub async fn set_behaviour(&self, behaviour: MockBehaviour) {
@@ -232,7 +253,7 @@ impl OutboundServiceMock {
     async fn add_call(
         &mut self,
         params: FinalSendMessageParams,
-        body: Bytes,
+        body: BytesMut,
     ) -> (SendMessageResponse, MessagingReplyTx) {
         self.mock_state.add_call((params, body)).await;
         let (inner_reply_tx, inner_reply_rx) = oneshot::channel();

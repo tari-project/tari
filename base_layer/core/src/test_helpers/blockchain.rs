@@ -473,7 +473,12 @@ pub fn create_main_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
     blocks: T,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-    let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
+    let genesis_block = db
+        .fetch_block(0, true)
+        .unwrap()
+        .try_into_chain_block()
+        .map(Arc::new)
+        .unwrap();
     let (names, chain) = create_chained_blocks(blocks, genesis_block);
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
@@ -507,7 +512,12 @@ pub struct TestBlockchain {
 
 impl TestBlockchain {
     pub fn new(db: BlockchainDatabase<TempDatabase>, rules: ConsensusManager) -> Self {
-        let genesis = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
+        let genesis = db
+            .fetch_block(0, true)
+            .unwrap()
+            .try_into_chain_block()
+            .map(Arc::new)
+            .unwrap();
         let mut blockchain = Self {
             db,
             chain: Default::default(),

@@ -154,7 +154,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         io::stdout().flush().unwrap();
         trace!(target: LOG_TARGET, "Asking for block with height: {}", counter);
         let block = source_database
-            .fetch_block(counter)
+            .fetch_block(counter, true)
             .map_err(|e| anyhow!("Could not get block from recovery db: {}", e))?
             .try_into_block()?;
         trace!(target: LOG_TARGET, "Adding block: {}", block);

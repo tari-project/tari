@@ -737,7 +737,7 @@ impl LMDBDatabase {
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        let hash = input.canonical_hash()?;
+        let hash = input.canonical_hash();
         let key = InputKey::new(header_hash.as_slice(), mmr_position, hash.as_slice());
         lmdb_insert(
             txn,

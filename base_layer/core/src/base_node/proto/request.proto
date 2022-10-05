@@ -13,7 +13,7 @@ message BaseNodeServiceRequest {
     uint64 request_key = 1;
     oneof request {
         // Indicates a FetchBlocksByHash request.
-        HashOutputs fetch_blocks_by_hash = 8;
+        FetchBlocksByHashRequest fetch_blocks_by_hash = 8;
         ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
     }
 }
@@ -27,8 +27,9 @@ message BlockHeights {
     repeated uint64 heights = 1;
 }
 
-message HashOutputs {
-    repeated bytes outputs = 1;
+message FetchBlocksByHashRequest {
+    repeated bytes block_hashes = 1;
+    bool compact = 2;
 }
 
 message Signatures {

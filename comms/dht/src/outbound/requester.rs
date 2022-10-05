@@ -21,11 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body, BytesMut};
 use tokio::sync::{mpsc, oneshot};
 
 use super::message::DhtOutboundRequest;
 use crate::{
+    crypt::prepare_message,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{
@@ -259,7 +260,8 @@ impl OutboundMessageRequester {
         } else {
             message.to_propagation_header()
         };
-        let body = wrap_in_envelope_body!(header, message.into_inner()).to_encoded_bytes();
+        let msg = wrap_in_envelope_body!(header, message.into_inner());
+        let body = prepare_message(params.encryption.is_encrypt(), &msg);
         self.send_raw(params, body).await
     }
 
@@ -275,7 +277,8 @@ impl OutboundMessageRequester {
         if cfg!(debug_assertions) {
             trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
         }
-        let body = wrap_in_envelope_body!(message).to_encoded_bytes();
+        let msg = wrap_in_envelope_body!(message);
+        let body = prepare_message(params.encryption.is_encrypt(), &msg);
         self.send_raw(params, body).await
     }
 
@@ -291,7 +294,8 @@ impl OutboundMessageRequester {
         if cfg!(debug_assertions) {
             trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
         }
-        let body = wrap_in_envelope_body!(message).to_encoded_bytes();
+        let msg = wrap_in_envelope_body!(message);
+        let body = prepare_message(params.encryption.is_encrypt(), &msg);
         self.send_raw_no_wait(params, body).await
     }
 
@@ -299,11 +303,11 @@ impl OutboundMessageRequester {
     pub async fn send_raw(
         &mut self,
         params: FinalSendMessageParams,
-        body: Vec<u8>,
+        body: BytesMut,
     ) -> Result<SendMessageResponse, DhtOutboundError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
             .await?;
 
         reply_rx
@@ -315,11 +319,11 @@ impl OutboundMessageRequester {
     pub async fn send_raw_no_wait(
         &mut self,
         params: FinalSendMessageParams,
-        body: Vec<u8>,
+        body: BytesMut,
     ) -> Result<(), DhtOutboundError> {
         let (reply_tx, _) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
             .await?;
         Ok(())
     }
