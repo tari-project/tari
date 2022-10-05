@@ -405,11 +405,15 @@ Feature: Wallet Transactions
    Given I have a seed node NODE
    And I have 2 base nodes connected to all seed nodes
    And I have wallet WALLET_A connected to all seed nodes
-   And I have mining node MINER connected to base node NODE and wallet WALLET_A
-   When mining node MINER mines 15 blocks
+   And I have wallet WALLET_B connected to all seed nodes
+   And I have mining node MINER_A connected to base node NODE and wallet WALLET_A
+   And I have mining node MINER_B connected to base node NODE and wallet WALLET_B
+   When mining node MINER_A mines 12 blocks
+   When mining node MINER_B mines 3 blocks
    Then all nodes are at height 15
-   When I wait for wallet WALLET_A to have at least 55000000000 uT
-   When I create a burn transaction of 1000000 uT from WALLET_A at fee 100
-   When mining node MINER mines 10 blocks
-   Then all nodes are at height 25
+   When I wait for wallet WALLET_A to have at least 221552530060 uT
+   When I create a burn transaction of 201552500000 uT from WALLET_A at fee 100
+   When mining node MINER_B mines 5 blocks
+   Then all nodes are at height 20
    Then wallet WALLET_A detects all transactions as Mined_Confirmed
+   When I wait for wallet WALLET_A to have at least 20000000000 uT

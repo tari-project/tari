@@ -38,7 +38,7 @@ use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::consts;
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -99,8 +99,9 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+
+    setup_grpc_config(&mut config);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -269,4 +270,17 @@ fn enable_tracing() {
     let subscriber = Registry::default().with(telemetry);
     tracing::subscriber::set_global_default(subscriber)
         .expect("Tracing could not be set. Try running without `--tracing-enabled`");
+}
+
+fn setup_grpc_config(config: &mut ApplicationConfig) {
+    if config.wallet.grpc_address.is_none() {
+        config.wallet.grpc_address = Some(
+            format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                grpc_default_port(ApplicationType::ConsoleWallet, config.wallet.network)
+            )
+            .parse()
+            .unwrap(),
+        );
+    }
 }
