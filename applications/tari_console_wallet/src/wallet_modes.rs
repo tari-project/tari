@@ -429,9 +429,9 @@ mod test {
 
             create-key-pair pie 
 
-            create-n-m-utxo 1 1 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 --message signing
+            create-n-m-utxo 125T 100 1 1 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 signing
 
-            sign-message 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 --challenge my_challenge!
+            sign-message 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 my_challenge!
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
