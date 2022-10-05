@@ -494,7 +494,7 @@ mod test {
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         let dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
@@ -546,7 +546,7 @@ mod test {
         // Encrypt for self
         let dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
@@ -602,10 +602,11 @@ mod test {
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
-        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes()).unwrap();
+        let mut encrypted_bytes = msg.encode_into_bytes_mut();
+        crypt::encrypt(&key_message, &mut encrypted_bytes).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
-            encrypted_bytes,
+            &encrypted_bytes.to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
@@ -667,7 +668,7 @@ mod test {
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         let mut dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
