@@ -12,12 +12,12 @@ tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
 tari_comms = { version = "^0.38", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.38", path = "../../comms/dht", default-features = false }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
 tari_key_manager = { version = "^0.38", path = "../key_manager" }
 tari_p2p = { version = "^0.38", path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { version = "^0.38", path = "../../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 tari_wallet = { version = "^0.38", path = "../wallet", features = ["c_integration"]}
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -27,7 +27,7 @@ log = "0.4.6"
 log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
 # Needs to be higher than 0.10.41 to address a security issue
 openssl = { version = "0.10.41", features = ["vendored"] }
-rand = "0.8"
+rand = "0.7.3"
 thiserror = "1.0.26"
 tokio = "1.20"
 num-traits = "0.2.15"
