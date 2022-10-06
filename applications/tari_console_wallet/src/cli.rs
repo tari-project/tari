@@ -169,6 +169,7 @@ pub struct CreateAggregateSignatureUtxoArgs {
     pub n: u8,
     pub m: u8,
     pub message: String,
+    #[clap(long)]
     pub public_keys: Vec<UniPublicKey>,
 }
 
