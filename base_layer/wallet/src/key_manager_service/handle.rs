@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use chacha20poly1305::XChaCha20Poly1305;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
@@ -71,6 +71,24 @@ where TBackend: KeyManagerBackend + 'static
 
     async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.apply_encryption(cipher)
+    }
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(PrivateKey, PublicKey), KeyManagerServiceError> {
+        let branch: String = branch.into();
+
+        self.key_manager_inner
+            .write()
+            .await
+            .add_key_manager_branch(branch.clone())?;
+
+        let next_key = self.get_next_key(branch).await?;
+        let sk = next_key.key.clone();
+        let pk = next_key.to_public_key();
+
+        Ok((sk, pk))
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {

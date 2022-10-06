@@ -427,6 +427,8 @@ mod test {
             
             burn-tari --message Ups_these_funds_will_be_burned! 100T
 
+            create-key-pair pie 
+
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
@@ -442,6 +444,7 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
+        let mut create_key_pair = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -451,6 +454,7 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendTari(_) => send_tari = true,
                 CliCommands::BurnTari(_) => burn_tari = true,
+                CliCommands::CreateKeyPair(_) => create_key_pair = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
@@ -470,6 +474,15 @@ mod test {
                 CliCommands::HashGrpcPassword(_) => {},
             }
         }
-        assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);
+        assert!(
+            get_balance &&
+                send_tari &&
+                burn_tari &&
+                create_key_pair &&
+                make_it_rain &&
+                coin_split &&
+                discover_peer &&
+                whois
+        );
     }
 }

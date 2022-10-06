@@ -116,6 +116,7 @@ pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
+    CreateKeyPair(CreateKeyPairArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -153,6 +154,11 @@ pub struct BurnTariArgs {
     pub amount: MicroTari,
     #[clap(short, long, default_value = "Burn funds")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateKeyPairArgs {
+    pub key_branch: String,
 }
 
 #[derive(Debug, Args, Clone)]
