@@ -1455,7 +1455,7 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 mod test {
     use std::{mem::size_of, time::Duration};
 
-    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+    use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;

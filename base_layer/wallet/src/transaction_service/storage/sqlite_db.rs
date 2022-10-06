@@ -2202,7 +2202,7 @@ impl UnconfirmedTransactionInfoSql {
 mod test {
     use std::{convert::TryFrom, mem::size_of, time::Duration};
 
-    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+    use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
