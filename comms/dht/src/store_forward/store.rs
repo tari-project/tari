@@ -483,7 +483,7 @@ mod test {
 
         let inbound_msg = make_dht_inbound_message(
             &make_node_identity(),
-            b"".to_vec(),
+            &b"".to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,
@@ -509,7 +509,7 @@ mod test {
         let msg_node_identity = make_node_identity();
         let inbound_msg = make_dht_inbound_message(
             &msg_node_identity,
-            b"This shouldnt be stored".to_vec(),
+            &b"This shouldnt be stored".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
@@ -539,7 +539,7 @@ mod test {
 
         let mut inbound_msg = make_dht_inbound_message(
             &origin_node_identity,
-            b"Will you keep this for me?".to_vec(),
+            &b"Will you keep this for me?".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
@@ -582,7 +582,7 @@ mod test {
 
         let mut inbound_msg = make_dht_inbound_message(
             &origin_node_identity,
-            b"Will you keep this for me?".to_vec(),
+            &b"Will you keep this for me?".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
             false,

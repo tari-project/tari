@@ -45,7 +45,9 @@ pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
 mod dht_discovery_mock;
 pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
 
+#[cfg(test)]
 mod makers;
+#[cfg(test)]
 pub use makers::*;
 
 mod service;

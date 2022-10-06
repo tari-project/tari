@@ -28,7 +28,6 @@ use std::{
 };
 
 use bitflags::bitflags;
-use bytes::Bytes;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -249,10 +248,10 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: &Bytes) -> Self {
+    pub fn new(header: DhtHeader, body: Vec<u8>) -> Self {
         Self {
             header: Some(header),
-            body: body.to_vec(),
+            body,
         }
     }
 }
