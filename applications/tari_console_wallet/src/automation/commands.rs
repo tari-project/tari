@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PublicKey, PrivateKey},
+    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -57,7 +57,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::{KeyManagerInterface, NextKeyResult, storage::database::KeyManagerBackend, KeyManagerHandle},
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -689,8 +689,8 @@ pub async fn command_runner(
                 args.m,
                 args.public_keys
                     .iter()
-                    .map(|pk| (PublicKey::from(pk.clone())))
-                    .collect(),
+                    .map(|pk| PublicKey::from(pk.clone()))
+                    .collect::<Vec<_>>(),
                 args.message,
             )
             .await

@@ -649,7 +649,7 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
-            TransactionServiceRequest::CreateAggregateSignatureUtxo {
+            TransactionServiceRequest::CreateNMUtxo {
                 amount,
                 fee_per_gram,
                 n,
