@@ -429,7 +429,8 @@ mod test {
 
             create-key-pair pie 
 
-            create-aggregate-signature-utxo 125T 100 10 1 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 ff
+            create-aggregate-signature-utxo 125T 100 10 1 \
+                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 ff
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
@@ -449,8 +450,6 @@ mod test {
         let mut create_key_pair = false;
         let mut create_aggregate_signature_utxo = false;
         let mut make_it_rain = false;
-        let mut coin_split = false;
-        let mut discover_peer = false;
         let mut whois = false;
         for command in commands {
             match command {

@@ -159,7 +159,7 @@ pub struct BurnTariArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct CreateKeyPairArgs {
-    pub key_seed: String,
+    pub key_branch: String,
 }
 
 #[derive(Debug, Args, Clone)]

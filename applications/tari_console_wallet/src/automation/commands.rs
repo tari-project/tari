@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -57,7 +57,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInterface, NextKeyResult},
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -68,6 +68,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+use zeroize::Zeroizing;
 
 use super::error::CommandError;
 use crate::{
@@ -668,13 +669,13 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnTari error! {}", e),
                 }
             },
-            CreateKeyPair(args) => match create_key_pair(key_manager_service.clone(), args.key_seed).await {
+            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
                 Ok((sk, pk)) => {
                     println!(
-                        "create new key combo pair: 
+                        "New key pair: 
                                 1. secret key: {}, 
-                                2. public key {}",
-                        sk.to_hex(),
+                                2. public key: {}",
+                        *Zeroizing::new(sk.to_hex()),
                         pk.to_hex()
                     )
                 },
