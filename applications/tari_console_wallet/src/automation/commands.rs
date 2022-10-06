@@ -275,16 +275,15 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-pub fn sign_message(
-    private_key: String,
-    challenge: String,
-) -> Result<(Signature, RistrettoSecretKey), CommandError> {
-    let private_key = PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature, RistrettoSecretKey), CommandError> {
+    let private_key =
+        PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
     let challenge = challenge.as_bytes();
 
     let nonce = PrivateKey::random(&mut OsRng);
-    let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(|e| CommandError::FailedSignature(e))?;
-    
+    let signature =
+        Signature::sign(private_key, nonce.clone(), challenge).map_err(|e| CommandError::FailedSignature(e))?;
+
     Ok((signature, nonce))
 }
 
