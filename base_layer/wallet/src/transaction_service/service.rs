@@ -657,7 +657,7 @@ where
                 public_keys,
                 message,
             } => self
-                .create_n_m_utxo(
+                .create_aggregate_signature_utxo(
                     amount,
                     fee_per_gram,
                     n,
@@ -1007,7 +1007,7 @@ where
 
     /// Creates a utxo with aggregate public key out of m-of-n public keys
     #[allow(clippy::too_many_lines)]
-    pub async fn create_n_m_utxo(
+    pub async fn create_aggregate_signature_utxo(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,

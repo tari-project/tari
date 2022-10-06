@@ -524,7 +524,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn create_n_m_utxo(
+    pub async fn create_aggregate_signature_utxo(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,

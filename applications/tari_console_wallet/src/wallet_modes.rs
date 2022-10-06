@@ -429,7 +429,9 @@ mod test {
 
             create-key-pair pie 
 
-            create-n-m-utxo 125T 100 1 1 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 signing
+            create-aggregate-signature-utxo 125T 100 10 1 ff \
+                      --public-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                      --public-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
             sign-message 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 my_challenge!
 
@@ -449,8 +451,8 @@ mod test {
         let mut send_tari = false;
         let mut burn_tari = false;
         let mut create_key_pair = false;
+        let mut create_aggregate_signature_utxo = false;
         let mut sign_message = false;
-        let mut create_n_m_utxo = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -461,8 +463,8 @@ mod test {
                 CliCommands::SendTari(_) => send_tari = true,
                 CliCommands::BurnTari(_) => burn_tari = true,
                 CliCommands::CreateKeyPair(_) => create_key_pair = true,
+                CliCommands::CreateAggregateSignatureUtxo(_) => create_aggregate_signature_utxo = true,
                 CliCommands::SignMessage(_) => sign_message = true,
-                CliCommands::CreateNMUtxo(_) => create_n_m_utxo = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
@@ -487,7 +489,8 @@ mod test {
                 send_tari &&
                 burn_tari &&
                 create_key_pair &&
-                create_n_m_utxo &&
+                create_aggregate_signature_utxo &&
+                sign_message &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&

@@ -88,7 +88,7 @@ pub enum WalletCommand {
     SendTari,
     SendOneSided,
     CreateKeyPair,
-    CreateNMUtxo,
+    CreateAggregateSignatureUtxo,
     SignMessage,
     MakeItRain,
     CoinSplit,
@@ -145,7 +145,7 @@ pub async fn burn_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
-pub async fn create_n_m_utxo(
+pub async fn create_aggregate_signature_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     amount: MicroTari,
     fee_per_gram: MicroTari,
@@ -158,7 +158,7 @@ pub async fn create_n_m_utxo(
     msg.copy_from_slice(message.as_bytes());
 
     wallet_transaction_service
-        .create_n_m_utxo(amount, fee_per_gram, n, m, public_keys, msg)
+        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -687,19 +687,7 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
-            SignMessage(args) => match sign_message(args.private_key, args.challenge) {
-                Ok((sgn, nonce)) => {
-                    println!(
-                        "Sign message: 
-                                1. signature: {},
-                                2. public key: {}",
-                        *Zeroizing::new(sgn.get_signature().to_hex()),
-                        nonce.to_hex(),
-                    )
-                },
-                Err(e) => eprintln!("SignMessage error! {}", e),
-            },
-            CreateNMUtxo(args) => match create_n_m_utxo(
+            CreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
                 transaction_service.clone(),
                 args.amount,
                 args.fee_per_gram,
@@ -707,8 +695,8 @@ pub async fn command_runner(
                 args.m,
                 args.public_keys
                     .iter()
-                    .map(|pk| (PublicKey::from(pk.clone())))
-                    .collect(),
+                    .map(|pk| PublicKey::from(pk.clone()))
+                    .collect::<Vec<_>>(),
                 args.message,
             )
             .await
@@ -723,7 +711,19 @@ pub async fn command_runner(
                         args.n, args.m, tx_id, output_hash
                     )
                 },
-                Err(e) => eprintln!("CreateNMUtxo error! {}", e),
+                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
+            },
+            SignMessage(args) => match sign_message(args.private_key, args.challenge) {
+                Ok((sgn, nonce)) => {
+                    println!(
+                        "Sign message: 
+                                1. signature: {},
+                                2. public key: {}",
+                        *Zeroizing::new(sgn.get_signature().to_hex()),
+                        nonce.to_hex(),
+                    )
+                },
+                Err(e) => eprintln!("SignMessage error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(

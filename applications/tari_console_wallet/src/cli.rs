@@ -117,8 +117,8 @@ pub enum CliCommands {
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
     CreateKeyPair(CreateKeyPairArgs),
+    CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
     SignMessage(SignMessageArgs),
-    CreateNMUtxo(CreateNMUtxoArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -164,19 +164,20 @@ pub struct CreateKeyPairArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct SignMessageArgs {
-    pub private_key: String,
-    pub challenge: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct CreateNMUtxoArgs {
+pub struct CreateAggregateSignatureUtxoArgs {
     pub amount: MicroTari,
     pub fee_per_gram: MicroTari,
     pub n: u8,
     pub m: u8,
-    pub public_keys: Vec<UniPublicKey>,
     pub message: String,
+    #[clap(long)]
+    pub public_keys: Vec<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    pub private_key: String,
+    pub challenge: String,
 }
 
 #[derive(Debug, Args, Clone)]
