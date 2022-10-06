@@ -430,7 +430,8 @@ mod test {
             create-key-pair pie 
 
             create-aggregate-signature-utxo 125T 100 10 1 ff \
-                      [5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61]
+                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                      f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 

@@ -41,7 +41,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -57,7 +57,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInterface, NextKeyResult},
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -140,16 +140,6 @@ pub async fn burn_tari(
         .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
-}
-
-pub async fn create_key_pair<TBackend: KeyManagerBackend + 'static>(
-    key_manager_service: KeyManagerHandle<TBackend>,
-    key_seed: String,
-) -> Result<(PrivateKey, PublicKey), CommandError> {
-    key_manager_service
-        .create_key_pair(key_seed)
-        .await
-        .map_err(CommandError::KeyManagerError)
 }
 
 pub async fn create_aggregate_signature_utxo(

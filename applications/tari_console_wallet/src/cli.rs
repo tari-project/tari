@@ -168,9 +168,8 @@ pub struct CreateAggregateSignatureUtxoArgs {
     pub fee_per_gram: MicroTari,
     pub n: u8,
     pub m: u8,
-    #[clap(last = true)]
-    pub public_keys: Vec<UniPublicKey>,
     pub message: String,
+    pub public_keys: Vec<UniPublicKey>,
 }
 
 #[derive(Debug, Args, Clone)]
