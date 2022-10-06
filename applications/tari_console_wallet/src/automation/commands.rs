@@ -282,7 +282,7 @@ pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature
 
     let nonce = PrivateKey::random(&mut OsRng);
     let signature =
-        Signature::sign(private_key, nonce.clone(), challenge).map_err(|e| CommandError::FailedSignature(e))?;
+        Signature::sign(private_key, nonce.clone(), challenge).map_err(CommandError::FailedSignature)?;
 
     Ok((signature, nonce))
 }
