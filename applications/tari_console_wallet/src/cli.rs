@@ -117,7 +117,7 @@ pub enum CliCommands {
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
     CreateKeyPair(CreateKeyPairArgs),
-    CreateNMUtxo(CreateNMUtxoArgs),
+    CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -163,7 +163,7 @@ pub struct CreateKeyPairArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateNMUtxoArgs {
+pub struct CreateAggregateSignatureUtxoArgs {
     pub amount: MicroTari,
     pub fee_per_gram: MicroTari,
     pub n: u8,

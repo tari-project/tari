@@ -88,7 +88,7 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
-    CreateNMUtxo {
+    CreateAggregateSignatureUtxo {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         n: u8,
@@ -164,7 +164,7 @@ impl fmt::Display for TransactionServiceRequest {
                 message
             )),
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
-            Self::CreateNMUtxo {
+            Self::CreateAggregateSignatureUtxo {
                 amount,
                 fee_per_gram: _,
                 n,
@@ -524,7 +524,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn create_n_m_utxo(
+    pub async fn create_aggregate_signature_utxo(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
@@ -535,7 +535,7 @@ impl TransactionServiceHandle {
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::CreateNMUtxo {
+            .call(TransactionServiceRequest::CreateAggregateSignatureUtxo {
                 amount,
                 fee_per_gram,
                 n,

@@ -85,7 +85,7 @@ pub enum WalletCommand {
     SendTari,
     SendOneSided,
     CreateKeyPair,
-    CreateNMUtxo,
+    CreateAggregateSignatureUtxo,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -151,7 +151,7 @@ pub async fn create_key_pair<TBackend: KeyManagerBackend + 'static>(
         .map_err(CommandError::KeyManagerError)
 }
 
-pub async fn create_n_m_utxo(
+pub async fn create_aggregate_signature_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     amount: MicroTari,
     fee_per_gram: MicroTari,
@@ -164,7 +164,7 @@ pub async fn create_n_m_utxo(
     msg.copy_from_slice(message.as_bytes());
 
     wallet_transaction_service
-        .create_n_m_utxo(amount, fee_per_gram, n, m, public_keys, msg)
+        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -680,7 +680,7 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
-            CreateNMUtxo(args) => match create_n_m_utxo(
+            CreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
                 transaction_service.clone(),
                 args.amount,
                 args.fee_per_gram,
@@ -704,7 +704,7 @@ pub async fn command_runner(
                         args.n, args.m, tx_id, output_hash
                     )
                 },
-                Err(e) => eprintln!("CreateNMUtxo error! {}", e),
+                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
             },
             SendTari(args) => {
                 match send_tari(
