@@ -450,6 +450,8 @@ mod test {
         let mut create_key_pair = false;
         let mut create_aggregate_signature_utxo = false;
         let mut make_it_rain = false;
+        let mut coin_split = false;
+        let mut discover_peer = false;
         let mut whois = false;
         for command in commands {
             match command {
