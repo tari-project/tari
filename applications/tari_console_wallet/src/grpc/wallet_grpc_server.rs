@@ -922,12 +922,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Template registration transaction: {:?}", transaction
         );
 
-        let _ = transaction_service
+        let reg_output = transaction
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
+            .unwrap();
+        let template_address = reg_output.hash();
+
+        transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateTemplateRegistrationResponse {}))
+        Ok(Response::new(CreateTemplateRegistrationResponse {
+            tx_id: tx_id.as_u64(),
+            template_address: template_address.to_vec(),
+        }))
     }
 
     async fn register_validator_node(
