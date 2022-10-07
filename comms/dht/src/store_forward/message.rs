@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use chrono::{DateTime, Utc};
 use prost::Message;
@@ -76,10 +76,7 @@ impl TryFrom<database::StoredMessage> for StoredMessage {
         let dht_header = DhtHeader::decode(message.header.as_slice())?;
         Ok(Self {
             stored_at: Some(datetime_to_timestamp(DateTime::from_utc(message.stored_at, Utc))),
-            version: message
-                .version
-                .try_into()
-                .map_err(|_| StoreAndForwardError::InvalidEnvelopeVersion)?,
+            version: message.version as u32,
             body: message.body,
             dht_header: Some(dht_header),
         })
