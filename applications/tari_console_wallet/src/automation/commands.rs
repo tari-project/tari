@@ -54,7 +54,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::keys::{SecretKey, PublicKey as TraitPublicKey};
+use tari_crypto::keys::{PublicKey as TraitPublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
