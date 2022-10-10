@@ -134,6 +134,8 @@ pub enum ChainStorageError {
     UnspendableDueToDependentUtxos { details: String },
     #[error("FixedHashSize Error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Composite key length was exceeded (THIS SHOULD NEVER HAPPEN)")]
+    CompositeKeyLengthExceeded,
 }
 
 impl ChainStorageError {

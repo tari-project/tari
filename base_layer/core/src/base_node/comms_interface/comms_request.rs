@@ -76,7 +76,8 @@ pub enum NodeCommsRequest {
         public_key: PublicKey,
     },
     FetchTemplateRegistrations {
-        from_height: u64,
+        start_height: u64,
+        end_height: u64,
     },
 }
 
@@ -127,8 +128,11 @@ impl Display for NodeCommsRequest {
             GetShardKey { height, public_key } => {
                 write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
             },
-            FetchTemplateRegistrations { from_height } => {
-                write!(f, "FetchTemplateRegistrations ({})", from_height)
+            FetchTemplateRegistrations {
+                start_height: start,
+                end_height: end,
+            } => {
+                write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
             },
         }
     }

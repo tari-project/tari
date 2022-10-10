@@ -67,7 +67,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
         Reorg,
-        TemplateRegistration,
+        TemplateRegistrationEntry,
         UtxoMinedInfo,
         Validators,
     },
@@ -427,8 +427,15 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().get_shard_key(height, public_key)
     }
 
-    fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_template_registrations(from_height)
+    fn fetch_template_registrations(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_template_registrations(start_height, end_height)
     }
 }
 

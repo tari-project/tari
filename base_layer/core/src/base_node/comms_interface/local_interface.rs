@@ -38,9 +38,9 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::ActiveValidatorNode,
+    chain_storage::{ActiveValidatorNode, TemplateRegistrationEntry},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -327,11 +327,15 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_template_registrations(
         &mut self,
-        from_height: u64,
-    ) -> Result<Vec<CodeTemplateRegistration>, CommsInterfaceError> {
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchTemplateRegistrations { from_height })
+            .call(NodeCommsRequest::FetchTemplateRegistrations {
+                start_height,
+                end_height,
+            })
             .await??
         {
             NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),

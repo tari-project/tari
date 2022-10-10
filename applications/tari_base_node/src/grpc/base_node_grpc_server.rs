@@ -140,7 +140,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
-    type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::TemplateRegistration, Status>>;
+    type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::GetTemplateRegistrationResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
@@ -1484,7 +1484,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
         let request = request.into_inner();
-        let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
 
         let mut handler = self.node_service.clone();
@@ -1493,39 +1492,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         task::spawn(async move {
             let active_validator_nodes = match handler.get_active_validator_nodes(request.height).await {
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    warn!(target: LOG_TARGET, "Base node service error: {}", err,);
                     return;
                 },
                 Ok(data) => data,
             };
-            // dbg!(&active_validator_nodes);
+
             for (public_key, shard_key) in active_validator_nodes {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
                 };
 
-                match tx.send(Ok(active_validator_node)).await {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending mempool transaction via GRPC:  {}", err
-                        );
-                        match tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                if tx.send(Ok(active_validator_node)).await.is_err() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[get_active_validator_nodes] Client has disconnected before stream completed"
+                    );
+                    return;
                 }
             }
         });
@@ -1547,60 +1531,56 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
+        let start_height = request.start_height;
+        let end_height = request.end_height;
+        if end_height < start_height {
+            return Err(Status::invalid_argument(
+                "End height must be greater than or equal to start height",
+            ));
+        }
+
         task::spawn(async move {
-            let template_registrations = match handler.get_template_registrations(request.from_height).await {
+            let template_registrations = match handler.get_template_registrations(start_height, end_height).await {
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    warn!(target: LOG_TARGET, "Base node service error: {}", err);
                     return;
                 },
                 Ok(data) => data,
             };
 
             for template_registration in template_registrations {
-                let template_registration = match tari_rpc::TemplateRegistration::try_from(template_registration) {
+                let registration = match template_registration.registration_data.try_into() {
                     Ok(t) => t,
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
                             "Error sending converting template registration for GRPC: {}", e
                         );
-                        match tx
+                        let _ignore = tx
                             .send(Err(obscure_error_if_true(
                                 report_error_flag,
-                                Status::internal("Error converting template_registration"),
+                                Status::internal(format!("Error converting template_registration: {}", e)),
                             )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
+                            .await;
                         return;
                     },
                 };
 
-                match tx.send(Ok(template_registration)).await {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending template registration via GRPC:  {}", err
-                        );
-                        match tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
+                let resp = tari_rpc::GetTemplateRegistrationResponse {
+                    block_info: Some(tari_rpc::BlockInfo {
+                        height: template_registration.block_height,
+                        hash: template_registration.block_hash.to_vec(),
+                    }),
+                    utxo_hash: template_registration.output_hash.to_vec(),
+                    registration: Some(registration),
+                };
+
+                if tx.send(Ok(resp)).await.is_err() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[get_template_registrations] Client has disconnected before stream completed"
+                    );
+                    return;
                 }
             }
         });

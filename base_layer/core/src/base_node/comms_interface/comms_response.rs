@@ -32,14 +32,9 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{ActiveValidatorNode, UtxoMinedInfo},
+    chain_storage::{ActiveValidatorNode, TemplateRegistrationEntry, UtxoMinedInfo},
     proof_of_work::Difficulty,
-    transactions::transaction_components::{
-        CodeTemplateRegistration,
-        Transaction,
-        TransactionKernel,
-        TransactionOutput,
-    },
+    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
 
 /// API Response enum
@@ -79,7 +74,7 @@ pub enum NodeCommsResponse {
     FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
     FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse(Option<[u8; 32]>),
-    FetchTemplateRegistrationsResponse(Vec<CodeTemplateRegistration>),
+    FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
 
 impl Display for NodeCommsResponse {
