@@ -342,4 +342,19 @@ impl LocalNodeCommsInterface {
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
+
+    /// Fetches UTXOs that are not spent for the given block hash up to the current chain tip.
+    pub async fn fetch_unspent_utxos_in_block(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash })
+            .await??
+        {
+            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
 }

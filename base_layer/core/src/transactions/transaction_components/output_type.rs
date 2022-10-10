@@ -71,6 +71,13 @@ impl OutputType {
             OutputType::CodeTemplateRegistration,
         ]
     }
+
+    pub fn is_sidechain_type(&self) -> bool {
+        matches!(
+            self,
+            OutputType::ValidatorNodeRegistration | OutputType::CodeTemplateRegistration
+        )
+    }
 }
 
 impl Default for OutputType {

@@ -33,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{Commitment, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -140,6 +140,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
+    type GetSideChainUtxosStream = mpsc::Receiver<Result<tari_rpc::GetSideChainUtxosResponse, Status>>;
     type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::GetTemplateRegistrationResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
@@ -1528,19 +1529,39 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
 
-        let mut handler = self.node_service.clone();
-        let (mut tx, rx) = mpsc::channel(1000);
+        let (mut tx, rx) = mpsc::channel(10);
 
-        let start_height = request.start_height;
-        let end_height = request.end_height;
-        if end_height < start_height {
-            return Err(Status::invalid_argument(
-                "End height must be greater than or equal to start height",
-            ));
+        let start_hash = Some(request.start_hash)
+            .filter(|x| !x.is_empty())
+            .map(FixedHash::try_from)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Invalid start_hash"))?;
+
+        let mut node_service = self.node_service.clone();
+
+        let start_height = match start_hash {
+            Some(hash) => {
+                let header = node_service
+                    .get_header_by_hash(hash)
+                    .await
+                    .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?;
+                header
+                    .map(|h| h.height())
+                    .ok_or_else(|| Status::not_found("Start hash not found"))?
+            },
+            None => 0,
+        };
+
+        if request.count == 0 {
+            return Ok(Response::new(rx));
         }
 
+        let end_height = start_height
+            .checked_add(request.count)
+            .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
+
         task::spawn(async move {
-            let template_registrations = match handler.get_template_registrations(start_height, end_height).await {
+            let template_registrations = match node_service.get_template_registrations(start_height, end_height).await {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err);
                     return;
@@ -1567,10 +1588,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 let resp = tari_rpc::GetTemplateRegistrationResponse {
-                    block_info: Some(tari_rpc::BlockInfo {
-                        height: template_registration.block_height,
-                        hash: template_registration.block_hash.to_vec(),
-                    }),
                     utxo_hash: template_registration.output_hash.to_vec(),
                     registration: Some(registration),
                 };
@@ -1581,6 +1598,124 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         "[get_template_registrations] Client has disconnected before stream completed"
                     );
                     return;
+                }
+            }
+        });
+        debug!(
+            target: LOG_TARGET,
+            "Sending GetTemplateRegistrations response stream to client"
+        );
+        Ok(Response::new(rx))
+    }
+
+    async fn get_side_chain_utxos(
+        &self,
+        request: Request<tari_rpc::GetSideChainUtxosRequest>,
+    ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
+
+        let (mut tx, rx) = mpsc::channel(10);
+
+        let start_hash = Some(request.start_hash)
+            .filter(|x| !x.is_empty())
+            .map(FixedHash::try_from)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Invalid start_hash"))?;
+
+        let mut node_service = self.node_service.clone();
+
+        let start_header = match start_hash {
+            Some(hash) => node_service
+                .get_header_by_hash(hash)
+                .await
+                .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
+                .ok_or_else(|| Status::not_found("Start hash not found"))?,
+            None => node_service
+                .get_header(0)
+                .await
+                .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
+                .ok_or_else(|| Status::unavailable("Genesis block not available"))?,
+        };
+
+        if request.count == 0 {
+            return Ok(Response::new(rx));
+        }
+
+        let start_height = start_header.height();
+        let end_height = start_height
+            .checked_add(request.count - 1)
+            .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
+
+        task::spawn(async move {
+            let mut current_header = start_header;
+
+            for height in start_height..=end_height {
+                let header_hash = *current_header.hash();
+                let utxos = match node_service.fetch_unspent_utxos_in_block(header_hash).await {
+                    Ok(utxos) => utxos,
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Base node service error: {}", e);
+                        return;
+                    },
+                };
+
+                let next_header = match node_service.get_header(height + 1).await {
+                    Ok(h) => h,
+                    Err(e) => {
+                        let _ignore = tx.send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(e.to_string()),
+                        )));
+                        return;
+                    },
+                };
+
+                let sidechain_outputs = utxos
+                    .into_iter()
+                    .filter(|u| u.features.output_type.is_sidechain_type())
+                    .collect::<Vec<_>>();
+
+                match sidechain_outputs.into_iter().map(TryInto::try_into).collect() {
+                    Ok(outputs) => {
+                        let resp = tari_rpc::GetSideChainUtxosResponse {
+                            block_info: Some(tari_rpc::BlockInfo {
+                                height: current_header.height(),
+                                hash: header_hash.to_vec(),
+                                next_block_hash: next_header.as_ref().map(|h| h.hash().to_vec()).unwrap_or_default(),
+                            }),
+                            outputs,
+                        };
+
+                        if tx.send(Ok(resp)).await.is_err() {
+                            debug!(
+                                target: LOG_TARGET,
+                                "[get_template_registrations] Client has disconnected before stream completed"
+                            );
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending converting sidechain output for GRPC: {}", e
+                        );
+                        let _ignore = tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Error converting sidechain output: {}", e)),
+                            )))
+                            .await;
+                        return;
+                    },
+                };
+
+                match next_header {
+                    Some(header) => {
+                        current_header = header;
+                    },
+                    None => break,
                 }
             }
         });

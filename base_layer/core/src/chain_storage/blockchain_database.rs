@@ -439,6 +439,11 @@ where B: BlockchainBackend
         db.fetch_utxos_in_block(&hash, deleted.as_deref())
     }
 
+    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_outputs_in_block(&hash)
+    }
+
     /// Returns the number of UTXOs in the current unspent set
     pub fn utxo_count(&self) -> Result<usize, ChainStorageError> {
         let db = self.db_read_access()?;

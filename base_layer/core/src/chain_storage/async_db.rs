@@ -163,6 +163,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
 
+    make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<PrunedOutput>, "fetch_outputs_in_block");
+
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
     //---------------------------------- Kernel --------------------------------------------//

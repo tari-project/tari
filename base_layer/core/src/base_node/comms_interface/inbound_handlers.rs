@@ -389,6 +389,15 @@ where B: BlockchainBackend + 'static
                     template_registrations,
                 ))
             },
+            NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
+                let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
+                Ok(NodeCommsResponse::TransactionOutputs(
+                    utxos
+                        .into_iter()
+                        .filter_map(|utxo| utxo.into_unpruned_output())
+                        .collect(),
+                ))
+            },
         }
     }
 

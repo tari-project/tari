@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -78,6 +78,9 @@ pub enum NodeCommsRequest {
     FetchTemplateRegistrations {
         start_height: u64,
         end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
     },
 }
 
@@ -133,6 +136,9 @@ impl Display for NodeCommsRequest {
                 end_height: end,
             } => {
                 write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
+            },
+            FetchUnspentUtxosInBlock { block_hash } => {
+                write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
             },
         }
     }
