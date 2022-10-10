@@ -1417,8 +1417,8 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
         let script_lock_height = known_script.script_lock_height as i64;
         let script_hash = known_script.script_hash;
         let private_key = known_script.private_key.as_bytes().to_vec();
-        let script = known_script.script.as_bytes().to_vec();
-        let input = known_script.input.as_bytes().to_vec();
+        let script = known_script.script.to_bytes().to_vec();
+        let input = known_script.input.to_bytes().to_vec();
         KnownOneSidedPaymentScriptSql {
             script_hash,
             private_key,

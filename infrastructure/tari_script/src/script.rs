@@ -119,7 +119,7 @@ impl TariScript {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         self.script.iter().fold(Vec::new(), |mut bytes, op| {
             op.to_bytes(&mut bytes);
             bytes
@@ -137,7 +137,7 @@ impl TariScript {
         if D::output_size() < 32 {
             return Err(ScriptError::InvalidDigest);
         }
-        let h = D::digest(&self.as_bytes());
+        let h = D::digest(&self.to_bytes());
         Ok(slice_to_hash(&h.as_slice()[..32]))
     }
 
@@ -178,7 +178,7 @@ impl TariScript {
     pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
         let b = Blake256::new()
             .chain(pub_key.as_bytes())
-            .chain(&self.as_bytes())
+            .chain(&self.to_bytes())
             .finalize();
         RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
     }
@@ -562,7 +562,7 @@ impl Hex for TariScript {
     }
 
     fn to_hex(&self) -> String {
-        to_hex(&self.as_bytes())
+        to_hex(&self.to_bytes())
     }
 }
 
@@ -948,7 +948,7 @@ mod test {
     #[test]
     fn serialisation() {
         let script = script!(Add Sub Add);
-        assert_eq!(&script.as_bytes(), &[0x93, 0x94, 0x93]);
+        assert_eq!(&script.to_bytes(), &[0x93, 0x94, 0x93]);
         assert_eq!(TariScript::from_bytes(&[0x93, 0x94, 0x93]).unwrap(), script);
         assert_eq!(script.to_hex(), "939493");
         assert_eq!(TariScript::from_hex("939493").unwrap(), script);
