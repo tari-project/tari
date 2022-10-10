@@ -24,7 +24,7 @@ mod serde;
 mod stack;
 
 pub use error::ScriptError;
-pub use op_codes::{slice_to_boxed_hash, slice_to_hash, HashValue, Opcode};
+pub use op_codes::{slice_to_boxed_hash, slice_to_boxed_message, slice_to_hash, HashValue, Opcode};
 pub use script::TariScript;
 pub use script_commitment::{ScriptCommitment, ScriptCommitmentError, ScriptCommitmentFactory};
 pub use script_context::ScriptContext;

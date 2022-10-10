@@ -66,7 +66,7 @@ Feature: Wallet CLI
         When I create a burn transaction of 201552500000 uT from WALLET via command line
         When I mine 5 blocks on BASE
         Then all nodes are at height 20
-        Then I get balance of wallet WALLET is at least 20000000000 uT via command line
+        Then I get balance of wallet WALLET is at least 15000000000 uT via command line
         # TODO: verify the actual burned kernel
         
     @long-running
