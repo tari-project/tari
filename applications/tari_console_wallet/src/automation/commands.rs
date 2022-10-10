@@ -54,7 +54,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
+use tari_crypto::keys::{SecretKey, PublicKey as TraitPublicKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -275,7 +275,7 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature, RistrettoSecretKey), CommandError> {
+pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature, PublicKey), CommandError> {
     let private_key =
         PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
     let challenge = challenge.as_bytes();
@@ -283,7 +283,8 @@ pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature
     let nonce = PrivateKey::random(&mut OsRng);
     let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(CommandError::FailedSignature)?;
 
-    Ok((signature, nonce))
+    let public_nonce = PublicKey::from_secret_key(&nonce);
+    Ok((signature, public_nonce))
 }
 
 async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
@@ -717,7 +718,7 @@ pub async fn command_runner(
                         "Sign message: 
                                 1. signature: {},
                                 2. public key: {}",
-                        *Zeroizing::new(sgn.get_signature().to_hex()),
+                        sgn.get_signature().to_hex(),
                         nonce.to_hex(),
                     )
                 },
