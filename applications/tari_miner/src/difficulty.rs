@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
-use tari_core::proof_of_work::sha3_difficulty;
+
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
-use tari_core::{blocks::BlockHeader, large_ints::U256};
+use tari_core::{blocks::BlockHeader, large_ints::U256, proof_of_work::sha3_difficulty};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::errors::MinerError;
@@ -41,10 +41,7 @@ impl BlockHeaderSha3 {
     #[allow(clippy::cast_sign_loss)]
     pub fn new(header: grpc_header) -> Result<Self, MinerError> {
         let header: BlockHeader = header.try_into().map_err(MinerError::BlockHeader)?;
-        Ok(Self {
-            header,
-            hashes: 0,
-        })
+        Ok(Self { header, hashes: 0 })
     }
 
     /// This function will update the timestamp of the header, but only if the new timestamp is greater than the current
