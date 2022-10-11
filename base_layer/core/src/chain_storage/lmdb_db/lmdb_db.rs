@@ -20,18 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Because we use dynamically sized u8 vectors for hash types through the type alias HashOutput,
-// let's ignore this clippy error in this module
-
-#![allow(clippy::ptr_arg)]
-
 use std::{
     collections::HashMap,
     convert::TryFrom,
     fmt,
     fs,
     fs::File,
-    mem,
     ops::Deref,
     path::Path,
     sync::Arc,
@@ -69,6 +63,7 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
+            composite_key::CompositeKey,
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_clear,
@@ -103,7 +98,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
         Reorg,
-        TemplateRegistration,
+        TemplateRegistrationEntry,
     },
     consensus::ConsensusManager,
     transactions::{
@@ -147,6 +142,15 @@ const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_VALIDATOR_NODE_ENDING: &str = "validator_node_ending";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
+
+/// HeaderHash(32), mmr_pos(4), hash(32)
+type InputKey = CompositeKey<68>;
+/// HeaderHash(32), mmr_pos(4), hash(32)
+type KernelKey = CompositeKey<68>;
+/// HeaderHash(32), mmr_pos(4), hash(32)
+type OutputKey = CompositeKey<68>;
+/// Height(8), Hash(32)
+type ValidatorNodeRegistrationKey = CompositeKey<40>;
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
@@ -257,7 +261,7 @@ pub struct LMDBDatabase {
     validator_nodes_mapping: DatabaseRef,
     /// Maps the end block height of nodes
     validator_nodes_ending: DatabaseRef,
-    /// Maps CodeTemplateRegistration hash-> TemplateRegistration
+    /// Maps CodeTemplateRegistration <block_height, hash> -> TemplateRegistration
     template_registrations: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
@@ -562,19 +566,16 @@ impl LMDBDatabase {
         key: &OutputKey,
     ) -> Result<TransactionOutput, ChainStorageError> {
         let mut output: TransactionOutputRowData =
-            lmdb_get(txn, &self.utxos_db, key.as_bytes()).or_not_found("TransactionOutput", "key", key.to_hex())?;
+            lmdb_get(txn, &self.utxos_db, key).or_not_found("TransactionOutput", "key", key.to_string())?;
         let pruned_output = output
             .output
             .take()
             .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
                 function: "prune_output",
-                details: format!(
-                    "Attempt to prune output that has already been pruned for key {}",
-                    key.to_hex()
-                ),
+                details: format!("Attempt to prune output that has already been pruned for key {}", key),
             })?;
         // output.output is None
-        lmdb_replace(txn, &self.utxos_db, key.as_bytes(), &output)?;
+        lmdb_replace(txn, &self.utxos_db, key, &output)?;
         Ok(pruned_output)
     }
 
@@ -590,7 +591,7 @@ impl LMDBDatabase {
         let output_hash = output.hash();
         let witness_hash = output.witness_hash();
 
-        let output_key = OutputKey::new(header_hash.as_slice(), mmr_position, &[]);
+        let output_key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_le_bytes().as_slice()])?;
 
         lmdb_insert(
             txn,
@@ -604,13 +605,13 @@ impl LMDBDatabase {
             txn,
             &*self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(mmr_position, output_key.as_bytes()),
+            &(mmr_position, output_key.to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
             &*self.utxos_db,
-            output_key.as_bytes(),
+            &output_key,
             &TransactionOutputRowData {
                 output: Some(output.clone()),
                 header_hash: *header_hash,
@@ -642,18 +643,18 @@ impl LMDBDatabase {
                 header_hash.to_hex(),
             )));
         }
-        let key = OutputKey::new(header_hash.as_slice(), mmr_position, &[]);
+        let key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_le_bytes().as_slice()])?;
         lmdb_insert(
             txn,
             &*self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(mmr_position, key.as_bytes()),
+            &(mmr_position, key.to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
             &*self.utxos_db,
-            key.as_bytes(),
+            &key,
             &TransactionOutputRowData {
                 output: None,
                 header_hash: *header_hash,
@@ -675,7 +676,11 @@ impl LMDBDatabase {
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
         let hash = kernel.hash();
-        let key = KernelKey::new(header_hash.as_slice(), mmr_position, hash.as_slice());
+        let key = KernelKey::try_from_parts(&[
+            header_hash.as_slice(),
+            mmr_position.to_le_bytes().as_slice(),
+            hash.as_slice(),
+        ])?;
 
         lmdb_insert(
             txn,
@@ -699,7 +704,7 @@ impl LMDBDatabase {
         lmdb_insert(
             txn,
             &*self.kernels_db,
-            key.as_bytes(),
+            &key,
             &TransactionKernelRowData {
                 kernel: kernel.clone(),
                 header_hash: *header_hash,
@@ -738,11 +743,15 @@ impl LMDBDatabase {
         )?;
 
         let hash = input.canonical_hash();
-        let key = InputKey::new(header_hash.as_slice(), mmr_position, hash.as_slice());
+        let key = InputKey::try_from_parts(&[
+            header_hash.as_slice(),
+            mmr_position.to_le_bytes().as_slice(),
+            hash.as_slice(),
+        ])?;
         lmdb_insert(
             txn,
             &*self.inputs_db,
-            key.as_bytes(),
+            &key,
             &TransactionInputRowDataRef {
                 input: &input.to_compact(),
                 header_hash,
@@ -1315,6 +1324,7 @@ impl LMDBDatabase {
                 ))
             })?;
 
+            let output_hash = output.hash();
             if let Some(vn_reg) = output
                 .features
                 .sidechain_feature
@@ -1332,7 +1342,7 @@ impl LMDBDatabase {
                             .consensus_constants(header.height)
                             .validator_node_timeout(),
                     public_key: vn_reg.public_key.clone(),
-                    output_hash: output.hash(),
+                    output_hash,
                 };
                 self.insert_validator_node(txn, &validator_node)?;
             }
@@ -1342,9 +1352,11 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.template_registration())
             {
-                let record = TemplateRegistration {
+                let record = TemplateRegistrationEntry {
                     registration_data: template_reg.clone(),
-                    height: header.height,
+                    output_hash,
+                    block_height: header.height,
+                    block_hash,
                 };
 
                 self.insert_template_registration(txn, &record)?;
@@ -1500,8 +1512,8 @@ impl LMDBDatabase {
                 &u64::from(pos + 1).to_be_bytes(),
             )
             .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
-            let key = OutputKey::new(&hash, *pos, &[]);
-            debug!(target: LOG_TARGET, "Pruning output: {}", key.to_hex());
+            let key = OutputKey::try_from_parts(&[hash.as_slice(), pos.to_le_bytes().as_slice()])?;
+            debug!(target: LOG_TARGET, "Pruning output: {}", key);
             self.prune_output(write_txn, &key)?;
         }
 
@@ -1642,13 +1654,16 @@ impl LMDBDatabase {
     fn insert_template_registration(
         &self,
         txn: &WriteTransaction<'_>,
-        template_registration: &TemplateRegistration,
+        template_registration: &TemplateRegistrationEntry,
     ) -> Result<(), ChainStorageError> {
-        let key = template_registration.registration_data.hash();
+        let key = ValidatorNodeRegistrationKey::try_from_parts(&[
+            template_registration.block_height.to_le_bytes().as_slice(),
+            template_registration.output_hash.as_slice(),
+        ])?;
         lmdb_insert(
             txn,
             &self.template_registrations,
-            key.as_bytes(),
+            &key,
             template_registration,
             "template_registrations",
         )
@@ -2050,8 +2065,12 @@ impl BlockchainBackend for LMDBDatabase {
         if let Some((header_hash, mmr_position, hash)) =
             lmdb_get::<_, (HashOutput, u32, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
         {
-            let key = KernelKey::new(header_hash.deref(), mmr_position, hash.deref());
-            Ok(lmdb_get(&txn, &self.kernels_db, key.as_bytes())?
+            let key = KernelKey::try_from_parts(&[
+                header_hash.as_slice(),
+                mmr_position.to_le_bytes().as_slice(),
+                hash.as_slice(),
+            ])?;
+            Ok(lmdb_get(&txn, &self.kernels_db, &key)?
                 .map(|kernel: TransactionKernelRowData| (kernel.kernel, header_hash)))
         } else {
             Ok(None)
@@ -2576,16 +2595,22 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
     }
 
-    fn fetch_template_registrations(&self, from_height: u64) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
-        // TODO: we can optimise this query by making using a compound key <reg_height, hash>
+    fn fetch_template_registrations(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_filter_map_values(&txn, &self.template_registrations, |tr: TemplateRegistration| {
-            if tr.height >= from_height {
-                Some(tr)
-            } else {
-                None
+        let mut result = vec![];
+        for _ in start_height..=end_height {
+            let height = start_height.to_le_bytes();
+            let mut cursor: KeyPrefixCursor<TemplateRegistrationEntry> =
+                lmdb_get_prefix_cursor(&txn, &self.template_registrations, &height)?;
+            while let Some((_, val)) = cursor.next()? {
+                result.push(val);
             }
-        })
+        }
+        Ok(result)
     }
 }
 
@@ -2842,30 +2867,3 @@ impl<'a, 'b> DeletedBitmapModel<'a, WriteTransaction<'b>> {
         Ok(())
     }
 }
-
-struct CompositeKey {
-    key: Vec<u8>,
-}
-
-impl CompositeKey {
-    pub fn new(header_hash: &[u8], mmr_position: u32, hash: &[u8]) -> CompositeKey {
-        let mut key = Vec::with_capacity(header_hash.len() + mem::size_of::<u32>() + hash.len());
-        key.extend_from_slice(header_hash);
-        key.extend_from_slice(&mmr_position.to_be_bytes());
-        key.extend_from_slice(hash);
-
-        CompositeKey { key }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.key
-    }
-
-    pub fn to_hex(&self) -> String {
-        self.key.to_hex()
-    }
-}
-
-type InputKey = CompositeKey;
-type KernelKey = CompositeKey;
-type OutputKey = CompositeKey;

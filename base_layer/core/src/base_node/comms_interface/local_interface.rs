@@ -38,9 +38,9 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::ActiveValidatorNode,
+    chain_storage::{ActiveValidatorNode, TemplateRegistrationEntry},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::{CodeTemplateRegistration, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -327,14 +327,33 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_template_registrations(
         &mut self,
-        from_height: u64,
-    ) -> Result<Vec<CodeTemplateRegistration>, CommsInterfaceError> {
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchTemplateRegistrations { from_height })
+            .call(NodeCommsRequest::FetchTemplateRegistrations {
+                start_height,
+                end_height,
+            })
             .await??
         {
             NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches UTXOs that are not spent for the given block hash up to the current chain tip.
+    pub async fn fetch_unspent_utxos_in_block(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash })
+            .await??
+        {
+            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

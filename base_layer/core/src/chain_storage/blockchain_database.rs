@@ -41,7 +41,7 @@ use tari_common_types::{
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{ActiveValidatorNode, TemplateRegistration};
+use super::{ActiveValidatorNode, TemplateRegistrationEntry};
 use crate::{
     blocks::{
         Block,
@@ -437,6 +437,11 @@ where B: BlockchainBackend
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_utxos_in_block(&hash, deleted.as_deref())
+    }
+
+    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_outputs_in_block(&hash)
     }
 
     /// Returns the number of UTXOs in the current unspent set
@@ -1188,12 +1193,18 @@ where B: BlockchainBackend
         db.fetch_committee(height, shard)
     }
 
-    pub fn fetch_template_registrations(
+    pub fn fetch_template_registrations<T: RangeBounds<u64>>(
         &self,
-        from_height: u64,
-    ) -> Result<Vec<TemplateRegistration>, ChainStorageError> {
+        range: T,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_template_registrations(from_height)
+        let (start, mut end) = convert_to_option_bounds(range);
+        if end.is_none() {
+            // `(n..)` means fetch block headers until this node's tip
+            end = Some(db.fetch_last_header()?.height);
+        }
+        let (start, end) = (start.unwrap_or(0), end.unwrap());
+        db.fetch_template_registrations(start, end)
     }
 }
 

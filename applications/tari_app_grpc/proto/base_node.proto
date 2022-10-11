@@ -94,7 +94,8 @@ service BaseNode {
     rpc GetCommittee(GetCommitteeRequest) returns (GetCommitteeResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
     // Get templates
-    rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream TemplateRegistration);
+    rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
+    rpc GetSideChainUtxos(GetSideChainUtxosRequest) returns (stream GetSideChainUtxosResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -471,5 +472,28 @@ message GetShardKeyResponse {
 }
 
 message GetTemplateRegistrationsRequest {
-    uint64 from_height = 1;
+    bytes start_hash = 1;
+    uint64 count = 2;
 }
+
+message GetTemplateRegistrationResponse {
+    bytes utxo_hash = 1;
+    TemplateRegistration registration = 2;
+}
+
+message BlockInfo {
+    uint64 height = 1;
+    bytes hash = 2;
+    bytes next_block_hash = 3;
+}
+
+message GetSideChainUtxosRequest {
+    bytes start_hash = 1;
+    uint64 count = 2;
+}
+
+message GetSideChainUtxosResponse {
+    BlockInfo block_info = 1;
+    repeated TransactionOutput outputs = 2;
+}
+

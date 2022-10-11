@@ -21,11 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::FixedHash;
 
 use crate::transactions::transaction_components::CodeTemplateRegistration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TemplateRegistration {
+pub struct TemplateRegistrationEntry {
     pub registration_data: CodeTemplateRegistration,
-    pub height: u64,
+    pub output_hash: FixedHash,
+    pub block_height: u64,
+    pub block_hash: FixedHash,
 }

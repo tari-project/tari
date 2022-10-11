@@ -30,7 +30,7 @@ use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
-use super::{ActiveValidatorNode, TemplateRegistration};
+use super::{ActiveValidatorNode, TemplateRegistrationEntry};
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
@@ -363,7 +363,7 @@ pub enum WriteOperation {
         validator_node: ActiveValidatorNode,
     },
     InsertTemplateRegistration {
-        template_registration: TemplateRegistration,
+        template_registration: TemplateRegistrationEntry,
     },
 }
 
