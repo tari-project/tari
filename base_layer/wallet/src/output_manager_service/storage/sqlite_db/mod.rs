@@ -391,56 +391,54 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        match op {
-            WriteOperation::Insert(kvp) => self.insert(kvp, &conn)?,
+        let mut msg = "".to_string();
+        let result = match op {
+            WriteOperation::Insert(kvp) => {
+                msg.push_str("Insert");
+                self.insert(kvp, &conn)?;
+                Ok(None)
+            },
             WriteOperation::Remove(k) => match k {
                 DbKey::AnyOutputByCommitment(commitment) => {
-                    // Used by coinbase when mining.
-                    match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
-                        Ok(mut o) => {
-                            o.delete(&conn)?;
-                            self.decrypt_if_necessary(&mut o)?;
-                            if start.elapsed().as_millis() > 0 {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "sqlite profile - write Remove: lock {} + db_op {} = {} ms",
-                                    acquire_lock.as_millis(),
-                                    (start.elapsed() - acquire_lock).as_millis(),
-                                    start.elapsed().as_millis()
-                                );
-                            }
-                            return Ok(Some(DbValue::AnyOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
-                        },
-                        Err(e) => {
-                            match e {
-                                OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
-                                e => return Err(e),
-                            };
-                        },
-                    }
+                    conn.transaction::<_, _, _>(|| {
+                        msg.push_str("Remove");
+                        // Used by coinbase when mining.
+                        match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
+                            Ok(mut o) => {
+                                o.delete(&conn)?;
+                                self.decrypt_if_necessary(&mut o)?;
+                                Ok(Some(DbValue::AnyOutput(Box::new(DbUnblindedOutput::try_from(o)?))))
+                            },
+                            Err(e) => match e {
+                                OutputManagerStorageError::DieselError(DieselError::NotFound) => Ok(None),
+                                e => Err(e),
+                            },
+                        }
+                    })
                 },
-                DbKey::SpentOutput(_s) => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::UnspentOutputHash(_h) => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::UnspentOutput(_k) => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::OutputsByTxIdAndStatus(_, _) => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::SpentOutput(_s) => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::UnspentOutputHash(_h) => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::UnspentOutput(_k) => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::UnspentOutputs => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::SpentOutputs => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::InvalidOutputs => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::TimeLockedUnspentOutputs(_) => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KnownOneSidedPaymentScripts => Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::OutputsByTxIdAndStatus(_, _) => Err(OutputManagerStorageError::OperationNotSupported),
             },
-        }
+        };
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - write Insert: lock {} + db_op {} = {} ms",
+                "sqlite profile - write {}: lock {} + db_op {} = {} ms",
+                msg,
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
 
-        Ok(None)
+        result
     }
 
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
@@ -852,50 +850,55 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
+        conn.transaction::<_, _, _>(|| {
+            let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
 
-        if outputs.is_empty() {
-            return Err(OutputManagerStorageError::ValueNotFound);
-        }
-
-        for output in &outputs {
-            if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
-                info!(
-                    target: LOG_TARGET,
-                    "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
-                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
-                    output.mined_mmr_position,
-                    tx_id
-                );
-                output.update(
-                    UpdateOutput {
-                        status: Some(OutputStatus::CancelledInbound),
-                        ..Default::default()
-                    },
-                    &conn,
-                )?;
-            } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
-                info!(
-                    target: LOG_TARGET,
-                    "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
-                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
-                    output.mined_mmr_position,
-                    tx_id
-                );
-                output.update(
-                    UpdateOutput {
-                        status: Some(OutputStatus::Unspent),
-                        spent_in_tx_id: Some(None),
-                        // We clear these so that the output will be revalidated the next time a validation is done.
-                        mined_height: Some(None),
-                        mined_in_block: Some(None),
-                        ..Default::default()
-                    },
-                    &conn,
-                )?;
-            } else {
+            if outputs.is_empty() {
+                return Err(OutputManagerStorageError::ValueNotFound);
             }
-        }
+
+            for output in &outputs {
+                if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
+                    info!(
+                        target: LOG_TARGET,
+                        "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                        output.mined_mmr_position,
+                        tx_id
+                    );
+                    output.update(
+                        UpdateOutput {
+                            status: Some(OutputStatus::CancelledInbound),
+                            ..Default::default()
+                        },
+                        &conn,
+                    )?;
+                } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
+                    info!(
+                        target: LOG_TARGET,
+                        "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                        output.mined_mmr_position,
+                        tx_id
+                    );
+                    output.update(
+                        UpdateOutput {
+                            status: Some(OutputStatus::Unspent),
+                            spent_in_tx_id: Some(None),
+                            // We clear these so that the output will be revalidated the next time a validation is done.
+                            mined_height: Some(None),
+                            mined_in_block: Some(None),
+                            ..Default::default()
+                        },
+                        &conn,
+                    )?;
+                } else {
+                }
+            }
+
+            Ok(())
+        })?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -915,17 +918,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
-        db_output.update(
-            // Note: Only the `nonce` and `u` portion needs to be updated at this time as the `v` portion is already
-            // correct
-            UpdateOutput {
-                metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
-                metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
-                ..Default::default()
-            },
-            &conn,
-        )?;
+
+        conn.transaction::<_, OutputManagerStorageError, _>(|| {
+            let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
+            db_output.update(
+                // Note: Only the `nonce` and `u` portion needs to be updated at this time as the `v` portion is
+                // already correct
+                UpdateOutput {
+                    metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
+                    metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+                    ..Default::default()
+                },
+                &conn,
+            )?;
+
+            Ok(())
+        })?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -943,18 +951,23 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
 
-        if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
-            return Err(OutputManagerStorageError::ValuesNotFound);
-        }
-        output.update(
-            UpdateOutput {
-                status: Some(OutputStatus::Unspent),
-                ..Default::default()
-            },
-            &conn,
-        )?;
+        conn.transaction::<_, _, _>(|| {
+            let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
+
+            if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
+                return Err(OutputManagerStorageError::ValuesNotFound);
+            }
+            output.update(
+                UpdateOutput {
+                    status: Some(OutputStatus::Unspent),
+                    ..Default::default()
+                },
+                &conn,
+            )?;
+
+            Ok(())
+        })?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
