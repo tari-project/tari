@@ -2618,7 +2618,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     Ok(())
 }
 
-// TODO: remove
+// TODO: this is a temporary fix, remove
 mod tari_script_execution_stack_bug_migration {
     use serde::{Deserialize, Serialize};
     use tari_common_types::types::{ComSignature, PublicKey};
@@ -2632,6 +2632,13 @@ mod tari_script_execution_stack_bug_migration {
     };
 
     pub fn migrate(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
+        {
+            let txn = db.read_transaction()?;
+            // Only perform migration if necessary
+            if lmdb_len(&txn, &db.inputs_db)? == 0 {
+                return Ok(());
+            }
+        }
         unsafe {
             LMDBStore::resize(&db.env, &LMDBConfig::new(0, 1024 * 1024 * 1024, 0))?;
         }

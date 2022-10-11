@@ -23,7 +23,7 @@
 use std::convert::TryInto;
 
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
-use tari_core::{blocks::BlockHeader, large_ints::U256, proof_of_work::sha3_difficulty};
+use tari_core::{blocks::BlockHeader, proof_of_work::sha3_difficulty};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::errors::MinerError;
@@ -79,13 +79,6 @@ impl BlockHeaderSha3 {
     pub fn height(&self) -> u64 {
         self.header.height
     }
-}
-
-/// This will provide the difficulty of the hash assuming the hash is big_endian
-fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
-    let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
-    let result = U256::MAX / scalar;
-    result.low_u64()
 }
 
 #[cfg(test)]
