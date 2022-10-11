@@ -44,6 +44,7 @@ use std::{
     convert::TryFrom,
     future::Future,
     io,
+    io::ErrorKind,
     pin::Pin,
     sync::Arc,
     task::Poll,
@@ -353,7 +354,7 @@ where
                 {
                     Ok(_) => {},
                     Err(err @ RpcServerError::HandshakeError(_)) => {
-                        debug!(target: LOG_TARGET, "{}", err);
+                        debug!(target: LOG_TARGET, "Handshake error: {}", err);
                         metrics::handshake_error_counter(&node_id, &notification.protocol).inc();
                     },
                     Err(err) => {
@@ -530,7 +531,7 @@ where
             metrics::error_counter(&self.node_id, &self.protocol, &err).inc();
             let level = match &err {
                 RpcServerError::Io(e) => err_to_log_level(e),
-                RpcServerError::EarlyCloseError(e) => e.io().map(err_to_log_level).unwrap_or(log::Level::Error),
+                RpcServerError::EarlyClose(e) => e.io().map(err_to_log_level).unwrap_or(log::Level::Error),
                 _ => log::Level::Error,
             };
             log!(
@@ -562,8 +563,10 @@ where
                                 err,
                             );
                         }
-                        error!(
+                        let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
+                        log!(
                             target: LOG_TARGET,
+                            level,
                             "(peer: {}, protocol: {}) Failed to handle request: {}",
                             self.node_id,
                             self.protocol_name(),
@@ -880,8 +883,13 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
 }
 
 fn err_to_log_level(err: &io::Error) -> log::Level {
+    error!(target: LOG_TARGET, "KIND: {}", err.kind());
     match err.kind() {
-        io::ErrorKind::BrokenPipe | io::ErrorKind::WriteZero => log::Level::Debug,
+        ErrorKind::ConnectionReset |
+        ErrorKind::ConnectionAborted |
+        ErrorKind::BrokenPipe |
+        ErrorKind::WriteZero |
+        ErrorKind::UnexpectedEof => log::Level::Debug,
         _ => log::Level::Error,
     }
 }
