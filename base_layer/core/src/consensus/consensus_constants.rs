@@ -715,7 +715,9 @@ mod test {
         assert_eq!(block_num, 3_574_175);
         assert_eq!(reward, 800_000_598 * uT);
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
-        let (_, reward, _) = rewards.next().unwrap();
+        let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(reward, esmeralda[0].emission_tail);
+        assert_eq!(block_num, 3_574_176);
+        assert_eq!(supply, 20_100_525_923_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
     }
 }

@@ -78,6 +78,7 @@ uint = { version = "0.9", default-features = false }
 [dev-dependencies]
 tari_p2p = { version = "^0.38", path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = { version = "^0.38", path = "../../infrastructure/test_utils" }
+shamirsecretsharing = "0.1"
 
 config = { version = "0.13.0" }
 env_logger = "0.7.0"
