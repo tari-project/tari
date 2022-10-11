@@ -529,7 +529,7 @@ impl ConsensusConstants {
                 permitted_output_types: Self::current_permitted_output_types(),
             },
             ConsensusConstants {
-                effective_from_height: 19000,
+                effective_from_height: 23000,
                 coinbase_lock_height: 6,
                 blockchain_version: 1,
                 valid_blockchain_version_range: 0..=1,
