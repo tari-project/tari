@@ -75,7 +75,7 @@ use crate::helpers::{
 };
 
 #[test]
-fn fetch_nonexistent_header() {
+fn test_fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -84,7 +84,7 @@ fn fetch_nonexistent_header() {
 }
 
 #[test]
-fn insert_and_fetch_header() {
+fn test_insert_and_fetch_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -110,7 +110,7 @@ fn insert_and_fetch_header() {
 }
 
 #[test]
-fn insert_and_fetch_orphan() {
+fn test_insert_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -127,7 +127,7 @@ fn insert_and_fetch_orphan() {
 }
 
 #[test]
-fn store_and_retrieve_block() {
+fn test_store_and_retrieve_block() {
     let (db, blocks, _, _) = create_new_blockchain(Network::LocalNet);
     let hash = blocks[0].hash();
     // Check the metadata
@@ -144,7 +144,7 @@ fn store_and_retrieve_block() {
 }
 
 #[test]
-fn add_multiple_blocks() {
+fn test_add_multiple_blocks() {
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -201,7 +201,7 @@ fn test_checkpoints() {
 
 #[test]
 #[allow(clippy::identity_op)]
-fn rewind_to_height() {
+fn test_rewind_to_height() {
     let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -277,7 +277,7 @@ fn test_coverage_chain_storage() {
 }
 
 #[test]
-fn rewind_past_horizon_height() {
+fn test_rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_esmeralda_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
@@ -320,7 +320,7 @@ fn rewind_past_horizon_height() {
 }
 
 #[test]
-fn handle_tip_reorg() {
+fn test_handle_tip_reorg() {
     // GB --> A1 --> A2(Low PoW)      [Main Chain]
     //          \--> B2(Highest PoW)  [Forked Chain]
     // Initially, the main chain is GB->A1->A2. B2 has a higher accumulated PoW and when B2 is added the main chain is
@@ -388,7 +388,7 @@ fn handle_tip_reorg() {
 #[test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
-fn handle_reorg() {
+fn test_handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
     //                        \-----> C4(Highest PoW) [Forked Chain 2]
@@ -561,7 +561,7 @@ fn handle_reorg() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn reorgs_should_update_orphan_tips() {
+fn test_reorgs_should_update_orphan_tips() {
     // Create a main chain GB -> A1 -> A2
     // Create an orphan chain GB -> B1
     // Add a block B2 that forces a reorg to B2
@@ -810,7 +810,7 @@ fn reorgs_should_update_orphan_tips() {
 }
 
 #[test]
-fn handle_reorg_with_no_removed_blocks() {
+fn test_handle_reorg_with_no_removed_blocks() {
     // GB --> A1
     //          \--> B2 (?) --> B3)
     // Initially, the main chain is GB->A1 with orphaned blocks B3. When B2 arrives late and is
@@ -883,7 +883,7 @@ fn handle_reorg_with_no_removed_blocks() {
 }
 
 #[test]
-fn handle_reorg_failure_recovery() {
+fn test_handle_reorg_failure_recovery() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(double spend - rejected by db)  [Forked Chain 1]
     //          \--> B2 --> B3'(validation failed)      [Forked Chain 1]
@@ -1002,7 +1002,7 @@ fn handle_reorg_failure_recovery() {
 }
 
 #[test]
-fn store_and_retrieve_blocks() {
+fn test_store_and_retrieve_blocks() {
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -1064,7 +1064,7 @@ fn store_and_retrieve_blocks() {
 
 #[test]
 #[allow(clippy::identity_op)]
-fn store_and_retrieve_blocks_from_contents() {
+fn test_store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 
@@ -1102,7 +1102,7 @@ fn store_and_retrieve_blocks_from_contents() {
 }
 
 #[test]
-fn restore_metadata_and_pruning_horizon_update() {
+fn test_restore_metadata_and_pruning_horizon_update() {
     // Perform test
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1177,7 +1177,7 @@ fn restore_metadata_and_pruning_horizon_update() {
 }
 static EMISSION: [u64; 2] = [10, 10];
 #[test]
-fn invalid_block() {
+fn test_invalid_block() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -1278,7 +1278,7 @@ fn invalid_block() {
 }
 
 #[test]
-fn orphan_cleanup_on_block_add() {
+fn test_orphan_cleanup_on_block_add() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let validators = Validators::new(
@@ -1345,7 +1345,7 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-fn horizon_height_orphan_cleanup() {
+fn test_horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_esmeralda_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
@@ -1405,7 +1405,7 @@ fn horizon_height_orphan_cleanup() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn orphan_cleanup_on_reorg() {
+fn test_orphan_cleanup_on_reorg() {
     // Create Main Chain
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
@@ -1541,7 +1541,7 @@ fn orphan_cleanup_on_reorg() {
 }
 
 #[test]
-fn orphan_cleanup_delete_all_orphans() {
+fn test_orphan_cleanup_delete_all_orphans() {
     let path = create_temporary_data_path();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -1644,7 +1644,7 @@ fn orphan_cleanup_delete_all_orphans() {
 }
 
 #[test]
-fn fails_validation() {
+fn test_fails_validation() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
@@ -1755,8 +1755,7 @@ mod malleability {
         // This test hightlights that the "version" field is not being included in the input hash
         // so a consensus change is needed for the input to include it
         #[test]
-        #[ignore]
-        fn version() {
+        fn test_version() {
             check_input_malleability(|block: &mut Block| {
                 let input = &mut block.body.inputs_mut()[0];
                 let mod_version = match input.version {
@@ -1768,7 +1767,7 @@ mod malleability {
         }
 
         #[test]
-        fn spent_output() {
+        fn test_spent_output() {
             check_input_malleability(|block: &mut Block| {
                 // to modify the spent output, we will substitue it for a copy of a different output
                 // we will use one of the outputs of the current transaction
@@ -1789,7 +1788,7 @@ mod malleability {
         }
 
         #[test]
-        fn input_data() {
+        fn test_input_data() {
             check_input_malleability(|block: &mut Block| {
                 block.body.inputs_mut()[0]
                     .input_data
@@ -1799,7 +1798,7 @@ mod malleability {
         }
 
         #[test]
-        fn script_signature() {
+        fn test_script_signature() {
             check_input_malleability(|block: &mut Block| {
                 let input = &mut block.body.inputs_mut()[0];
                 input.script_signature = ComSignature::default();
@@ -1811,7 +1810,7 @@ mod malleability {
         use super::*;
 
         #[test]
-        fn version() {
+        fn test_version() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_version = match output.version {
@@ -1823,7 +1822,7 @@ mod malleability {
         }
 
         #[test]
-        fn features() {
+        fn test_features() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.features.maturity += 1;
@@ -1831,7 +1830,7 @@ mod malleability {
         }
 
         #[test]
-        fn commitment() {
+        fn test_commitment() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_commitment = &output.commitment + &output.commitment;
@@ -1840,7 +1839,7 @@ mod malleability {
         }
 
         #[test]
-        fn proof() {
+        fn test_proof() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
@@ -1849,7 +1848,7 @@ mod malleability {
         }
 
         #[test]
-        fn script() {
+        fn test_script() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mut script_bytes = output.script.to_bytes();
@@ -1862,8 +1861,7 @@ mod malleability {
         // This test hightlights that the "sender_offset_public_key" field is not being included in the output hash
         // so a consensus change is needed for the output to include it
         #[test]
-        #[ignore]
-        fn sender_offset_public_key() {
+        fn test_sender_offset_public_key() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
 
@@ -1874,7 +1872,7 @@ mod malleability {
         }
 
         #[test]
-        fn metadata_signature() {
+        fn test_metadata_signature() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.metadata_signature = ComSignature::default();
@@ -1882,7 +1880,7 @@ mod malleability {
         }
 
         #[test]
-        fn covenant() {
+        fn test_covenant() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_covenant = covenant!(absolute_height(@uint(42)));
@@ -1901,7 +1899,7 @@ mod malleability {
         // the "features" field has only a constant value at the moment, so no malleability test possible
 
         #[test]
-        fn fee() {
+        fn test_fee() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 kernel.fee += MicroTari::from(1);
@@ -1909,7 +1907,7 @@ mod malleability {
         }
 
         #[test]
-        fn lock_height() {
+        fn test_lock_height() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 kernel.lock_height += 1;
@@ -1917,7 +1915,7 @@ mod malleability {
         }
 
         #[test]
-        fn excess() {
+        fn test_excess() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 let mod_excess = &kernel.excess + &kernel.excess;
@@ -1926,7 +1924,7 @@ mod malleability {
         }
 
         #[test]
-        fn excess_sig() {
+        fn test_excess_sig() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 // "gerate_keys" should return a group of random keys, different from the ones in the field
@@ -1939,7 +1937,7 @@ mod malleability {
 
 #[allow(clippy::identity_op)]
 #[test]
-fn fetch_deleted_position_block_hash() {
+fn test_fetch_deleted_position_block_hash() {
     // Create Main Chain
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
