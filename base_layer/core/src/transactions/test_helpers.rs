@@ -24,13 +24,15 @@ use std::sync::Arc;
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
+    ristretto::pedersen::PedersenCommitment,
 };
 use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
@@ -829,4 +831,170 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
+}
+
+/// Create a new multi_party UTXO for the specified value and return the output and offset key
+pub fn create_multi_party_utxo(
+    value: MicroTari,
+    factories: &CryptoFactories,
+    features: &OutputFeatures,
+    script: &TariScript,
+    covenant: &Covenant,
+    minimum_value_promise: MicroTari,
+) -> TransactionOutput {
+    // Refer to 'RFC-0201_TariScript.html#transaction-output-changes' and
+    // 'RFC-0201_TariScript.html#multi-party-transaction-output' for equation numbers used below
+
+    // 0. Sender: Public nonce and offset key [eqn (2)/(10)]
+    let sender_nonce = generate_keys();
+    let sender_offset_key = generate_keys();
+
+    // -------------------------------------------
+    // The sender sends K_Oi,R_MSi to the receiver
+    // -------------------------------------------
+
+    // 1. Receiver: Create spending key shares
+    // Party 1
+    let spending_keys_1 = generate_keys();
+    // TODO: - SSS
+    // let shards_1 = sss(&keys_1.k, m, n); // Keep share 1, each other party gets 1 shard
+    let commitment_1 = factories.commitment.commit_value(&spending_keys_1.k, 0);
+    assert_eq!(&spending_keys_1.pk, commitment_1.as_public_key());
+    let nonce_b_1 = generate_keys(); // Kept secret
+    let public_nonce_b_1 = nonce_b_1.pk;
+
+    // Party 2
+    let spending_keys_2 = generate_keys();
+    // TODO: - SSS
+    // let shards_2 = sss(&keys_2.k, m, n); // Keep share 1, each other party gets 1 shard
+    let commitment_2 = factories.commitment.commit_value(&spending_keys_2.k, 0);
+    assert_eq!(&spending_keys_2.pk, commitment_2.as_public_key());
+    let nonce_b_2 = generate_keys(); // Kept secret
+    let public_nonce_b_2 = nonce_b_2.pk;
+
+    // Party 3
+    let spending_keys_3 = generate_keys();
+    // TODO: - SSS
+    // let shards_3 = sss(&keys_3.k, m, n); // Keep share 1, each other party gets 1 shard
+    let commitment_3 = factories.commitment.commit_value(&spending_keys_3.k, 0);
+    assert_eq!(&spending_keys_3.pk, commitment_3.as_public_key());
+    let nonce_b_3 = generate_keys(); // Kept secret
+    let public_nonce_b_3 = nonce_b_3.pk;
+
+    // 2. Receiver: Aggregated value commitment (leader) [eqn (1b)]
+    let commitment_value = factories.commitment.commit_value(&PrivateKey::default(), value.into());
+    let commitment = &(&(&commitment_value + &commitment_1) + &commitment_2) + &commitment_3;
+    assert_eq!(
+        commitment,
+        factories.commitment.commit_value(
+            &(&(&spending_keys_1.k + &spending_keys_2.k) + &spending_keys_3.k),
+            value.into()
+        )
+    );
+
+    // 3. Receiver: Public nonce (leader) [eqn (3b)]
+    let receiver_nonce_a = PrivateKey::random(&mut OsRng); // Leader
+    let public_receiver_nonce_a = CommitmentFactory::default().commit(&PrivateKey::default(), &receiver_nonce_a); // Leader
+    let public_receiver_nonce =
+        &(&(&public_receiver_nonce_a + &public_nonce_b_1) + &public_nonce_b_2) + &public_nonce_b_3;
+    assert_eq!(
+        public_receiver_nonce,
+        factories
+            .commitment
+            .commit(&(&(&nonce_b_1.k + &nonce_b_2.k) + &nonce_b_3.k), &receiver_nonce_a)
+    );
+
+    // 4. Receiver: Calculate challenge (leader) [eqn (4)]
+    let aggregated_public_nonce = &public_receiver_nonce + &sender_nonce.pk;
+    let e = TransactionOutput::build_metadata_signature_challenge(
+        TransactionOutputVersion::get_current_version(),
+        script,
+        features,
+        &sender_offset_key.pk,
+        &aggregated_public_nonce,
+        &commitment,
+        covenant,
+        &EncryptedValue::default(),
+        MicroTari::zero(),
+    );
+    let e = PrivateKey::from_bytes(&e).unwrap();
+
+    // 5. Receiver: Create commitment signature parts [eqn (5b)]
+    // Party 1
+    let ex_1 = &e * &spending_keys_1.k;
+    let u_1 = nonce_b_1.k + &ex_1;
+
+    // Party 2
+    let ex_2 = &e * &spending_keys_2.k;
+    let u_2 = nonce_b_2.k + &ex_2;
+
+    // Party 3
+    let ex_3 = &e * &spending_keys_3.k;
+    let u_3 = nonce_b_3.k + &ex_3;
+
+    // 6. Receiver: Combine the commitment signature parts (leader) [eqn (5b)]
+    let secret_a = PrivateKey::from(value.as_u64());
+
+    let ea = &e * &secret_a;
+    let v = &receiver_nonce_a + &ea;
+    let u = u_1 + u_2 + u_3;
+
+    let receiver_metadata_signature = ComSignature::new(public_receiver_nonce, u, v);
+    assert!(receiver_metadata_signature.verify(&commitment, &e, &CommitmentFactory::default()));
+
+    // 7. Receiver: Create the multi-party range proof
+    // TODO: Multi-party range proof
+    let spending_key = &(&spending_keys_1.k + &spending_keys_2.k) + &spending_keys_3.k;
+    let range_proof = factories
+        .range_proof
+        .construct_proof(&spending_key, value.as_u64())
+        .unwrap();
+
+    // -------------------------------------------
+    // The receiver's leader sends C_i, range_proof, R_MRi, s_MRi=(a_MRi,b_MRi,R_MRi) to the sender
+    // -------------------------------------------
+
+    // 7. Sender: Create metadata signature
+    let v = PrivateKey::default();
+    let ex = &e * &sender_offset_key.k;
+    let u = &sender_nonce.k + &ex;
+    let sender_metadata_signature = ComSignature::new(Commitment::from_public_key(&sender_nonce.pk), u, v);
+    assert!(sender_metadata_signature.verify(
+        &PedersenCommitment::from_public_key(&sender_offset_key.pk),
+        &e,
+        &CommitmentFactory::default()
+    ));
+
+    // 8. Sender: Create aggregated metadata signature
+    let aggregated_metadata_signature = &sender_metadata_signature + &receiver_metadata_signature;
+
+    // 9. Sender: Finalizes UTXO
+    TransactionOutput::new_current_version(
+        features.clone(),
+        commitment,
+        range_proof.into(),
+        script.clone(),
+        sender_offset_key.pk,
+        aggregated_metadata_signature,
+        covenant.clone(),
+        EncryptedValue::default(),
+        minimum_value_promise,
+    )
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn multi_party_utxo() {
+    let factories = CryptoFactories::default();
+    let value = MicroTari::from(500_000_000);
+    let utxo = create_multi_party_utxo(
+        value,
+        &factories,
+        &OutputFeatures::default(),
+        &script!(Nop),
+        &Covenant::default(),
+        MicroTari::zero(),
+    );
+    utxo.verify_metadata_signature().unwrap();
+    utxo.verify_range_proof(&factories.range_proof).unwrap();
 }

@@ -693,7 +693,7 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::tari_amount::uT,
+        transactions::tari_amount::{uT, MicroTari},
     };
 
     #[test]
@@ -715,7 +715,79 @@ mod test {
         assert_eq!(block_num, 3_574_175);
         assert_eq!(reward, 800_000_598 * uT);
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
-        let (_, reward, _) = rewards.next().unwrap();
+        let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(reward, esmeralda[0].emission_tail);
+        assert_eq!(block_num, 3_574_176);
+        assert_eq!(supply, 20_100_525_923_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
+    }
+
+    #[test]
+    fn esmeralda_faucet_tranches_schedule() {
+        const TRANCHE_BLOCKS: u64 = 10_080; // Adjust as needed
+        const TRANCHE_PERCENTAGE: u64 = 2; // Adjust as needed
+
+        fn integer_percentage_repeatable(value: MicroTari, percentage: u64) -> MicroTari {
+            // Prevent overflow
+            if value.as_u64() > u64::MAX / 100 - 1 {
+                panic!("Value not allowed, this should not happen!");
+            }
+            // Calculate repeatable
+            let mut result = value.as_u64() * percentage / 100;
+            result += if result % 2 == 0 { 0 } else { 1 };
+            MicroTari::from(result)
+        }
+
+        #[allow(dead_code)]
+        fn print_values(
+            block_num: u64,
+            tranche_count: i32,
+            total_tranche_rewards: MicroTari,
+            faucet_tranche_value: MicroTari,
+            last_block: &str,
+        ) {
+            println!(
+                "Tranche {}:, accumulated value {}, faucet value {}, at block {}{}",
+                tranche_count,
+                total_tranche_rewards,
+                faucet_tranche_value,
+                block_num - 1,
+                last_block
+            );
+            if !last_block.is_empty() {
+                println!("Last tranche blocks count {}", block_num % TRANCHE_BLOCKS);
+            }
+        }
+
+        let esmeralda = ConsensusConstants::esmeralda();
+        let schedule = EmissionSchedule::new(
+            esmeralda[0].emission_initial,
+            esmeralda[0].emission_decay,
+            esmeralda[0].emission_tail,
+        );
+        let mut total_tranche_rewards = MicroTari::zero();
+        let mut faucet_tranche_value = MicroTari::zero();
+        let mut tranche_count = 0;
+
+        let rewards = schedule.iter();
+        for (block_num, reward, _supply) in rewards {
+            let faucet_block_value = integer_percentage_repeatable(reward, TRANCHE_PERCENTAGE);
+            if reward == esmeralda[0].emission_tail {
+                tranche_count += 1;
+                // Uncomment to print values
+                // print_values(block_num, tranche_count, total_tranche_rewards, faucet_tranche_value, " (final)");
+                assert_eq!(block_num, 3_574_176); // This is dependent on the emission schedule
+                assert_eq!(tranche_count, 355); // This is dependent on the tranche parameters
+                break;
+            }
+            total_tranche_rewards += reward;
+            faucet_tranche_value += faucet_block_value;
+            if block_num % TRANCHE_BLOCKS == 0 {
+                tranche_count += 1;
+                // Uncomment to print values
+                // print_values(block_num, tranche_count, total_tranche_rewards, faucet_tranche_value, "");
+                total_tranche_rewards = MicroTari::zero();
+                faucet_tranche_value = MicroTari::zero();
+            }
+        }
     }
 }
