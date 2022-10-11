@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.7](https://github.com/tari-project/tari/compare/v0.38.6...v0.38.7) (2022-10-11)
+
+
+### Bug Fixes
+
+* **core:** only resize db if migration is required ([#4792](https://github.com/tari-project/tari/issues/4792)) ([4811a57](https://github.com/tari-project/tari/commit/4811a5772665af4e3b9007ccadedfc651e1d232e))
+* **miner:** clippy error ([#4793](https://github.com/tari-project/tari/issues/4793)) ([734db22](https://github.com/tari-project/tari/commit/734db22bbdd36b5371aa9c70f4342bb0d3c2f3a4))
+
+### [0.38.6](https://github.com/tari-project/tari/compare/v0.38.5...v0.38.6) (2022-10-11)
+
+
+### Features
+
+* **base-node:** add client connection count to status line ([#4774](https://github.com/tari-project/tari/issues/4774)) ([8339b1d](https://github.com/tari-project/tari/commit/8339b1de1bace96671d8eba0cf309adb9f78014a))
+* move nonce to first in sha hash ([#4778](https://github.com/tari-project/tari/issues/4778)) ([054a314](https://github.com/tari-project/tari/commit/054a314f015ab7a3f1e571f3ee0c7a58ad0ebb5a))
+* remove dalek ng ([#4769](https://github.com/tari-project/tari/issues/4769)) ([953b0b7](https://github.com/tari-project/tari/commit/953b0b7cfc371467e7d15e933e79c8d07712f666))
+
+
+### Bug Fixes
+
+* batch rewind operations ([#4752](https://github.com/tari-project/tari/issues/4752)) ([79d3c47](https://github.com/tari-project/tari/commit/79d3c47a86bc37be0117b33c869f9e04df068384))
+* **ci:** fix client path for nodejs  ([#4765](https://github.com/tari-project/tari/issues/4765)) ([c7b5e68](https://github.com/tari-project/tari/commit/c7b5e68b400c79040f2dd92ee1cc779224e463ee))
+* **core:** only resize db if migration is required ([#4792](https://github.com/tari-project/tari/issues/4792)) ([4811a57](https://github.com/tari-project/tari/commit/4811a5772665af4e3b9007ccadedfc651e1d232e))
+* **dht:** remove some invalid saf failure cases ([#4787](https://github.com/tari-project/tari/issues/4787)) ([86b4d94](https://github.com/tari-project/tari/commit/86b4d9437f87cb31ed922ff7a7dc73e7fe29eb69))
+* fix config.toml bug ([#4780](https://github.com/tari-project/tari/issues/4780)) ([f6043c1](https://github.com/tari-project/tari/commit/f6043c1f03f33a34e2612516ffca8a589e319001))
+* **miner:** clippy error ([#4793](https://github.com/tari-project/tari/issues/4793)) ([734db22](https://github.com/tari-project/tari/commit/734db22bbdd36b5371aa9c70f4342bb0d3c2f3a4))
+* **p2p/liveness:** remove fallible unwrap ([#4784](https://github.com/tari-project/tari/issues/4784)) ([e59be99](https://github.com/tari-project/tari/commit/e59be99401fc4b50f1b4f5a6a16948959e5c56a1))
+* **tari-script:** use tari script encoding for execution stack serde de/serialization ([#4791](https://github.com/tari-project/tari/issues/4791)) ([c62f7eb](https://github.com/tari-project/tari/commit/c62f7eb6c5b6b4336c7351bd89cb3a700fde1bb2))
+
 ### [0.38.6](https://github.com/tari-project/tari/compare/v0.38.5...v0.38.6) (2022-10-11)
 
 
