@@ -267,7 +267,10 @@ message CreateTemplateRegistrationRequest {
     uint64 fee_per_gram = 2;
 }
 
-message CreateTemplateRegistrationResponse { }
+message CreateTemplateRegistrationResponse {
+    uint64 tx_id = 1;
+    bytes template_address = 2;
+}
 
 message CancelTransactionRequest {
     uint64 tx_id = 1;
