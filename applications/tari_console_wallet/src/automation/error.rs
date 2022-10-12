@@ -29,6 +29,7 @@ use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{tari_amount::MicroTariError, transaction_components::TransactionError};
+use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
@@ -82,6 +83,8 @@ pub enum CommandError {
     General(String),
     #[error("FixedHash size error `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Invalid signature: `{0}`")]
+    FailedSignature(#[from] SchnorrSignatureError),
 }
 
 impl From<CommandError> for ExitError {

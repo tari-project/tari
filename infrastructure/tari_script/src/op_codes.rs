@@ -556,10 +556,10 @@ impl fmt::Display for Opcode {
                     (*msg).to_hex()
                 ))
             },
-            Return => fmt.write_str("Return"),
-            IfThen => fmt.write_str("IfThen"),
-            Else => fmt.write_str("Else"),
-            EndIf => fmt.write_str("EndIf"),
+            Return => write!(fmt, "Return"),
+            IfThen => write!(fmt, "IfThen"),
+            Else => write!(fmt, "Else"),
+            EndIf => write!(fmt, "EndIf"),
         }
     }
 }
