@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryInto,
+    convert::{From, TryInto},
     fs,
     fs::File,
     io,
@@ -34,6 +34,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
@@ -41,7 +42,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey},
+    types::{Commitment, CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -53,11 +54,12 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
+use tari_crypto::keys::SecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInterface, NextKeyResult},
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -68,6 +70,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+use zeroize::Zeroizing;
 
 use super::error::CommandError;
 use crate::{
@@ -84,7 +87,10 @@ pub enum WalletCommand {
     GetBalance,
     SendTari,
     SendOneSided,
-    CreateKeyCombo,
+    CreateKeyPair,
+    CreateAggregateSignatureUtxo,
+    SignMessage,
+    EncumberAggregateUtxo,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -140,14 +146,49 @@ pub async fn burn_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
-pub async fn create_key_combo<TBackend: KeyManagerBackend + 'static>(
-    key_manager_service: KeyManagerHandle<TBackend>,
-    key_seed: String,
-) -> Result<(PrivateKey, PublicKey), CommandError> {
-    key_manager_service
-        .create_key_combo(key_seed)
+pub async fn create_aggregate_signature_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    amount: MicroTari,
+    fee_per_gram: MicroTari,
+    n: u8,
+    m: u8,
+    public_keys: Vec<PublicKey>,
+    message: String,
+) -> Result<(TxId, FixedHash), CommandError> {
+    let mut msg = [0u8; 32];
+    msg.copy_from_slice(message.as_bytes());
+
+    wallet_transaction_service
+        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg)
         .await
-        .map_err(CommandError::KeyManagerError)
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// creates a metadata signature utxo
+async fn encumber_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroTari,
+    output_hash: String,
+    signatures: Vec<Signature>,
+    total_script_pubkey: PublicKey,
+    total_offset_pubkey: PublicKey,
+    total_signature_nonce: PublicKey,
+    metadata_signature_nonce: PublicKey,
+    wallet_script_secret_key: String,
+) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), CommandError> {
+    wallet_transaction_service
+        .encumber_aggregate_utxo(
+            fee_per_gram,
+            output_hash,
+            signatures,
+            total_script_pubkey,
+            total_offset_pubkey,
+            total_signature_nonce,
+            metadata_signature_nonce,
+            wallet_script_secret_key,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
 }
 
 /// publishes a tari-SHA atomic swap HTLC transaction
@@ -260,6 +301,17 @@ pub async fn coin_split(
         .await?;
 
     Ok(tx_id)
+}
+
+pub fn sign_message(private_key: String, challenge: String) -> Result<Signature, CommandError> {
+    let private_key =
+        PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+    let challenge = challenge.as_bytes();
+
+    let nonce = PrivateKey::random(&mut OsRng);
+    let signature = Signature::sign(private_key, nonce, challenge).map_err(CommandError::FailedSignature)?;
+
+    Ok(signature)
 }
 
 async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
@@ -649,17 +701,95 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnTari error! {}", e),
                 }
             },
-            CreateKeyCombo(args) => match create_key_combo(key_manager_service.clone(), args.key_seed).await {
+            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
                 Ok((sk, pk)) => {
                     println!(
-                        "create new key combo pair: 
+                        "New key pair: 
                                 1. secret key: {}, 
-                                2. public key {}",
-                        sk.to_hex(),
+                                2. public key: {}",
+                        *Zeroizing::new(sk.to_hex()),
                         pk.to_hex()
                     )
                 },
-                Err(e) => eprintln!("CreateKeyCombo error! {}", e),
+                Err(e) => eprintln!("CreateKeyPair error! {}", e),
+            },
+            CreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
+                transaction_service.clone(),
+                args.amount,
+                args.fee_per_gram,
+                args.n,
+                args.m,
+                args.public_keys
+                    .iter()
+                    .map(|pk| PublicKey::from(pk.clone()))
+                    .collect::<Vec<_>>(),
+                args.message,
+            )
+            .await
+            {
+                Ok((tx_id, output_hash)) => {
+                    println!(
+                        "Create a utxo with n-of-m aggregate public key, with: 
+                            1. n = {},
+                            2. m = {}, 
+                            3. tx id = {},
+                            4. output hash = {}",
+                        args.n, args.m, tx_id, output_hash
+                    )
+                },
+                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
+            },
+            SignMessage(args) => match sign_message(args.private_key, args.challenge) {
+                Ok(sgn) => {
+                    println!(
+                        "Sign message: 
+                                1. signature: {},
+                                2. public key: {}",
+                        sgn.get_signature().to_hex(),
+                        sgn.get_public_nonce().to_hex(),
+                    )
+                },
+                Err(e) => eprintln!("SignMessage error! {}", e),
+            },
+            EncumberAggregateUtxo(args) => match encumber_aggregate_utxo(
+                transaction_service.clone(),
+                args.fee_per_gram,
+                args.output_hash,
+                args.signatures.iter().map(|sgn| sgn.clone().into()).collect::<Vec<_>>(),
+                args.total_script_pubkey.into(),
+                args.total_offset_pubkey.into(),
+                args.total_signature_nonce.into(),
+                args.metadata_signature_nonce.into(),
+                args.wallet_script_secret_key,
+            )
+            .await
+            {
+                Ok((
+                    _tx_id,
+                    output_commitment,
+                    output_hash,
+                    input_commitment,
+                    input_script_hex,
+                    input_commitment_hex,
+                    total_public_offset,
+                )) => {
+                    println!(
+                        "Encumber aggregate utxo: 
+                            1. output_commitment: {},
+                            2. output_hash: {},
+                            3. input_commitment: {},
+                            4. input_stack_hex: {},
+                            5. input_script_hex: {},
+                            6. total_public_offes: {}",
+                        output_commitment.to_hex(),
+                        output_hash.to_hex(),
+                        input_commitment.to_hex(),
+                        input_script_hex,
+                        input_commitment_hex,
+                        total_public_offset.to_hex(),
+                    )
+                },
+                Err(e) => eprintln!("Encumber aggregate utxo! {}", e),
             },
             SendTari(args) => {
                 match send_tari(

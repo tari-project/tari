@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -88,6 +88,24 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    CreateNMUtxo {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    },
+    EncumberAggregateUtxo {
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
@@ -135,6 +153,7 @@ pub enum TransactionServiceRequest {
 }
 
 impl fmt::Display for TransactionServiceRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::GetPendingInboundTransactions => f.write_str("GetPendingInboundTransactions"),
@@ -156,6 +175,38 @@ impl fmt::Display for TransactionServiceRequest {
                 message
             )),
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
+            Self::CreateNMUtxo {
+                amount,
+                fee_per_gram: _,
+                n,
+                m,
+                public_keys: _,
+                message: _,
+            } => f.write_str(&format!(
+                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
+                amount, n, m
+            )),
+            Self::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                ..
+            } => f.write_str(&format!(
+                "Metadata signature utxto with: fee_per_gram = {}, output_hash = {}, signatures = {:?}, \
+                 total_script_pubkey = {}, total_offset_pubkey = {}, total_signature_nonce = {}, \
+                 metadata_signature_nonce = {}",
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey.to_hex(),
+                total_offset_pubkey.to_hex(),
+                total_signature_nonce.to_hex(),
+                metadata_signature_nonce.to_hex(),
+            )),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
@@ -228,6 +279,16 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionSentWithOutputHash(TxId, FixedHash),
+    TransactionSentWithEncumberAggregateUtxo(
+        TxId,
+        Box<Commitment>,
+        FixedHash,
+        Box<Commitment>,
+        String,
+        String,
+        Box<PublicKey>,
+    ),
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -500,6 +561,78 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_aggregate_signature_utxo(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSentWithEncumberAggregateUtxo(
+                tx_id,
+                output_commitment,
+                output_hash,
+                input_commitment,
+                input_stack_hex,
+                input_script_hex,
+                total_public_offset,
+            ) => Ok((
+                tx_id,
+                *output_commitment,
+                output_hash,
+                *input_commitment,
+                input_stack_hex,
+                input_script_hex,
+                *total_public_offset,
+            )),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -70,9 +70,10 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script, slice_to_boxed_message, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -649,6 +650,47 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+            } => self
+                .create_aggregate_signature_utxo(
+                    amount,
+                    fee_per_gram,
+                    n,
+                    m,
+                    public_keys,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(|(tx_id, _)| TransactionServiceResponse::TransactionSent(tx_id)),
+            TransactionServiceRequest::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            } => self
+                .encumber_aggregate_utxo(
+                    fee_per_gram,
+                    output_hash,
+                    signatures,
+                    total_script_pubkey,
+                    total_offset_pubkey,
+                    total_signature_nonce,
+                    metadata_signature_nonce,
+                    wallet_script_secret_key,
+                )
+                .await
+                .map(|(tx_id, ..)| TransactionServiceResponse::TransactionSent(tx_id)),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 dest_pubkey,
                 amount,
@@ -986,6 +1028,237 @@ where
         Ok(())
     }
 
+    /// Creates a utxo with aggregate public key out of m-of-n public keys
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_aggregate_signature_utxo(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        let msg = slice_to_boxed_message(message.as_bytes());
+        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys, msg));
+
+        // Empty covenant
+        let covenant = Covenant::default();
+
+        // Default range proof
+        let minimum_value_promise = MicroTari::zero();
+
+        // Prepare sender part of transaction
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram,
+                TransactionMetadata::default(),
+                "".to_string(),
+                script.clone(),
+                covenant,
+                minimum_value_promise,
+            )
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `CollectingSingleSignature`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // In generating an aggregate public key utxo, we can use a randomly generated spend key
+        let spend_key = PrivateKey::random(&mut OsRng);
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+
+        let rewind_data = RewindData {
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            encryption_key: encryption_key.clone(),
+        };
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spend_key.clone(),
+            &self.resources.factories,
+            &rewind_data,
+        );
+
+        // we don't want the given utxo to be spendable as an input to a later transaction, so we set
+        // spendable height of the current utxo to be u64::MAx
+        let height = u64::MAX;
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+        let output = recipient_reply.output.clone();
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spend_key.clone(), amount.into());
+
+        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
+        let minimum_value_promise = MicroTari::zero();
+
+        let covenant = Covenant::default();
+
+        let unblinded_output = UnblindedOutput::new_current_version(
+            amount,
+            spend_key.clone(),
+            output.features.clone(),
+            script,
+            inputs!(PublicKey::from_secret_key(&spend_key)), /* TODO: refactor this, when we have implemented the
+                                                              * necessary logic */
+            self.node_identity.secret_key().clone(),
+            output.sender_offset_public_key.clone(),
+            output.metadata_signature.clone(),
+            height,
+            covenant,
+            encrypted_value,
+            minimum_value_promise,
+        );
+
+        // Start finalize
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+        stp.finalize(&self.resources.factories, None, height).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
+        info!(
+            target: LOG_TARGET,
+            "Finalized create n of m transaction TxId: {}", tx_id
+        );
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast create n of m aggregate public key transaction
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.output_manager_service
+            .add_rewindable_output_with_tx_id(
+                tx_id,
+                unblinded_output,
+                Some(SpendingPriority::Normal),
+                Some(rewind_data),
+            )
+            .await?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                self.resources.node_identity.public_key().clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                "".to_string(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                None,
+            ),
+        )?;
+
+        let output_hash = output.hash();
+
+        // we want to print out the hash of the utxo
+        Ok((tx_id, output_hash))
+    }
+
+    /// Creates a metadata signature utxo
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        match self
+            .output_manager_service
+            .encumber_aggregate_utxo(
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            )
+            .await
+        {
+            Ok(transaction) => {
+                let output = transaction
+                    .body
+                    .outputs()
+                    .first()
+                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
+                let input = transaction
+                    .body
+                    .inputs()
+                    .first()
+                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
+                let output_commitment = output.commitment().clone();
+                let output_hash = output.hash();
+                let input_commitment = input.commitment()?.clone();
+                let input_stack_hex = input.input_data.to_hex();
+                let input_script_hex = input.script_signature.to_vec().to_hex();
+                let total_public_offset = PublicKey::from_secret_key(&transaction.offset);
+                Ok((
+                    tx_id,
+                    output_commitment,
+                    output_hash,
+                    input_commitment,
+                    input_stack_hex,
+                    input_script_hex,
+                    total_public_offset,
+                ))
+            },
+            Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     /// broadcasts a SHA-XTR atomic swap transaction
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -1043,7 +1316,7 @@ where
             )
             .await?;
 
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `CollectingSingleSignature`,
         // but the returned value is not used
         let _single_round_sender_data = stp
             .build_single_round_message()
@@ -1127,7 +1400,10 @@ where
             );
             TransactionServiceProtocolError::new(tx_id, e.into())
         })?;
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        info!(
+            target: LOG_TARGET,
+            "Finalized sha atomic swap transaction TxId: {}", tx_id
+        );
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -1135,7 +1411,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        // Broadcast one-sided transaction
+        // Broadcast sha atomic swap transaction
 
         let tx = stp
             .get_transaction()
@@ -1205,7 +1481,7 @@ where
             )
             .await?;
 
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `CollectingSingleSignature`,
         // but the returned value is not used
         let _single_round_sender_data = stp
             .build_single_round_message()
@@ -1373,7 +1649,7 @@ where
             )
             .await?;
 
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `CollectingSingleSignature`,
         // but the returned value is not used
         let _single_round_sender_data = stp
             .build_single_round_message()

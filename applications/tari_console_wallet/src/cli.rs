@@ -28,7 +28,10 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
-use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_app_utilities::{
+    common_cli_args::CommonCliArgs,
+    utilities::{UniPublicKey, UniSignature},
+};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
@@ -116,7 +119,10 @@ pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
     BurnTari(BurnTariArgs),
-    CreateKeyCombo(CreateKeyComboArgs),
+    CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
+    CreateKeyPair(CreateKeyPairArgs),
+    EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
+    SignMessage(SignMessageArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -157,8 +163,37 @@ pub struct BurnTariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateKeyComboArgs {
-    pub key_seed: String,
+pub struct CreateKeyPairArgs {
+    pub key_branch: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateAggregateSignatureUtxoArgs {
+    pub amount: MicroTari,
+    pub fee_per_gram: MicroTari,
+    pub n: u8,
+    pub m: u8,
+    pub message: String,
+    #[clap(long)]
+    pub public_keys: Vec<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    pub private_key: String,
+    pub challenge: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct EncumberAggregateUtxoArgs {
+    pub fee_per_gram: MicroTari,
+    pub output_hash: String,
+    pub signatures: Vec<UniSignature>,
+    pub total_script_pubkey: UniPublicKey,
+    pub total_offset_pubkey: UniPublicKey,
+    pub total_signature_nonce: UniPublicKey,
+    pub metadata_signature_nonce: UniPublicKey,
+    pub wallet_script_secret_key: String,
 }
 
 #[derive(Debug, Args, Clone)]

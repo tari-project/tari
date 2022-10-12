@@ -94,7 +94,10 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_common::{
-    configuration::{bootstrap::ApplicationType, Network},
+    configuration::{
+        bootstrap::{grpc_default_port, ApplicationType},
+        Network,
+    },
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -145,7 +148,6 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
     if let Some(network) = &cli.network {
         config.base_node.network = Network::from_str(network)?;
@@ -229,10 +231,14 @@ async fn run_node(
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
-    if let Some(address) = config.base_node.grpc_address.clone() {
+    if config.base_node.grpc_enabled {
+        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        });
         // Go, GRPC, go go
-        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
     }
 
     // Run, node, run!
@@ -288,7 +294,7 @@ fn enable_tracing() {
 
 /// Runs the gRPC server
 async fn run_grpc(
-    grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
+    grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
     grpc_address: Multiaddr,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

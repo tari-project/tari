@@ -298,8 +298,7 @@ impl TransactionOutput {
     }
 
     // Create commitment signature for the metadata
-
-    fn create_metadata_signature(
+    pub fn create_metadata_signature(
         version: TransactionOutputVersion,
         value: MicroTari,
         spending_key: &BlindingFactor,

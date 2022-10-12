@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PublicKey},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
@@ -75,6 +75,17 @@ pub enum OutputManagerRequest {
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(TxId),
+    EncumberAggregateUtxo {
+        tx_id: TxId,
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    },
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroTari,
@@ -142,6 +153,7 @@ pub enum OutputManagerRequest {
 }
 
 impl fmt::Display for OutputManagerRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
         use OutputManagerRequest::*;
@@ -161,6 +173,11 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.public_nonce().to_hex(),
                 v.metadata_signature.u().to_hex(),
                 v.metadata_signature.v().to_hex()
+            ),
+            EncumberAggregateUtxo { tx_id, output_hash, .. } => write!(
+                f,
+                "Encumber aggregate utxo with tx_id: {} and output_hash: {}",
+                tx_id, output_hash
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
@@ -241,8 +258,10 @@ pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
     ConvertedToTransactionOutput(Box<TransactionOutput>),
+    ConvertedToTransaction(Box<Transaction>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    EncumberAggregateUtxo(Transaction),
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
@@ -846,6 +865,38 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CreatePayToSelfWithOutputs { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<Transaction, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::EncumberAggregateUtxo {
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            })
+            .await??
+        {
+            OutputManagerResponse::EncumberAggregateUtxo(transaction) => Ok(transaction),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
