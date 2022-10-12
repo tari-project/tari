@@ -275,7 +275,7 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-pub fn sign_message(private_key: String, challenge: String) -> Result<(Signature, PublicKey), CommandError> {
+pub fn sign_message(private_key: String, challenge: String) -> Result<Signature, CommandError> {
     let private_key =
         PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
     let challenge = challenge.as_bytes();
