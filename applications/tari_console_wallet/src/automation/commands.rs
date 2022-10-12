@@ -283,7 +283,6 @@ pub fn sign_message(private_key: String, challenge: String) -> Result<Signature,
     let nonce = PrivateKey::random(&mut OsRng);
     let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(CommandError::FailedSignature)?;
 
-    let public_nonce = PublicKey::from_secret_key(&nonce);
     Ok(signature)
 }
 
@@ -713,13 +712,13 @@ pub async fn command_runner(
                 Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
             },
             SignMessage(args) => match sign_message(args.private_key, args.challenge) {
-                Ok((sgn, nonce)) => {
+                Ok(sgn) => {
                     println!(
                         "Sign message: 
                                 1. signature: {},
                                 2. public key: {}",
                         sgn.get_signature().to_hex(),
-                        nonce.to_hex(),
+                        sgn.get_public_nonce().to_hex(),
                     )
                 },
                 Err(e) => eprintln!("SignMessage error! {}", e),
