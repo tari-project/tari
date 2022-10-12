@@ -166,7 +166,7 @@ impl ConsensusEncoding for ComAndPubSignature {
 
 impl ConsensusEncodingSized for ComAndPubSignature {
     fn consensus_encode_exact_size(&self) -> usize {
-        2 * PrivateKey::key_length() + 3 * PublicKey::key_length()
+        3 * PrivateKey::key_length() + 2 * PublicKey::key_length()
     }
 }
 
