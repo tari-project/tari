@@ -284,7 +284,7 @@ pub fn sign_message(private_key: String, challenge: String) -> Result<Signature,
     let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(CommandError::FailedSignature)?;
 
     let public_nonce = PublicKey::from_secret_key(&nonce);
-    Ok((signature, public_nonce))
+    Ok(signature)
 }
 
 async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
