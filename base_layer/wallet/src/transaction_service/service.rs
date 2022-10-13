@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -73,6 +73,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, script, slice_to_boxed_message, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -668,6 +669,28 @@ where
                 )
                 .await
                 .map(|(tx_id, _)| TransactionServiceResponse::TransactionSent(tx_id)),
+            TransactionServiceRequest::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            } => self
+                .encumber_aggregate_utxo(
+                    fee_per_gram,
+                    output_hash,
+                    signatures,
+                    total_script_pubkey,
+                    total_offset_pubkey,
+                    total_signature_nonce,
+                    metadata_signature_nonce,
+                    wallet_script_secret_key,
+                )
+                .await
+                .map(|(tx_id, ..)| TransactionServiceResponse::TransactionSent(tx_id)),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 dest_pubkey,
                 amount,
@@ -1064,7 +1087,7 @@ where
         let spend_key = PrivateKey::random(&mut OsRng);
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key.clone()))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
 
         let rewind_data = RewindData {
@@ -1174,6 +1197,66 @@ where
 
         // we want to print out the hash of the utxo
         Ok((tx_id, output_hash))
+    }
+
+    /// Creates a metadata signature utxo
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        fee_per_gram: MicroTari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        match self
+            .output_manager_service
+            .encumber_aggregate_utxo(
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            )
+            .await
+        {
+            Ok(transaction) => {
+                let output = transaction
+                    .body
+                    .outputs()
+                    .first()
+                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
+                let input = transaction
+                    .body
+                    .inputs()
+                    .first()
+                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
+                let output_commitment = output.commitment().clone();
+                let output_hash = output.hash();
+                let input_commitment = input.commitment()?.clone();
+                let input_stack_hex = input.input_data.to_hex();
+                let input_script_hex = input.script_signature.to_vec().to_hex();
+                let total_public_offset = PublicKey::from_secret_key(&transaction.offset);
+                Ok((
+                    tx_id,
+                    output_commitment,
+                    output_hash,
+                    input_commitment,
+                    input_stack_hex,
+                    input_script_hex,
+                    total_public_offset,
+                ))
+            },
+            Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
     }
 
     /// broadcasts a SHA-XTR atomic swap transaction

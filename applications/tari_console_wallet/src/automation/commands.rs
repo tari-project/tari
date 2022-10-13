@@ -42,7 +42,7 @@ use tari_app_grpc::authentication::salted_password::create_salted_hashed_passwor
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{Commitment, CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -54,7 +54,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::keys::{PublicKey as TraitPublicKey, SecretKey};
+use tari_crypto::keys::SecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -90,6 +90,7 @@ pub enum WalletCommand {
     CreateKeyPair,
     CreateAggregateSignatureUtxo,
     SignMessage,
+    EncumberAggregateUtxo,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -159,6 +160,33 @@ pub async fn create_aggregate_signature_utxo(
 
     wallet_transaction_service
         .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg)
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// creates a metadata signature utxo
+async fn encumber_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroTari,
+    output_hash: String,
+    signatures: Vec<Signature>,
+    total_script_pubkey: PublicKey,
+    total_offset_pubkey: PublicKey,
+    total_signature_nonce: PublicKey,
+    metadata_signature_nonce: PublicKey,
+    wallet_script_secret_key: String,
+) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), CommandError> {
+    wallet_transaction_service
+        .encumber_aggregate_utxo(
+            fee_per_gram,
+            output_hash,
+            signatures,
+            total_script_pubkey,
+            total_offset_pubkey,
+            total_signature_nonce,
+            metadata_signature_nonce,
+            wallet_script_secret_key,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -281,7 +309,7 @@ pub fn sign_message(private_key: String, challenge: String) -> Result<Signature,
     let challenge = challenge.as_bytes();
 
     let nonce = PrivateKey::random(&mut OsRng);
-    let signature = Signature::sign(private_key, nonce.clone(), challenge).map_err(CommandError::FailedSignature)?;
+    let signature = Signature::sign(private_key, nonce, challenge).map_err(CommandError::FailedSignature)?;
 
     Ok(signature)
 }
@@ -722,6 +750,46 @@ pub async fn command_runner(
                     )
                 },
                 Err(e) => eprintln!("SignMessage error! {}", e),
+            },
+            EncumberAggregateUtxo(args) => match encumber_aggregate_utxo(
+                transaction_service.clone(),
+                args.fee_per_gram,
+                args.output_hash,
+                args.signatures.iter().map(|sgn| sgn.clone().into()).collect::<Vec<_>>(),
+                args.total_script_pubkey.into(),
+                args.total_offset_pubkey.into(),
+                args.total_signature_nonce.into(),
+                args.metadata_signature_nonce.into(),
+                args.wallet_script_secret_key,
+            )
+            .await
+            {
+                Ok((
+                    _tx_id,
+                    output_commitment,
+                    output_hash,
+                    input_commitment,
+                    input_script_hex,
+                    input_commitment_hex,
+                    total_public_offset,
+                )) => {
+                    println!(
+                        "Encumber aggregate utxo: 
+                            1. output_commitment: {},
+                            2. output_hash: {},
+                            3. input_commitment: {},
+                            4. input_stack_hex: {},
+                            5. input_script_hex: {},
+                            6. total_public_offes: {}",
+                        output_commitment.to_hex(),
+                        output_hash.to_hex(),
+                        input_commitment.to_hex(),
+                        input_script_hex,
+                        input_commitment_hex,
+                        total_public_offset.to_hex(),
+                    )
+                },
+                Err(e) => eprintln!("Encumber aggregate utxo! {}", e),
             },
             SendTari(args) => {
                 match send_tari(

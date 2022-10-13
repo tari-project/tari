@@ -453,6 +453,7 @@ mod test {
         let mut create_key_pair = false;
         let mut create_aggregate_signature_utxo = false;
         let mut sign_message = false;
+        let mut _encumbered_aggregate_utxo = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -465,6 +466,7 @@ mod test {
                 CliCommands::CreateKeyPair(_) => create_key_pair = true,
                 CliCommands::CreateAggregateSignatureUtxo(_) => create_aggregate_signature_utxo = true,
                 CliCommands::SignMessage(_) => sign_message = true,
+                CliCommands::EncumberAggregateUtxo(_) => _encumbered_aggregate_utxo = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,

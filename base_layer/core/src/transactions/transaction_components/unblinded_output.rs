@@ -201,6 +201,53 @@ impl UnblindedOutput {
         ))
     }
 
+    /// it creates a transaction input given a partial script signature. The public keys
+    /// partial_script_public_key and partial_total_nonce exclude callers private keys use
+    pub fn as_transaction_input_with_partial_signature(
+        &self,
+        factory: &CommitmentFactory,
+        partial_script_public_key: PublicKey,
+        partial_total_nonce: PublicKey,
+    ) -> Result<TransactionInput, TransactionError> {
+        let commitment = factory.commit(&self.spending_key, &self.value.into());
+        let script_nonce_a = PrivateKey::random(&mut OsRng);
+        let script_nonce_b = PrivateKey::random(&mut OsRng);
+        let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
+
+        let challenge = TransactionInput::build_script_challenge(
+            TransactionInputVersion::get_current_version(),
+            &(&nonce_commitment + &partial_total_nonce),
+            &self.script,
+            &self.input_data,
+            &(&PublicKey::from_secret_key(&self.script_private_key) + &partial_script_public_key),
+            &commitment,
+        );
+        let script_signature = ComSignature::sign(
+            &self.value.into(),
+            &(&self.script_private_key + &self.spending_key),
+            &script_nonce_a,
+            &script_nonce_b,
+            &challenge,
+            factory,
+        )
+        .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
+
+        Ok(TransactionInput::new_current_version(
+            SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
+                version: self.version,
+                encrypted_value: self.encrypted_value.clone(),
+                minimum_value_promise: self.minimum_value_promise,
+            },
+            self.input_data.clone(),
+            script_signature,
+        ))
+    }
+
     /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
     pub fn as_compact_transaction_input(
         &self,
