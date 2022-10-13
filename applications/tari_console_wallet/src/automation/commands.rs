@@ -29,7 +29,9 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
+use tari_core::transactions::transaction_components::{EncryptedValue, TransactionOutputVersion};
 
+use tari_script::{ExecutionStack, script, TariScript};
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
@@ -71,6 +73,9 @@ use tokio::{
     time::{sleep, timeout},
 };
 use zeroize::Zeroizing;
+use tari_common_types::types::Commitment;
+use tari_core::covenants::Covenant;
+use tari_core::transactions::transaction_components::{TransactionInput, TransactionInputVersion};
 
 use super::error::CommandError;
 use crate::{
@@ -790,6 +795,69 @@ pub async fn command_runner(
                     )
                 },
                 Err(e) => eprintln!("Encumber aggregate utxo! {}", e),
+            },
+            CreateScriptSig(args) => {
+                let private_key =
+                    PrivateKey::from_hex(&args.secret_key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let private_nonce =
+                    PrivateKey::from_hex(&args.secret_nonce).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let script = TariScript::from_hex(&args.input_script).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let input_data = ExecutionStack::from_hex(&args.input_stack).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let commitment= Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let total_nonce= Commitment::from_hex(&args.total_nonce).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let challenge = TransactionInput::build_script_challenge(
+                    TransactionInputVersion::get_current_version(),
+                    &total_nonce,
+                    &script,
+                    &input_data,
+                    &args.total_script_key.into(),
+                    &commitment,
+                );
+                let signature = Signature::sign(private_key, private_nonce, &challenge).map_err(CommandError::FailedSignature)?;
+                    println!(
+                        "Sign script sig:
+                                1. signature: {},
+                                2. public key: {}",
+                        signature.get_signature().to_hex(),
+                        signature.get_public_nonce().to_hex(),
+                    )
+            },
+            CreateMetaSig(args) => {
+                let private_key =
+                    PrivateKey::from_hex(&args.secret_offset_key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let private_script_key =
+                    PrivateKey::from_hex(&args.secret_script_key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let private_nonce =
+                    PrivateKey::from_hex(&args.secret_nonce).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let offset = private_script_key - &private_key;
+                let script = script!(Nop);
+                let commitment= Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let covenant= Covenant::default();
+                let encrypted_value= EncryptedValue::default();
+                let output_features= OutputFeatures::default();
+                let total_nonce= Commitment::from_hex(&args.total_nonce).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let minimum_value_promise = 0.into();
+                let challenge = TransactionOutput::build_metadata_signature_challenge(
+                    TransactionOutputVersion::get_current_version(),
+                    &script,
+                    &output_features,
+                    &args.total_meta_key.into(),
+                    &total_nonce,
+                    &commitment,
+                    &covenant,
+                    &encrypted_value,
+                    minimum_value_promise,
+                );
+                let signature = Signature::sign(private_key, private_nonce, &challenge).map_err(CommandError::FailedSignature)?;
+                println!(
+                    "Sign script sig:
+                                1. signature: {},
+                                2. public key: {},
+                     Script offset: {}",
+                    signature.get_signature().to_hex(),
+                    signature.get_public_nonce().to_hex(),
+                    offset.to_hex(),
+                )
             },
             SendTari(args) => {
                 match send_tari(

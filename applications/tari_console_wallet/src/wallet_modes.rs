@@ -467,6 +467,8 @@ mod test {
                 CliCommands::CreateAggregateSignatureUtxo(_) => create_aggregate_signature_utxo = true,
                 CliCommands::SignMessage(_) => sign_message = true,
                 CliCommands::EncumberAggregateUtxo(_) => _encumbered_aggregate_utxo = true,
+                CliCommands::CreateScriptSig(_) => {},
+                CliCommands::CreateMetaSig(_) => {},
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,

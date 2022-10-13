@@ -159,7 +159,7 @@ impl TransactionInput {
         };
     }
 
-    pub(super) fn build_script_challenge(
+    pub fn build_script_challenge(
         version: TransactionInputVersion,
         nonce_commitment: &Commitment,
         script: &TariScript,
