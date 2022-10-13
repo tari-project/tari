@@ -455,6 +455,13 @@ where B: BlockchainBackend + 'static
                 current_meta.best_block().to_hex(),
                 source_peer,
             );
+            if excess_sigs.is_empty() {
+                let block = BlockBuilder::new(header.version)
+                    .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+                    .with_header(header.clone())
+                    .build();
+                return Ok(block);
+            }
             metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
