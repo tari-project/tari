@@ -922,6 +922,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             UpdateOutput {
                 metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
                 metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+                metadata_signature_v_key: Some(output.metadata_signature.v().to_vec()),
                 ..Default::default()
             },
             &conn,
@@ -1247,6 +1248,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    metadata_signature_v_key: Option<Vec<u8>>,
     mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
@@ -1261,6 +1263,7 @@ pub struct UpdateOutputSql {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    metadata_signature_v_key: Option<Vec<u8>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
@@ -1274,6 +1277,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             script_private_key: u.script_private_key,
             metadata_signature_nonce: u.metadata_signature_nonce,
             metadata_signature_u_key: u.metadata_signature_u_key,
+            metadata_signature_v_key: u.metadata_signature_v_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             mined_height: u.mined_height.map(|t| t.map(|h| h as i64)),

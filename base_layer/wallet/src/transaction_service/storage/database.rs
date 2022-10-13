@@ -81,6 +81,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a transaction exists in any of the collections
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
+    fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>;
     /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_outbound_transaction(
@@ -422,6 +427,14 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         }?;
         Ok(*t)
+    }
+
+    pub fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.update_completed_transaction(tx_id, transaction)
     }
 
     pub fn get_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {

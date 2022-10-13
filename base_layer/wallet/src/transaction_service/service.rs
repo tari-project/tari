@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{ComSignature, Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -679,7 +679,7 @@ where
                 metadata_signature_nonce,
                 wallet_script_secret_key,
             } => self
-                .encumber_aggregate_utxo(
+                .encumber_aggregate_tx(
                     fee_per_gram,
                     output_hash,
                     signatures,
@@ -691,6 +691,21 @@ where
                 )
                 .await
                 .map(|(tx_id, ..)| TransactionServiceResponse::TransactionSent(tx_id)),
+            TransactionServiceRequest::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            } => Ok(TransactionServiceResponse::TransactionSent(
+                self.finalized_aggregate_encumbed_tx(
+                    tx_id.into(),
+                    total_meta_data_signature,
+                    total_script_data_signature,
+                    script_offset,
+                    transaction_broadcast_join_handles,
+                )
+                .await?,
+            )),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 dest_pubkey,
                 amount,
@@ -1199,8 +1214,8 @@ where
         Ok((tx_id, output_hash))
     }
 
-    /// Creates a metadata signature utxo
-    pub async fn encumber_aggregate_utxo(
+    /// Creates an encumbered uninitialized transaction
+    pub async fn encumber_aggregate_tx(
         &mut self,
         fee_per_gram: MicroTari,
         output_hash: String,
@@ -1228,7 +1243,7 @@ where
             )
             .await
         {
-            Ok(transaction) => {
+            Ok((transaction, amount, fee)) => {
                 let output = transaction
                     .body
                     .outputs()
@@ -1245,6 +1260,22 @@ where
                 let input_stack_hex = input.input_data.to_hex();
                 let input_script_hex = input.script_signature.to_vec().to_hex();
                 let total_public_offset = PublicKey::from_secret_key(&transaction.offset);
+                let completed_tx = CompletedTransaction::new(
+                    tx_id,
+                    self.resources.node_identity.public_key().clone(),
+                    self.resources.node_identity.public_key().clone(),
+                    amount,
+                    fee,
+                    transaction,
+                    TransactionStatus::Completed,
+                    "claimed n-of-m utxo".to_string(),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    None,
+                    None,
+                    None,
+                );
+                self.db.insert_completed_transaction(tx_id, completed_tx)?;
                 Ok((
                     tx_id,
                     output_commitment,
@@ -1257,6 +1288,58 @@ where
             },
             Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
         }
+    }
+
+    /// Creates an encumbered uninitialized transaction
+    pub async fn finalized_aggregate_encumbed_tx(
+        &mut self,
+        tx_id: TxId,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let mut transaction = self.db.get_completed_transaction(tx_id)?;
+        transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
+
+        transaction.transaction.body.outputs_mut()[0].metadata_signature = ComSignature::new(
+            transaction.transaction.body.outputs()[0]
+                .metadata_signature
+                .public_nonce()
+                .clone(),
+            transaction.transaction.body.outputs()[0].metadata_signature.u() + total_meta_data_signature.get_signature(),
+            transaction.transaction.body.outputs()[0].metadata_signature.v().clone(),
+        );
+        transaction.transaction.body.inputs_mut()[0].script_signature =ComSignature::new(
+            transaction.transaction.body.inputs()[0]
+                .script_signature
+                .public_nonce()
+                .clone(),
+            transaction.transaction.body.inputs()[0].script_signature.u() + total_script_data_signature.get_signature(),
+            transaction.transaction.body.inputs()[0].script_signature.v().clone(),
+        );
+        self.output_manager_service
+            .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone()).await?;
+        self.db.update_completed_transaction(tx_id, transaction)?;
+
+        self.output_manager_service.confirm_pending_transaction(tx_id).await?;
+
+        // Notify that the transaction was successfully resolved.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        self.complete_send_transaction_protocol(
+            Ok(TransactionSendResult {
+                tx_id,
+                transaction_status: TransactionStatus::Completed,
+            }),
+            transaction_broadcast_join_handles,
+        );
+
+        return Ok(tx_id);
     }
 
     /// broadcasts a SHA-XTR atomic swap transaction

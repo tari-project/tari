@@ -261,7 +261,7 @@ pub enum OutputManagerResponse {
     ConvertedToTransaction(Box<Transaction>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    EncumberAggregateUtxo(Transaction),
+    EncumberAggregateUtxo((Transaction, MicroTari, MicroTari)),
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
@@ -880,7 +880,7 @@ impl OutputManagerHandle {
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<Transaction, OutputManagerError> {
+    ) -> Result<(Transaction, MicroTari, MicroTari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::EncumberAggregateUtxo {
@@ -896,7 +896,7 @@ impl OutputManagerHandle {
             })
             .await??
         {
-            OutputManagerResponse::EncumberAggregateUtxo(transaction) => Ok(transaction),
+            OutputManagerResponse::EncumberAggregateUtxo((transaction, amount, fee)) => Ok((transaction, amount, fee)),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

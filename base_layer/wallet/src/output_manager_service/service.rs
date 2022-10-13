@@ -268,7 +268,7 @@ where
                 metadata_signature_nonce,
                 wallet_script_secret_key,
             } => {
-                let transaction_output = self
+                let (tx, amount, fee) = self
                     .encumber_aggregate_utxo(
                         tx_id,
                         fee_per_gram,
@@ -281,9 +281,7 @@ where
                         wallet_script_secret_key,
                     )
                     .await?;
-                Ok(OutputManagerResponse::ConvertedToTransaction(Box::new(
-                    transaction_output,
-                )))
+                Ok(OutputManagerResponse::EncumberAggregateUtxo((tx, amount, fee)))
             },
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
@@ -1271,7 +1269,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<Transaction, OutputManagerError> {
+    ) -> Result<(Transaction, MicroTari, MicroTari), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
@@ -1356,7 +1354,7 @@ where
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                PublicKey::from_secret_key(&sender_offset_private_key),
+                &total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
                 0,
                 covenant,
@@ -1388,14 +1386,13 @@ where
             tx_id
         );
         self.resources.db.encumber_outputs(tx_id, vec![db_input], vec![utxo])?;
-        self.confirm_encumberance(tx_id)?;
 
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
 
         stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
         let tx = stp.take_transaction()?;
 
-        Ok(tx)
+        Ok((tx, amount, fee))
     }
 
     #[allow(clippy::too_many_lines)]

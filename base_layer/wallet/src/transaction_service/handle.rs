@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::{Commitment, FixedHash, PublicKey, Signature},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -105,6 +105,12 @@ pub enum TransactionServiceRequest {
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
+    },
+    FinalizeSentAggregateTransaction {
+        tx_id: u64,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
     },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
@@ -196,7 +202,7 @@ impl fmt::Display for TransactionServiceRequest {
                 metadata_signature_nonce,
                 ..
             } => f.write_str(&format!(
-                "Metadata signature utxto with: fee_per_gram = {}, output_hash = {}, signatures = {:?}, \
+                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, signatures = {:?}, \
                  total_script_pubkey = {}, total_offset_pubkey = {}, total_signature_nonce = {}, \
                  metadata_signature_nonce = {}",
                 fee_per_gram,
@@ -206,6 +212,21 @@ impl fmt::Display for TransactionServiceRequest {
                 total_offset_pubkey.to_hex(),
                 total_signature_nonce.to_hex(),
                 metadata_signature_nonce.to_hex(),
+            )),
+            Self::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            } => f.write_str(&format!(
+                "Finalizing encumbered n-of-m tx(#{}) with: meta_sig(sig: {}, nonce: {}), script_sig(sig: {}, nonce: \
+                 {}) and script_offset: {}",
+                tx_id,
+                total_meta_data_signature.get_signature().to_hex(),
+                total_meta_data_signature.get_public_nonce().to_hex(),
+                total_script_data_signature.get_signature().to_hex(),
+                total_script_data_signature.get_public_nonce().to_hex(),
+                script_offset.to_hex(),
             )),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
@@ -280,7 +301,7 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionSentWithOutputHash(TxId, FixedHash),
-    TransactionSentWithEncumberAggregateUtxo(
+    EncumberAggregateUtxo(
         TxId,
         Box<Commitment>,
         FixedHash,
@@ -616,7 +637,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSentWithEncumberAggregateUtxo(
+            TransactionServiceResponse::EncumberAggregateUtxo(
                 tx_id,
                 output_commitment,
                 output_hash,
@@ -633,6 +654,28 @@ impl TransactionServiceHandle {
                 input_script_hex,
                 *total_public_offset,
             )),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn finalize_aggregate_utxo(
+        &mut self,
+        tx_id: u64,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

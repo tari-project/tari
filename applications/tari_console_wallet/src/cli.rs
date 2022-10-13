@@ -122,6 +122,7 @@ pub enum CliCommands {
     CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
     CreateKeyPair(CreateKeyPairArgs),
     EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
+    SpendAggregateUtxo(SpendAggregateUtxoArgs),
     SignMessage(SignMessageArgs),
     CreateScriptSig(CreateScriptSigArgs),
     CreateMetaSig(CreateMetaSigArgs),
@@ -196,6 +197,14 @@ pub struct EncumberAggregateUtxoArgs {
     pub total_signature_nonce: UniPublicKey,
     pub metadata_signature_nonce: UniPublicKey,
     pub wallet_script_secret_key: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SpendAggregateUtxoArgs {
+    pub ix_id: u64,
+    pub meta_signatures: Vec<UniSignature>,
+    pub script_signatures: Vec<UniSignature>,
+    pub script_offset_keys: Vec<String>,
 }
 
 #[derive(Debug, Args, Clone)]
