@@ -99,6 +99,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                         .send(reply.to_encoded_bytes().into())
                         .instrument(span)
                         .await?;
+                    self.framed.flush().await?;
                     return Ok(*version);
                 }
 

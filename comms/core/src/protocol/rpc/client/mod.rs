@@ -801,6 +801,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             });
         }
         self.framed.send(payload.into()).await?;
+        self.framed.flush().await?;
         Ok(())
     }
 

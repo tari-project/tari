@@ -626,6 +626,7 @@ where
             };
             metrics::status_error_counter(&self.node_id, &self.protocol, status.as_status_code()).inc();
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
+            self.framed.flush().await?;
             return Ok(());
         }
 
@@ -647,6 +648,7 @@ where
                 ..Default::default()
             };
             self.framed.send(ack.to_encoded_bytes().into()).await?;
+            self.framed.flush().await?;
             return Ok(());
         }
 
@@ -693,7 +695,7 @@ where
 
         match service_result {
             Ok(body) => {
-                self.process_body(request_id, deadline, body).await?;
+                self.process_response_body(request_id, deadline, body).await?;
             },
             Err(err) => {
                 debug!(
@@ -709,6 +711,7 @@ where
 
                 metrics::status_error_counter(&self.node_id, &self.protocol, err.as_status_code()).inc();
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
+                self.framed.flush().await?;
             },
         }
 
@@ -719,7 +722,7 @@ where
         String::from_utf8_lossy(&self.protocol)
     }
 
-    async fn process_body(
+    async fn process_response_body(
         &mut self,
         request_id: u32,
         deadline: Duration,
@@ -778,6 +781,7 @@ where
                             self.framed.send(msg).await?;
                         },
                         None => {
+                            self.framed.flush().await?;
                             debug!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
                             break;
                         },
@@ -798,6 +802,7 @@ where
                         &RpcServerError::ReadStreamExceededDeadline,
                     )
                     .inc();
+                    self.framed.flush().await?;
                     break;
                 }
             } // end select!
@@ -883,7 +888,6 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
 }
 
 fn err_to_log_level(err: &io::Error) -> log::Level {
-    error!(target: LOG_TARGET, "KIND: {}", err.kind());
     match err.kind() {
         ErrorKind::ConnectionReset |
         ErrorKind::ConnectionAborted |
