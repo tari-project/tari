@@ -191,12 +191,17 @@ pub struct SignMessageArgs {
 pub struct EncumberAggregateUtxoArgs {
     pub fee_per_gram: MicroTari,
     pub output_hash: String,
-    pub signatures: Vec<UniSignature>,
-    pub total_script_pubkey: UniPublicKey,
-    pub total_offset_pubkey: UniPublicKey,
-    pub total_signature_nonce: UniPublicKey,
-    pub metadata_signature_nonce: UniPublicKey,
     pub wallet_script_secret_key: String,
+    #[clap(long)]
+    pub script_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub offset_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub script_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub metadata_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub signatures: Vec<UniSignature>,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -668,7 +668,7 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(|(tx_id, _)| TransactionServiceResponse::TransactionSent(tx_id)),
+                .map(|(tx_id, output_hash)| TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash)),
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,

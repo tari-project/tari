@@ -530,7 +530,7 @@ impl ConsensusConstants {
             },
             ConsensusConstants {
                 effective_from_height: 23000,
-                coinbase_lock_height: 6,
+                coinbase_lock_height: 1,
                 blockchain_version: 1,
                 valid_blockchain_version_range: 0..=1,
                 future_time_limit: 540,

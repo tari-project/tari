@@ -764,7 +764,7 @@ pub async fn command_runner(
             {
                 Ok((tx_id, output_hash)) => {
                     println!(
-                        "Create a utxo with n-of-m aggregate public key, with: 
+                        "Created an utxo with n-of-m aggregate public key, with:
                             1. n = {},
                             2. m = {}, 
                             3. tx id = {},
@@ -779,22 +779,39 @@ pub async fn command_runner(
                     println!(
                         "Sign message: 
                                 1. signature: {},
-                                2. public key: {}",
+                                2. public nonce: {}",
                         sgn.get_signature().to_hex(),
                         sgn.get_public_nonce().to_hex(),
                     )
                 },
                 Err(e) => eprintln!("SignMessage error! {}", e),
             },
-            EncumberAggregateUtxo(args) => match encumber_aggregate_utxo(
+            EncumberAggregateUtxo(args) => {
+                let mut total_script_pub_key = PublicKey::default();
+                for sig in args.script_pubkeys{
+                    total_script_pub_key = sig.into();
+                }
+                let mut total_offset_pub_key = PublicKey::default();
+                for sig in args.offset_pubkeys{
+                    total_offset_pub_key = sig.into();
+                }
+                let mut total_sig_nonce = PublicKey::default();
+                for sig in args.script_signature_nonces{
+                    total_sig_nonce = sig.into();
+                }
+                let mut total_meta_nonce = PublicKey::default();
+                for sig in args.metadata_signature_nonces{
+                    total_meta_nonce = sig.into();
+                }
+                match encumber_aggregate_utxo(
                 transaction_service.clone(),
                 args.fee_per_gram,
                 args.output_hash,
                 args.signatures.iter().map(|sgn| sgn.clone().into()).collect::<Vec<_>>(),
-                args.total_script_pubkey.into(),
-                args.total_offset_pubkey.into(),
-                args.total_signature_nonce.into(),
-                args.metadata_signature_nonce.into(),
+                total_script_pub_key,
+                total_offset_pub_key,
+                total_sig_nonce,
+                total_meta_nonce,
                 args.wallet_script_secret_key,
             )
                 .await
@@ -826,7 +843,7 @@ pub async fn command_runner(
                         total_public_offset.to_hex(),
                     )
                 },
-                Err(e) => println!("Encumber aggregate transaction error! {}", e),
+                Err(e) => println!("Encumber aggregate transaction error! {}", e),}
             },
             SpendAggregateUtxo(args) => {
                 let mut offset = PrivateKey::default();
