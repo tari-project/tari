@@ -20,9 +20,6 @@
 # automatically configured (default = )
 #public_address =
 
-# The asset worker will adhere to this phased timeout for the asset (default = 30 s)
-#phase_timeout = 30
-
 # The Tari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
 #base_node_grpc_address = "127.0.0.1/tcp/18142"
 
@@ -40,18 +37,6 @@
 
 # The relative path to store persistent data (default = "data/validator_node")
 #data_dir = "data/validator_node"
-
-# The constitution will auto accept contracts if true (default = false)
-#constitution_auto_accept = false
-
-# Constitution confirmation time in block height (default = 20)
-#constitution_management_confirmation_time = 20
-
-# Constitution polling interval in block height (default = 120)
-constitution_management_polling_interval = 5
-
-# Constitution polling interval in time (seconds) (default = 60)
-#constitution_management_polling_interval_in_seconds = 60
 
 # GRPC address of the validator node  application (default = "/ip4/127.0.0.1/tcp/18144")
 #grpc_address = "/ip4/127.0.0.1/tcp/18144"
