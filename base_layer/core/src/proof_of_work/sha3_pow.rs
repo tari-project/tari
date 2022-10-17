@@ -37,12 +37,19 @@ pub fn sha3_difficulty(header: &BlockHeader) -> Difficulty {
 }
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
-    Sha3_256::new()
-        .chain(header.mining_hash())
-        .chain(header.nonce.to_le_bytes())
-        .chain(header.pow.to_bytes())
-        .finalize()
-        .to_vec()
+    let sha = Sha3_256::new();
+    match header.version {
+        0 => sha
+            .chain(header.mining_hash())
+            .chain(header.nonce.to_le_bytes())
+            .chain(header.pow.to_bytes()),
+        _ => sha
+            .chain(header.nonce.to_le_bytes())
+            .chain(header.mining_hash())
+            .chain(header.pow.to_bytes()),
+    }
+    .finalize()
+    .to_vec()
 }
 
 fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {

@@ -31,6 +31,7 @@ use tari_comms::{
     pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::epoch_time::EpochTime;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tower::{layer::Layer, Service, ServiceBuilder};
@@ -298,6 +299,7 @@ impl Dht {
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(
                 self.config.clone(),
                 self.node_identity.clone(),
@@ -430,6 +432,20 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
         );
         false
     }
+}
+
+/// Check message expiry and immediately discard if expired
+fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
+    if let Some(expires) = msg.dht_header.expires {
+        if expires < EpochTime::now() {
+            debug!(
+                target: LOG_TARGET,
+                "[discard_expired_messages] Discarding expired message {}", msg
+            );
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

@@ -41,8 +41,8 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
             features: Some(output.features.into()),
-            script: output.script.as_bytes(),
-            input_data: output.input_data.as_bytes(),
+            script: output.script.to_bytes(),
+            input_data: output.input_data.to_bytes(),
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(grpc::ComSignature {

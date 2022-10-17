@@ -119,8 +119,8 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 script: input
                     .script()
                     .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
-                    .as_bytes(),
-                input_data: input.input_data.as_bytes(),
+                    .to_bytes(),
+                input_data: input.input_data.to_bytes(),
                 script_signature,
                 sender_offset_public_key: input
                     .sender_offset_public_key()
