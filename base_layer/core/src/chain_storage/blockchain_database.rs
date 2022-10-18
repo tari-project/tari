@@ -2374,6 +2374,10 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
         txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
         txn.delete_all_inputs_in_block(*header.hash());
+        if txn.operations().len() >= 100 {
+            txn.set_pruned_height(block_to_prune);
+            db.write(mem::take(&mut txn))?;
+        }
     }
 
     txn.set_pruned_height(target_horizon_height);
