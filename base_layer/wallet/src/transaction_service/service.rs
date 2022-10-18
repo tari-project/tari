@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{ComSignature, Commitment, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{ComSignature, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -73,7 +73,6 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, script, slice_to_boxed_message, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -690,7 +689,7 @@ where
                     wallet_script_secret_key,
                 )
                 .await
-                .map(|(tx_id, ..)| TransactionServiceResponse::TransactionSent(tx_id)),
+                .map(|(tx_id, tx, total_script_pubkey)| TransactionServiceResponse::EncumberAggregateUtxo(tx_id,Box::new(tx), Box::new(total_script_pubkey))),
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -1225,7 +1224,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction,PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         match self
@@ -1243,30 +1242,14 @@ where
             )
             .await
         {
-            Ok((transaction, amount, fee)) => {
-                let output = transaction
-                    .body
-                    .outputs()
-                    .first()
-                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
-                let input = transaction
-                    .body
-                    .inputs()
-                    .first()
-                    .ok_or(TransactionServiceError::UnexpectedApiResponse)?;
-                let output_commitment = output.commitment().clone();
-                let output_hash = output.hash();
-                let input_commitment = input.commitment()?.clone();
-                let input_stack_hex = input.input_data.to_hex();
-                let input_script_hex = input.script_signature.to_vec().to_hex();
-                let total_public_offset = PublicKey::from_secret_key(&transaction.offset);
+            Ok((transaction, amount, fee, total_script_key)) => {
                 let completed_tx = CompletedTransaction::new(
                     tx_id,
                     self.resources.node_identity.public_key().clone(),
                     self.resources.node_identity.public_key().clone(),
                     amount,
                     fee,
-                    transaction,
+                    transaction.clone(),
                     TransactionStatus::Completed,
                     "claimed n-of-m utxo".to_string(),
                     Utc::now().naive_utc(),
@@ -1278,12 +1261,8 @@ where
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
                 Ok((
                     tx_id,
-                    output_commitment,
-                    output_hash,
-                    input_commitment,
-                    input_stack_hex,
-                    input_script_hex,
-                    total_public_offset,
+                    transaction,
+                    total_script_key
                 ))
             },
             Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
@@ -1302,6 +1281,7 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let mut transaction = self.db.get_completed_transaction(tx_id)?;
+
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
         transaction.transaction.body.outputs_mut()[0].metadata_signature = ComSignature::new(
@@ -1330,7 +1310,6 @@ where
         let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,

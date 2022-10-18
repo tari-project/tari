@@ -207,8 +207,11 @@ pub struct EncumberAggregateUtxoArgs {
 #[derive(Debug, Args, Clone)]
 pub struct SpendAggregateUtxoArgs {
     pub ix_id: u64,
+    #[clap(long)]
     pub meta_signatures: Vec<UniSignature>,
+    #[clap(long)]
     pub script_signatures: Vec<UniSignature>,
+    #[clap(long)]
     pub script_offset_keys: Vec<String>,
 }
 

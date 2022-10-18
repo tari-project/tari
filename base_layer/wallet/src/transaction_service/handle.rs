@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -303,11 +303,7 @@ pub enum TransactionServiceResponse {
     TransactionSentWithOutputHash(TxId, FixedHash),
     EncumberAggregateUtxo(
         TxId,
-        Box<Commitment>,
-        FixedHash,
-        Box<Commitment>,
-        String,
-        String,
+        Box<Transaction>,
         Box<PublicKey>,
     ),
     TransactionCancelled,
@@ -622,7 +618,7 @@ impl TransactionServiceHandle {
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction,PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
@@ -638,21 +634,11 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::EncumberAggregateUtxo(
-                tx_id,
-                output_commitment,
-                output_hash,
-                input_commitment,
-                input_stack_hex,
-                input_script_hex,
-                total_public_offset,
+                tx_id,transaction, total_script_key,
             ) => Ok((
                 tx_id,
-                *output_commitment,
-                output_hash,
-                *input_commitment,
-                input_stack_hex,
-                input_script_hex,
-                *total_public_offset,
+                *transaction,
+                *total_script_key
             )),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }

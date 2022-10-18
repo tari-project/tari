@@ -650,6 +650,41 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// This is the exact same function as finalize except it does it do final transaction validation as we expect this to be broken as the transaction is still partial
+    pub fn finalize_partial_tx(
+        &mut self,
+        factories: &CryptoFactories,
+    ) -> Result<(), TPE> {
+        // Create the final aggregated signature, moving to the Failed state if anything goes wrong
+        match &mut self.state {
+            SenderState::Finalizing(_) => {
+                if let Err(e) = self.sign() {
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
+                }
+            },
+            _ => return Err(TPE::InvalidStateError),
+        }
+        // Validate the inputs we have, and then construct the final transaction
+        match &self.state {
+            SenderState::Finalizing(info) => {
+                let result = self.validate().and_then(|_| Self::build_transaction(info, factories));
+                match result {
+                    Ok(mut transaction) => {
+                        transaction.body.sort();
+                        self.state = SenderState::FinalizedTransaction(transaction);
+                        Ok(())
+                    },
+                    Err(e) => {
+                        self.state = SenderState::Failed(e.clone());
+                        Err(e)
+                    },
+                }
+            },
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// This method is used to store a pending transaction to be sent which should be in the CollectionSingleSignature
     /// state, This state will be serialized and returned as a string.
     pub fn save_pending_transaction_to_be_sent(&self) -> Result<String, TPE> {

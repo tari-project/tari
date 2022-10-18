@@ -267,8 +267,7 @@ where
                 total_signature_nonce,
                 metadata_signature_nonce,
                 wallet_script_secret_key,
-            } => {
-                let (tx, amount, fee) = self
+            } =>  self
                     .encumber_aggregate_utxo(
                         tx_id,
                         fee_per_gram,
@@ -279,10 +278,7 @@ where
                         total_signature_nonce,
                         metadata_signature_nonce,
                         wallet_script_secret_key,
-                    )
-                    .await?;
-                Ok(OutputManagerResponse::EncumberAggregateUtxo((tx, amount, fee)))
-            },
+                    ).await.map(OutputManagerResponse::EncumberAggregateUtxo),
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
@@ -1269,7 +1265,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(Transaction, MicroTari, MicroTari), OutputManagerError> {
+    ) -> Result<(Transaction, MicroTari, MicroTari,PublicKey), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
@@ -1295,6 +1291,7 @@ where
 
         let wallet_script_secret_key = PrivateKey::from_hex(&wallet_script_secret_key)
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        let total_script_key = PublicKey::from_secret_key(&wallet_script_secret_key) + &total_script_pubkey;
         input.script_private_key = wallet_script_secret_key;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1303,6 +1300,10 @@ where
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        trace!(
+            target: LOG_TARGET,
+            "Going builder"
+        );
         builder
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
@@ -1311,6 +1312,7 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())
             .with_tx_id(tx_id)
+            .with_lock_height(0)
             .with_input(
                 input.clone().as_transaction_input_with_partial_signature(
                     &self.resources.factories.commitment,
@@ -1323,6 +1325,10 @@ where
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value - fee;
+        trace!(
+            target: LOG_TARGET,
+            "created amount"
+        );
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
         let commitment = self
@@ -1346,6 +1352,10 @@ where
             &encrypted_value,
             minimum_amount_promise,
         )?;
+        trace!(
+            target: LOG_TARGET,
+            "creating utxo"
+        );
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 amount,
@@ -1356,7 +1366,7 @@ where
                 script_private_key,
                 &total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
-                0,
+                u64::MAX,
                 covenant,
                 encrypted_value,
                 minimum_amount_promise,
@@ -1370,7 +1380,10 @@ where
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
+        trace!(
+            target: LOG_TARGET,
+            "Finalizing tx"
+        );
         let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
@@ -1389,10 +1402,10 @@ where
 
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
 
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize_partial_tx(&factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok((tx, amount, fee))
+        Ok((tx, amount, fee,total_script_key))
     }
 
     #[allow(clippy::too_many_lines)]

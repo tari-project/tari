@@ -83,6 +83,7 @@ use tokio::{
     time::{sleep, timeout},
 };
 use zeroize::Zeroizing;
+use tari_core::transactions::transaction_components::Transaction;
 
 use super::error::CommandError;
 use crate::{
@@ -187,7 +188,7 @@ async fn encumber_aggregate_utxo(
     total_signature_nonce: PublicKey,
     metadata_signature_nonce: PublicKey,
     wallet_script_secret_key: String,
-) -> Result<(TxId, Commitment, FixedHash, Commitment, String, String, PublicKey), CommandError> {
+) -> Result<(TxId, Transaction, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
@@ -818,29 +819,33 @@ pub async fn command_runner(
             {
                 Ok((
                        tx_id,
-                       output_commitment,
-                       output_hash,
-                       input_commitment,
-                       input_script_hex,
-                       input_commitment_hex,
-                       total_public_offset,
+                       transaction,
+                        script_pubkey
                    )) => {
                     println!(
                         "Encumber aggregate utxo:
                             1. Tx_id: {}
-                            2. output_commitment: {},
-                            3. output_hash: {},
-                            4. input_commitment: {},
-                            5. input_stack_hex: {},
-                            6. input_script_hex: {},
-                            7. total_public_offes: {}",
+                            2. input_commitment: {},
+                            3. input_stack_hex: {},
+                            4. input_script_hex: {},
+                            5. total_script_key_hex: {},
+                            6. total_script_nonce_hex: {},
+                            7. output_commitment: {},
+                            8. output_hash: {},
+                            9. sender_offset_pubkey: {},
+                            10. meta_signature_nonce: {},
+                            11. total_public_offset: {}",
                         tx_id,
-                        output_commitment.to_hex(),
-                        output_hash.to_hex(),
-                        input_commitment.to_hex(),
-                        input_script_hex,
-                        input_commitment_hex,
-                        total_public_offset.to_hex(),
+                        transaction.body.inputs()[0].commitment().unwrap().to_hex(),
+                        transaction.body.inputs()[0].input_data.to_hex(),
+                        transaction.body.inputs()[0].script().unwrap().to_hex(),
+                        script_pubkey.to_hex(),
+                        transaction.body.inputs()[0].script_signature.public_nonce().to_hex(),
+                        transaction.body.outputs()[0].commitment().to_hex(),
+                        transaction.body.outputs()[0].hash().to_hex(),
+                        transaction.body.outputs()[0].sender_offset_public_key.to_hex(),
+                        transaction.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
+                        transaction.script_offset.to_hex(),
                     )
                 },
                 Err(e) => println!("Encumber aggregate transaction error! {}", e),}
@@ -929,7 +934,7 @@ pub async fn command_runner(
                 let signature =
                     Signature::sign(private_key, private_nonce, &challenge).map_err(CommandError::FailedSignature)?;
                 println!(
-                    "Sign script sig:
+                    "Sign meta sig:
                                 1. signature: {},
                                 2. public key: {},
                      Script offset: {}",
