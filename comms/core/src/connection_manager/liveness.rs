@@ -20,14 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::future::Future;
+use std::{
+    future::Future,
+    time::{Duration, Instant},
+};
 
-use futures::StreamExt;
-use tokio::io::{AsyncRead, AsyncWrite};
+use futures::{future, SinkExt, StreamExt};
+use log::*;
+use multiaddr::Multiaddr;
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    sync::watch,
+    time,
+};
 use tokio_util::codec::{Framed, LinesCodec, LinesCodecError};
+
+use crate::{connection_manager::wire_mode::WireMode, transports::Transport};
 
 /// Max line length accepted by the liveness session.
 const MAX_LINE_LENGTH: usize = 50;
+const LOG_TARGET: &str = "comms::connection_manager::liveness";
 
 /// Echo server for liveness checks
 pub struct LivenessSession<TSocket> {
@@ -46,6 +59,120 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub fn run(self) -> impl Future<Output = Result<(), LinesCodecError>> {
         let (sink, stream) = self.framed.split();
         stream.forward(sink)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum LivenessStatus {
+    Disabled,
+    Checking,
+    Unreachable,
+    Live(Duration),
+}
+
+pub struct LivenessCheck<TTransport> {
+    transport: TTransport,
+    address: Multiaddr,
+    interval: Duration,
+    tx_watch: watch::Sender<LivenessStatus>,
+    shutdown_signal: ShutdownSignal,
+}
+
+impl<TTransport> LivenessCheck<TTransport>
+where
+    TTransport: Transport + Send + Sync + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    pub fn spawn(
+        transport: TTransport,
+        address: Multiaddr,
+        interval: Duration,
+        shutdown_signal: ShutdownSignal,
+    ) -> watch::Receiver<LivenessStatus> {
+        let (tx_watch, rx_watch) = watch::channel(LivenessStatus::Checking);
+        let check = Self {
+            transport,
+            address,
+            interval,
+            tx_watch,
+            shutdown_signal,
+        };
+        tokio::spawn(check.run_until_shutdown());
+        rx_watch
+    }
+
+    pub async fn run_until_shutdown(self) {
+        let shutdown_signal = self.shutdown_signal.clone();
+        let run_fut = self.run();
+        tokio::pin!(run_fut);
+        future::select(run_fut, shutdown_signal).await;
+    }
+
+    pub async fn run(mut self) {
+        info!(
+            target: LOG_TARGET,
+            "🔌️ Starting liveness self-check with interval {:.2?}", self.interval
+        );
+        loop {
+            let timer = Instant::now();
+            let _ = self.tx_watch.send(LivenessStatus::Checking);
+            match self.transport.dial(&self.address).await {
+                Ok(mut socket) => {
+                    info!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
+                    if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
+                        warn!(target: LOG_TARGET, "🔌️ liveness failed to write byte: {}", err);
+                        self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                        continue;
+                    }
+                    let mut framed = Framed::new(socket, LinesCodec::new_with_max_length(MAX_LINE_LENGTH));
+                    loop {
+                        match self.ping_pong(&mut framed).await {
+                            Ok(Some(latency)) => {
+                                info!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
+                                self.tx_watch.send_replace(LivenessStatus::Live(latency));
+                            },
+                            Ok(None) => {
+                                info!(target: LOG_TARGET, "🔌️ liveness connection closed");
+                                self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                                break;
+                            },
+                            Err(err) => {
+                                warn!(target: LOG_TARGET, "🔌️ ping pong failed: {}", err);
+                                self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                                // let _ = framed.close().await;
+                                break;
+                            },
+                        }
+
+                        time::sleep(self.interval).await;
+                    }
+                },
+                Err(err) => {
+                    self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                    warn!(
+                        target: LOG_TARGET,
+                        "🔌️ Failed to dial public address for self check: {}", err
+                    );
+                },
+            }
+            time::sleep(self.interval).await;
+        }
+    }
+
+    async fn ping_pong(
+        &mut self,
+        framed: &mut Framed<TTransport::Output, LinesCodec>,
+    ) -> Result<Option<Duration>, LinesCodecError> {
+        let timer = Instant::now();
+        framed.send("pingpong".to_string()).await?;
+        match framed.next().await {
+            Some(res) => {
+                let val = res?;
+                debug!(target: LOG_TARGET, "Received: {}", val);
+                Ok(Some(timer.elapsed()))
+            },
+            None => Ok(None),
+        }
     }
 }
 
