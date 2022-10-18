@@ -667,7 +667,9 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(|(tx_id, output_hash)| TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash)),
+                .map(|(tx_id, output_hash)| {
+                    TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash)
+                }),
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
@@ -689,7 +691,13 @@ where
                     wallet_script_secret_key,
                 )
                 .await
-                .map(|(tx_id, tx, total_script_pubkey)| TransactionServiceResponse::EncumberAggregateUtxo(tx_id,Box::new(tx), Box::new(total_script_pubkey))),
+                .map(|(tx_id, tx, total_script_pubkey)| {
+                    TransactionServiceResponse::EncumberAggregateUtxo(
+                        tx_id,
+                        Box::new(tx),
+                        Box::new(total_script_pubkey),
+                    )
+                }),
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -1224,7 +1232,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(TxId, Transaction,PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         match self
@@ -1259,11 +1267,7 @@ where
                     None,
                 );
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
-                Ok((
-                    tx_id,
-                    transaction,
-                    total_script_key
-                ))
+                Ok((tx_id, transaction, total_script_key))
             },
             Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
         }
@@ -1289,10 +1293,11 @@ where
                 .metadata_signature
                 .public_nonce()
                 .clone(),
-            transaction.transaction.body.outputs()[0].metadata_signature.u() + total_meta_data_signature.get_signature(),
+            transaction.transaction.body.outputs()[0].metadata_signature.u() +
+                total_meta_data_signature.get_signature(),
             transaction.transaction.body.outputs()[0].metadata_signature.v().clone(),
         );
-        transaction.transaction.body.inputs_mut()[0].script_signature =ComSignature::new(
+        transaction.transaction.body.inputs_mut()[0].script_signature = ComSignature::new(
             transaction.transaction.body.inputs()[0]
                 .script_signature
                 .public_nonce()
@@ -1301,7 +1306,8 @@ where
             transaction.transaction.body.inputs()[0].script_signature.v().clone(),
         );
         self.output_manager_service
-            .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone()).await?;
+            .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
+            .await?;
         self.db.update_completed_transaction(tx_id, transaction)?;
 
         self.output_manager_service.confirm_pending_transaction(tx_id).await?;

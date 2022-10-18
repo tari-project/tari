@@ -30,7 +30,7 @@ use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, ComSignature, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -65,7 +65,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, Opcode, StackItem, TariScript, ExecutionStack};
+use tari_script::{inputs, script, ExecutionStack, Opcode, StackItem, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -267,18 +267,20 @@ where
                 total_signature_nonce,
                 metadata_signature_nonce,
                 wallet_script_secret_key,
-            } =>  self
-                    .encumber_aggregate_utxo(
-                        tx_id,
-                        fee_per_gram,
-                        output_hash,
-                        signatures,
-                        total_script_pubkey,
-                        total_offset_pubkey,
-                        total_signature_nonce,
-                        metadata_signature_nonce,
-                        wallet_script_secret_key,
-                    ).await.map(OutputManagerResponse::EncumberAggregateUtxo),
+            } => self
+                .encumber_aggregate_utxo(
+                    tx_id,
+                    fee_per_gram,
+                    output_hash,
+                    signatures,
+                    total_script_pubkey,
+                    total_offset_pubkey,
+                    total_signature_nonce,
+                    metadata_signature_nonce,
+                    wallet_script_secret_key,
+                )
+                .await
+                .map(OutputManagerResponse::EncumberAggregateUtxo),
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
@@ -1265,7 +1267,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(Transaction, MicroTari, MicroTari,PublicKey), OutputManagerError> {
+    ) -> Result<(Transaction, MicroTari, MicroTari, PublicKey), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
@@ -1285,10 +1287,12 @@ where
         let db_input = self.resources.db.get_unspent_output(output_hash)?;
         let mut input: UnblindedOutput = db_input.clone().into();
 
-        input.input_data = ExecutionStack::default();
+        let mut script_signatures = Vec::new();
+
         for signature in &signatures {
-            input.input_data.push(StackItem::from(signature.clone()))?;
+            script_signatures.push(StackItem::Signature(signature.clone()));
         }
+        input.input_data = ExecutionStack::new(script_signatures);
 
         let wallet_script_secret_key = PrivateKey::from_hex(&wallet_script_secret_key)
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
@@ -1301,10 +1305,6 @@ where
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
-        trace!(
-            target: LOG_TARGET,
-            "Going builder"
-        );
         builder
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
@@ -1326,10 +1326,6 @@ where
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value - fee;
-        trace!(
-            target: LOG_TARGET,
-            "created amount"
-        );
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
         let encrypted_value = EncryptedValue::default();
@@ -1347,9 +1343,11 @@ where
             &encrypted_value,
             minimum_amount_promise,
         )?;
-        trace!(
-            target: LOG_TARGET,
-            "creating utxo"
+
+        let metadata_signature = ComSignature::new(
+            metadata_signature.public_nonce() + &metadata_signature_nonce,
+            metadata_signature.u().clone(),
+            metadata_signature.v().clone(),
         );
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1375,10 +1373,6 @@ where
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        trace!(
-            target: LOG_TARGET,
-            "Finalizing tx"
-        );
         let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
@@ -1400,7 +1394,7 @@ where
         stp.finalize_partial_tx(&factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok((tx, amount, fee,total_script_key))
+        Ok((tx, amount, fee, total_script_key))
     }
 
     #[allow(clippy::too_many_lines)]

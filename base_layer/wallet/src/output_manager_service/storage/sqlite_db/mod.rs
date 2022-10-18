@@ -927,7 +927,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 UpdateOutput {
                     metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
                     metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
-                metadata_signature_v_key: Some(output.metadata_signature.v().to_vec()),
+                    metadata_signature_v_key: Some(output.metadata_signature.v().to_vec()),
                     ..Default::default()
                 },
                 &conn,

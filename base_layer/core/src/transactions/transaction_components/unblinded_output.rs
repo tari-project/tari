@@ -231,6 +231,11 @@ impl UnblindedOutput {
             factory,
         )
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
+        let script_signature = ComSignature::new(
+            script_signature.public_nonce() + &partial_total_nonce,
+            script_signature.u().clone(),
+            script_signature.v().clone(),
+        );
 
         Ok(TransactionInput::new_current_version(
             SpentOutput::OutputData {

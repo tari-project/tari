@@ -103,7 +103,7 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            //tx.validate_internal_consistency(true, factories, self.reward, prev_header, height)?;
+            // tx.validate_internal_consistency(true, factories, self.reward, prev_header, height)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(

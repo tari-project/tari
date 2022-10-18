@@ -650,11 +650,9 @@ impl SenderTransactionProtocol {
         }
     }
 
-    /// This is the exact same function as finalize except it does it do final transaction validation as we expect this to be broken as the transaction is still partial
-    pub fn finalize_partial_tx(
-        &mut self,
-        factories: &CryptoFactories,
-    ) -> Result<(), TPE> {
+    /// This is the exact same function as finalize except it does it do final transaction validation as we expect this
+    /// to be broken as the transaction is still partial
+    pub fn finalize_partial_tx(&mut self, factories: &CryptoFactories) -> Result<(), TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(_) => {

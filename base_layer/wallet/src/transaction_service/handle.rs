@@ -301,11 +301,7 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionSentWithOutputHash(TxId, FixedHash),
-    EncumberAggregateUtxo(
-        TxId,
-        Box<Transaction>,
-        Box<PublicKey>,
-    ),
+    EncumberAggregateUtxo(TxId, Box<Transaction>, Box<PublicKey>),
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -618,7 +614,7 @@ impl TransactionServiceHandle {
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<(TxId, Transaction,PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
@@ -633,13 +629,9 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::EncumberAggregateUtxo(
-                tx_id,transaction, total_script_key,
-            ) => Ok((
-                tx_id,
-                *transaction,
-                *total_script_key
-            )),
+            TransactionServiceResponse::EncumberAggregateUtxo(tx_id, transaction, total_script_key) => {
+                Ok((tx_id, *transaction, *total_script_key))
+            },
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
