@@ -75,7 +75,7 @@ use clap::Parser;
 use log::*;
 use opentelemetry::{self, global};
 use tari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
-use tari_base_node::{cli::Cli, run_node, ApplicationConfig};
+use tari_base_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{configuration::Network, exit_codes::ExitError, initialize_logging, load_configuration};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
@@ -152,7 +152,7 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, Arc::new(config), cli, shutdown))?;
+    runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
 
     // Shutdown and send any traces
     global::shutdown_tracer_provider();

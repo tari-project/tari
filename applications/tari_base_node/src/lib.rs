@@ -52,8 +52,10 @@ use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 use crate::cli::Cli;
-pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
-pub use crate::metrics::MetricsConfig;
+pub use crate::{
+    config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
+    metrics::MetricsConfig,
+};
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
@@ -82,11 +84,11 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
         network: None,
     };
 
-    run_node(node_identity, config, cli, shutdown).await
+    run_base_node_with_cli(node_identity, config, cli, shutdown).await
 }
 
 /// Sets up the base node and runs the cli_loop
-pub async fn run_node(
+pub async fn run_base_node_with_cli(
     node_identity: Arc<NodeIdentity>,
     config: Arc<ApplicationConfig>,
     cli: Cli,

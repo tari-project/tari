@@ -41,7 +41,7 @@ use tari_utilities::{
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 #[allow(clippy::struct_excessive_bools)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
     /// Enable tracing
