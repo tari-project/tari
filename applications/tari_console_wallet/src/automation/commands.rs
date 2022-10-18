@@ -898,7 +898,7 @@ pub async fn command_runner(
                 println!(
                     "Sign script sig:
                                 1. signature: {},
-                                2. public key: {}",
+                                2. public nonce: {}",
                     signature.get_signature().to_hex(),
                     signature.get_public_nonce().to_hex(),
                 )
@@ -919,7 +919,7 @@ pub async fn command_runner(
                 let output_features = OutputFeatures::default();
                 let total_nonce = Commitment::from_hex(&args.total_nonce)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let minimum_value_promise = 0.into();
+                let minimum_value_promise = MicroTari::zero();
                 let challenge = TransactionOutput::build_metadata_signature_challenge(
                     TransactionOutputVersion::get_current_version(),
                     &script,
@@ -936,7 +936,7 @@ pub async fn command_runner(
                 println!(
                     "Sign meta sig:
                                 1. signature: {},
-                                2. public key: {},
+                                2. public nonce: {},
                      Script offset: {}",
                     signature.get_signature().to_hex(),
                     signature.get_public_nonce().to_hex(),

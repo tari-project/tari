@@ -65,7 +65,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, Opcode, StackItem, TariScript};
+use tari_script::{inputs, script, Opcode, StackItem, TariScript, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -1285,6 +1285,7 @@ where
         let db_input = self.resources.db.get_unspent_output(output_hash)?;
         let mut input: UnblindedOutput = db_input.clone().into();
 
+        input.input_data = ExecutionStack::default();
         for signature in &signatures {
             input.input_data.push(StackItem::from(signature.clone()))?;
         }
@@ -1331,13 +1332,7 @@ where
         );
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_value = EncryptedValue::default();
         let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
