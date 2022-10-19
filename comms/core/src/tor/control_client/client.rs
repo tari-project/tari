@@ -62,7 +62,7 @@ impl TorControlPortClient {
     ) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
-        let socket = tcp.dial(addr).await?;
+        let socket = tcp.dial(&addr).await?;
         Ok(Self::new(socket, event_tx))
     }
 
@@ -304,7 +304,7 @@ mod test {
     #[runtime::test]
     async fn connect() {
         let (mut listener, addr) = TcpTransport::default()
-            .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
+            .listen(&"/ip4/127.0.0.1/tcp/0".parse().unwrap())
             .await
             .unwrap();
         let (event_tx, _) = broadcast::channel(1);

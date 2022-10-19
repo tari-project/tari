@@ -43,6 +43,10 @@ impl StatusLine {
         Default::default()
     }
 
+    pub fn add<T: ToString>(&mut self, value: T) -> &mut Self {
+        self.add_field("", value)
+    }
+
     pub fn add_field<T: ToString>(&mut self, name: &'static str, value: T) -> &mut Self {
         self.fields.push((name, value.to_string()));
         self
@@ -54,7 +58,7 @@ impl Display for StatusLine {
         write!(f, "{} ", Local::now().format("%H:%M"))?;
         let s = self.fields.iter().map(|(k, v)| format(k, v)).collect::<Vec<_>>();
 
-        write!(f, "{}", s.join(", "))
+        write!(f, "{}", s.join(" "))
     }
 }
 
