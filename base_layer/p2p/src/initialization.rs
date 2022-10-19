@@ -543,7 +543,8 @@ impl ServiceInitializer for P2pInitializer {
                 minor_version: MINOR_NETWORK_VERSION,
                 network_byte: self.network.as_byte(),
                 user_agent: config.user_agent.clone(),
-            });
+            })
+            .set_liveness_check(config.listener_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case

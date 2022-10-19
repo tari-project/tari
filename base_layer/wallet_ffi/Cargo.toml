@@ -24,7 +24,7 @@ chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 libc = "0.2.65"
 log = "0.4.6"
-log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
+log4rs = {version = "1.2.0", features = ["console_appender", "file_appender", "yaml_format"]}
 # Needs to be higher than 0.10.41 to address a security issue
 openssl = { version = "0.10.41", features = ["vendored"] }
 rand = "0.7.3"

@@ -20,13 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    io::{stdout, Write},
-    str::FromStr,
-    thread,
-    time::Instant,
-};
+use std::{convert::TryFrom, io::stdout, str::FromStr, thread, time::Instant};
 
 use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};

@@ -201,6 +201,8 @@ event_channel_size = 3500
 
 # CIDR for addresses allowed to enter into liveness check mode on the listener.
 #listener_liveness_allowlist_cidrs = []
+# Enables periodic socket-level liveness checks. Default: Disabled
+# listener_liveness_check_interval = 15
 
 # User agent string for this node
 #user_agent = ""

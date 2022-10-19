@@ -531,31 +531,32 @@ where
                         dial_state.peer().node_id.short_str()
                     );
 
-                    let dial_fut = async move {
-                        let mut socket = transport.dial(address.clone()).await.map_err(|err| {
-                            ConnectionManagerError::TransportError {
-                                address: address.to_string(),
-                                details: err.to_string(),
-                            }
-                        })?;
-                        debug!(
-                            target: LOG_TARGET,
-                            "Socket established on '{}'. Performing noise upgrade protocol", address
-                        );
+                    let dial_fut =
+                        async move {
+                            let mut socket = transport.dial(address).await.map_err(|err| {
+                                ConnectionManagerError::TransportError {
+                                    address: address.to_string(),
+                                    details: err.to_string(),
+                                }
+                            })?;
+                            debug!(
+                                target: LOG_TARGET,
+                                "Socket established on '{}'. Performing noise upgrade protocol", address
+                            );
 
-                        socket
-                            .write(&[network_byte])
+                            socket
+                                .write(&[network_byte])
+                                .await
+                                .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
+
+                            let noise_socket = time::timeout(
+                                Duration::from_secs(40),
+                                noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
+                            )
                             .await
-                            .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
-
-                        let noise_socket = time::timeout(
-                            Duration::from_secs(40),
-                            noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
-                        )
-                        .await
-                        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
-                        Result::<_, ConnectionManagerError>::Ok(noise_socket)
-                    };
+                            .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
+                            Result::<_, ConnectionManagerError>::Ok(noise_socket)
+                        };
 
                     pin_mut!(dial_fut);
                     let either = future::select(dial_fut, cancel_signal.clone()).await;

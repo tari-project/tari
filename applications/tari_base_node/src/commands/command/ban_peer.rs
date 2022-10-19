@@ -80,13 +80,14 @@ impl CommandContext {
         if self.base_node_identity.node_id() == &node_id {
             Err(ArgsError::BanSelf.into())
         } else if must_ban {
-            self.connectivity
+            self.comms
+                .connectivity()
                 .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
                 .await?;
             println!("Peer was banned in base node.");
             Ok(())
         } else {
-            self.peer_manager.unban_peer(&node_id).await?;
+            self.comms.peer_manager().unban_peer(&node_id).await?;
             println!("Peer ban was removed from base node.");
             Ok(())
         }

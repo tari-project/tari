@@ -67,11 +67,11 @@ impl Transport for TcpWithTorTransport {
     type Listener = <TcpTransport as Transport>::Listener;
     type Output = TcpStream;
 
-    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+    async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         self.tcp_transport.listen(addr).await
     }
 
-    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+    async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         if addr.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -79,7 +79,7 @@ impl Transport for TcpWithTorTransport {
             ));
         }
 
-        if is_onion_address(&addr) {
+        if is_onion_address(addr) {
             match self.socks_transport {
                 Some(ref transport) => {
                     let socket = transport.dial(addr).await?;

@@ -32,7 +32,7 @@ pub mod state;
 mod ui_contact;
 mod ui_error;
 mod widgets;
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Stdout};
 
 pub use app::*;
 use crossterm::{
