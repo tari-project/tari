@@ -34,8 +34,9 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline::PipelineError,
     types::CommsPublicKey,
+    BytesMut,
 };
-use tari_utilities::{convert::try_convert_all, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
@@ -215,7 +216,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
             let stored_messages = StoredMessagesResponse {
-                messages: try_convert_all(messages)?,
+                messages: messages.into_iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
                 request_id: retrieve_msgs.request_id,
                 response_type: resp_type as i32,
             };
@@ -429,8 +430,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .stored_at
             .map(|t| {
                 Result::<_, StoreAndForwardError>::Ok(DateTime::from_utc(
-                    NaiveDateTime::from_timestamp_opt(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX))
-                        .ok_or(StoreAndForwardError::InvalidStoreMessage)?,
+                    NaiveDateTime::from_timestamp_opt(t.seconds, 0).ok_or_else(|| {
+                        StoreAndForwardError::InvalidSafResponseMessage {
+                            field: "stored_at",
+                            details: "number of seconds provided represents more days than can fit in a u32"
+                                .to_string(),
+                        }
+                    })?,
                     Utc,
                 ))
             })
@@ -563,9 +569,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
 
             let key_message = crypt::generate_key_message(&shared_secret);
-            let decrypted_bytes = crypt::decrypt(&key_message, body)?;
+            let mut decrypted_bytes = BytesMut::from(body);
+            crypt::decrypt(&key_message, &mut decrypted_bytes)?;
             let envelope_body =
-                EnvelopeBody::decode(decrypted_bytes.as_slice()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
+                EnvelopeBody::decode(decrypted_bytes.freeze()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
             if envelope_body.is_empty() {
                 return Err(StoreAndForwardError::InvalidEnvelopeBody);
             }
@@ -616,7 +623,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use chrono::Utc;
+    use chrono::{Timelike, Utc};
     use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
     use tari_test_utils::collect_recv;
     use tari_utilities::{hex, hex::Hex};
@@ -702,7 +709,7 @@ mod test {
             None,
             make_dht_inbound_message(
                 &node_identity,
-                b"Keep this for others please".to_vec(),
+                &b"Keep this for others please".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
@@ -793,10 +800,9 @@ mod test {
             sleep(Duration::from_secs(5)).await;
         }
         assert_eq!(oms_mock_state.call_count().await, 1);
-        let call = oms_mock_state.pop_call().await.unwrap();
+        let (_, body) = oms_mock_state.pop_call().await.unwrap();
 
-        let body = call.1.to_vec();
-        let body = EnvelopeBody::decode(body.as_slice()).unwrap();
+        let body = EnvelopeBody::decode(body).unwrap();
         let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
 
         assert_eq!(msg.messages().len(), 1);
@@ -827,19 +833,19 @@ mod test {
 
         let node_identity = make_node_identity();
 
-        let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
+        let msg_a = wrap_in_envelope_body!(&b"A".to_vec());
 
         let inbound_msg_a =
-            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
+            make_dht_inbound_message(&node_identity, &msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
             .unwrap();
 
-        let msg_b = &wrap_in_envelope_body!(b"B".to_vec()).to_encoded_bytes();
+        let msg_b = wrap_in_envelope_body!(b"B".to_vec());
         let inbound_msg_b =
-            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
+            make_dht_inbound_message(&node_identity, &msg_b, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
@@ -856,20 +862,14 @@ mod test {
         let msg2 = ProtoStoredMessage::new(0, inbound_msg_b.dht_header, inbound_msg_b.body, msg2_time);
 
         // Cleartext message
-        let clear_msg = wrap_in_envelope_body!(b"Clear".to_vec()).to_encoded_bytes();
-        let clear_header = make_dht_inbound_message(
-            &node_identity,
-            clear_msg.clone(),
-            DhtMessageFlags::empty(),
-            false,
-            false,
-        )
-        .unwrap()
-        .dht_header;
+        let clear_msg = wrap_in_envelope_body!(b"Clear".to_vec());
+        let clear_header = make_dht_inbound_message(&node_identity, &clear_msg, DhtMessageFlags::empty(), false, false)
+            .unwrap()
+            .dht_header;
         let msg_clear_time = Utc::now()
             .checked_sub_signed(chrono::Duration::from_std(Duration::from_secs(120)).unwrap())
             .unwrap();
-        let msg_clear = ProtoStoredMessage::new(0, clear_header, clear_msg, msg_clear_time);
+        let msg_clear = ProtoStoredMessage::new(0, clear_header, clear_msg.to_encoded_bytes(), msg_clear_time);
         let mut message = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(StoredMessagesResponse {
                 messages: vec![msg1.clone(), msg2, msg_clear],
@@ -879,7 +879,7 @@ mod test {
             None,
             make_dht_inbound_message(
                 &node_identity,
-                b"Stored message".to_vec(),
+                &b"Stored message".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
@@ -937,7 +937,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(last_saf_received, msg2_time);
+        assert_eq!(last_saf_received.second(), msg2_time.second());
     }
 
     #[runtime::test]
@@ -950,9 +950,9 @@ mod test {
 
         let node_identity = make_node_identity();
 
-        let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
+        let msg_a = wrap_in_envelope_body!(&b"A".to_vec());
         let inbound_msg_a =
-            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
+            make_dht_inbound_message(&node_identity, &msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -973,7 +973,7 @@ mod test {
             None,
             make_dht_inbound_message(
                 &node_identity,
-                b"Stored message".to_vec(),
+                &b"Stored message".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
@@ -1023,9 +1023,9 @@ mod test {
 
         let node_identity = make_node_identity();
 
-        let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
+        let msg_a = wrap_in_envelope_body!(&b"A".to_vec());
         let inbound_msg_a =
-            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
+            make_dht_inbound_message(&node_identity, &msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -1046,7 +1046,7 @@ mod test {
             None,
             make_dht_inbound_message(
                 &node_identity,
-                b"Stored message".to_vec(),
+                &b"Stored message".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,

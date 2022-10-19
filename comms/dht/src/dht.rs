@@ -31,6 +31,7 @@ use tari_comms::{
     pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::epoch_time::EpochTime;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tower::{layer::Layer, Service, ServiceBuilder};
@@ -298,6 +299,7 @@ impl Dht {
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(
                 self.config.clone(),
                 self.node_identity.clone(),
@@ -432,6 +434,20 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     }
 }
 
+/// Check message expiry and immediately discard if expired
+fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
+    if let Some(expires) = msg.dht_header.expires {
+        if expires < EpochTime::now() {
+            debug!(
+                target: LOG_TARGET,
+                "[discard_expired_messages] Discarding expired message {}", msg
+            );
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod test {
     use std::{sync::Arc, time::Duration};
@@ -494,7 +510,7 @@ mod test {
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         let dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
@@ -546,7 +562,7 @@ mod test {
         // Encrypt for self
         let dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
@@ -602,10 +618,11 @@ mod test {
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
-        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes()).unwrap();
+        let mut encrypted_bytes = msg.encode_into_bytes_mut();
+        crypt::encrypt(&key_message, &mut encrypted_bytes).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
-            encrypted_bytes,
+            &encrypted_bytes.to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
@@ -667,7 +684,7 @@ mod test {
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         let mut dht_envelope = make_dht_envelope(
             &node_identity,
-            msg.to_encoded_bytes(),
+            &msg,
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),

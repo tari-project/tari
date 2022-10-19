@@ -17,15 +17,22 @@ identity_file = "config/base_node_id_dibbler.json"
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_igor.json"
 
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18152")
+#grpc_address = "/ip4/127.0.0.1/tcp/18152"
+
 [esmeralda.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_esmeralda.json"
 
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
+#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
 [base_node]
 # Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
 #network = "emseralda"
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
-#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# Set to false to disable the base node GRPC server (default = true)
+#grpc_enabled = true
 
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 #identity_file = "config/base_node_id.json"
@@ -111,7 +118,7 @@ track_reorgs = true
 # The maximum number of transactions to sync in a single sync session Default: 10_000
 #service.initial_sync_max_transactions = 10_000
 # The maximum number of blocks added via sync or re-org to triggering a sync
-#block_sync_trigger = 5
+#service.block_sync_trigger = 5
 
 [base_node.state_machine]
 # The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be
