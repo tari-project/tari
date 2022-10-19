@@ -2267,8 +2267,8 @@ where
                     TransactionServiceError::ProtobufConversionError(_) |
                     TransactionServiceError::RpcError(_) |
                     TransactionServiceError::InvalidMessageError(_) |
-                    TransactionServiceError::BaseNodeChanged { .. } => 2,
-                    _ => 3,
+                    TransactionServiceError::BaseNodeChanged { .. } => 3,
+                    _ => 2,
                 };
                 let _size = self
                     .event_publisher

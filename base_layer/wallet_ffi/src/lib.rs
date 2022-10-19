@@ -4146,7 +4146,11 @@ unsafe fn init_logging(
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a bool that returns if the validation was successful or not.
+/// callback references and the second parameter is a u64 that returns if the validation was successful or not.
+///         ValidationSuccess,               // 0
+///         ValidationAlreadyBusy            // 1
+///         ValidationInternalFailure        // 2
+///         ValidationCommunicationFailure   // 3
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
