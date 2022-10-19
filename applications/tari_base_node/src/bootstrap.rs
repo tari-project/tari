@@ -108,6 +108,8 @@ where B: BlockchainBackend + 'static
 
         // TODO: This should probably be disabled in future and have it optionally set/unset in the config - this check
         //       does allow MITM/ISP/tor router to connect this node's IP to a destination IP/onion address.
+        //       Specifically, "pingpong" text is periodically sent on an unencrypted socket allowing anyone observing
+        //       the traffic to recognise the sending IP address as almost certainly a tari node.
         p2p_config.listener_liveness_check_interval = Some(Duration::from_secs(15));
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
