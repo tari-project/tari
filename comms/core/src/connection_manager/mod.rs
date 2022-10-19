@@ -52,6 +52,8 @@ mod peer_connection;
 pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
 
 mod liveness;
+pub use liveness::LivenessStatus;
+
 mod wire_mode;
 
 #[cfg(test)]

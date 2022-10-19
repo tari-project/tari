@@ -28,7 +28,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc, oneshot},
+    sync::{broadcast, mpsc, oneshot, watch},
     task,
     time,
 };
@@ -43,7 +43,7 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
-    connection_manager::{metrics, ConnectionDirection, ConnectionId},
+    connection_manager::{liveness::LivenessStatus, metrics, ConnectionDirection, ConnectionId},
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
@@ -111,6 +111,8 @@ pub struct ConnectionManagerConfig {
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
+    /// Interval to perform self-liveness ping-pong tests. Default: None/disabled
+    pub liveness_self_check_interval: Option<Duration>,
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
@@ -133,9 +135,10 @@ impl Default for ConnectionManagerConfig {
             // This must always be true for internal crate tests
             #[cfg(test)]
             allow_test_addresses: true,
-            liveness_max_sessions: 0,
+            liveness_max_sessions: 1,
             time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
+            liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
         }
     }
@@ -146,6 +149,7 @@ impl Default for ConnectionManagerConfig {
 pub struct ListenerInfo {
     bind_address: Multiaddr,
     aux_bind_address: Option<Multiaddr>,
+    liveness_watch: watch::Receiver<LivenessStatus>,
 }
 
 impl ListenerInfo {
@@ -158,6 +162,17 @@ impl ListenerInfo {
     /// The auxiliary TCP address that was bound on if enabled.
     pub fn auxiliary_bind_address(&self) -> Option<&Multiaddr> {
         self.aux_bind_address.as_ref()
+    }
+
+    /// Returns the current liveness status
+    pub fn liveness_status(&self) -> LivenessStatus {
+        *self.liveness_watch.borrow()
+    }
+
+    /// Waits for liveness status to change from the last time the value was checked.
+    pub async fn liveness_status_changed(&mut self) -> Option<LivenessStatus> {
+        self.liveness_watch.changed().await.ok()?;
+        Some(*self.liveness_watch.borrow())
     }
 }
 
@@ -211,8 +226,13 @@ where
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
             info!(target: LOG_TARGET, "Starting auxiliary listener on {}", addr);
+            let aux_config = ConnectionManagerConfig {
+                // Disable liveness checks on the auxiliary listener
+                liveness_self_check_interval: None,
+                ..config.clone()
+            };
             PeerListener::new(
-                config.clone(),
+                aux_config,
                 addr,
                 TcpTransport::new(),
                 noise_config.clone(),
@@ -325,21 +345,19 @@ where
 
         listener.set_supported_protocols(self.protocols.get_supported_protocols());
 
-        let mut listener_info = ListenerInfo {
-            bind_address: Multiaddr::empty(),
-            aux_bind_address: None,
-        };
-        match listener.listen().await {
-            Ok(addr) => {
-                listener_info.bind_address = addr;
+        let mut listener_info = match listener.listen().await {
+            Ok((bind_address, liveness_watch)) => ListenerInfo {
+                bind_address,
+                aux_bind_address: None,
+                liveness_watch,
             },
             Err(err) => return Err(err),
-        }
+        };
 
         if let Some(mut listener) = self.aux_listener.take() {
             listener.set_supported_protocols(self.protocols.get_supported_protocols());
-            let addr = listener.listen().await?;
-            debug!(target: LOG_TARGET, "TCP listener bound to address {}", addr);
+            let (addr, _) = listener.listen().await?;
+            debug!(target: LOG_TARGET, "Aux TCP listener bound to address {}", addr);
             listener_info.aux_bind_address = Some(addr);
         }
 

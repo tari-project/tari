@@ -38,6 +38,7 @@ use crate::multiaddr::Multiaddr;
 
 pub type DnsResolverRef = Arc<dyn DnsResolver>;
 
+// TODO: use async_trait
 pub trait DnsResolver: Send + Sync + 'static {
     fn resolve(&self, addr: Multiaddr) -> BoxFuture<'static, Result<SocketAddr, DnsResolverError>>;
 }

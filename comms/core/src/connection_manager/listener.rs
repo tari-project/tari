@@ -36,7 +36,7 @@ use log::*;
 use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
+    sync::{mpsc, watch},
     time,
 };
 use tokio_stream::StreamExt;
@@ -53,7 +53,7 @@ use super::{
 use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
-        liveness::LivenessSession,
+        liveness::{LivenessCheck, LivenessSession, LivenessStatus},
         metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
@@ -83,12 +83,12 @@ pub struct PeerListener<TTransport> {
     node_identity: Arc<NodeIdentity>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
-    on_listening: OneshotTrigger<Result<Multiaddr, ConnectionManagerError>>,
+    on_listening: OneshotTrigger<Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError>>,
 }
 
 impl<TTransport> PeerListener<TTransport>
 where
-    TTransport: Transport + Send + Sync + 'static,
+    TTransport: Transport + Clone + Send + Sync + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     pub fn new(
@@ -121,7 +121,10 @@ where
     /// in binding the listener socket
     // This returns an impl Future and is not async because we want to exclude &self from the future so that it has a
     // 'static lifetime as well as to flatten the oneshot result for ergonomics
-    pub fn on_listening(&self) -> impl Future<Output = Result<Multiaddr, ConnectionManagerError>> + 'static {
+    pub fn on_listening(
+        &self,
+    ) -> impl Future<Output = Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError>> + 'static
+    {
         let signal = self.on_listening.to_signal();
         signal.map(|r| r.ok_or(ConnectionManagerError::ListenerOneshotCancelled)?)
     }
@@ -132,7 +135,7 @@ where
         self
     }
 
-    pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
+    pub async fn listen(self) -> Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError> {
         let on_listening = self.on_listening();
         runtime::current().spawn(self.run());
         on_listening.await
@@ -145,7 +148,9 @@ where
             Ok((mut inbound, address)) => {
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
 
-                self.on_listening.broadcast(Ok(address));
+                let liveness_watch = self.spawn_liveness_check();
+
+                self.on_listening.broadcast(Ok((address, liveness_watch)));
 
                 loop {
                     tokio::select! {
@@ -229,6 +234,21 @@ where
         });
     }
 
+    fn spawn_liveness_check(&self) -> watch::Receiver<LivenessStatus> {
+        match self.config.liveness_self_check_interval {
+            Some(interval) => LivenessCheck::spawn(
+                self.transport.clone(),
+                self.node_identity.public_address(),
+                interval,
+                self.shutdown_signal.clone(),
+            ),
+            None => {
+                let (_, rx) = watch::channel(LivenessStatus::Disabled);
+                rx
+            },
+        }
+    }
+
     async fn spawn_listen_task(&self, mut socket: TTransport::Output, peer_addr: Multiaddr) {
         let node_identity = self.node_identity.clone();
         let peer_manager = self.peer_manager.clone();
@@ -295,8 +315,9 @@ where
                     let _result = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
-                    if liveness_session_count.load(Ordering::SeqCst) > 0 &&
-                        Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist)
+                    if config.liveness_self_check_interval.is_some() ||
+                        (liveness_session_count.load(Ordering::SeqCst) > 0 &&
+                            Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist))
                     {
                         debug!(
                             target: LOG_TARGET,
@@ -430,7 +451,7 @@ where
         let bind_address = self.bind_address.clone();
         debug!(target: LOG_TARGET, "Attempting to listen on {}", bind_address);
         self.transport
-            .listen(bind_address.clone())
+            .listen(&bind_address)
             .await
             .map_err(|err| ConnectionManagerError::ListenerError {
                 address: bind_address.to_string(),

@@ -20,11 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
+        serializers,
         utils::{deserialize_string_or_struct, serialize_string},
         StringList,
     },
@@ -105,6 +109,9 @@ pub struct P2pConfig {
     /// Liveness sessions can be used by third party tooling to determine node liveness.
     /// A value of 0 will disallow any liveness sessions.
     pub listener_liveness_max_sessions: usize,
+    /// If Some, enables periodic socket-level liveness checks
+    #[serde(with = "serializers::optional_seconds")]
+    pub listener_liveness_check_interval: Option<Duration>,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: StringList,
     /// User agent string for this node
@@ -137,6 +144,7 @@ impl Default for P2pConfig {
             },
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
+            listener_liveness_check_interval: None,
             listener_liveness_allowlist_cidrs: StringList::default(),
             user_agent: String::new(),
             auxiliary_tcp_listener_address: None,

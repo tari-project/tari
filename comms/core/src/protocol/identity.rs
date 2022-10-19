@@ -204,9 +204,9 @@ mod test {
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
-        let (mut listener, addr) = transport.listen(addr).await.unwrap();
+        let (mut listener, addr) = transport.listen(&addr).await.unwrap();
 
-        let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
+        let (out_sock, in_sock) = future::join(transport.dial(&addr), listener.next()).await;
 
         let mut out_sock = out_sock.unwrap();
         let (mut in_sock, _) = in_sock.unwrap().unwrap();
@@ -251,9 +251,9 @@ mod test {
     async fn fail_cases() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
-        let (mut listener, addr) = transport.listen(addr).await.unwrap();
+        let (mut listener, addr) = transport.listen(&addr).await.unwrap();
 
-        let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
+        let (out_sock, in_sock) = future::join(transport.dial(&addr), listener.next()).await;
 
         let mut out_sock = out_sock.unwrap();
         let (mut in_sock, _) = in_sock.unwrap().unwrap();
