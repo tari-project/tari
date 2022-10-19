@@ -21,7 +21,7 @@ tari_base_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = {path="../../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
-crossterm = { version = "0.17" }
+crossterm = { version = "0.25.0" }
 bincode = "1.3.1"
 bytes = "1.1"
 chrono = { version = "0.4.6", default-features = false }
