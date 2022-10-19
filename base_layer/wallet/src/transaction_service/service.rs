@@ -2262,9 +2262,17 @@ where
                     target: LOG_TARGET,
                     "Error completing Transaction Validation Protocol (id: {}): {:?}", id, error
                 );
+                let reason = match error {
+                    TransactionServiceError::TransactionValidationInProgress => 1,
+                    TransactionServiceError::ProtobufConversionError(_) |
+                    TransactionServiceError::RpcError(_) |
+                    TransactionServiceError::InvalidMessageError(_) |
+                    TransactionServiceError::BaseNodeChanged { .. } => 2,
+                    _ => 3,
+                };
                 let _size = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(id)));
+                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(id, reason)));
             },
         }
     }

@@ -303,7 +303,7 @@ pub enum TransactionEvent {
     },
     TransactionValidationStateChanged(OperationId),
     TransactionValidationCompleted(OperationId),
-    TransactionValidationFailed(OperationId),
+    TransactionValidationFailed(OperationId, u64),
     Error(String),
 }
 
@@ -378,10 +378,10 @@ impl fmt::Display for TransactionEvent {
                 write!(f, "Transaction validation state changed: {}", operation_id)
             },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
-                write!(f, "Transaction validation completed: {}", operation_id)
+                write!(f, "Transaction validation(#{}) completed", operation_id)
             },
-            TransactionEvent::TransactionValidationFailed(operation_id) => {
-                write!(f, "Transaction validation failed: {}", operation_id)
+            TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
+                write!(f, "Transaction validation(#{}) failed: {}", operation_id, reason)
             },
             TransactionEvent::NewBlockMined(tx_id) => {
                 write!(f, "New block mined {}", tx_id)
