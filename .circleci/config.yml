@@ -32,6 +32,9 @@ commands:
           name: Build miner
           command: cargo build --release --bin tari_miner
       - run:
+          name: Build wallet FFI
+          command: cargo build --release --package tari_wallet_ffi
+      - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
           command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci" --tags "not @wallet-ffi"  --format json:cucumber_output/tests.cucumber --exit --retry 2 --retry-tag-filter "@flaky and not @broken"

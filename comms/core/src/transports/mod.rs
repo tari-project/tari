@@ -61,8 +61,8 @@ pub trait Transport {
     type Listener: Stream<Item = Result<(Self::Output, Multiaddr), Self::Error>> + Send + Unpin;
 
     /// Listen for connections on the given multiaddr
-    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error>;
+    async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error>;
 
     /// Connect (dial) to the given multiaddr
-    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error>;
+    async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error>;
 }

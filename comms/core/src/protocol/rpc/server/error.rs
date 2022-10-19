@@ -60,8 +60,17 @@ pub enum RpcServerError {
     ServiceCallExceededDeadline,
     #[error("Stream read exceeded deadline")]
     ReadStreamExceededDeadline,
-    #[error("Early close error: {0}")]
-    EarlyCloseError(#[from] EarlyCloseError<BytesMut>),
+    #[error("Early close: {0}")]
+    EarlyClose(#[from] EarlyCloseError<BytesMut>),
+}
+
+impl RpcServerError {
+    pub fn early_close_io(&self) -> Option<&io::Error> {
+        match self {
+            Self::EarlyClose(e) => e.io(),
+            _ => None,
+        }
+    }
 }
 
 impl From<oneshot::error::RecvError> for RpcServerError {

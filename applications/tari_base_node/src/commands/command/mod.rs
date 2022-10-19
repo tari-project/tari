@@ -65,9 +65,9 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{Peer, PeerManager, PeerManagerError, PeerQuery},
+    peer_manager::{Peer, PeerManagerError, PeerQuery},
     protocol::rpc::RpcServerHandle,
+    CommsNode,
     NodeIdentity,
 };
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
@@ -155,8 +155,7 @@ pub struct CommandContext {
     dht_metrics_collector: MetricsCollectorHandle,
     rpc_server: RpcServerHandle,
     base_node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager>,
-    connectivity: ConnectivityRequester,
+    comms: CommsNode,
     liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -176,8 +175,7 @@ impl CommandContext {
             dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
             rpc_server: ctx.rpc_server(),
             base_node_identity: ctx.base_node_identity(),
-            peer_manager: ctx.base_node_comms().peer_manager(),
-            connectivity: ctx.base_node_comms().connectivity(),
+            comms: ctx.base_node_comms().clone(),
             liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -297,7 +295,7 @@ impl HandleCommand<Command> for CommandContext {
 
 impl CommandContext {
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let pm = &self.peer_manager;
+        let pm = self.comms.peer_manager();
         let query = PeerQuery::new().select_where(|p| p.is_banned());
         pm.perform_query(query).await
     }

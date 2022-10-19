@@ -36,7 +36,7 @@ use tari_comms::{
     types::CommsPublicKey,
     BytesMut,
 };
-use tari_utilities::{convert::try_convert_all, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
@@ -216,7 +216,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
             let stored_messages = StoredMessagesResponse {
-                messages: try_convert_all(messages)?,
+                messages: messages.into_iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
                 request_id: retrieve_msgs.request_id,
                 response_type: resp_type as i32,
             };
@@ -430,8 +430,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .stored_at
             .map(|t| {
                 Result::<_, StoreAndForwardError>::Ok(DateTime::from_utc(
-                    NaiveDateTime::from_timestamp_opt(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX))
-                        .ok_or(StoreAndForwardError::InvalidStoreMessage)?,
+                    NaiveDateTime::from_timestamp_opt(t.seconds, 0).ok_or_else(|| {
+                        StoreAndForwardError::InvalidSafResponseMessage {
+                            field: "stored_at",
+                            details: "number of seconds provided represents more days than can fit in a u32"
+                                .to_string(),
+                        }
+                    })?,
                     Utc,
                 ))
             })
@@ -618,7 +623,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use chrono::Utc;
+    use chrono::{Timelike, Utc};
     use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
     use tari_test_utils::collect_recv;
     use tari_utilities::{hex, hex::Hex};
@@ -932,7 +937,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(last_saf_received, msg2_time);
+        assert_eq!(last_saf_received.second(), msg2_time.second());
     }
 
     #[runtime::test]
