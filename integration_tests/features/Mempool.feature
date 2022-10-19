@@ -4,7 +4,7 @@
 @mempool @base-node
 Feature: Mempool
 
-  @flaky
+  @critical
   Scenario: Transactions are propagated through a network
     #
     # The randomness of the TX1 propagation can result in this test not passing.
