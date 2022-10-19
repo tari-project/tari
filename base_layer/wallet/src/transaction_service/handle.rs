@@ -378,7 +378,7 @@ impl fmt::Display for TransactionEvent {
                 write!(f, "Transaction validation state changed: {}", operation_id)
             },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
-                write!(f, "Transaction validation(#{}) completed", operation_id)
+                write!(f, "Transaction validation(#{operation_id}) completed")
             },
             TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
                 write!(f, "Transaction validation(#{}) failed: {}", operation_id, reason)
