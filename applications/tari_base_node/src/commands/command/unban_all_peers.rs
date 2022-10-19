@@ -41,10 +41,11 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     pub async fn unban_all_peers(&self) -> Result<(), Error> {
         let query = PeerQuery::new().select_where(|p| p.is_banned());
-        let peers = self.peer_manager.perform_query(query).await?;
+        let peer_manager = self.comms.peer_manager();
+        let peers = peer_manager.perform_query(query).await?;
         let num_peers = peers.len();
         for peer in peers {
-            if let Err(err) = self.peer_manager.unban_peer(&peer.node_id).await {
+            if let Err(err) = peer_manager.unban_peer(&peer.node_id).await {
                 println!("Failed to unban peer: {}", err);
             }
         }

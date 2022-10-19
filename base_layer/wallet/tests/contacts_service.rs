@@ -98,6 +98,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         user_agent: "tari/test-wallet".to_string(),
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
+        listener_liveness_check_interval: None,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();

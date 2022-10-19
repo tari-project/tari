@@ -17,7 +17,6 @@
 
 use std::convert::TryFrom;
 
-use serde::{Deserialize, Serialize};
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -58,7 +57,7 @@ pub const TYPE_PUBKEY: u8 = 4;
 pub const TYPE_SIG: u8 = 5;
 pub const TYPE_SCALAR: u8 = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackItem {
     Number(i64),
     Hash(HashValue),
@@ -178,7 +177,7 @@ stack_item_from!(RistrettoPublicKey => PublicKey);
 stack_item_from!(RistrettoSchnorr => Signature);
 stack_item_from!(ScalarValue => Scalar);
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExecutionStack {
     items: Vec<StackItem>,
 }
@@ -262,7 +261,7 @@ impl ExecutionStack {
     }
 
     /// Return a binary array representation of the input stack
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         self.items.iter().fold(Vec::new(), |mut bytes, item| {
             item.to_bytes(&mut bytes);
             bytes
@@ -317,7 +316,7 @@ impl Hex for ExecutionStack {
     }
 
     fn to_hex(&self) -> String {
-        to_hex(&self.as_bytes())
+        to_hex(&self.to_bytes())
     }
 }
 
@@ -361,11 +360,21 @@ mod test {
     use tari_crypto::{
         hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
-        ristretto::{utils, utils::SignatureSet, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+        ristretto::{
+            pedersen::PedersenCommitment,
+            utils,
+            utils::SignatureSet,
+            RistrettoPublicKey,
+            RistrettoSchnorr,
+            RistrettoSecretKey,
+        },
     };
-    use tari_utilities::hex::{from_hex, Hex};
+    use tari_utilities::{
+        hex::{from_hex, Hex},
+        message_format::MessageFormat,
+    };
 
-    use crate::{op_codes::ScalarValue, ExecutionStack, StackItem};
+    use crate::{op_codes::ScalarValue, ExecutionStack, HashValue, StackItem};
 
     #[test]
     fn as_bytes_roundtrip() {
@@ -378,7 +387,7 @@ mod test {
         } = utils::sign::<Blake256>(&k, b"hi").unwrap();
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);
-        let bytes = stack.as_bytes();
+        let bytes = stack.to_bytes();
         let stack2 = ExecutionStack::from_bytes(&bytes).unwrap();
         assert_eq!(stack, stack2);
     }
@@ -444,5 +453,38 @@ mod test {
         } else {
             panic!("Expected scalar")
         }
+    }
+
+    #[test]
+    fn serde_serialization_non_breaking() {
+        const SERDE_ENCODED_BYTES: &str = "ce0000000000000006fdf9fc345d2cdd8aff624a55f824c7c9ce3cc9\
+        72e011b4e750e417a90ecc5da50456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc\
+        7c0556c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c6db1023d5c46d78a97da8eb\
+        6c5a37e00d5f2fee182dcb38c1b6c65e90a43c10906fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e7\
+        50e417a90ecc5da501d2040000000000000356c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435\
+        f08ebbc7c";
+        let p =
+            RistrettoPublicKey::from_hex("56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c").unwrap();
+        let s =
+            RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").unwrap();
+        let sig = RistrettoSchnorr::new(p.clone(), s);
+        let m: HashValue = Blake256::digest(b"Hello Tari Script").into();
+        let s: ScalarValue = m;
+        let commitment = PedersenCommitment::from_public_key(&p);
+
+        // Includes all variants for StackItem
+        let mut expected_inputs = inputs!(s, p, sig, m, 1234, commitment);
+        let stack = ExecutionStack::from_binary(&from_hex(SERDE_ENCODED_BYTES).unwrap()).unwrap();
+
+        for (i, item) in stack.items.into_iter().enumerate().rev() {
+            assert_eq!(
+                item,
+                expected_inputs.pop().unwrap(),
+                "Stack items did not match at index {}",
+                i
+            );
+        }
+
+        assert!(expected_inputs.is_empty());
     }
 }

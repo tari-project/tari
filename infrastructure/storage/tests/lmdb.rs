@@ -118,7 +118,7 @@ fn insert_all_users(name: &str) -> (Vec<User>, LMDBDatabase) {
 }
 
 #[test]
-fn single_thread() {
+fn test_single_thread() {
     {
         let users = load_users();
         let env = init("single_thread").unwrap();
@@ -136,7 +136,7 @@ fn single_thread() {
 }
 
 #[test]
-fn multi_thread() {
+fn test_multi_thread() {
     {
         let users_arc = Arc::new(load_users());
         let env = init("multi_thread").unwrap();
@@ -167,7 +167,7 @@ fn multi_thread() {
 }
 
 #[test]
-fn transactions() {
+fn test_transactions() {
     {
         let (users, db) = insert_all_users("transactions");
         // Test the `exists` and value retrieval functions
@@ -186,7 +186,7 @@ fn transactions() {
 /// Simultaneous writes in different threads
 #[test]
 #[allow(clippy::same_item_push)]
-fn multi_thread_writes() {
+fn test_multi_thread_writes() {
     {
         let env = init("multi-thread-writes").unwrap();
         let mut threads = Vec::new();
@@ -220,7 +220,7 @@ fn multi_thread_writes() {
 
 /// Multiple write transactions in a single thread
 #[test]
-fn multi_writes() {
+fn test_multi_writes() {
     {
         let env = init("multi-writes").unwrap();
         for i in 0..2 {
@@ -241,7 +241,7 @@ fn multi_writes() {
 }
 
 #[test]
-fn pair_iterator() {
+fn test_pair_iterator() {
     {
         let (users, db) = insert_all_users("pair_iterator");
         let res = db.for_each::<u64, User, _>(|pair| {
@@ -256,7 +256,7 @@ fn pair_iterator() {
 }
 
 #[test]
-fn exists_and_delete() {
+fn test_exists_and_delete() {
     {
         let (_, db) = insert_all_users("delete");
         assert!(db.contains_key(&525u64).unwrap());
@@ -267,7 +267,7 @@ fn exists_and_delete() {
 }
 
 #[test]
-fn lmdb_resize_on_create() {
+fn test_lmdb_resize_on_create() {
     let db_env_name = "resize";
     {
         let path = get_path(db_env_name);

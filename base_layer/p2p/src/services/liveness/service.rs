@@ -161,7 +161,7 @@ where
         match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
+                self.send_pong(ping_pong_msg.nonce, public_key).await?;
                 self.state.inc_pongs_sent();
 
                 debug!(
