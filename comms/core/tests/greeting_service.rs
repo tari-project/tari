@@ -107,6 +107,7 @@ impl GreetingRpc for GreetingService {
             id,
             item_size,
             num_items,
+            delay_ms: delay_secs,
         } = request.into_message();
         let (tx, rx) = mpsc::channel(10);
         let t = std::time::Instant::now();
@@ -118,7 +119,20 @@ impl GreetingRpc for GreetingService {
                 .take(usize::try_from(num_items).unwrap())
                 .enumerate()
             {
-                tx.send(item).await.unwrap();
+                if delay_secs > 0 {
+                    time::sleep(Duration::from_millis(delay_secs)).await;
+                }
+                if tx.send(item).await.is_err() {
+                    log::info!(
+                        "[{}] reqid: {} t={:.2?} STREAM INTERRUPTED {}/{}",
+                        id,
+                        req_id,
+                        t.elapsed(),
+                        i + 1,
+                        num_items
+                    );
+                    return;
+                }
                 log::info!(
                     "[{}] reqid: {} t={:.2?} sent {}/{}",
                     id,
@@ -160,4 +174,6 @@ pub struct StreamLargeItemsRequest {
     pub num_items: u64,
     #[prost(uint64, tag = "3")]
     pub item_size: u64,
+    #[prost(uint64, tag = "4")]
+    pub delay_ms: u64,
 }

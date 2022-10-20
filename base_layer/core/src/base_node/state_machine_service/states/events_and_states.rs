@@ -166,25 +166,35 @@ impl Display for BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateInfo {
     StartUp,
+    Connecting(SyncPeer),
     HeaderSync(Option<BlockSyncInfo>),
     HorizonSync(HorizonSyncInfo),
-    BlockSyncStarting,
     BlockSync(BlockSyncInfo),
+    SyncFailed(String),
     Listening(ListeningInfo),
 }
 
 impl StateInfo {
     pub fn short_desc(&self) -> String {
-        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
+        #[allow(clippy::enum_glob_use)]
+        use StateInfo::*;
         match self {
             StartUp => "Starting up".to_string(),
+            Connecting(sync_peer) => format!(
+                "Connecting to {}{}",
+                sync_peer.node_id().short_str(),
+                sync_peer
+                    .latency()
+                    .map(|l| format!(", Latency: {:.2?}", l))
+                    .unwrap_or_else(|| "".to_string())
+            ),
             HeaderSync(None) => "Starting header sync".to_string(),
             HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
             HorizonSync(info) => info.to_progress_string(),
 
             BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
             Listening(_) => "Listening".to_string(),
-            BlockSyncStarting => "Starting block sync".to_string(),
+            SyncFailed(details) => format!("Sync failed: {}", details),
         }
     }
 
@@ -196,9 +206,10 @@ impl StateInfo {
     }
 
     pub fn is_synced(&self) -> bool {
-        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
+        #[allow(clippy::enum_glob_use)]
+        use StateInfo::*;
         match self {
-            StartUp | HeaderSync(_) | HorizonSync(_) | BlockSync(_) | BlockSyncStarting => false,
+            StartUp | Connecting(_) | HeaderSync(_) | HorizonSync(_) | BlockSync(_) | SyncFailed(_) => false,
             Listening(info) => info.is_synced(),
         }
     }
@@ -206,15 +217,17 @@ impl StateInfo {
 
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
+        #[allow(clippy::enum_glob_use)]
+        use StateInfo::*;
         match self {
             StartUp => write!(f, "Node starting up"),
+            Connecting(sync_peer) => write!(f, "Connecting to {}", sync_peer),
             HeaderSync(Some(info)) => write!(f, "Synchronizing block headers: {}", info),
             HeaderSync(None) => write!(f, "Synchronizing block headers: Starting"),
             HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
             BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
             Listening(info) => write!(f, "Listening: {}", info),
-            BlockSyncStarting => write!(f, "Synchronizing blocks: Starting"),
+            SyncFailed(details) => write!(f, "Sync failed: {}", details),
         }
     }
 }
@@ -275,7 +288,7 @@ impl BlockSyncInfo {
             self.sync_peer.node_id().short_str(),
             self.local_height,
             self.tip_height,
-            (self.local_height as f64 / self.tip_height as f64 * 100.0),
+            (self.local_height as f64 / self.tip_height as f64 * 100.0).floor(),
             self.sync_peer
                 .items_per_second()
                 .map(|bps| format!(" {:.2?} blks/s", bps))

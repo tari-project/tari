@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, string::FromUtf8Error};
+use std::{borrow::Cow, ops::Deref, string::FromUtf8Error};
 
 use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
 use tari_utilities::SafePassword;
+use tonic::metadata::{errors::InvalidMetadataValue, Ascii, MetadataValue};
 use zeroize::{Zeroize, Zeroizing};
 
 /// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt#:~:text=The%20%22basic%22%20authentication%20scheme%20is,other%20realms%20on%20that%20server.)
@@ -89,22 +90,23 @@ impl BasicAuthCredentials {
         Ok(())
     }
 
-    pub fn generate_header(username: &str, password: &[u8]) -> Result<String, BasicAuthError> {
+    pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         let password_str = String::from_utf8_lossy(password);
         let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
-        let mut token = base64::encode(token_str);
+        let mut token = base64::encode(token_str.deref());
         let header = format!("Basic {}", token);
         token.zeroize();
         match password_str {
             Cow::Borrowed(_) => {},
             Cow::Owned(mut owned) => owned.zeroize(),
         }
+        let header = header.parse()?;
         Ok(header)
     }
 }
 
 /// Authorization Header Error
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error)]
 pub enum BasicAuthError {
     #[error("Invalid username")]
     InvalidUsername,
@@ -118,6 +120,8 @@ pub enum BasicAuthError {
     InvalidUtf8Value(#[from] FromUtf8Error),
     #[error("Invalid password: {0}")]
     InvalidPassword(#[from] argon2::password_hash::Error),
+    #[error("Invalid header value: {0}")]
+    InvalidMetadataValue(#[from] InvalidMetadataValue),
 }
 
 #[cfg(test)]
@@ -137,9 +141,17 @@ mod tests {
         #[test]
         fn it_rejects_header_without_basic_scheme() {
             let err = BasicAuthCredentials::from_header(" YWRtaW46c2VjcmV0").unwrap_err();
-            assert_eq!(err, BasicAuthError::InvalidScheme("".to_string()));
+            if let BasicAuthError::InvalidScheme(s) = err {
+                assert_eq!(s, "");
+            } else {
+                panic!("Unexpected error: {:?}", err);
+            };
             let err = BasicAuthCredentials::from_header("Cookie YWRtaW46c2VjcmV0").unwrap_err();
-            assert_eq!(err, BasicAuthError::InvalidScheme("Cookie".to_string()));
+            if let BasicAuthError::InvalidScheme(s) = err {
+                assert_eq!(s, "Cookie");
+            } else {
+                panic!("Unexpected error: {:?}", err);
+            };
         }
     }
 
@@ -162,7 +174,7 @@ mod tests {
 
             let credentials = BasicAuthCredentials::new("bruteforce".to_string(), "secret".to_string().into());
             let err = credentials.validate("admin", b"secret").unwrap_err();
-            assert_eq!(err, BasicAuthError::InvalidUsername);
+            assert!(matches!(err, BasicAuthError::InvalidUsername));
         }
     }
 
@@ -172,7 +184,7 @@ mod tests {
         #[test]
         fn it_generates_a_valid_header() {
             let header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
-            let cred = BasicAuthCredentials::from_header(&header).unwrap();
+            let cred = BasicAuthCredentials::from_header(header.to_str().unwrap()).unwrap();
             assert_eq!(cred.user_name, "admin");
             assert_eq!(cred.password.reveal(), &b"secret"[..]);
         }

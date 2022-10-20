@@ -260,7 +260,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
 pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
-        Some(_) | None => &nodes[OsRng.gen_range(0..nodes.len() - 1)],
+        Some(_) | None => &nodes[OsRng.gen_range(0, nodes.len() - 1)],
     };
 
     let random_node_id = random_node.comms.node_identity().node_id().clone();
@@ -275,6 +275,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             OutboundEncryption::ClearText,
             vec![],
             OutboundDomainMessage::new(&0i32, PUBLIC_MESSAGE.to_string()),
+            "Memory net example".to_string(),
         )
         .await
         .unwrap();
@@ -949,7 +950,6 @@ async fn setup_comms_dht(
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })

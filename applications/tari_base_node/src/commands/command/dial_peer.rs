@@ -48,7 +48,7 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     /// Function to process the dial-peer command
     pub async fn dial_peer(&self, dest_node_id: NodeId) -> Result<(), Error> {
-        let connectivity = self.connectivity.clone();
+        let connectivity = self.comms.connectivity();
         task::spawn(async move {
             let start = Instant::now();
             println!("☎️  Dialing peer...");

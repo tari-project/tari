@@ -1032,8 +1032,8 @@ pub unsafe extern "C" fn public_key_to_emoji_id(pk: *mut TariPublicKey, error_ou
         return CString::into_raw(result);
     }
 
-    let emoji = EmojiId::from_pubkey(&(*pk));
-    result = CString::new(emoji.as_str()).expect("Emoji will not fail.");
+    let emoji_id = EmojiId::from_public_key(&(*pk));
+    result = CString::new(emoji_id.to_emoji_string().as_str()).expect("Emoji will not fail.");
     CString::into_raw(result)
 }
 
@@ -1061,10 +1061,10 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
 
     match CStr::from_ptr(emoji)
         .to_str()
-        .map_err(|_| EmojiIdError)
-        .and_then(EmojiId::str_to_pubkey)
+        .map_err(|_| EmojiIdError::InvalidEmoji)
+        .and_then(EmojiId::from_emoji_string)
     {
-        Ok(pk) => Box::into_raw(Box::new(pk)),
+        Ok(emoji_id) => Box::into_raw(Box::new(emoji_id.to_public_key())),
         Err(_) => {
             error = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -3899,7 +3899,6 @@ pub unsafe extern "C" fn comms_config_create(
                 peer_database_name: database_name_string,
                 max_concurrent_inbound_tasks: 25,
                 max_concurrent_outbound_tasks: 50,
-                outbound_buffer_size: 50,
                 dht: DhtConfig {
                     discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                     database_url: DbConnectionUrl::File(dht_database_path),
@@ -3920,6 +3919,7 @@ pub unsafe extern "C" fn comms_config_create(
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
+                listener_liveness_check_interval: None,
             };
 
             Box::into_raw(Box::new(config))
@@ -4134,7 +4134,12 @@ unsafe fn init_logging(
 /// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// callback references and the second parameter the second contains, weather it was successful, already busy, failed
+/// due to an internal failure or failed due to a communication failure.
+///     TxoValidationSuccess,               // 0
+///     TxoValidationAlreadyBusy            // 1
+///     TxoValidationInternalFailure        // 2
+///     TxoValidationCommunicationFailure   // 3
 /// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
 /// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
@@ -4183,7 +4188,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
@@ -4228,7 +4233,7 @@ pub unsafe extern "C" fn wallet_create(
         let network = CStr::from_ptr(network_str)
             .to_str()
             .expect("A non-null network should be able to be converted to string");
-        error!(target: LOG_TARGET, "network set to {}", network);
+        info!(target: LOG_TARGET, "network set to {}", network);
         // eprintln!("network set to {}", network);
         match Network::from_str(&*network) {
             Ok(n) => n,
@@ -7935,7 +7940,7 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u64) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -8196,7 +8201,7 @@ mod test {
             assert_ne!((*private_bytes), (*public_bytes));
             let emoji = public_key_to_emoji_id(public_key, error_ptr) as *mut c_char;
             let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
-            assert!(EmojiId::is_valid(emoji_str));
+            assert!(EmojiId::from_emoji_string(emoji_str).is_ok());
             let pk_emoji = emoji_id_to_public_key(emoji, error_ptr);
             assert_eq!((*public_key), (*pk_emoji));
             private_key_destroy(private_key);

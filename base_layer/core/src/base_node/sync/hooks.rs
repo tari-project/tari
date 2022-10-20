@@ -31,22 +31,22 @@ use crate::{
 
 #[derive(Default)]
 pub(super) struct Hooks {
-    on_starting: Vec<Box<dyn FnOnce() + Send + Sync>>,
+    on_starting: Vec<Box<dyn FnOnce(&SyncPeer) + Send + Sync>>,
     on_progress_header: Vec<Box<dyn Fn(u64, u64, &SyncPeer) + Send + Sync>>,
     on_progress_block: Vec<Box<dyn Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync>>,
     on_progress_horizon_sync: Vec<Box<dyn Fn(HorizonSyncInfo) + Send + Sync>>,
-    on_complete: Vec<Box<dyn Fn(Arc<ChainBlock>) + Send + Sync>>,
+    on_complete: Vec<Box<dyn Fn(Arc<ChainBlock>, u64) + Send + Sync>>,
     on_rewind: Vec<Box<dyn Fn(Vec<Arc<ChainBlock>>) + Send + Sync>>,
 }
 
 impl Hooks {
     pub fn add_on_starting_hook<H>(&mut self, hook: H)
-    where H: FnOnce() + Send + Sync + 'static {
+    where H: FnOnce(&SyncPeer) + Send + Sync + 'static {
         self.on_starting.push(Box::new(hook));
     }
 
-    pub fn call_on_starting_hook(&mut self) {
-        self.on_starting.drain(..).for_each(|f| (f)());
+    pub fn call_on_starting_hook(&mut self, sync_peer: &SyncPeer) {
+        self.on_starting.drain(..).for_each(|f| (f)(sync_peer));
     }
 
     pub fn add_on_progress_header_hook<H>(&mut self, hook: H)
@@ -81,12 +81,14 @@ impl Hooks {
     }
 
     pub fn add_on_complete_hook<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>) + Send + Sync + 'static {
+    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
         self.on_complete.push(Box::new(hook));
     }
 
-    pub fn call_on_complete_hooks(&self, final_block: Arc<ChainBlock>) {
-        self.on_complete.iter().for_each(|f| (*f)(final_block.clone()));
+    pub fn call_on_complete_hooks(&self, final_block: Arc<ChainBlock>, starting_height: u64) {
+        self.on_complete
+            .iter()
+            .for_each(|f| (*f)(final_block.clone(), starting_height));
     }
 
     pub fn add_on_rewind_hook<H>(&mut self, hook: H)

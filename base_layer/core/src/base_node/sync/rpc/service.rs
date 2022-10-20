@@ -35,7 +35,7 @@ use tari_comms::{
 };
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc, RwLock},
+    sync::{mpsc, Mutex},
     task,
 };
 use tracing::{instrument, span, Instrument, Level};
@@ -65,7 +65,7 @@ const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
-    active_sessions: RwLock<Vec<Weak<NodeId>>>,
+    active_sessions: Mutex<Vec<Weak<NodeId>>>,
     base_node_service: LocalNodeCommsInterface,
 }
 
@@ -73,7 +73,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     pub fn new(db: AsyncBlockchainDb<B>, base_node_service: LocalNodeCommsInterface) -> Self {
         Self {
             db,
-            active_sessions: RwLock::new(Vec::new()),
+            active_sessions: Mutex::new(Vec::new()),
             base_node_service,
         }
     }
@@ -84,7 +84,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     }
 
     pub async fn try_add_exclusive_session(&self, peer: NodeId) -> Result<Arc<NodeId>, RpcStatus> {
-        let mut lock = self.active_sessions.write().await;
+        let mut lock = self.active_sessions.lock().await;
         *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
         debug!(target: LOG_TARGET, "Number of active sync sessions: {}", lock.len());
 
@@ -206,7 +206,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         "Sending blocks #{} - #{} to '{}'", start, end, peer_node_id
                     );
                     let blocks = db
-                        .fetch_blocks(start..=end)
+                        .fetch_blocks(start..=end, true)
                         .await
                         .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
@@ -225,12 +225,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks
                                 .into_iter()
-                                .map(|hb| {
-                                    match hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)) {
-                                        Ok(b) => Ok(b.to_compact()),
-                                        Err(e) => Err(e),
-                                    }
-                                })
+                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
                                 .map(|block| match block {
                                     Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
                                         log::error!(target: LOG_TARGET, "Internal error: {}", e);

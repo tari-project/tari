@@ -264,6 +264,8 @@ impl LMDBDatabase {
             _file_lock: Arc::new(file_lock),
         };
 
+        run_migrations(&db)?;
+
         Ok(db)
     }
 
@@ -683,7 +685,7 @@ impl LMDBDatabase {
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        let hash = input.canonical_hash()?;
+        let hash = input.canonical_hash();
         let key = InputKey::new(header_hash.as_slice(), mmr_position, hash.as_slice());
         lmdb_insert(
             txn,
@@ -947,6 +949,10 @@ impl LMDBDatabase {
                 // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
                 // does not exist here
                 if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
+                    continue;
+                }
+                // if an output was burned, it was never created as an unspent utxo
+                if output.is_burned() {
                     continue;
                 }
                 lmdb_delete(
@@ -2432,6 +2438,7 @@ enum MetadataKey {
     HorizonData,
     DeletedBitmap,
     BestBlockTimestamp,
+    MigrationVersion,
 }
 
 impl MetadataKey {
@@ -2444,14 +2451,15 @@ impl MetadataKey {
 impl fmt::Display for MetadataKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MetadataKey::ChainHeight => f.write_str("Current chain height"),
-            MetadataKey::AccumulatedWork => f.write_str("Total accumulated work"),
-            MetadataKey::PruningHorizon => f.write_str("Pruning horizon"),
-            MetadataKey::PrunedHeight => f.write_str("Effective pruned height"),
-            MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
-            MetadataKey::HorizonData => f.write_str("Database info"),
-            MetadataKey::DeletedBitmap => f.write_str("Deleted bitmap"),
-            MetadataKey::BestBlockTimestamp => f.write_str("Chain tip block timestamp"),
+            MetadataKey::ChainHeight => write!(f, "Current chain height"),
+            MetadataKey::AccumulatedWork => write!(f, "Total accumulated work"),
+            MetadataKey::PruningHorizon => write!(f, "Pruning horizon"),
+            MetadataKey::PrunedHeight => write!(f, "Effective pruned height"),
+            MetadataKey::BestBlock => write!(f, "Chain tip block hash"),
+            MetadataKey::HorizonData => write!(f, "Database info"),
+            MetadataKey::DeletedBitmap => write!(f, "Deleted bitmap"),
+            MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
+            MetadataKey::MigrationVersion => write!(f, "Migration version"),
         }
     }
 }
@@ -2467,6 +2475,7 @@ enum MetadataValue {
     HorizonData(HorizonData),
     DeletedBitmap(DeletedBitmap),
     BestBlockTimestamp(u64),
+    MigrationVersion(u64),
 }
 
 impl fmt::Display for MetadataValue {
@@ -2482,6 +2491,7 @@ impl fmt::Display for MetadataValue {
                 write!(f, "Deleted Bitmap ({} indexes)", deleted.bitmap().cardinality())
             },
             MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
+            MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),
         }
     }
 }
@@ -2575,3 +2585,110 @@ impl CompositeKey {
 type InputKey = CompositeKey;
 type KernelKey = CompositeKey;
 type OutputKey = CompositeKey;
+
+fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
+    const MIGRATION_VERSION: u64 = 1;
+    let txn = db.read_transaction()?;
+
+    let k = MetadataKey::MigrationVersion;
+    let val = lmdb_get::<_, MetadataValue>(&*txn, &db.metadata_db, &k.as_u32())?;
+    let n = match val {
+        Some(MetadataValue::MigrationVersion(n)) => n,
+        Some(_) | None => 0,
+    };
+    info!(
+        target: LOG_TARGET,
+        "Blockchain database is at v{} (required version: {})", n, MIGRATION_VERSION
+    );
+    drop(txn);
+
+    if n < MIGRATION_VERSION {
+        tari_script_execution_stack_bug_migration::migrate(db)?;
+        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+        let txn = db.write_transaction()?;
+        lmdb_replace(
+            &txn,
+            &db.metadata_db,
+            &k.as_u32(),
+            &MetadataValue::MigrationVersion(MIGRATION_VERSION),
+        )?;
+        txn.commit()?;
+    }
+
+    Ok(())
+}
+
+// TODO: this is a temporary fix, remove
+mod tari_script_execution_stack_bug_migration {
+    use serde::{Deserialize, Serialize};
+    use tari_common_types::types::{ComSignature, PublicKey};
+    use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr};
+    use tari_script::{ExecutionStack, HashValue, ScalarValue, StackItem};
+
+    use super::*;
+    use crate::{
+        chain_storage::lmdb_db::lmdb::lmdb_map_inplace,
+        transactions::transaction_components::{SpentOutput, TransactionInputVersion},
+    };
+
+    pub fn migrate(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
+        {
+            let txn = db.read_transaction()?;
+            // Only perform migration if necessary
+            if lmdb_len(&txn, &db.inputs_db)? == 0 {
+                return Ok(());
+            }
+        }
+        unsafe {
+            LMDBStore::resize(&db.env, &LMDBConfig::new(0, 1024 * 1024 * 1024, 0))?;
+        }
+        let txn = db.write_transaction()?;
+        lmdb_map_inplace(&txn, &db.inputs_db, |mut v: TransactionInputRowDataV0| {
+            let mut items = Vec::with_capacity(v.input.input_data.items.len());
+            while let Some(item) = v.input.input_data.items.pop() {
+                if let StackItemV0::Commitment(ref commitment) = item {
+                    let pk = PublicKey::from_bytes(commitment.as_bytes()).unwrap();
+                    items.push(StackItem::PublicKey(pk));
+                } else {
+                    items.push(unsafe { mem::transmute(item) });
+                }
+            }
+            let mut v = unsafe { mem::transmute::<_, TransactionInputRowData>(v) };
+            v.input.input_data = ExecutionStack::new(items);
+            Some(v)
+        })?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub(crate) struct TransactionInputRowDataV0 {
+        pub input: TransactionInputV0,
+        pub header_hash: HashOutput,
+        pub mmr_position: u32,
+        pub hash: HashOutput,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct TransactionInputV0 {
+        version: TransactionInputVersion,
+        spent_output: SpentOutput,
+        input_data: ExecutionStackV0,
+        script_signature: ComSignature,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct ExecutionStackV0 {
+        items: Vec<StackItemV0>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    enum StackItemV0 {
+        Number(i64),
+        Hash(HashValue),
+        Scalar(ScalarValue),
+        Commitment(PedersenCommitment),
+        PublicKey(RistrettoPublicKey),
+        Signature(RistrettoSchnorr),
+    }
+}

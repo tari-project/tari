@@ -225,15 +225,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
             // Propagate message to closer peers
             self.outbound_service
-                .send_raw(
+                .send_raw_no_wait(
                     SendMessageParams::new()
                         .propagate(origin_public_key.clone().into(), vec![
                             origin_peer.node_id,
                             source_peer.node_id.clone(),
                         ])
+                        .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
-                    body.to_encoded_bytes(),
+                    body.encode_into_bytes_mut(),
                 )
                 .await?;
         }
@@ -349,9 +350,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
         self.outbound_service
-            .send_message_no_header(
+            .send_message_no_header_no_wait(
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key)
+                    .with_debug_info("Sending discovery response".to_string())
                     .with_destination(NodeDestination::Unknown)
                     .with_dht_message_type(DhtMessageType::DiscoveryResponse)
                     .finish(),

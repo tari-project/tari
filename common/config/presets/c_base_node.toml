@@ -17,15 +17,22 @@ identity_file = "config/base_node_id_dibbler.json"
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_igor.json"
 
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18152")
+#grpc_address = "/ip4/127.0.0.1/tcp/18152"
+
 [esmeralda.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_esmeralda.json"
 
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
+#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
 [base_node]
 # Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
 #network = "emseralda"
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
-#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# Set to false to disable the base node GRPC server (default = true)
+#grpc_enabled = true
 
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 #identity_file = "config/base_node_id.json"
@@ -110,6 +117,8 @@ track_reorgs = true
 #service.initial_sync_num_peers = 2
 # The maximum number of transactions to sync in a single sync session Default: 10_000
 #service.initial_sync_max_transactions = 10_000
+# The maximum number of blocks added via sync or re-org to triggering a sync
+#service.block_sync_trigger = 5
 
 [base_node.state_machine]
 # The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be
@@ -157,13 +166,10 @@ track_reorgs = true
 #peer_database_name = "peers"
 
 # The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-#max_concurrent_inbound_tasks = 50
+#max_concurrent_inbound_tasks = 4
 
 # The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
-#max_concurrent_outbound_tasks = 100
-
-# The size of the buffer (channel) which holds pending outbound message requests
-#outbound_buffer_size = 100
+#max_concurrent_outbound_tasks = 4
 
 # Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
 # addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
@@ -172,6 +178,8 @@ track_reorgs = true
 
 # CIDR for addresses allowed to enter into liveness check mode on the listener.
 #listener_liveness_allowlist_cidrs = []
+# Enables periodic socket-level liveness checks. Default: Disabled
+listener_liveness_check_interval = 15
 
 # User agent string for this node
 #user_agent = ""

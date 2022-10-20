@@ -88,10 +88,10 @@ impl HeaderSyncState {
         let bootstrapped = shared.is_bootstrapped();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
-        synchronizer.on_starting(move || {
+        synchronizer.on_starting(move |sync_peer| {
             let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
-                state_info: StateInfo::HeaderSync(None),
+                state_info: StateInfo::Connecting(sync_peer.clone()),
                 randomx_vm_cnt,
                 randomx_vm_flags,
             });
@@ -144,21 +144,32 @@ impl HeaderSyncState {
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
             },
-            Err(err @ BlockHeaderSyncError::SyncFailedAllPeers) => {
-                log_mdc::extend(mdc);
-                warn!(target: LOG_TARGET, "{}. Continuing...", err);
-                StateEvent::Continue
-            },
-            Err(err @ BlockHeaderSyncError::NetworkSilence) => {
-                log_mdc::extend(mdc);
-                warn!(target: LOG_TARGET, "{}", err);
-                self.is_synced = true;
-                StateEvent::NetworkSilence
-            },
             Err(err) => {
-                log_mdc::extend(mdc);
-                debug!(target: LOG_TARGET, "Header sync failed: {}", err);
-                StateEvent::HeaderSyncFailed
+                let _ignore = shared.status_event_sender.send(StatusInfo {
+                    bootstrapped,
+                    state_info: StateInfo::SyncFailed("HeaderSyncFailed".to_string()),
+                    randomx_vm_cnt,
+                    randomx_vm_flags,
+                });
+                match err {
+                    BlockHeaderSyncError::SyncFailedAllPeers => {
+                        error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {}", err);
+                        log_mdc::extend(mdc);
+                        warn!(target: LOG_TARGET, "{}. Continuing...", err);
+                        StateEvent::Continue
+                    },
+                    BlockHeaderSyncError::NetworkSilence => {
+                        log_mdc::extend(mdc);
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.is_synced = true;
+                        StateEvent::NetworkSilence
+                    },
+                    _ => {
+                        log_mdc::extend(mdc);
+                        debug!(target: LOG_TARGET, "Header sync failed: {}", err);
+                        StateEvent::HeaderSyncFailed
+                    },
+                }
             },
         }
     }

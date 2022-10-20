@@ -75,7 +75,7 @@ use crate::helpers::{
 };
 
 #[test]
-fn fetch_nonexistent_header() {
+fn test_fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -84,7 +84,7 @@ fn fetch_nonexistent_header() {
 }
 
 #[test]
-fn insert_and_fetch_header() {
+fn test_insert_and_fetch_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -110,7 +110,7 @@ fn insert_and_fetch_header() {
 }
 
 #[test]
-fn insert_and_fetch_orphan() {
+fn test_insert_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
@@ -127,7 +127,7 @@ fn insert_and_fetch_orphan() {
 }
 
 #[test]
-fn store_and_retrieve_block() {
+fn test_store_and_retrieve_block() {
     let (db, blocks, _, _) = create_new_blockchain(Network::LocalNet);
     let hash = blocks[0].hash();
     // Check the metadata
@@ -136,7 +136,7 @@ fn store_and_retrieve_block() {
     assert_eq!(metadata.best_block(), hash);
     assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain()), 0);
     // Fetch the block back
-    let block0 = db.fetch_block(0).unwrap();
+    let block0 = db.fetch_block(0, true).unwrap();
     assert_eq!(block0.confirmations(), 1);
     // Compare the blocks
     let block0 = Block::from(block0);
@@ -144,14 +144,14 @@ fn store_and_retrieve_block() {
 }
 
 #[test]
-fn add_multiple_blocks() {
+fn test_add_multiple_blocks() {
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_store_with_consensus(consensus_manager.clone());
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     assert_eq!(metadata.best_block(), block0.hash());
     // Add another block
     let block1 = append_block(
@@ -189,10 +189,10 @@ fn test_checkpoints() {
     let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, 1.into()).unwrap();
     // Get the checkpoint
-    let block_a = db.fetch_block(0).unwrap();
+    let block_a = db.fetch_block(0, false).unwrap();
     assert_eq!(block_a.confirmations(), 2);
     assert_eq!(blocks[0].block(), block_a.block());
-    let block_b = db.fetch_block(1).unwrap();
+    let block_b = db.fetch_block(1, false).unwrap();
     assert_eq!(block_b.confirmations(), 1);
     let block1 = serde_json::to_string(block1.block()).unwrap();
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
@@ -201,7 +201,7 @@ fn test_checkpoints() {
 
 #[test]
 #[allow(clippy::identity_op)]
-fn rewind_to_height() {
+fn test_rewind_to_height() {
     let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -258,7 +258,7 @@ fn test_coverage_chain_storage() {
     )
     .unwrap();
 
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     append_block(
         &store,
         &block0.clone().try_into_chain_block().unwrap(),
@@ -277,7 +277,7 @@ fn test_coverage_chain_storage() {
 }
 
 #[test]
-fn rewind_past_horizon_height() {
+fn test_rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_esmeralda_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
@@ -320,7 +320,7 @@ fn rewind_past_horizon_height() {
 }
 
 #[test]
-fn handle_tip_reorg() {
+fn test_handle_tip_reorg() {
     // GB --> A1 --> A2(Low PoW)      [Main Chain]
     //          \--> B2(Highest PoW)  [Forked Chain]
     // Initially, the main chain is GB->A1->A2. B2 has a higher accumulated PoW and when B2 is added the main chain is
@@ -388,7 +388,7 @@ fn handle_tip_reorg() {
 #[test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
-fn handle_reorg() {
+fn test_handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
     //                        \-----> C4(Highest PoW) [Forked Chain 2]
@@ -561,7 +561,7 @@ fn handle_reorg() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn reorgs_should_update_orphan_tips() {
+fn test_reorgs_should_update_orphan_tips() {
     // Create a main chain GB -> A1 -> A2
     // Create an orphan chain GB -> B1
     // Add a block B2 that forces a reorg to B2
@@ -583,29 +583,29 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A1
     let txs = vec![txn_schema!(from: vec![a_outputs[0][0].clone()], to: vec![50 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[1].to_arc_block()).unwrap().assert_added();
 
     // Block A2
     let txs = vec![txn_schema!(from: vec![a_outputs[1][1].clone()], to: vec![30 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(3),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[2].to_arc_block()).unwrap().assert_added();
     let a2_hash = *a_blocks[2].hash();
@@ -617,15 +617,15 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B1
     let txs = vec![txn_schema!(from: vec![b_outputs[0][0].clone()], to: vec![50 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(2),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[1].to_arc_block()).unwrap().assert_orphaned();
     let b1_hash = *b_blocks[1].hash();
@@ -641,15 +641,15 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B2
     let txs = vec![txn_schema!(from: vec![b_outputs[1][0].clone()], to: vec![40 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(4),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[2].to_arc_block()).unwrap().assert_reorg(2, 2);
     let b2_hash = *b_blocks[2].hash();
@@ -673,7 +673,7 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A3
     let txs = vec![txn_schema!(from: vec![a_outputs[2][0].clone()], to: vec![25 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
@@ -681,7 +681,7 @@ fn reorgs_should_update_orphan_tips() {
         Difficulty::from(5), // A chain accumulated difficulty 9
         &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[3].to_arc_block()).unwrap().assert_reorg(3, 2);
     let a3_hash = *a_blocks[3].hash();
@@ -705,30 +705,30 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block B3
     let txs = vec![txn_schema!(from: vec![b_outputs[2][0].clone()], to: vec![30 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(1), // B chain accumulated difficulty 7
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[3].to_arc_block()).unwrap().assert_orphaned();
     let b3_hash = *b_blocks[3].hash();
 
     // Block B4
     let txs = vec![txn_schema!(from: vec![b_outputs[3][0].clone()], to: vec![20 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut b_store,
         &mut b_blocks,
         &mut b_outputs,
         txs,
         Difficulty::from(5), // B chain accumulated difficulty 12
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(b_blocks[4].to_arc_block()).unwrap().assert_reorg(4, 3);
     let b4_hash = *b_blocks[4].hash();
@@ -752,29 +752,29 @@ fn reorgs_should_update_orphan_tips() {
 
     // Block A4
     let txs = vec![txn_schema!(from: vec![a_outputs[3][0].clone()], to: vec![20 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(2), // A chain accumulated difficulty 11
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[4].to_arc_block()).unwrap().assert_orphaned();
 
     // Block A5
     let txs = vec![txn_schema!(from: vec![a_outputs[4][0].clone()], to: vec![10 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut a_store,
         &mut a_blocks,
         &mut a_outputs,
         txs,
         Difficulty::from(4), // A chain accumulated difficulty 15
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     store.add_block(a_blocks[5].to_arc_block()).unwrap().assert_reorg(5, 4);
 
@@ -810,7 +810,7 @@ fn reorgs_should_update_orphan_tips() {
 }
 
 #[test]
-fn handle_reorg_with_no_removed_blocks() {
+fn test_handle_reorg_with_no_removed_blocks() {
     // GB --> A1
     //          \--> B2 (?) --> B3)
     // Initially, the main chain is GB->A1 with orphaned blocks B3. When B2 arrives late and is
@@ -825,15 +825,15 @@ fn handle_reorg_with_no_removed_blocks() {
         from: vec![outputs[0][0].clone()],
         to: vec![10 * T, 10 * T, 10 * T, 10 * T]
     )];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(consensus_manager.clone());
@@ -842,29 +842,29 @@ fn handle_reorg_with_no_removed_blocks() {
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
     let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][0].clone()], to: vec![5 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut orphan1_store,
         &mut orphan1_blocks,
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
     // Block B3
     let txs = vec![
         txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
         txn_schema!(from: vec![orphan1_outputs[2][0].clone()], to: vec![3 * T]),
     ];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut orphan1_store,
         &mut orphan1_blocks,
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap();
 
     // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
@@ -883,7 +883,7 @@ fn handle_reorg_with_no_removed_blocks() {
 }
 
 #[test]
-fn handle_reorg_failure_recovery() {
+fn test_handle_reorg_failure_recovery() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(double spend - rejected by db)  [Forked Chain 1]
     //          \--> B2 --> B3'(validation failed)      [Forked Chain 1]
@@ -1002,7 +1002,7 @@ fn handle_reorg_failure_recovery() {
 }
 
 #[test]
-fn store_and_retrieve_blocks() {
+fn test_store_and_retrieve_blocks() {
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -1020,7 +1020,7 @@ fn store_and_retrieve_blocks() {
     )
     .unwrap();
 
-    let block0 = store.fetch_block(0).unwrap();
+    let block0 = store.fetch_block(0, true).unwrap();
     let block1 = append_block(
         &store,
         &block0.clone().try_into_chain_block().unwrap(),
@@ -1031,25 +1031,40 @@ fn store_and_retrieve_blocks() {
     .unwrap();
     let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.clone().try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
+    assert_eq!(
+        store.fetch_block(1, true).unwrap().try_into_chain_block().unwrap(),
+        block1
+    );
+    assert_eq!(
+        store.fetch_block(2, true).unwrap().try_into_chain_block().unwrap(),
+        block2
+    );
 
     let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
-    assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
+    assert_eq!(
+        store.fetch_block(1, true).unwrap().try_into_chain_block().unwrap(),
+        block1
+    );
+    assert_eq!(
+        store.fetch_block(2, true).unwrap().try_into_chain_block().unwrap(),
+        block2
+    );
+    assert_eq!(
+        store.fetch_block(3, true).unwrap().try_into_chain_block().unwrap(),
+        block3
+    );
 }
 
 #[test]
 #[allow(clippy::identity_op)]
-fn store_and_retrieve_blocks_from_contents() {
+fn test_store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 
@@ -1087,7 +1102,7 @@ fn store_and_retrieve_blocks_from_contents() {
 }
 
 #[test]
-fn restore_metadata_and_pruning_horizon_update() {
+fn test_restore_metadata_and_pruning_horizon_update() {
     // Perform test
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1162,7 +1177,7 @@ fn restore_metadata_and_pruning_horizon_update() {
 }
 static EMISSION: [u64; 2] = [10, 10];
 #[test]
-fn invalid_block() {
+fn test_invalid_block() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -1184,8 +1199,8 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
-    assert!(store.fetch_block(1).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().block().hash(), block0_hash);
+    assert!(store.fetch_block(1, true).is_err());
 
     // Block 1
     let txs = vec![txn_schema!(
@@ -1209,9 +1224,9 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert!(store.fetch_block(2).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert!(store.fetch_block(2, true).is_err());
 
     // Invalid Block 2 - Double spends genesis block output
     is_valid.set(false);
@@ -1232,9 +1247,9 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert!(store.fetch_block(2).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert!(store.fetch_block(2, true).is_err());
 
     // Valid Block 2
     is_valid.set(true);
@@ -1256,14 +1271,14 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 2);
     assert_eq!(metadata.best_block(), block2_hash);
-    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
-    assert_eq!(store.fetch_block(2).unwrap().hash(), block2_hash);
-    assert!(store.fetch_block(3).is_err());
+    assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
+    assert_eq!(store.fetch_block(2, true).unwrap().hash(), block2_hash);
+    assert!(store.fetch_block(3, true).is_err());
 }
 
 #[test]
-fn orphan_cleanup_on_block_add() {
+fn test_orphan_cleanup_on_block_add() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let validators = Validators::new(
@@ -1330,7 +1345,7 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-fn horizon_height_orphan_cleanup() {
+fn test_horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_esmeralda_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
@@ -1390,7 +1405,7 @@ fn horizon_height_orphan_cleanup() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn orphan_cleanup_on_reorg() {
+fn test_orphan_cleanup_on_reorg() {
     // Create Main Chain
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
@@ -1526,7 +1541,7 @@ fn orphan_cleanup_on_reorg() {
 }
 
 #[test]
-fn orphan_cleanup_delete_all_orphans() {
+fn test_orphan_cleanup_delete_all_orphans() {
     let path = create_temporary_data_path();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -1629,7 +1644,7 @@ fn orphan_cleanup_delete_all_orphans() {
 }
 
 #[test]
-fn fails_validation() {
+fn test_fails_validation() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
@@ -1740,8 +1755,7 @@ mod malleability {
         // This test hightlights that the "version" field is not being included in the input hash
         // so a consensus change is needed for the input to include it
         #[test]
-        #[ignore]
-        fn version() {
+        fn test_version() {
             check_input_malleability(|block: &mut Block| {
                 let input = &mut block.body.inputs_mut()[0];
                 let mod_version = match input.version {
@@ -1753,7 +1767,7 @@ mod malleability {
         }
 
         #[test]
-        fn spent_output() {
+        fn test_spent_output() {
             check_input_malleability(|block: &mut Block| {
                 // to modify the spent output, we will substitue it for a copy of a different output
                 // we will use one of the outputs of the current transaction
@@ -1774,7 +1788,7 @@ mod malleability {
         }
 
         #[test]
-        fn input_data() {
+        fn test_input_data() {
             check_input_malleability(|block: &mut Block| {
                 block.body.inputs_mut()[0]
                     .input_data
@@ -1784,7 +1798,7 @@ mod malleability {
         }
 
         #[test]
-        fn script_signature() {
+        fn test_script_signature() {
             check_input_malleability(|block: &mut Block| {
                 let input = &mut block.body.inputs_mut()[0];
                 input.script_signature = ComSignature::default();
@@ -1796,7 +1810,7 @@ mod malleability {
         use super::*;
 
         #[test]
-        fn version() {
+        fn test_version() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_version = match output.version {
@@ -1808,7 +1822,7 @@ mod malleability {
         }
 
         #[test]
-        fn features() {
+        fn test_features() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.features.maturity += 1;
@@ -1816,7 +1830,7 @@ mod malleability {
         }
 
         #[test]
-        fn commitment() {
+        fn test_commitment() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_commitment = &output.commitment + &output.commitment;
@@ -1825,7 +1839,7 @@ mod malleability {
         }
 
         #[test]
-        fn proof() {
+        fn test_proof() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
@@ -1834,10 +1848,10 @@ mod malleability {
         }
 
         #[test]
-        fn script() {
+        fn test_script() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
-                let mut script_bytes = output.script.as_bytes();
+                let mut script_bytes = output.script.to_bytes();
                 Opcode::PushZero.to_bytes(&mut script_bytes);
                 let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
                 output.script = mod_script;
@@ -1847,8 +1861,7 @@ mod malleability {
         // This test hightlights that the "sender_offset_public_key" field is not being included in the output hash
         // so a consensus change is needed for the output to include it
         #[test]
-        #[ignore]
-        fn sender_offset_public_key() {
+        fn test_sender_offset_public_key() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
 
@@ -1859,7 +1872,7 @@ mod malleability {
         }
 
         #[test]
-        fn metadata_signature() {
+        fn test_metadata_signature() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.metadata_signature = ComSignature::default();
@@ -1867,7 +1880,7 @@ mod malleability {
         }
 
         #[test]
-        fn covenant() {
+        fn test_covenant() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_covenant = covenant!(absolute_height(@uint(42)));
@@ -1886,7 +1899,7 @@ mod malleability {
         // the "features" field has only a constant value at the moment, so no malleability test possible
 
         #[test]
-        fn fee() {
+        fn test_fee() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 kernel.fee += MicroTari::from(1);
@@ -1894,7 +1907,7 @@ mod malleability {
         }
 
         #[test]
-        fn lock_height() {
+        fn test_lock_height() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 kernel.lock_height += 1;
@@ -1902,7 +1915,7 @@ mod malleability {
         }
 
         #[test]
-        fn excess() {
+        fn test_excess() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 let mod_excess = &kernel.excess + &kernel.excess;
@@ -1911,7 +1924,7 @@ mod malleability {
         }
 
         #[test]
-        fn excess_sig() {
+        fn test_excess_sig() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
                 // "gerate_keys" should return a group of random keys, different from the ones in the field
@@ -1924,7 +1937,7 @@ mod malleability {
 
 #[allow(clippy::identity_op)]
 #[test]
-fn fetch_deleted_position_block_hash() {
+fn test_fetch_deleted_position_block_hash() {
     // Create Main Chain
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);

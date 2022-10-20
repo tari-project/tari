@@ -186,7 +186,6 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let (event_sender, _) = broadcast::channel(100);
     let pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(10)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })
@@ -276,7 +275,6 @@ async fn initialize_hidden_service(
     mut config: TorTransportConfig,
 ) -> Result<tor::HiddenServiceController, CommsInitializationError> {
     let mut builder = tor::HiddenServiceBuilder::new()
-        .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth()?)
@@ -333,7 +331,7 @@ async fn configure_comms_and_dht(
     let node_identity = comms.node_identity();
     let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
+    let (outbound_tx, outbound_rx) = mpsc::channel(config.dht.outbound_buffer_size);
 
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
@@ -350,7 +348,6 @@ async fn configure_comms_and_dht(
 
     // Hook up DHT messaging middlewares
     let messaging_pipeline = pipeline::Builder::new()
-        .outbound_buffer_size(config.outbound_buffer_size)
         .with_outbound_pipeline(outbound_rx, |sink| {
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })
@@ -546,7 +543,8 @@ impl ServiceInitializer for P2pInitializer {
                 minor_version: MINOR_NETWORK_VERSION,
                 network_byte: self.network.as_byte(),
                 user_agent: config.user_agent.clone(),
-            });
+            })
+            .set_liveness_check(config.listener_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case

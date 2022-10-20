@@ -127,6 +127,18 @@ pub async fn send_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
+pub async fn burn_tari(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
 /// publishes a tari-SHA atomic swap HTLC transaction
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
@@ -609,6 +621,22 @@ pub async fn command_runner(
                     eprintln!("DiscoverPeer error! {}", e);
                 }
             },
+            BurnTari(args) => {
+                match burn_tari(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.message,
+                )
+                .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "burn tari concluded with tx_id {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("BurnTari error! {}", e),
+                }
+            },
             SendTari(args) => {
                 match send_tari(
                     transaction_service.clone(),
@@ -705,7 +733,7 @@ pub async fn command_runner(
             },
             Whois(args) => {
                 let public_key = args.public_key.into();
-                let emoji_id = EmojiId::from_pubkey(&public_key);
+                let emoji_id = EmojiId::from_public_key(&public_key).to_emoji_string();
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);

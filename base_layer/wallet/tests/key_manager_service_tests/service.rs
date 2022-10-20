@@ -22,7 +22,7 @@
 
 use std::mem::size_of;
 
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{

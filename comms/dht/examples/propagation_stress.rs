@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
         Multiaddr::empty(),
         PeerFeatures::COMMUNICATION_CLIENT,
     ));
-    let port = OsRng.gen_range(9000u16..55000);
+    let port = OsRng.gen_range(9000u16, 55000);
     let seed_peers = &[
         "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/\
          6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
@@ -118,7 +118,7 @@ async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
         let msg = OutboundDomainMessage::new(&999, PropagationMessage::new(u32::try_from(i).unwrap(), opts.msg_size));
         let states = match opts.send_method {
             SendMethod::Direct => outbound
-                .send_direct_node_id(opts.peer.node_id.clone(), msg)
+                .send_direct_node_id(opts.peer.node_id.clone(), msg, "Example stress".to_string())
                 .await
                 .map(MessageSendStates::from)?,
             SendMethod::Propagated => {

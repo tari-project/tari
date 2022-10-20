@@ -24,6 +24,7 @@ use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use super::ScriptError;
 
 pub type HashValue = [u8; 32];
+pub type ScalarValue = [u8; 32];
 pub type Message = [u8; MESSAGE_LENGTH];
 
 const PUBLIC_KEY_LENGTH: usize = 32;
@@ -116,6 +117,8 @@ pub const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
 pub const OP_HASH_BLAKE256: u8 = 0xb0;
 pub const OP_HASH_SHA256: u8 = 0xb1;
 pub const OP_HASH_SHA3: u8 = 0xb2;
+pub const OP_TO_RISTRETTO_POINT: u8 = 0xb3;
+pub const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb4;
 
 // Opcode constants: Miscellaneous
 pub const OP_RETURN: u8 = 0x60;
@@ -232,6 +235,12 @@ pub enum Opcode {
     /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the m signatures are valid, and the
     /// operation fails with VERIFY_FAILED if any of the signatures are invalid.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
+    /// push the aggregate of the public keys to the stack, otherwise fails with VERIFY_FAILED.
+    CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    /// Pops the top element which must be a valid 32-byte scalar or hash and calculates the corresponding Ristretto
+    /// point, and pushes the result to the stack. Fails with EMPTY_STACK if the stack is empty.
+    ToRistrettoPoint,
 
     // Miscellaneous
     /// Always fails with VERIFY_FAILED.
@@ -350,6 +359,11 @@ impl Opcode {
                 let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
                 Ok((CheckMultiSigVerify(m, n, keys, msg), &bytes[end..]))
             },
+            OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY => {
+                let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
+                Ok((CheckMultiSigVerifyAggregatePubKey(m, n, keys, msg), &bytes[end..]))
+            },
+            OP_TO_RISTRETTO_POINT => Ok((ToRistrettoPoint, &bytes[1..])),
             OP_RETURN => Ok((Return, &bytes[1..])),
             OP_IF_THEN => Ok((IfThen, &bytes[1..])),
             OP_ELSE => Ok((Else, &bytes[1..])),
@@ -447,17 +461,25 @@ impl Opcode {
             CheckMultiSig(m, n, public_keys, msg) => {
                 array.extend_from_slice(&[OP_CHECK_MULTI_SIG, *m, *n]);
                 for public_key in public_keys {
-                    array.extend(public_key.to_vec());
+                    array.extend(public_key.as_bytes());
                 }
                 array.extend_from_slice(msg.deref());
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
                 array.extend_from_slice(&[OP_CHECK_MULTI_SIG_VERIFY, *m, *n]);
                 for public_key in public_keys {
-                    array.extend(public_key.to_vec());
+                    array.extend(public_key.as_bytes());
                 }
                 array.extend_from_slice(msg.deref());
             },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                array.extend_from_slice(&[OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY, *m, *n]);
+                for public_key in public_keys {
+                    array.extend(public_key.as_bytes());
+                }
+                array.extend_from_slice(msg.deref());
+            },
+            ToRistrettoPoint => array.push(OP_TO_RISTRETTO_POINT),
             Return => array.push(OP_RETURN),
             IfThen => array.push(OP_IF_THEN),
             Else => array.push(OP_ELSE),
@@ -473,70 +495,79 @@ impl fmt::Display for Opcode {
         #[allow(clippy::enum_glob_use)]
         use Opcode::*;
         match self {
-            CheckHeightVerify(height) => fmt.write_str(&format!("CheckHeightVerify({})", *height)),
-            CheckHeight(height) => fmt.write_str(&format!("CheckHeight({})", *height)),
-            CompareHeightVerify => fmt.write_str("CompareHeightVerify"),
-            CompareHeight => fmt.write_str("CompareHeight"),
-            Nop => fmt.write_str("Nop"),
-            PushZero => fmt.write_str("PushZero"),
-            PushOne => fmt.write_str("PushOne"),
-            PushHash(h) => fmt.write_str(&format!("PushHash({})", (*h).to_hex())),
-            PushInt(n) => fmt.write_str(&format!("PushInt({})", *n)),
-            PushPubKey(h) => fmt.write_str(&format!("PushPubKey({})", (*h).to_hex())),
-            Drop => fmt.write_str("Drop"),
-            Dup => fmt.write_str("Dup"),
-            RevRot => fmt.write_str("RevRot"),
-            GeZero => fmt.write_str("GeZero"),
-            GtZero => fmt.write_str("GtZero"),
-            LeZero => fmt.write_str("LeZero"),
-            LtZero => fmt.write_str("LtZero"),
-            Add => fmt.write_str("Add"),
-            Sub => fmt.write_str("Sub"),
-            Equal => fmt.write_str("Equal"),
-            EqualVerify => fmt.write_str("EqualVerify"),
-            Or(n) => fmt.write_str(&format!("Or({})", *n)),
-            OrVerify(n) => fmt.write_str(&format!("OrVerify({})", *n)),
-            HashBlake256 => fmt.write_str("HashBlake256"),
-            HashSha256 => fmt.write_str("HashSha256"),
-            HashSha3 => fmt.write_str("HashSha3"),
-            CheckSig(msg) => fmt.write_str(&format!("CheckSig({})", (*msg).to_hex())),
-            CheckSigVerify(msg) => fmt.write_str(&format!("CheckSigVerify({})", (*msg).to_hex())),
+            CheckHeightVerify(height) => write!(fmt, "CheckHeightVerify({})", *height),
+            CheckHeight(height) => write!(fmt, "CheckHeight({})", *height),
+            CompareHeightVerify => write!(fmt, "CompareHeightVerify"),
+            CompareHeight => write!(fmt, "CompareHeight"),
+            Nop => write!(fmt, "Nop"),
+            PushZero => write!(fmt, "PushZero"),
+            PushOne => write!(fmt, "PushOne"),
+            PushHash(h) => write!(fmt, "PushHash({})", (*h).to_hex()),
+            PushInt(n) => write!(fmt, "PushInt({})", *n),
+            PushPubKey(h) => write!(fmt, "PushPubKey({})", (*h).to_hex()),
+            Drop => write!(fmt, "Drop"),
+            Dup => write!(fmt, "Dup"),
+            RevRot => write!(fmt, "RevRot"),
+            GeZero => write!(fmt, "GeZero"),
+            GtZero => write!(fmt, "GtZero"),
+            LeZero => write!(fmt, "LeZero"),
+            LtZero => write!(fmt, "LtZero"),
+            Add => write!(fmt, "Add"),
+            Sub => write!(fmt, "Sub"),
+            Equal => write!(fmt, "Equal"),
+            EqualVerify => write!(fmt, "EqualVerify"),
+            Or(n) => write!(fmt, "Or({})", *n),
+            OrVerify(n) => write!(fmt, "OrVerify({})", *n),
+            HashBlake256 => write!(fmt, "HashBlake256"),
+            HashSha256 => write!(fmt, "HashSha256"),
+            HashSha3 => write!(fmt, "HashSha3"),
+            CheckSig(msg) => write!(fmt, "CheckSig({})", (*msg).to_hex()),
+            CheckSigVerify(msg) => write!(fmt, "CheckSigVerify({})", (*msg).to_hex()),
             CheckMultiSig(m, n, public_keys, msg) => {
                 let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
-                fmt.write_str(&format!(
+                write!(
+                    fmt,
                     "CheckMultiSig({}, {}, [{}], {})",
                     *m,
                     *n,
                     keys.join(", "),
                     (*msg).to_hex()
-                ))
+                )
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
                 let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
-                fmt.write_str(&format!(
+                write!(
+                    fmt,
                     "CheckMultiSigVerify({}, {}, [{}], {})",
                     *m,
                     *n,
                     keys.join(", "),
                     (*msg).to_hex()
-                ))
+                )
             },
-            Return => fmt.write_str("Return"),
-            IfThen => fmt.write_str("IfThen"),
-            Else => fmt.write_str("Else"),
-            EndIf => fmt.write_str("EndIf"),
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                let keys: Vec<String> = public_keys.iter().map(|p| p.to_hex()).collect();
+                write!(
+                    fmt,
+                    "CheckMultiSigVerifyAggregatePubKey({}, {}, [{}], {})",
+                    *m,
+                    *n,
+                    keys.join(", "),
+                    (*msg).to_hex()
+                )
+            },
+            ToRistrettoPoint => write!(fmt, "ToRistrettoPoint"),
+            Return => write!(fmt, "Return"),
+            IfThen => write!(fmt, "IfThen"),
+            Else => write!(fmt, "Else"),
+            EndIf => write!(fmt, "EndIf"),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        op_codes::*,
-        Opcode,
-        Opcode::{Dup, PushHash, Return},
-        ScriptError,
-    };
+    use crate::{op_codes::*, Opcode, ScriptError};
 
     #[test]
     fn empty_script() {
@@ -552,9 +583,9 @@ mod test {
         let script = [0x60u8, 0x71];
         let opcodes = Opcode::parse(&script).unwrap();
         let code = opcodes.first().unwrap();
-        assert_eq!(code, &Return);
+        assert_eq!(code, &Opcode::Return);
         let code = opcodes.get(1).unwrap();
-        assert_eq!(code, &Dup);
+        assert_eq!(code, &Opcode::Dup);
 
         let err = Opcode::parse(&[0x7a]).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidData));
@@ -563,7 +594,7 @@ mod test {
     #[test]
     fn push_hash() {
         let (code, b) = Opcode::read_next(b"\x7a/thirty-two~character~hash~val./").unwrap();
-        assert!(matches!(code, PushHash(v) if &*v == b"/thirty-two~character~hash~val./"));
+        assert!(matches!(code, Opcode::PushHash(v) if &*v == b"/thirty-two~character~hash~val./"));
         assert!(b.is_empty());
     }
 
@@ -761,9 +792,17 @@ mod test {
              6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
         );
         test_checkmultisig(
-            &Opcode::CheckMultiSigVerify(1, 2, keys, Box::new(*msg)),
+            &Opcode::CheckMultiSigVerify(1, 2, keys.clone(), Box::new(*msg)),
             OP_CHECK_MULTI_SIG_VERIFY,
             "CheckMultiSigVerify(1, 2, [9c8bc5f90d221191748e8dd7686f09e1114b4bada4c367ed58ae199c51eb100b, \
+             56e9f018b138ba843521b3243a29d81730c3a4c25108b108b1ca47c2132db569], \
+             6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
+        );
+        test_checkmultisig(
+            &Opcode::CheckMultiSigVerifyAggregatePubKey(1, 2, keys, Box::new(*msg)),
+            OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY,
+            "CheckMultiSigVerifyAggregatePubKey(1, 2, \
+             [9c8bc5f90d221191748e8dd7686f09e1114b4bada4c367ed58ae199c51eb100b, \
              56e9f018b138ba843521b3243a29d81730c3a4c25108b108b1ca47c2132db569], \
              6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)",
         );
@@ -794,6 +833,7 @@ mod test {
         test_opcode(OP_HASH_SHA3, &Opcode::HashSha3);
         test_opcode(OP_HASH_BLAKE256, &Opcode::HashBlake256);
         test_opcode(OP_HASH_SHA256, &Opcode::HashSha256);
+        test_opcode(OP_TO_RISTRETTO_POINT, &Opcode::ToRistrettoPoint);
         test_opcode(OP_IF_THEN, &Opcode::IfThen);
         test_opcode(OP_ELSE, &Opcode::Else);
         test_opcode(OP_END_IF, &Opcode::EndIf);
@@ -825,6 +865,7 @@ mod test {
         test_opcode(OP_HASH_SHA3, &Opcode::HashSha3);
         test_opcode(OP_HASH_BLAKE256, &Opcode::HashBlake256);
         test_opcode(OP_HASH_SHA256, &Opcode::HashSha256);
+        test_opcode(OP_TO_RISTRETTO_POINT, &Opcode::ToRistrettoPoint);
         test_opcode(OP_IF_THEN, &Opcode::IfThen);
         test_opcode(OP_ELSE, &Opcode::Else);
         test_opcode(OP_END_IF, &Opcode::EndIf);
@@ -856,6 +897,7 @@ mod test {
         test_opcode(&Opcode::HashSha3, "HashSha3");
         test_opcode(&Opcode::HashBlake256, "HashBlake256");
         test_opcode(&Opcode::HashSha256, "HashSha256");
+        test_opcode(&Opcode::ToRistrettoPoint, "ToRistrettoPoint");
         test_opcode(&Opcode::IfThen, "IfThen");
         test_opcode(&Opcode::Else, "Else");
         test_opcode(&Opcode::EndIf, "EndIf");

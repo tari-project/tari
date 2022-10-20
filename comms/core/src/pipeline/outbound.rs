@@ -20,19 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Display, time::Instant};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
-use futures::future::Either;
 use log::*;
-use tokio::sync::mpsc;
+use tokio::time;
 use tower::{Service, ServiceExt};
 
-use crate::{
-    bounded_executor::OptionallyBoundedExecutor,
-    message::OutboundMessage,
-    pipeline::builder::OutboundPipelineConfig,
-    protocol::messaging::MessagingRequest,
-};
+use crate::{bounded_executor::OptionallyBoundedExecutor, pipeline::builder::OutboundPipelineConfig};
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
@@ -43,8 +40,6 @@ pub struct Outbound<TPipeline, TItem> {
     executor: OptionallyBoundedExecutor,
     /// Outbound pipeline configuration containing the pipeline and it's in and out streams
     config: OutboundPipelineConfig<TItem, TPipeline>,
-    /// Request sender for Messaging
-    messaging_request_tx: mpsc::Sender<MessagingRequest>,
 }
 
 impl<TPipeline, TItem> Outbound<TPipeline, TItem>
@@ -55,101 +50,69 @@ where
     TPipeline::Future: Send,
 {
     /// New outbound pipeline.
-    pub fn new(
-        executor: OptionallyBoundedExecutor,
-        config: OutboundPipelineConfig<TItem, TPipeline>,
-        messaging_request_tx: mpsc::Sender<MessagingRequest>,
-    ) -> Self {
-        Self {
-            executor,
-            config,
-            messaging_request_tx,
-        }
+    pub fn new(executor: OptionallyBoundedExecutor, config: OutboundPipelineConfig<TItem, TPipeline>) -> Self {
+        Self { executor, config }
     }
 
     /// Run the outbound pipeline.
     pub async fn run(mut self) {
         let mut current_id = 0;
-        loop {
-            let either = tokio::select! {
-                next = self.config.in_receiver.recv() => Either::Left(next),
-                next = self.config.out_receiver.recv() => Either::Right(next)
-            };
-            match either {
-                // Pipeline IN received a message. Spawn a new task for the pipeline
-                Either::Left(Some(msg)) => {
-                    let num_available = self.executor.num_available();
-                    if let Some(max_available) = self.executor.max_available() {
-                        // Only emit this message if there is any concurrent usage
-                        if num_available < max_available {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Outbound pipeline usage: {}/{}",
-                                max_available - num_available,
-                                max_available
-                            );
-                        }
-                    }
-                    let pipeline = self.config.pipeline.clone();
-                    let id = current_id;
-                    current_id = (current_id + 1) % u64::MAX;
 
-                    self.executor
-                        .spawn(async move {
-                            let timer = Instant::now();
-                            trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
-                            if let Err(err) = pipeline.oneshot(msg).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Outbound pipeline {} returned an error: '{}'", id, err
-                                );
-                            }
-
-                            trace!(
-                                target: LOG_TARGET,
-                                "Finished outbound pipeline {} in {:.2?}",
-                                id,
-                                timer.elapsed()
-                            );
-                        })
-                        .await;
-                },
-                // Pipeline IN channel closed
-                Either::Left(None) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Outbound pipeline is shutting down because the in channel closed"
-                    );
-                    break;
-                },
-                // Pipeline OUT received a message
-                Either::Right(Some(out_msg)) => {
-                    if self.messaging_request_tx.is_closed() {
-                        // MessagingRequest channel closed
-                        break;
-                    }
-                    self.send_messaging_request(out_msg).await;
-                },
-                // Pipeline OUT channel closed
-                Either::Right(None) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Outbound pipeline is shutting down because the out channel closed"
-                    );
-                    break;
-                },
+        while let Some(msg) = self.config.in_receiver.recv().await {
+            // Pipeline IN received a message. Spawn a new task for the pipeline
+            let num_available = self.executor.num_available();
+            if let Some(max_available) = self.executor.max_available() {
+                log!(
+                    target: LOG_TARGET,
+                    if num_available < max_available {
+                        Level::Debug
+                    } else {
+                        Level::Trace
+                    },
+                    "Outbound pipeline usage: {}/{}",
+                    max_available - num_available,
+                    max_available
+                );
             }
-        }
-    }
+            let pipeline = self.config.pipeline.clone();
+            let id = current_id;
+            current_id = (current_id + 1) % u64::MAX;
+            self.executor
+                .spawn(async move {
+                    let timer = Instant::now();
+                    trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
+                    match time::timeout(Duration::from_secs(10), pipeline.oneshot(msg)).await {
+                        Ok(Ok(_)) => {},
+                        Ok(Err(err)) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Outbound pipeline {} returned an error: '{}'", id, err
+                            );
+                        },
+                        Err(_) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                 deadlock or excessive delay in processing this pipeline.",
+                                id
+                            );
+                        },
+                    }
 
-    async fn send_messaging_request(&mut self, out_msg: OutboundMessage) {
-        let msg_req = MessagingRequest::SendMessage(out_msg);
-        if let Err(err) = self.messaging_request_tx.send(msg_req).await {
-            error!(
-                target: LOG_TARGET,
-                "Failed to send OutboundMessage to Messaging protocol because '{}'", err
-            );
+                    trace!(
+                        target: LOG_TARGET,
+                        "Finished outbound pipeline {} in {:.2?}",
+                        id,
+                        timer.elapsed()
+                    );
+                })
+                .await;
         }
+
+        info!(
+            target: LOG_TARGET,
+            "Outbound pipeline is shutting down because the in channel closed"
+        );
     }
 }
 
@@ -158,43 +121,37 @@ mod test {
     use std::time::Duration;
 
     use bytes::Bytes;
-    use tari_test_utils::{collect_recv, unpack_enum};
-    use tokio::{runtime::Handle, time};
+    use tari_test_utils::collect_recv;
+    use tokio::{runtime::Handle, sync::mpsc, time};
 
     use super::*;
-    use crate::{pipeline::SinkService, runtime, utils};
+    use crate::{message::OutboundMessage, pipeline::SinkService, runtime, utils};
 
     #[runtime::test]
     async fn run() {
         const NUM_ITEMS: usize = 10;
-        let (tx, in_receiver) = mpsc::channel(NUM_ITEMS);
+        let (tx, mut in_receiver) = mpsc::channel(NUM_ITEMS);
         utils::mpsc::send_all(
             &tx,
             (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes()))),
         )
         .await
         .unwrap();
-        let (out_tx, out_rx) = mpsc::channel(NUM_ITEMS);
-        let (msg_tx, mut msg_rx) = mpsc::channel(NUM_ITEMS);
+        in_receiver.close();
+
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
         let executor = Handle::current();
 
-        let pipeline = Outbound::new(
-            executor.clone().into(),
-            OutboundPipelineConfig {
-                in_receiver,
-                out_receiver: out_rx,
-                pipeline: SinkService::new(out_tx),
-            },
-            msg_tx,
-        );
+        let pipeline = Outbound::new(executor.clone().into(), OutboundPipelineConfig {
+            in_receiver,
+            out_receiver: None,
+            pipeline: SinkService::new(out_tx),
+        });
 
         let spawned_task = executor.spawn(pipeline.run());
 
-        msg_rx.close();
-        let requests = collect_recv!(msg_rx, timeout = Duration::from_millis(5));
-        for req in requests {
-            unpack_enum!(MessagingRequest::SendMessage(_o) = req);
-        }
+        let requests = collect_recv!(out_rx, timeout = Duration::from_millis(5));
+        assert_eq!(requests.len(), NUM_ITEMS);
 
         // Check that this task ends because the stream has closed
         time::timeout(Duration::from_secs(5), spawned_task)

@@ -29,7 +29,12 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcClient, RpcError},
+    PeerConnection,
+};
 use tari_utilities::hex::Hex;
 use tracing;
 
@@ -76,13 +81,18 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
     }
 
+    pub fn on_starting<H>(&mut self, hook: H)
+    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
+        self.hooks.add_on_starting_hook(hook);
+    }
+
     pub fn on_progress<H>(&mut self, hook: H)
     where H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_progress_block_hook(hook);
     }
 
     pub fn on_complete<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>) + Send + Sync + 'static {
+    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
         self.hooks.add_on_complete_hook(hook);
     }
 
@@ -117,10 +127,20 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync blocks({} sync peers)",
+            sync_peer_node_ids.len()
+        );
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
+            let sync_peer = &self.sync_peers[i];
+            self.hooks.call_on_starting_hook(sync_peer);
             let mut conn = self.connect_to_sync_peer(node_id.clone()).await?;
+            let config = RpcClient::builder()
+                .with_deadline(self.config.rpc_deadline)
+                .with_deadline_grace_period(Duration::from_secs(5));
             let mut client = conn
-                .connect_rpc_using_builder(rpc::BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
+                .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
                 .await?;
             let latency = client
                 .get_last_request_latency()
@@ -158,6 +178,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     self.ban_peer(node_id, &err).await?;
                     return Err(err.into());
                 },
+                Err(err @ BlockSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     if i == self.sync_peers.len() - 1 {
@@ -190,10 +211,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         max_latency: Duration,
     ) -> Result<(), BlockSyncError> {
         info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer);
-        self.hooks.call_on_starting_hook();
 
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
+
         if tip_header.height <= local_metadata.height_of_longest_chain() {
             debug!(
                 target: LOG_TARGET,
@@ -361,7 +382,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            self.hooks.call_on_complete_hooks(block);
+            self.hooks.call_on_complete_hooks(block, best_height);
         }
 
         debug!(target: LOG_TARGET, "Completed block sync with peer `{}`", sync_peer);

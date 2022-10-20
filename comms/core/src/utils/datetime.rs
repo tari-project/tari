@@ -28,7 +28,7 @@ pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
     let old_duration = chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::max_value());
     Utc::now()
         .checked_add_signed(old_duration)
-        .unwrap_or(chrono::MAX_DATETIME)
+        .unwrap_or(DateTime::<Utc>::MAX_UTC)
 }
 
 pub fn format_duration(duration: Duration) -> String {
@@ -52,7 +52,7 @@ pub fn format_local_datetime(datetime: &NaiveDateTime) -> String {
 }
 
 pub fn is_max_datetime(datetime: &NaiveDateTime) -> bool {
-    chrono::MAX_DATETIME.naive_utc() == *datetime
+    DateTime::<Utc>::MAX_UTC.naive_utc() == *datetime
 }
 
 #[cfg(test)]

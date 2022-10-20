@@ -80,35 +80,6 @@ use crate::helpers::{
 mod helpers;
 
 #[test]
-fn test_genesis_block() {
-    let factories = CryptoFactories::default();
-    let network = Network::Esmeralda;
-    let rules = ConsensusManager::builder(network).build();
-    let backend = create_test_db();
-    let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), false, factories),
-    );
-    let db = BlockchainDatabase::new(
-        backend,
-        rules.clone(),
-        validators,
-        BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
-    )
-    .unwrap();
-    let block = rules.get_genesis_block();
-    match db.add_block(block.to_arc_block()).unwrap_err() {
-        ChainStorageError::ValidationError { source } => match source {
-            ValidationError::ValidatingGenesis => (),
-            _ => panic!("Failed because incorrect validation error was received"),
-        },
-        _ => panic!("Failed because incorrect ChainStorageError was received"),
-    }
-}
-
-#[test]
 fn test_monero_blocks() {
     // Create temporary test folder
     let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
@@ -131,6 +102,7 @@ fn test_monero_blocks() {
             max_difficulty: 1.into(),
             target_time: 200,
         })
+        .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
     let header_validator = HeaderValidator::new(cm.clone());
@@ -138,7 +110,7 @@ fn test_monero_blocks() {
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
     );
-    let block_0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();
+    let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
 

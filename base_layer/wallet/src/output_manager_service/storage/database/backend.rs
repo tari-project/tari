@@ -37,7 +37,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
-    fn set_received_output_mined_height(
+    fn set_received_output_mined_height_and_status(
         &self,
         hash: FixedHash,
         mined_height: u64,
@@ -47,7 +47,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError>;
 
-    fn set_output_to_unmined(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
+    fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
 
     fn mark_output_as_spent(

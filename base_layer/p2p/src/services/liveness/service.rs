@@ -161,7 +161,7 @@ where
         match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
+                self.send_pong(ping_pong_msg.nonce, public_key).await?;
                 self.state.inc_pongs_sent();
 
                 debug!(
@@ -212,7 +212,11 @@ where
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
-            .send_direct_node_id(node_id, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
+            .send_direct_node_id(
+                node_id,
+                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                "Send ping".to_string(),
+            )
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
 
@@ -222,7 +226,11 @@ where
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
         let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
         self.outbound_messaging
-            .send_direct(dest, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
+            .send_direct(
+                dest,
+                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                "Sending pong".to_string(),
+            )
             .await
             .map(|_| ())
             .map_err(Into::into)
@@ -302,7 +310,11 @@ where
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
             self.state.add_inflight_ping(msg.nonce, peer.clone());
             self.outbound_messaging
-                .send_direct_node_id(peer, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
+                .send_direct_node_id(
+                    peer,
+                    OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                    "Start ping round".to_string(),
+                )
                 .await?;
         }
 

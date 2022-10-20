@@ -846,6 +846,7 @@ async fn receive_and_propagate_transaction() {
                 &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).unwrap(),
             ),
+            "mempool tests".to_string(),
         )
         .await
         .unwrap();
@@ -857,6 +858,7 @@ async fn receive_and_propagate_transaction() {
                 &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(orphan).unwrap(),
             ),
+            "mempool tests".to_string(),
         )
         .await
         .unwrap();
@@ -1189,7 +1191,7 @@ async fn consensus_validation_unique_excess_sig() {
     let tx = Arc::new(tx1);
     let response = mempool.insert(tx).await.unwrap();
     dbg!(&response);
-    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+    assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
 }
 
 #[tokio::test]

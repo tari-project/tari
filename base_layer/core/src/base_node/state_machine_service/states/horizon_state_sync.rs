@@ -31,7 +31,7 @@ use super::{StateEvent, StateInfo};
 use crate::{
     base_node::{
         state_machine_service::states::StatusInfo,
-        sync::{HorizonStateSynchronization, HorizonSyncInfo, HorizonSyncStatus, SyncPeer},
+        sync::{HorizonStateSynchronization, SyncPeer},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
@@ -101,12 +101,10 @@ impl HorizonStateSync {
         let bootstrapped = shared.is_bootstrapped();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
-        let sync_peers_node_id = sync_peers.iter().map(|p| p.node_id()).cloned().collect();
-        horizon_sync.on_starting(move || {
-            let info = HorizonSyncInfo::new(sync_peers_node_id, HorizonSyncStatus::Starting);
+        horizon_sync.on_starting(move |sync_peer| {
             let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
-                state_info: StateInfo::HorizonSync(info),
+                state_info: StateInfo::Connecting(sync_peer.clone()),
                 randomx_vm_cnt,
                 randomx_vm_flags,
             });
@@ -128,6 +126,12 @@ impl HorizonStateSync {
                 StateEvent::HorizonStateSynchronized
             },
             Err(err) => {
+                let _ignore = shared.status_event_sender.send(StatusInfo {
+                    bootstrapped,
+                    state_info: StateInfo::SyncFailed("HorizonSyncFailed".to_string()),
+                    randomx_vm_cnt,
+                    randomx_vm_flags,
+                });
                 warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {}", err);
                 StateEvent::HorizonStateSyncFailure
             },

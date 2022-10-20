@@ -83,7 +83,7 @@ impl ChunkedResponseIter {
         &self.message.payload
     }
 
-    fn next_chunk(&mut self) -> Option<Bytes> {
+    fn get_next_chunk(&mut self) -> Option<Bytes> {
         let len = self.payload().len();
         if len == 0 {
             if self.num_chunks > 1 {
@@ -171,7 +171,7 @@ impl Iterator for ChunkedResponseIter {
         }
 
         let request_id = self.message.request_id;
-        let chunk = self.next_chunk()?;
+        let chunk = self.get_next_chunk()?;
 
         // status MUST be set for the first chunked message, all subsequent chunk messages MUST have a status of 0
         let mut status = 0;

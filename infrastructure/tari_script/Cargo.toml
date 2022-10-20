@@ -11,10 +11,8 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_common = {path = "../../common"}
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 
 blake2 = "0.9"
 digest = "0.9.0"
@@ -25,4 +23,4 @@ sha3 = "0.9"
 thiserror = "1.0.30"
 
 [dev-dependencies]
-rand = "0.8.5"
+rand = "0.7.3"

@@ -40,7 +40,8 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     pub async fn reset_offline_peers(&self) -> Result<(), Error> {
         let num_updated = self
-            .peer_manager
+            .comms
+            .peer_manager()
             .update_each(|mut peer| {
                 if peer.is_offline() {
                     peer.set_offline(false);

@@ -36,10 +36,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    base_node::{
-        comms_interface::{BlockEvent, BlockEventReceiver},
-        StateMachineHandle,
-    },
+    base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     mempool::service::{
         error::MempoolServiceError,
         inbound_handlers::MempoolInboundHandlers,
@@ -66,19 +63,13 @@ pub struct MempoolStreams<STxIn, SLocalReq> {
 pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
-    state_machine: StateMachineHandle,
 }
 
 impl MempoolService {
-    pub fn new(
-        outbound_message_service: OutboundMessageRequester,
-        inbound_handlers: MempoolInboundHandlers,
-        state_machine: StateMachineHandle,
-    ) -> Self {
+    pub fn new(outbound_message_service: OutboundMessageRequester, inbound_handlers: MempoolInboundHandlers) -> Self {
         Self {
             outbound_message_service,
             inbound_handlers,
-            state_machine,
         }
     }
 
@@ -108,13 +99,13 @@ impl MempoolService {
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
                 Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
-                    self.spawn_handle_outbound_tx(txn, excluded_peers);
+                    let _res = self.handle_outbound_tx(txn, excluded_peers).await.map_err(|e|
+                        error!(target: LOG_TARGET, "Error sending outbound tx message: {}", e)
+                    );
                 },
 
                 // Incoming transaction messages from the Comms layer
-                Some(transaction_msg) = inbound_transaction_stream.next() => {
-                    self.spawn_handle_incoming_tx(transaction_msg);
-                }
+                Some(transaction_msg) = inbound_transaction_stream.next() => self.handle_incoming_tx(transaction_msg),
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
                 Some(local_request_context) = local_request_stream.next() => {
@@ -144,41 +135,6 @@ impl MempoolService {
         self.inbound_handlers.handle_request(request).await
     }
 
-    fn spawn_handle_outbound_tx(&self, tx: Arc<Transaction>, excluded_peers: Vec<NodeId>) {
-        let outbound_message_service = self.outbound_message_service.clone();
-        task::spawn(async move {
-            let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
-            if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", e);
-            }
-        });
-    }
-
-    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
-        // Determine if we are bootstrapped
-        let status_watch = self.state_machine.get_status_info_watch();
-
-        if !(*status_watch.borrow()).bootstrapped {
-            debug!(
-                target: LOG_TARGET,
-                "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",
-                tx_msg.dht_header.message_tag,
-                tx_msg.source_peer.node_id.short_str(),
-            );
-            return;
-        }
-        let inbound_handlers = self.inbound_handlers.clone();
-        task::spawn(async move {
-            let result = handle_incoming_tx(inbound_handlers, tx_msg).await;
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
-                );
-            }
-        });
-    }
-
     fn spawn_handle_local_request(
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
@@ -188,10 +144,11 @@ impl MempoolService {
             let (request, reply_tx) = request_context.split();
             let result = reply_tx.send(inbound_handlers.handle_request(request).await);
 
-            if let Err(e) = result {
+            if let Err(res) = result {
                 error!(
                     target: LOG_TARGET,
-                    "MempoolService failed to send reply to local request {:?}", e
+                    "MempoolService failed to send reply to local request {:?}",
+                    res.map(|r| r.to_string()).map_err(|e| e.to_string())
                 );
             }
         });
@@ -202,65 +159,73 @@ impl MempoolService {
         task::spawn(async move {
             let result = inbound_handlers.handle_block_event(&block_event).await;
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle base node block event: {}", e);
             }
         });
     }
-}
 
-async fn handle_incoming_tx(
-    mut inbound_handlers: MempoolInboundHandlers,
-    domain_transaction_msg: DomainMessage<Transaction>,
-) -> Result<(), MempoolServiceError> {
-    let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
+    fn handle_incoming_tx(&self, domain_transaction_msg: DomainMessage<Transaction>) {
+        let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
 
-    debug!(
-        "New transaction received: {}, from: {}",
-        inner
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_else(|| "No kernels!".to_string()),
-        source_peer.public_key,
-    );
-    trace!(
-        target: LOG_TARGET,
-        "New transaction: {}, from: {}",
-        inner,
-        source_peer.public_key
-    );
-    inbound_handlers
-        .handle_transaction(inner, Some(source_peer.node_id))
-        .await?;
+        debug!(
+            "New transaction received: {}, from: {}",
+            inner
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "No kernels!".to_string()),
+            source_peer.public_key,
+        );
+        trace!(
+            target: LOG_TARGET,
+            "New transaction: {}, from: {}",
+            inner,
+            source_peer.public_key
+        );
+        let mut inbound_handlers = self.inbound_handlers.clone();
+        task::spawn(async move {
+            let result = inbound_handlers
+                .handle_transaction(inner, Some(source_peer.node_id))
+                .await;
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming transaction message: {:?}", e
+                );
+            }
+        });
+    }
 
-    Ok(())
-}
+    async fn handle_outbound_tx(
+        &mut self,
+        tx: Arc<Transaction>,
+        exclude_peers: Vec<NodeId>,
+    ) -> Result<(), MempoolServiceError> {
+        let result = self
+            .outbound_message_service
+            .flood(
+                NodeDestination::Unknown,
+                OutboundEncryption::ClearText,
+                exclude_peers,
+                OutboundDomainMessage::new(
+                    &TariMessageType::NewTransaction,
+                    proto::types::Transaction::try_from(tx.clone()).map_err(MempoolServiceError::ConversionError)?,
+                ),
+                format!(
+                    "Outbound mempool tx: {}",
+                    tx.first_kernel_excess_sig()
+                        .map(|s| s.get_signature().to_hex())
+                        .unwrap_or_else(|| "No kernels!".to_string())
+                ),
+            )
+            .await;
 
-async fn handle_outbound_tx(
-    mut outbound_message_service: OutboundMessageRequester,
-    tx: Arc<Transaction>,
-    exclude_peers: Vec<NodeId>,
-) -> Result<(), MempoolServiceError> {
-    let result = outbound_message_service
-        .flood(
-            NodeDestination::Unknown,
-            OutboundEncryption::ClearText,
-            exclude_peers,
-            OutboundDomainMessage::new(
-                &TariMessageType::NewTransaction,
-                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
-            ),
-        )
-        .await;
-
-    if let Err(e) = result {
-        return match e {
-            DhtOutboundError::NoMessagesQueued => Ok(()),
-            _ => {
+        match result {
+            Ok(_) => Ok(()),
+            Err(DhtOutboundError::NoMessagesQueued) => Ok(()),
+            Err(e) => {
                 error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
                 Err(MempoolServiceError::OutboundMessageService(e.to_string()))
             },
-        };
+        }
     }
-
-    Ok(())
 }

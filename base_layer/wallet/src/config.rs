@@ -99,7 +99,7 @@ pub struct WalletConfig {
     /// If true, a GRPC server will bind to the configured address and listen for incoming GRPC requests.
     pub grpc_enabled: bool,
     /// GRPC bind address of the wallet
-    pub grpc_address: Multiaddr,
+    pub grpc_address: Option<Multiaddr>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
     /// A custom base node peer that will be used to obtain metadata from
@@ -123,6 +123,7 @@ impl Default for WalletConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/wallet"),
+            listener_liveness_check_interval: None,
             ..Default::default()
         };
         Self {
@@ -144,7 +145,7 @@ impl Default for WalletConfig {
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
             grpc_enabled: false,
-            grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
+            grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             custom_base_node: None,
             base_node_service_peers: StringList::default(),

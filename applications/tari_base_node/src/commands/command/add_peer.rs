@@ -44,7 +44,8 @@ pub struct ArgsAddPeer {
 impl HandleCommand<ArgsAddPeer> for CommandContext {
     async fn handle_command(&mut self, args: ArgsAddPeer) -> Result<(), Error> {
         let public_key = args.public_key.into();
-        if self.peer_manager.exists(&public_key).await {
+        let peer_manager = self.comms.peer_manager();
+        if peer_manager.exists(&public_key).await {
             return Err(anyhow!("Peer with public key '{}' already exists", public_key));
         }
         let node_id = NodeId::from_public_key(&public_key);
@@ -57,7 +58,7 @@ impl HandleCommand<ArgsAddPeer> for CommandContext {
             vec![],
             String::new(),
         );
-        self.peer_manager.add_peer(peer).await?;
+        peer_manager.add_peer(peer).await?;
         println!("Peer with node id '{}'was added to the base node.", node_id);
         Ok(())
     }

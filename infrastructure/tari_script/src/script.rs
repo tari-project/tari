@@ -23,6 +23,7 @@ use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
     hash::blake2::Blake256,
+    keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
 use tari_utilities::{
@@ -118,7 +119,7 @@ impl TariScript {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         self.script.iter().fold(Vec::new(), |mut bytes, op| {
             op.to_bytes(&mut bytes);
             bytes
@@ -136,7 +137,7 @@ impl TariScript {
         if D::output_size() < 32 {
             return Err(ScriptError::InvalidDigest);
         }
-        let h = D::digest(&self.as_bytes());
+        let h = D::digest(&self.to_bytes());
         Ok(slice_to_hash(&h.as_slice()[..32]))
     }
 
@@ -177,7 +178,7 @@ impl TariScript {
     pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
         let b = Blake256::new()
             .chain(pub_key.as_bytes())
-            .chain(&self.as_bytes())
+            .chain(&self.to_bytes())
             .finalize();
         RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
     }
@@ -247,19 +248,27 @@ impl TariScript {
                 }
             },
             CheckMultiSig(m, n, public_keys, msg) => {
-                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())?.is_some() {
                     stack.push(Number(1))
                 } else {
                     stack.push(Number(0))
                 }
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
-                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())?.is_some() {
                     Ok(())
                 } else {
                     Err(ScriptError::VerifyFailed)
                 }
             },
+            CheckMultiSigVerifyAggregatePubKey(m, n, public_keys, msg) => {
+                if let Some(agg_pub_key) = self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                    stack.push(PublicKey(agg_pub_key))
+                } else {
+                    Err(ScriptError::VerifyFailed)
+                }
+            },
+            ToRistrettoPoint => self.handle_to_ristretto_point(stack),
             Return => Err(ScriptError::Return),
             IfThen => TariScript::handle_if_then(stack, state),
             Else => TariScript::handle_else(state),
@@ -503,9 +512,9 @@ impl TariScript {
         n: u8,
         public_keys: &[RistrettoPublicKey],
         message: Message,
-    ) -> Result<bool, ScriptError> {
-        if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT {
-            return Err(ScriptError::InvalidData);
+    ) -> Result<Option<RistrettoPublicKey>, ScriptError> {
+        if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT || public_keys.len() != n as usize {
+            return Err(ScriptError::ValueExceedsBounds);
         }
         // pop m sigs
         let m = m as usize;
@@ -522,20 +531,38 @@ impl TariScript {
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
+        let mut agg_pub_key = RistrettoPublicKey::default();
         for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
                     key_signed[i] = true;
                     sig_set.insert(s);
+                    agg_pub_key = agg_pub_key + pk;
                     break;
                 }
             }
             if !sig_set.contains(s) {
-                return Ok(false);
+                return Ok(None);
             }
         }
+        if sig_set.len() == m {
+            Ok(Some(agg_pub_key))
+        } else {
+            Ok(None)
+        }
+    }
 
-        Ok(sig_set.len() == m)
+    fn handle_to_ristretto_point(&self, stack: &mut ExecutionStack) -> Result<(), ScriptError> {
+        let item = stack.pop().ok_or(ScriptError::StackUnderflow)?;
+        let scalar = match &item {
+            StackItem::Hash(hash) => hash.as_slice(),
+            StackItem::Scalar(scalar) => scalar.as_slice(),
+            _ => return Err(ScriptError::IncompatibleTypes),
+        };
+        let ristretto_sk = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
+        stack.push(StackItem::PublicKey(ristretto_pk))?;
+        Ok(())
     }
 }
 
@@ -547,7 +574,7 @@ impl Hex for TariScript {
     }
 
     fn to_hex(&self) -> String {
-        to_hex(&self.as_bytes())
+        to_hex(&self.to_bytes())
     }
 }
 
@@ -610,6 +637,7 @@ mod test {
         inputs,
         op_codes::{slice_to_boxed_hash, slice_to_boxed_message, HashValue, Message},
         ExecutionStack,
+        Opcode::CheckMultiSigVerifyAggregatePubKey,
         ScriptContext,
         StackItem,
         StackItem::{Commitment, Hash, Number},
@@ -933,7 +961,7 @@ mod test {
     #[test]
     fn serialisation() {
         let script = script!(Add Sub Add);
-        assert_eq!(&script.as_bytes(), &[0x93, 0x94, 0x93]);
+        assert_eq!(&script.to_bytes(), &[0x93, 0x94, 0x93]);
         assert_eq!(TariScript::from_bytes(&[0x93, 0x94, 0x93]).unwrap(), script);
         assert_eq!(script.to_hex(), "939493");
         assert_eq!(TariScript::from_hex("939493").unwrap(), script);
@@ -1130,21 +1158,21 @@ mod test {
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(1, 0, keys, msg.clone())];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSig(2, 1, keys, msg)];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // max n is 32
         let (msg, data) = multisig_data(33);
@@ -1154,7 +1182,7 @@ mod test {
         let items = sigs.map(StackItem::Signature).collect();
         let inputs = ExecutionStack::new(items);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // 3 of 4
         let (msg, data) = multisig_data(4);
@@ -1243,7 +1271,7 @@ mod test {
 
         // 1 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
-        let ops = vec![CheckMultiSigVerify(1, 2, keys, msg.clone())];
+        let ops = vec![CheckMultiSigVerify(1, 3, keys, msg.clone())];
         let script = TariScript::new(ops);
 
         let inputs = inputs!(Number(1), s_alice.clone());
@@ -1277,6 +1305,31 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
 
+        // 2 of 3 (returning the aggregate public key of the signatories)
+        let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
+        let ops = vec![CheckMultiSigVerifyAggregatePubKey(2, 3, keys, msg.clone())];
+        let script = TariScript::new(ops);
+
+        let inputs = inputs!(s_alice.clone(), s_bob.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_bob.clone()));
+
+        let inputs = inputs!(s_alice.clone(), s_carol.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_carol.clone()));
+
+        let inputs = inputs!(s_bob.clone(), s_carol.clone());
+        let agg_pub_key = script.execute(&inputs).unwrap();
+        assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
+
+        let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::NonUnitLengthStack);
+
+        let inputs = inputs!(p_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::StackUnderflow);
+
         // 3 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol];
         let ops = vec![CheckMultiSigVerify(3, 3, keys, msg.clone())];
@@ -1298,21 +1351,21 @@ mod test {
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(1, 0, keys, msg.clone())];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSigVerify(2, 1, keys, msg)];
         let script = TariScript::new(ops);
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
-        assert_eq!(err, ScriptError::InvalidData);
+        assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         // 3 of 4
         let (msg, data) = multisig_data(4);
@@ -1539,5 +1592,33 @@ mod test {
         let inputs = inputs!(s_eve);
         let result = script.execute(&inputs).unwrap_err();
         assert_eq!(result, ScriptError::Return);
+    }
+
+    #[test]
+    fn to_ristretto_point() {
+        use crate::StackItem::PublicKey;
+        let mut rng = rand::thread_rng();
+        let (k_1, p_1) = RistrettoPublicKey::random_keypair(&mut rng);
+
+        use crate::Opcode::ToRistrettoPoint;
+        let ops = vec![ToRistrettoPoint];
+        let script = TariScript::new(ops);
+
+        // Invalid stack type
+        let inputs = inputs!(RistrettoPublicKey::default());
+        let err = script.execute(&inputs).unwrap_err();
+        assert!(matches!(err, ScriptError::IncompatibleTypes));
+
+        // scalar
+        let mut scalar = [0u8; 32];
+        scalar.copy_from_slice(k_1.as_bytes());
+        let inputs = inputs!(scalar);
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, PublicKey(p_1.clone()));
+
+        // hash
+        let inputs = ExecutionStack::new(vec![Hash(scalar)]);
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, PublicKey(p_1));
     }
 }

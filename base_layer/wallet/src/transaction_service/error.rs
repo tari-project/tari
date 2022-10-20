@@ -162,6 +162,8 @@ pub enum TransactionServiceError {
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
     WalletRecoveryInProgress,
+    #[error("Wallet Transaction Validation already in progress, request ignored")]
+    TransactionValidationInProgress,
     #[error("Connectivity error: {source}")]
     ConnectivityError {
         #[from]

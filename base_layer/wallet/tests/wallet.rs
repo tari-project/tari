@@ -129,7 +129,6 @@ async fn create_wallet(
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
@@ -146,6 +145,7 @@ async fn create_wallet(
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
+        listener_liveness_check_interval: None,
     };
 
     let sql_database_path = comms_config
@@ -672,7 +672,6 @@ async fn test_import_utxo() {
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 10,
         dht: Default::default(),
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
@@ -681,6 +680,7 @@ async fn test_import_utxo() {
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
+        listener_liveness_check_interval: None,
     };
     let config = WalletConfig {
         p2p: comms_config,

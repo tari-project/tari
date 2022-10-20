@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc};
+use std::{iter, sync::Arc, time::Duration};
 
 use log::*;
 use tari_shutdown::ShutdownSignal;
@@ -122,6 +122,12 @@ impl UnspawnedCommsNode {
     /// Set the tor hidden service controller to associate with this comms instance
     pub fn with_hidden_service_controller(mut self, hidden_service_ctl: tor::HiddenServiceController) -> Self {
         self.builder.hidden_service_ctl = Some(hidden_service_ctl);
+        self
+    }
+
+    /// Set to true to enable self liveness checking for the configured public address
+    pub fn set_liveness_check(mut self, interval: Option<Duration>) -> Self {
+        self.builder = self.builder.set_liveness_check(interval);
         self
     }
 
@@ -315,6 +321,11 @@ impl CommsNode {
     /// Return the Ip/Tcp address that this node is listening on
     pub fn listening_address(&self) -> &Multiaddr {
         self.listening_info.bind_address()
+    }
+
+    /// Return [ListenerInfo]
+    pub fn listening_info(&self) -> &ListenerInfo {
+        &self.listening_info
     }
 
     /// Return the Ip/Tcp address that this node is listening on

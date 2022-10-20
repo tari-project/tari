@@ -26,7 +26,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
+    protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
@@ -60,4 +60,26 @@ pub enum BlockSyncError {
     AllSyncPeersExceedLatency,
     #[error("FixedHash size error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+}
+
+impl BlockSyncError {
+    pub fn to_short_str(&self) -> &'static str {
+        match self {
+            BlockSyncError::RpcError(_) => "RpcError",
+            BlockSyncError::RpcRequestError(status) if status.as_status_code() == RpcStatusCode::Timeout => {
+                "RpcTimeout"
+            },
+            BlockSyncError::RpcRequestError(_) => "RpcRequestError",
+            BlockSyncError::ChainStorageError(_) => "ChainStorageError",
+            BlockSyncError::PeerSentBlockThatDidNotFormAChain { .. } => "PeerSentBlockThatDidNotFormAChain",
+            BlockSyncError::ConnectivityError(_) => "ConnectivityError",
+            BlockSyncError::NoSyncPeers => "NoSyncPeers",
+            BlockSyncError::ValidationError(_) => "ValidationError",
+            BlockSyncError::FailedToConstructChainBlock => "FailedToConstructChainBlock",
+            BlockSyncError::ProtocolViolation(_) => "ProtocolViolation",
+            BlockSyncError::MaxLatencyExceeded { .. } => "MaxLatencyExceeded",
+            BlockSyncError::AllSyncPeersExceedLatency => "AllSyncPeersExceedLatency",
+            BlockSyncError::FixedHashSizeError(_) => "FixedHashSizeError",
+        }
+    }
 }

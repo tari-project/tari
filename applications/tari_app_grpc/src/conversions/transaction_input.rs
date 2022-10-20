@@ -114,16 +114,13 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .commitment()
                     .map_err(|_| "Non-compact Transaction input should contain commitment".to_string())?
                     .to_vec(),
-                hash: input
-                    .canonical_hash()
-                    .map_err(|_| "Non-compact Transaction input should be able to be hashed".to_string())?
-                    .to_vec(),
+                hash: input.canonical_hash().to_vec(),
 
                 script: input
                     .script()
                     .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
-                    .as_bytes(),
-                input_data: input.input_data.as_bytes(),
+                    .to_bytes(),
+                input_data: input.input_data.to_bytes(),
                 script_signature,
                 sender_offset_public_key: input
                     .sender_offset_public_key()

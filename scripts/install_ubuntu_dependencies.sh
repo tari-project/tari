@@ -6,6 +6,7 @@ apt-get -y install \
   clang-10 \
   git \
   cmake \
+  dh-autoreconf \
   libc++-dev \
   libc++abi-dev \
   libprotobuf-dev \

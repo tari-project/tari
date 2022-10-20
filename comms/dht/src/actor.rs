@@ -452,6 +452,7 @@ impl DhtActor {
                     .closest(node_identity.node_id().clone(), vec![])
                     .with_destination(node_identity.public_key().clone().into())
                     .with_dht_message_type(DhtMessageType::Join)
+                    .with_debug_info("Broadcast join".to_string())
                     .force_origin()
                     .finish(),
                 message,

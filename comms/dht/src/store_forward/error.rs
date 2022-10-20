@@ -27,7 +27,7 @@ use tari_comms::{
     message::MessageError,
     peer_manager::{NodeId, PeerManagerError},
 };
-use tari_utilities::byte_array::ByteArrayError;
+use tari_utilities::{byte_array::ByteArrayError, epoch_time::EpochTime};
 use thiserror::Error;
 
 use crate::{
@@ -81,10 +81,10 @@ pub enum StoreAndForwardError {
     RequesterChannelClosed,
     #[error("The request was cancelled by the store and forward service")]
     RequestCancelled,
-    #[error("The message was not valid for store and forward")]
-    InvalidStoreMessage,
-    #[error("The envelope version is invalid")]
-    InvalidEnvelopeVersion,
+    #[error("The {field} field was not valid, discarding SAF response: {details}")]
+    InvalidSafResponseMessage { field: &'static str, details: String },
+    #[error("The message has expired, not storing message in SAF db (expiry: {expired}, now: {now})")]
+    NotStoringExpiredMessage { expired: EpochTime, now: EpochTime },
     #[error("MalformedNodeId: {0}")]
     MalformedNodeId(#[from] ByteArrayError),
     #[error("DHT message type should not have been forwarded")]
@@ -93,7 +93,7 @@ pub enum StoreAndForwardError {
     RequestMessagesFailed(DhtOutboundError),
     #[error("Received SAF messages that were not requested")]
     ReceivedUnrequestedSafMessages,
-    #[error("SAF messages received from peer {peer} after deadline. Received after {0:.2?}")]
+    #[error("SAF messages received from peer {peer} after deadline. Received after {message_age:.2?}")]
     SafMessagesReceivedAfterDeadline { peer: NodeId, message_age: Duration },
     #[error("Invalid SAF request: `stored_at` cannot be in the future")]
     StoredAtWasInFuture,

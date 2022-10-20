@@ -267,12 +267,10 @@ pub fn tui_mode(
 ) -> Result<(), ExitError> {
     let (events_broadcaster, _events_listener) = broadcast::channel(100);
     if config.grpc_enabled {
-        let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(
-            grpc,
-            config.grpc_address.clone(),
-            config.grpc_authentication.clone(),
-        ));
+        if let Some(address) = config.grpc_address.clone() {
+            let grpc = WalletGrpcServer::new(wallet.clone());
+            handle.spawn(run_grpc(grpc, address, config.grpc_authentication.clone()));
+        }
     }
 
     let notifier = Notifier::new(
@@ -369,11 +367,11 @@ pub fn recovery_mode(
 
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
-    if config.grpc_enabled {
+    if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         let grpc = WalletGrpcServer::new(wallet);
         let auth = config.grpc_authentication.clone();
         handle
-            .block_on(run_grpc(grpc, config.grpc_address.clone(), auth))
+            .block_on(run_grpc(grpc, address, auth))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("GRPC server is disabled");
@@ -426,6 +424,8 @@ mod test {
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
             send-tari --message Our_secret! 125T 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+            
+            burn-tari --message Ups_these_funds_will_be_burned! 100T
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
@@ -441,6 +441,7 @@ mod test {
 
         let mut get_balance = false;
         let mut send_tari = false;
+        let mut burn_tari = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -449,6 +450,7 @@ mod test {
             match command {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendTari(_) => send_tari = true,
+                CliCommands::BurnTari(_) => burn_tari = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
@@ -468,6 +470,6 @@ mod test {
                 CliCommands::HashGrpcPassword(_) => {},
             }
         }
-        assert!(get_balance && send_tari && make_it_rain && coin_split && discover_peer && whois);
+        assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);
     }
 }

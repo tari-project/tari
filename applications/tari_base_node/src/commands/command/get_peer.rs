@@ -63,7 +63,8 @@ enum ArgsError {
 
 impl CommandContext {
     pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) -> Result<(), Error> {
-        let peers = self.peer_manager.find_all_starts_with(&partial).await?;
+        let peer_manager = self.comms.peer_manager();
+        let peers = peer_manager.find_all_starts_with(&partial).await?;
         let peer = {
             if let Some(peer) = peers.into_iter().next() {
                 peer
@@ -71,8 +72,7 @@ impl CommandContext {
                 let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
                     original_str: original_str.clone(),
                 })?;
-                let peer = self
-                    .peer_manager
+                let peer = peer_manager
                     .find_by_public_key(&pk)
                     .await?
                     .ok_or(ArgsError::NoPeerMatching { original_str })?;
@@ -80,7 +80,7 @@ impl CommandContext {
             }
         };
 
-        let eid = EmojiId::from_pubkey(&peer.public_key);
+        let eid = EmojiId::from_public_key(&peer.public_key).to_emoji_string();
         println!("Emoji ID: {}", eid);
         println!("Public Key: {}", peer.public_key);
         println!("NodeId: {}", peer.node_id);

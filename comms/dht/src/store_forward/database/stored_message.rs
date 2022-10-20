@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
-
 use chrono::NaiveDateTime;
 use tari_comms::message::MessageExt;
 use tari_utilities::{hex, hex::Hex};
@@ -50,7 +48,7 @@ pub struct NewStoredMessage {
 }
 
 impl NewStoredMessage {
-    pub fn try_construct(message: DecryptedDhtMessage, priority: StoredMessagePriority) -> Option<Self> {
+    pub fn new(message: DecryptedDhtMessage, priority: StoredMessagePriority) -> Self {
         let DecryptedDhtMessage {
             authenticated_origin,
             decryption_result,
@@ -64,8 +62,8 @@ impl NewStoredMessage {
         };
         let body_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.message_signature, &body));
 
-        Some(Self {
-            version: dht_header.version.as_major().try_into().ok()?,
+        Self {
+            version: dht_header.version.as_major() as i32,
             origin_pubkey: authenticated_origin.as_ref().map(|pk| pk.to_hex()),
             message_type: dht_header.message_type as i32,
             destination_pubkey: dht_header.destination.public_key().map(|pk| pk.to_hex()),
@@ -81,7 +79,7 @@ impl NewStoredMessage {
             },
             body_hash,
             body,
-        })
+        }
     }
 }
 

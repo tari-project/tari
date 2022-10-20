@@ -28,7 +28,6 @@ use std::{
 };
 
 use bitflags::bitflags;
-use bytes::Bytes;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -44,7 +43,7 @@ use crate::version::DhtProtocolVersion;
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
     Timestamp {
         seconds: datetime.timestamp(),
-        nanos: datetime.timestamp_subsec_nanos().try_into().unwrap_or(std::i32::MAX),
+        nanos: datetime.timestamp_subsec_nanos().try_into().unwrap_or(i32::MAX),
     }
 }
 
@@ -249,10 +248,10 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: &Bytes) -> Self {
+    pub fn new(header: DhtHeader, body: Vec<u8>) -> Self {
         Self {
             header: Some(header),
-            body: body.to_vec(),
+            body,
         }
     }
 }

@@ -24,7 +24,8 @@ use std::task::Poll;
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
+use prost::bytes::BufMut;
+use tari_comms::{peer_manager::Peer, pipeline::PipelineError, BytesMut};
 use tari_utilities::epoch_time::EpochTime;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -204,12 +205,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 return Ok(());
             }
         }
-
-        let body = decryption_result
+        let err_body = decryption_result
             .as_ref()
-            .err()
-            .cloned()
-            .expect("previous check that decryption failed");
+            .expect_err("previous check that decryption failed");
+        let mut body = BytesMut::with_capacity(err_body.len());
+        body.put(err_body.as_slice());
 
         let excluded_peers = vec![source_peer.node_id.clone()];
         let dest_node_id = dht_header.destination.to_derived_node_id();
@@ -217,27 +217,30 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
             (Some(node_id), Some(true)) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Forwarding SAF message directly to node: {}, {}", node_id, dht_header.message_tag
+                let debug_info = format!(
+                    "Forwarding SAF message directly to node: {}, {}",
+                    node_id, dht_header.message_tag
                 );
+                debug!(target: LOG_TARGET, "{}", &debug_info);
+                send_params.with_debug_info(debug_info);
                 send_params.direct_or_closest_connected(node_id, excluded_peers);
             },
             _ => {
-                debug!(
-                    target: LOG_TARGET,
+                let debug_info = format!(
                     "Propagating SAF message for {}, propagating it. {}",
-                    dht_header.destination,
-                    dht_header.message_tag
+                    dht_header.destination, dht_header.message_tag
                 );
-
+                debug!(target: LOG_TARGET, "{}", debug_info);
+                send_params.with_debug_info(debug_info);
                 send_params.propagate(dht_header.destination.clone(), excluded_peers);
             },
         };
 
         if !is_already_forwarded {
             send_params.with_dht_header(dht_header.clone());
-            self.outbound_service.send_raw(send_params.finish(), body).await?;
+            self.outbound_service
+                .send_raw_no_wait(send_params.finish(), body)
+                .await?;
         }
 
         Ok(())
@@ -254,7 +257,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
-    use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
+    use std::time::Duration;
+
+    use tari_comms::{message::MessageExt, runtime, runtime::task, wrap_in_envelope_body};
     use tokio::sync::mpsc;
 
     use super::*;
@@ -273,7 +278,7 @@ mod test {
 
         let node_identity = make_node_identity();
         let inbound_msg =
-            make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false, false).unwrap();
+            make_dht_inbound_message(&node_identity, &b"".to_vec(), DhtMessageFlags::empty(), false, false).unwrap();
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(Vec::new()),
             Some(node_identity.public_key().clone()),
@@ -295,7 +300,7 @@ mod test {
         let sample_body = b"Lorem ipsum";
         let inbound_msg = make_dht_inbound_message(
             &make_node_identity(),
-            sample_body.to_vec(),
+            &sample_body.to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,
@@ -306,11 +311,14 @@ mod test {
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
-        assert_eq!(oms_mock_state.call_count().await, 1);
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
         let (params, body) = oms_mock_state.pop_call().await.unwrap();
 
         // Header and body are preserved when forwarding
-        assert_eq!(&body.to_vec(), &sample_body);
+        assert_eq!(&body.to_vec(), &sample_body.to_vec().to_encoded_bytes());
         assert_eq!(params.dht_header.unwrap(), header);
     }
 }

@@ -39,6 +39,7 @@ use std::{
 
 use bytes::Bytes;
 use futures::{
+    future,
     future::{BoxFuture, Either},
     task::{Context, Poll},
     FutureExt,
@@ -491,7 +492,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                                 break;
                             }
                         }
-                        None => break,
+                        None => {
+                            debug!(target: LOG_TARGET, "(stream={}) Request channel closed. Worker is terminating.", self.stream_id());
+                            break
+                        },
                     }
                 }
             }
@@ -609,7 +613,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         debug!(target: LOG_TARGET, "Sending request: {}", req);
 
-        let mut timer = Some(Instant::now());
         if reply.is_closed() {
             event!(Level::WARN, "Client request was cancelled before request was sent");
             warn!(
@@ -618,7 +621,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             );
         }
 
-        let (response_tx, response_rx) = mpsc::channel(10);
+        let (response_tx, response_rx) = mpsc::channel(5);
         if let Err(mut rx) = reply.send(response_rx) {
             event!(Level::WARN, "Client request was cancelled after request was sent");
             warn!(
@@ -633,12 +636,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         let latency = metrics::request_response_latency(&self.node_id, &self.protocol_id);
         let mut metrics_timer = Some(latency.start_timer());
+        let timer = Instant::now();
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
             metrics::client_errors(&self.node_id, &self.protocol_id).inc();
-            let _result = response_tx.send(Err(err.into()));
+            let _result = response_tx.send(Err(err.into())).await;
             return Ok(());
         }
+        let partial_latency = timer.elapsed();
 
         loop {
             if self.shutdown_signal.is_triggered() {
@@ -654,10 +659,30 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 break;
             }
 
-            let resp = match self.read_response(request_id).await {
-                Ok(resp) => {
-                    if let Some(t) = timer.take() {
-                        let _ = self.last_request_latency_tx.send(Some(t.elapsed()));
+            // Check if the response receiver has been dropped while receiving messages
+            let resp_result = {
+                let resp_fut = self.read_response(request_id);
+                tokio::pin!(resp_fut);
+                let closed_fut = response_tx.closed();
+                tokio::pin!(closed_fut);
+                match future::select(resp_fut, closed_fut).await {
+                    Either::Left((r, _)) => Some(r),
+                    Either::Right(_) => None,
+                }
+            };
+            let resp_result = match resp_result {
+                Some(r) => r,
+                None => {
+                    self.premature_close(request_id, method).await?;
+                    break;
+                },
+            };
+
+            // let resp = match self.read_response(request_id).await {
+            let resp = match resp_result {
+                Ok((resp, time_to_first_msg)) => {
+                    if let Some(t) = time_to_first_msg {
+                        let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
                     }
                     event!(Level::TRACE, "Message received");
                     trace!(
@@ -682,14 +707,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     event!(Level::ERROR, "Response timed out");
                     metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
                     if response_tx.is_closed() {
-                        let req = proto::rpc::RpcRequest {
-                            request_id: u32::try_from(request_id).unwrap(),
-                            method,
-                            flags: RpcMessageFlags::FIN.bits().into(),
-                            ..Default::default()
-                        };
-
-                        self.send_request(req).await?;
+                        self.premature_close(request_id, method).await?;
                     } else {
                         let _result = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
                     }
@@ -721,21 +739,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     // The consumer may drop the receiver before all responses are received.
                     // We handle this by sending a 'FIN' message to the server.
                     if response_tx.is_closed() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "(stream={}) Response receiver was dropped before the response/stream could complete for \
-                             protocol {}, interrupting the stream. ",
-                            self.stream_id(),
-                            self.protocol_name()
-                        );
-                        let req = proto::rpc::RpcRequest {
-                            request_id: u32::try_from(request_id).unwrap(),
-                            method,
-                            flags: RpcMessageFlags::FIN.bits().into(),
-                            ..Default::default()
-                        };
-
-                        self.send_request(req).await?;
+                        self.premature_close(request_id, method).await?;
                         break;
                     } else {
                         let _result = response_tx.send(Ok(resp)).await;
@@ -766,6 +770,29 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
+    async fn premature_close(&mut self, request_id: u16, method: u32) -> Result<(), RpcError> {
+        warn!(
+            target: LOG_TARGET,
+            "(stream={}) Response receiver was dropped before the response/stream could complete for protocol {}, \
+             interrupting the stream. ",
+            self.stream_id(),
+            self.protocol_name()
+        );
+        let req = proto::rpc::RpcRequest {
+            request_id: u32::try_from(request_id).unwrap(),
+            method,
+            flags: RpcMessageFlags::FIN.bits().into(),
+            deadline: self.config.deadline.map(|d| d.as_secs()).unwrap_or(0),
+            ..Default::default()
+        };
+
+        // If we cannot set FIN quickly, just exit
+        if let Ok(res) = time::timeout(Duration::from_secs(2), self.send_request(req)).await {
+            res?;
+        }
+        Ok(())
+    }
+
     async fn send_request(&mut self, req: proto::rpc::RpcRequest) -> Result<(), RpcError> {
         let payload = req.to_encoded_bytes();
         if payload.len() > rpc::max_request_size() {
@@ -778,7 +805,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
-    async fn read_response(&mut self, request_id: u16) -> Result<proto::rpc::RpcResponse, RpcError> {
+    async fn read_response(
+        &mut self,
+        request_id: u16,
+    ) -> Result<(proto::rpc::RpcResponse, Option<Duration>), RpcError> {
         let stream_id = self.stream_id();
         let protocol_name = self.protocol_name().to_string();
 
@@ -796,7 +826,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     );
                     metrics::inbound_response_bytes(&self.node_id, &self.protocol_id)
                         .observe(reader.bytes_read() as f64);
-                    break resp;
+                    let time_to_first_msg = reader.time_to_first_msg();
+                    break (resp, time_to_first_msg);
                 },
                 Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
                     if actual.wrapping_add(1) == request_id =>
@@ -862,6 +893,7 @@ struct RpcResponseReader<'a, TSubstream> {
     config: RpcClientConfig,
     request_id: u16,
     bytes_read: usize,
+    time_to_first_msg: Option<Duration>,
 }
 
 impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
@@ -873,6 +905,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             config,
             request_id,
             bytes_read: 0,
+            time_to_first_msg: None,
         }
     }
 
@@ -880,8 +913,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         self.bytes_read
     }
 
+    pub fn time_to_first_msg(&self) -> Option<Duration> {
+        self.time_to_first_msg
+    }
+
     pub async fn read_response(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
+        let timer = Instant::now();
         let mut resp = self.next().await?;
+        self.time_to_first_msg = Some(timer.elapsed());
         self.check_response(&resp)?;
         let mut chunk_count = 1;
         let mut last_chunk_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).unwrap());

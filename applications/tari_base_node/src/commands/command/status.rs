@@ -27,7 +27,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
-use tari_comms::connectivity::ConnectivitySelection;
+use tari_comms::connection_manager::LivenessStatus;
+use tokio::time;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::status_line::{StatusLine, StatusLineOutput};
@@ -47,6 +48,7 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
+    #[allow(clippy::too_many_lines)]
     pub async fn status(&mut self, output: StatusLineOutput) -> Result<(), Error> {
         let mut full_log = false;
         if self.last_time_full.elapsed() > Duration::from_secs(120) {
@@ -82,26 +84,35 @@ impl CommandContext {
         let constants = self
             .consensus_rules
             .consensus_constants(metadata.height_of_longest_chain());
-        let mempool_stats = self.mempool_service.get_mempool_stats().await?;
-        status_line.add_field(
-            "Mempool",
-            format!(
-                "{}tx ({}g, +/- {}blks)",
-                mempool_stats.unconfirmed_txs,
-                mempool_stats.unconfirmed_weight,
-                if mempool_stats.unconfirmed_weight == 0 {
-                    0
-                } else {
-                    1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
-                },
-            ),
-        );
+        // TODO: This code enables a status line display even if the mempool stats times out
+        let fut = self.mempool_service.get_mempool_stats();
+        if let Ok(mempool_stats) = time::timeout(Duration::from_secs(5), fut).await? {
+            status_line.add_field(
+                "Mempool",
+                format!(
+                    "{}tx ({}g, +/- {}blks)",
+                    mempool_stats.unconfirmed_txs,
+                    mempool_stats.unconfirmed_weight,
+                    if mempool_stats.unconfirmed_weight == 0 {
+                        0
+                    } else {
+                        1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
+                    },
+                ),
+            );
+        } else {
+            status_line.add_field("Mempool", "query timed out");
+        };
 
-        let conns = self
-            .connectivity
-            .select_connections(ConnectivitySelection::all_nodes(vec![]))
-            .await?;
-        status_line.add_field("Connections", conns.len());
+        let conns = self.comms.connectivity().get_active_connections().await?;
+        let (num_nodes, num_clients) = conns.iter().fold((0usize, 0usize), |(nodes, clients), conn| {
+            if conn.peer_features().is_node() {
+                (nodes + 1, clients)
+            } else {
+                (nodes, clients + 1)
+            }
+        });
+        status_line.add_field("Connections", format!("{}|{}", num_nodes, num_clients));
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
 
@@ -128,6 +139,19 @@ impl CommandContext {
                     self.state_machine_info.borrow().randomx_vm_flags
                 ),
             );
+        }
+
+        match self.comms.listening_info().liveness_status() {
+            LivenessStatus::Disabled => {},
+            LivenessStatus::Checking => {
+                status_line.add("⏳️️");
+            },
+            LivenessStatus::Unreachable => {
+                status_line.add("‼️");
+            },
+            LivenessStatus::Live(latency) => {
+                status_line.add(format!("⚡️ {:.2?}", latency));
+            },
         }
 
         let target = "base_node::app::status";

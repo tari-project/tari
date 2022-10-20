@@ -679,6 +679,7 @@ where
             .send_direct(
                 self.dest_pubkey.clone(),
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
+                "transaction send".to_string(),
             )
             .await
         {

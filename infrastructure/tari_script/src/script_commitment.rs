@@ -16,10 +16,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use tari_common_types::types::CommitmentFactory;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+    ristretto::{
+        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
+        RistrettoSecretKey,
+    },
 };
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
@@ -115,7 +117,7 @@ impl ScriptCommitment {
 
 #[derive(Default)]
 pub struct ScriptCommitmentFactory {
-    factory: CommitmentFactory,
+    factory: ExtendedPedersenCommitmentFactory,
 }
 
 impl ScriptCommitmentFactory {
