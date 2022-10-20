@@ -505,6 +505,22 @@ impl TariScript {
         }
     }
 
+    /// Validates an m-of-n multisig script
+    ///
+    /// This validation broadly proceeds to check if **exactly** _m_ signatures are valid signatures out of a
+    /// possible _n_ public keys.
+    ///
+    /// A successful validation returns `Ok(P)` where _P_ is the sum of the public keys that matched the _m_
+    /// signatures. If the validation was NOT successful, `check_multisig` returns `Ok(None)`. This is a private
+    /// function, and callers will interpret these results according to their use cases.
+    ///
+    /// Other problems, such as stack underflows, invalid parameters etc return an `Err` as usual.
+    ///
+    /// Notes:
+    /// * The _m_ signatures are expected to be the top _m_ items on the stack.
+    /// * Every public key can be used AT MOST once.
+    /// * Every signature MUST be a valid signature using one of the public keys
+    /// * _n_ and _m_ must be positive AND n <= m AND n <= MAX_MULTISIG_LIMIT (32).
     fn check_multisig(
         &self,
         stack: &mut ExecutionStack,
@@ -528,19 +544,23 @@ impl TariScript {
             .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>()?;
 
         let mut key_signed = vec![false; public_keys.len()];
+        // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
         let mut agg_pub_key = RistrettoPublicKey::default();
+        // Check every signature against each public key looking for a valid signature
         for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
+                    // This prevents Alice creating 2 different sigs against her public key
                     key_signed[i] = true;
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
                 }
             }
+            // Make sure the signature matched a public key
             if !sig_set.contains(s) {
                 return Ok(None);
             }
