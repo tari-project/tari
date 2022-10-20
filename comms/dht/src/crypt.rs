@@ -100,9 +100,8 @@ fn pad_message_to_base_length_multiple(
         get_message_padding_length(message.len().checked_sub(additional_prefix_space).ok_or_else(|| {
             DhtEncryptError::PaddingError("Message length shorter than the additional_prefix_space".to_string())
         })?);
-    if message.capacity() < message.len() + padding_length {
-        message.resize(message.len() + padding_length, 0);
-    }
+
+    message.resize(message.len() + padding_length, 0);
 
     Ok(padding_length)
 }
