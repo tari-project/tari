@@ -229,14 +229,17 @@ pub enum Opcode {
     /// Identical to CheckSig, except that nothing is pushed to the stack if the signature is valid, and the operation
     /// fails with VERIFY_FAILED if the signature is invalid.
     CheckSigVerify(Box<Message>),
-    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
-    /// push 1 to the stack, otherwise push 0.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
+    /// pushes 1 to the stack, otherwise pushes 0.
     CheckMultiSig(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the m signatures are valid, and the
-    /// operation fails with VERIFY_FAILED if any of the signatures are invalid.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message
+    /// nothing is pushed to the stack, otherwise, the script fails with VERIFY_FAILED.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
-    /// push the aggregate of the public keys to the stack, otherwise fails with VERIFY_FAILED.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
+    /// pushes the aggregate of the public keys to the stack, otherwise, the script fails with VERIFY_FAILED.
     CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
     /// Pops the top element which must be a valid 32-byte scalar or hash and calculates the corresponding Ristretto
     /// point, and pushes the result to the stack. Fails with EMPTY_STACK if the stack is empty.
