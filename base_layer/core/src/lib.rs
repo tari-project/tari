@@ -78,6 +78,7 @@ mod domain_hashing {
         "com.tari.tari_project.base_layer.core.kernel_mmr",
         1
     );
+
     pub type KernelMmrHasherBlake256 = DomainSeparatedHasher<Blake256, KernelMmrHashDomain>;
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
