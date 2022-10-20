@@ -520,7 +520,7 @@ impl TariScript {
     /// * The _m_ signatures are expected to be the top _m_ items on the stack.
     /// * Every public key can be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
-    /// * _n_ and _m_ must be positive AND n <= m AND n <= MAX_MULTISIG_LIMIT (32).
+    /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
     fn check_multisig(
         &self,
         stack: &mut ExecutionStack,
