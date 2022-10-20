@@ -25,10 +25,14 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::ConsensusConstants,
     transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_outputs, check_permitted_output_types, check_total_burned},
+        helpers::{
+            check_inputs_are_utxos,
+            check_outputs,
+            check_total_burned,
+            validate_versions,
+        },
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -98,67 +102,6 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
         Self { db }
     }
 
-    fn validate_versions(
-        &self,
-        tx: &Transaction,
-        consensus_constants: &ConsensusConstants,
-    ) -> Result<(), ValidationError> {
-        // validate input version
-        for input in tx.body().inputs() {
-            if !consensus_constants.input_version_range().contains(&input.version) {
-                let msg = format!(
-                    "Transaction input contains a version not allowed by consensus ({:?})",
-                    input.version
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-        }
-
-        // validate output version and output features version
-        for output in tx.body().outputs() {
-            let valid_output_version = consensus_constants
-                .output_version_range()
-                .outputs
-                .contains(&output.version);
-
-            let valid_features_version = consensus_constants
-                .output_version_range()
-                .features
-                .contains(&output.features.version);
-
-            if !valid_output_version {
-                let msg = format!(
-                    "Transaction output version is not allowed by consensus ({:?})",
-                    output.version
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-
-            if !valid_features_version {
-                let msg = format!(
-                    "Transaction output features version is not allowed by consensus ({:?})",
-                    output.features.version
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-
-            check_permitted_output_types(consensus_constants, output)?;
-        }
-
-        // validate kernel version
-        for kernel in tx.body().kernels() {
-            if !consensus_constants.kernel_version_range().contains(&kernel.version) {
-                let msg = format!(
-                    "Transaction kernel version is not allowed by consensus ({:?})",
-                    kernel.version
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-        }
-
-        Ok(())
-    }
-
     fn validate_excess_sig_not_in_db(&self, tx: &Transaction) -> Result<(), ValidationError> {
         for kernel in tx.body.kernels() {
             if let Some((db_kernel, header_hash)) = self.db.fetch_kernel_by_excess_sig(kernel.excess_sig.to_owned())? {
@@ -191,7 +134,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
 
         self.validate_excess_sig_not_in_db(tx)?;
 
-        self.validate_versions(tx, consensus_constants)
+        validate_versions(tx.body(), consensus_constants)
     }
 }
 
