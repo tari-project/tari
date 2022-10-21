@@ -45,7 +45,7 @@ use tari_crypto::{
     keys::DiffieHellmanSharedSecret,
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     comms_dht_hash_domain_challenge,
@@ -68,9 +68,7 @@ const MESSAGE_BASE_LENGTH: usize = 6000;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
 pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
-    // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
-    //       currently possible because (Compressed)RistrettoPoint does not implement it.
-    let k = CommsPublicKey::shared_secret(secret_key, public_key);
+    let k = Zeroizing::new(CommsPublicKey::shared_secret(secret_key, public_key));
     let mut output = [0u8; 32];
 
     output.copy_from_slice(k.as_bytes());
