@@ -85,7 +85,7 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{env, process, str::FromStr, sync::Arc};
+use std::{env, process, sync::Arc};
 
 use clap::Parser;
 use commands::{cli_loop::CliLoop, command::CommandContext};
@@ -94,10 +94,7 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_common::{
-    configuration::{
-        bootstrap::{grpc_default_port, ApplicationType},
-        Network,
-    },
+    configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -149,8 +146,8 @@ fn main_inner() -> Result<(), ExitError> {
     )?;
 
     let mut config = ApplicationConfig::load_from(&cfg)?;
-    if let Some(network) = &cli.network {
-        config.base_node.network = Network::from_str(network)?;
+    if let Some(network) = cli.network {
+        config.base_node.network = network;
     }
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
