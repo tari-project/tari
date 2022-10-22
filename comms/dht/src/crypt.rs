@@ -67,12 +67,10 @@ pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 const MESSAGE_BASE_LENGTH: usize = 6000;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
-    let k = Zeroizing::new(CommsPublicKey::shared_secret(secret_key, public_key));
-    let mut output = [0u8; 32];
+pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> Zeroizing<Vec<u8>> {
+    let k = CommsPublicKey::shared_secret(secret_key, public_key);
 
-    output.copy_from_slice(k.as_bytes());
-    output
+    Zeroizing::new(k.to_vec())
 }
 
 fn get_message_padding_length(message_length: usize) -> usize {
