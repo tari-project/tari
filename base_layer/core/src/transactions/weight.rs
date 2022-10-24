@@ -52,6 +52,11 @@ impl WeightParams {
 pub struct TransactionWeight(WeightParams);
 
 impl TransactionWeight {
+    /// Constructor
+    pub fn new(weight_params: WeightParams) -> Self {
+        Self(weight_params)
+    }
+    
     /// Creates a new `TransactionWeight` with latest weight params
     pub fn latest() -> Self {
         Self(WeightParams::v1())
