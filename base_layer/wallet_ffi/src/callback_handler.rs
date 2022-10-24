@@ -77,7 +77,7 @@ where TBackend: TransactionBackend + 'static
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
-    callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
     db: TransactionDatabase<TBackend>,
@@ -119,7 +119,7 @@ where TBackend: TransactionBackend + 'static
         callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
-        callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
+        callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
     ) -> Self {
@@ -278,10 +278,10 @@ where TBackend: TransactionBackend + 'static
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationCompleted(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key.as_u64(), true);
+                                    self.transaction_validation_complete_event(request_key.as_u64(), 0);
                                 },
-                                TransactionEvent::TransactionValidationFailed(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key.as_u64(), false);
+                                TransactionEvent::TransactionValidationFailed(request_key, reason)  => {
+                                    self.transaction_validation_complete_event(request_key.as_u64(), reason);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id)|
@@ -575,7 +575,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn transaction_validation_complete_event(&mut self, request_key: u64, success: bool) {
+    fn transaction_validation_complete_event(&mut self, request_key: u64, success: u64) {
         debug!(
             target: LOG_TARGET,
             "Calling Transaction Validation Complete callback function for Request Key: {}", request_key,
