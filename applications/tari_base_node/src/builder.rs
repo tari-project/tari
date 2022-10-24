@@ -53,7 +53,7 @@ use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
-use crate::{bootstrap::BaseNodeBootstrapper, config::DatabaseType, ApplicationConfig};
+use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 

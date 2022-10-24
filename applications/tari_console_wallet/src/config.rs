@@ -20,12 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(dead_code, unused)]
+
 use config::Config;
 use tari_app_utilities::consts;
 use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_wallet::WalletConfig;
 
+#[derive(Clone)]
 pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub auto_update: AutoUpdateConfig,

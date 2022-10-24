@@ -168,7 +168,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
         if input.is_compact() {
             let output_hash = input.output_hash();
             Ok(Self {
-                input_data: input.input_data.as_bytes(),
+                input_data: input.input_data.to_bytes(),
                 script_signature: Some(input.script_signature.into()),
                 output_hash: output_hash.to_vec(),
                 ..Default::default()
@@ -192,8 +192,8 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 script: input
                     .script()
                     .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
-                    .as_bytes(),
-                input_data: input.input_data.as_bytes(),
+                    .to_bytes(),
+                input_data: input.input_data.to_bytes(),
                 script_signature: Some(input.script_signature.clone().into()),
                 sender_offset_public_key: input
                     .sender_offset_public_key()
@@ -277,7 +277,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
-            script: output.script.as_bytes(),
+            script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
             covenant: output.covenant.to_bytes(),

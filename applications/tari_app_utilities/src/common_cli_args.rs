@@ -35,10 +35,10 @@ pub struct CommonCliArgs {
         default_value_t= defaults::base_path(),
         env = "TARI_BASE_DIR"
     )]
-    base_path: String,
+    pub base_path: String,
     /// A path to the configuration file to use (config.toml)
     #[clap(short, long, default_value_t= defaults::config())]
-    config: String,
+    pub config: String,
     /// The path to the log configuration file
     #[clap(short, long, alias = "log_config")]
     pub log_config: Option<PathBuf>,
