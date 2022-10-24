@@ -102,6 +102,12 @@ impl CrosstermEvents {
     }
 }
 
+impl Default for CrosstermEvents {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventStream<KeyEvent> for CrosstermEvents {
     fn next(&self) -> Result<Event<KeyEvent>, mpsc::RecvError> {
         self.rx.recv()

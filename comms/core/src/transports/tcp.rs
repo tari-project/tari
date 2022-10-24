@@ -125,10 +125,10 @@ impl Transport for TcpTransport {
     type Listener = TcpInbound;
     type Output = TcpStream;
 
-    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+    async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         let socket_addr = self
             .dns_resolver
-            .resolve(addr)
+            .resolve(addr.clone())
             .await
             .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
         let listener = TcpListener::bind(&socket_addr).await?;
@@ -136,10 +136,10 @@ impl Transport for TcpTransport {
         Ok((TcpInbound::new(self.clone(), listener), local_addr))
     }
 
-    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+    async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         let socket_addr = self
             .dns_resolver
-            .resolve(addr)
+            .resolve(addr.clone())
             .await
             .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))?;
 

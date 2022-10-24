@@ -265,6 +265,12 @@ impl CommsBuilder {
         self
     }
 
+    /// Enable and set interval for self-liveness checks, or None to disable it (default)
+    pub fn set_liveness_check(mut self, check_interval: Option<Duration>) -> Self {
+        self.connection_manager_config.liveness_self_check_interval = check_interval;
+        self
+    }
+
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
         let file_lock = self.peer_storage_file_lock.take();
 

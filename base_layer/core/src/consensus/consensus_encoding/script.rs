@@ -31,7 +31,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 
 impl ConsensusEncoding for TariScript {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.as_bytes().consensus_encode(writer)
+        self.to_bytes().consensus_encode(writer)
     }
 }
 
@@ -54,7 +54,7 @@ impl ConsensusDecoding for TariScript {
 
 impl ConsensusEncoding for ExecutionStack {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.as_bytes().consensus_encode(writer)
+        self.to_bytes().consensus_encode(writer)
     }
 }
 
