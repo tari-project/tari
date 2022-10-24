@@ -1675,9 +1675,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let sidechain_outputs = utxos
                     .into_iter()
                     .filter(|u| u.features.output_type.is_sidechain_type())
-                    .collect::<Vec<_>>();
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<_>, _>>();
 
-                match sidechain_outputs.into_iter().map(TryInto::try_into).collect() {
+                match sidechain_outputs {
                     Ok(outputs) => {
                         let resp = tari_rpc::GetSideChainUtxosResponse {
                             block_info: Some(tari_rpc::BlockInfo {

@@ -41,6 +41,59 @@ message ComSignature {
     bytes signature_v = 3;
 }
 
+/// PoW Algorithm constants
+message PowAlgorithmConstants {
+    uint64 max_target_time = 1;
+    uint64 min_difficulty = 2;
+    uint64 max_difficulty = 3;
+    uint64 target_time = 4;
+}
+
+/// Weight params
+message WeightParams {
+    uint64 kernel_weight = 1;
+    uint64 input_weight = 2;
+    uint64 output_weight = 3;
+    uint64 metadata_bytes_per_gram = 4;
+}
+
+/// Transaction input version 
+enum TransactionInputVersion {
+    TRANSACTION_INPUT_V0 = 0;
+    TRANSACTION_INPUT_V1 = 1;
+}
+
+/// Transaction output version
+enum TransactionOutputVersion {
+    TRANSACTION_OUTPUT_V0 = 0;
+    TRANSACTION_OUTPUT_V1 = 1;
+}
+
+/// Output features version
+enum OutputFeaturesVersion {
+    OUTPUT_FEATURES_V0 = 0;
+    OUTPUT_FEATURES_V1 = 1;
+}
+
+/// Output version
+message OutputsVersion {
+    repeated TransactionOutputVersion outputs = 1;
+    repeated OutputFeaturesVersion features = 2;
+}
+
+/// Kernel version
+enum KernelVersion {
+    KERNEL_V0 = 0;
+}
+
+/// Output types
+enum OutputType {
+    STANDARD = 0;
+    COINBASE = 1;
+    BURN = 2;
+    VALIDATOR_NODE_REGISTRATION = 3;
+    CODE_TEMPLATE_REGISTRATION = 4;
+}
 
 /// Consensus Constants response
 message ConsensusConstants {
@@ -48,7 +101,7 @@ message ConsensusConstants {
     uint64 coinbase_lock_height = 1;
     /// Current version of the blockchain
     uint32 blockchain_version = 2;
-    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
+    /// The Future Time Limit (FTL) of the blockchain in seconds. Thfis is the max allowable timestamp that is excepted.
     /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
     uint64 future_time_limit = 3;
 
@@ -76,4 +129,28 @@ message ConsensusConstants {
     uint64 block_weight_outputs = 15;
     /// Block weight for kernels
     uint64 block_weight_kernels = 16;
+    /// This is to keep track of the value inside of the genesis block
+    uint64 faucet_value = 17;
+    /// Maximum byte size of TariScript
+    uint64 max_script_byte_size = 18;
+    /// How long does it take to timeout validator node registration
+    uint64 validator_node_timeout = 19;
+    /// The height at which these constants become effective
+    uint64 effective_from_height = 20;
+    /// Current version of the blockchain
+    repeated uint64 valid_blockchain_version_range = 21;
+    /// This is the maximum age a monero merge mined seed can be reused
+    uint64 max_randomx_seed_height = 22;
+    /// This keeps track of the block split targets and which algo is accepted
+    repeated PowAlgorithmConstants proof_of_work = 23;
+    /// Transaction Weight params
+    WeightParams transaction_weight = 24;
+    /// Range of valid transaction input versions
+    repeated TransactionInputVersion input_version_range = 26;
+    /// Range of valid transaction output (and features) versions
+    OutputsVersion output_version_range = 27;
+    /// Range of valid transaction kernel versions
+    repeated KernelVersion kernel_version_range = 28;
+    /// An allowlist of output types
+    repeated OutputType permitted_output_types = 29;
 }
