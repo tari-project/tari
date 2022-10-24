@@ -107,7 +107,7 @@ message ConsensusConstants {
     uint64 coinbase_lock_height = 1;
     /// Current version of the blockchain
     uint32 blockchain_version = 2;
-    /// The Future Time Limit (FTL) of the blockchain in seconds. Thfis is the max allowable timestamp that is excepted.
+    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
     uint64 future_time_limit = 3;
 
