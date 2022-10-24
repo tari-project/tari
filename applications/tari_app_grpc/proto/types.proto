@@ -23,6 +23,12 @@ syntax = "proto3";
 
 package tari.rpc;
 
+/// A range interface to more accurately represent Rust native Range's
+message Range { 
+    uint64 min = 1;
+    uint64 max = 2;
+}
+
 /// An Empty placeholder for endpoints without request parameters
 message Empty {}
 
@@ -77,8 +83,8 @@ enum OutputFeaturesVersion {
 
 /// Output version
 message OutputsVersion {
-    repeated TransactionOutputVersion outputs = 1;
-    repeated OutputFeaturesVersion features = 2;
+    Range outputs = 1;
+    Range features = 2;
 }
 
 /// Kernel version
@@ -138,7 +144,7 @@ message ConsensusConstants {
     /// The height at which these constants become effective
     uint64 effective_from_height = 20;
     /// Current version of the blockchain
-    repeated uint64 valid_blockchain_version_range = 21;
+    Range valid_blockchain_version_range = 21;
     /// This is the maximum age a monero merge mined seed can be reused
     uint64 max_randomx_seed_height = 22;
     /// This keeps track of the block split targets and which algo is accepted

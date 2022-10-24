@@ -22,10 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_core::{
-    consensus::ConsensusConstants,
-    proof_of_work::PowAlgorithm,
-};
+use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 
 use crate::tari_rpc as grpc;
 
@@ -52,13 +49,9 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             vec![kernel_version_range.0.as_u8() as i32]
         };
         let valid_blockchain_version_range = cc.valid_blockchain_version_range().clone().into_inner();
-        let valid_blockchain_version_range = if valid_blockchain_version_range.0 != valid_blockchain_version_range.1 {
-            vec![
-                valid_blockchain_version_range.0 as u64,
-                valid_blockchain_version_range.1 as u64,
-            ]
-        } else {
-            vec![valid_blockchain_version_range.0 as u64]
+        let valid_blockchain_version_range = grpc::Range {
+            min: valid_blockchain_version_range.0 as u64,
+            max: valid_blockchain_version_range.1 as u64,
         };
         let transaction_weight = cc.transaction_weight();
         let metadata_bytes_per_gram = if let Some(val) = transaction_weight.params().metadata_bytes_per_gram {
@@ -73,16 +66,19 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             metadata_bytes_per_gram,
         };
         let output_version_range = cc.output_version_range();
-        let outputs = vec![
-            output_version_range.outputs.start().as_u8() as i32,
-            output_version_range.outputs.end().as_u8() as i32,
-        ];
-        let features = vec![
-            output_version_range.features.start().as_u8() as i32,
-            output_version_range.features.end().as_u8() as i32,
-        ];
+        let outputs = grpc::Range {
+            min: output_version_range.outputs.start().as_u8() as u64,
+            max: output_version_range.outputs.end().as_u8() as u64,
+        };
+        let features = grpc::Range {
+            min: output_version_range.features.start().as_u8() as u64,
+            max: output_version_range.features.end().as_u8() as u64,
+        };
 
-        let output_version_range = grpc::OutputsVersion { outputs, features };
+        let output_version_range = grpc::OutputsVersion {
+            outputs: Some(outputs),
+            features: Some(features),
+        };
 
         let permitted_output_types = cc.permitted_output_types();
         let permitted_output_types = permitted_output_types
@@ -131,7 +127,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             effective_from_height: cc.effective_from_height(),
             input_version_range,
             kernel_version_range,
-            valid_blockchain_version_range,
+            valid_blockchain_version_range: Some(valid_blockchain_version_range),
             proof_of_work,
             transaction_weight: Some(transaction_weight),
             max_randomx_seed_height: cc.max_randomx_seed_height(),
