@@ -30,6 +30,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
+    types::CommsDHKE,
     BytesMut,
 };
 use thiserror::Error;
@@ -262,7 +263,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(DecryptedDhtMessage::failed(validated_msg.into_message()));
         }
 
-        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
+        let shared_secret = CommsDHKE::new(node_identity.secret_key(), e_pk);
         let message = validated_msg.message();
 
         // Decrypt and verify the origin
@@ -381,7 +382,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_message_signature(
-        shared_secret: &[u8],
+        shared_secret: &CommsDHKE,
         dht_header: &DhtMessageHeader,
     ) -> Result<MessageSignature, DecryptionError> {
         let encrypted_message_signature = Some(&dht_header.message_signature)
@@ -403,7 +404,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_message_body(
-        shared_secret: &[u8],
+        shared_secret: &CommsDHKE,
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
@@ -638,7 +639,7 @@ mod test {
 
         let plain_text_msg = BytesMut::from(b"Secret message".as_slice());
         let (e_secret_key, e_public_key) = make_keypair();
-        let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
+        let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 
@@ -701,7 +702,7 @@ mod test {
 
         let plain_text_msg = BytesMut::from(b"Public message".as_slice());
         let (e_secret_key, e_public_key) = make_keypair();
-        let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
+        let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 

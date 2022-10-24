@@ -37,7 +37,7 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms::{peer_manager::NodeIdentity, types::{CommsDHKE, CommsPublicKey}};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     covenants::Covenant,
@@ -66,7 +66,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
+    keys::{PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
@@ -1063,7 +1063,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let spend_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            CommsDHKE::new(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1224,7 +1224,7 @@ where
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let spend_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes(),
+            CommsDHKE::new(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -2691,7 +2691,7 @@ mod tests {
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
         let c = WalletHasher::new_with_label("stealth_address")
-            .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
+            .chain(CommsDHKE::new(&r, &big_a).as_bytes())
             .finalize();
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
@@ -2708,7 +2708,7 @@ mod tests {
         {
             // calculating Ks with the provided R nonce from the script
             let c = WalletHasher::new_with_label("stealth_address")
-                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
+                .chain(CommsDHKE::new(&a, big_r).as_bytes())
                 .finalize();
 
             // computing a spending key `Ks=(c+b)G` for comparison

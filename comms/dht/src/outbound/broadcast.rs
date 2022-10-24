@@ -35,7 +35,7 @@ use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, CommsDHKE},
     Bytes,
     BytesMut,
 };
@@ -493,7 +493,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 // Generate ephemeral public/private key pair and ECDH shared secret
                 let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_secret_key, &**public_key);
+                let shared_ephemeral_secret = CommsDHKE::new(&e_secret_key, &**public_key);
 
                 // Generate key message for encryption of message
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
