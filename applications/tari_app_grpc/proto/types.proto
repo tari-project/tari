@@ -23,7 +23,7 @@ syntax = "proto3";
 
 package tari.rpc;
 
-/// A range interface to more accurately represent Rust native Range's
+/// An unsigned range interface to more accurately represent Rust native Range's
 message Range { 
     uint64 min = 1;
     uint64 max = 2;
@@ -63,33 +63,10 @@ message WeightParams {
     uint64 metadata_bytes_per_gram = 4;
 }
 
-/// Transaction input version 
-enum TransactionInputVersion {
-    TRANSACTION_INPUT_V0 = 0;
-    TRANSACTION_INPUT_V1 = 1;
-}
-
-/// Transaction output version
-enum TransactionOutputVersion {
-    TRANSACTION_OUTPUT_V0 = 0;
-    TRANSACTION_OUTPUT_V1 = 1;
-}
-
-/// Output features version
-enum OutputFeaturesVersion {
-    OUTPUT_FEATURES_V0 = 0;
-    OUTPUT_FEATURES_V1 = 1;
-}
-
 /// Output version
 message OutputsVersion {
     Range outputs = 1;
     Range features = 2;
-}
-
-/// Kernel version
-enum KernelVersion {
-    KERNEL_V0 = 0;
 }
 
 /// Output types
@@ -148,15 +125,15 @@ message ConsensusConstants {
     /// This is the maximum age a monero merge mined seed can be reused
     uint64 max_randomx_seed_height = 22;
     /// This keeps track of the block split targets and which algo is accepted
-    repeated PowAlgorithmConstants proof_of_work = 23;
+    map<uint32, PowAlgorithmConstants> proof_of_work = 23;
     /// Transaction Weight params
     WeightParams transaction_weight = 24;
     /// Range of valid transaction input versions
-    repeated TransactionInputVersion input_version_range = 26;
+    Range input_version_range = 26;
     /// Range of valid transaction output (and features) versions
     OutputsVersion output_version_range = 27;
     /// Range of valid transaction kernel versions
-    repeated KernelVersion kernel_version_range = 28;
+    Range kernel_version_range = 28;
     /// An allowlist of output types
     repeated OutputType permitted_output_types = 29;
 }

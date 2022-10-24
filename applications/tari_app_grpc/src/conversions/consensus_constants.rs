@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom, iter::FromIterator};
 
 use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 
@@ -31,22 +31,14 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
         let weight_params = cc.transaction_weight().params();
         let input_version_range = cc.input_version_range().clone().into_inner();
-        let input_version_range = if input_version_range.0 != input_version_range.1 {
-            vec![
-                i32::from(input_version_range.0.as_u8()),
-                i32::from(input_version_range.1.as_u8()),
-            ]
-        } else {
-            vec![i32::from(input_version_range.0.as_u8())]
+        let input_version_range = grpc::Range {
+            min: u64::from(input_version_range.0.as_u8()),
+            max: u64::from(input_version_range.1.as_u8()),
         };
         let kernel_version_range = cc.kernel_version_range().clone().into_inner();
-        let kernel_version_range = if kernel_version_range.0 != kernel_version_range.1 {
-            vec![
-                i32::from(kernel_version_range.0.as_u8()),
-                i32::from(kernel_version_range.1.as_u8()),
-            ]
-        } else {
-            vec![kernel_version_range.0.as_u8() as i32]
+        let kernel_version_range = grpc::Range {
+            min: u64::from(kernel_version_range.0.as_u8()),
+            max: u64::from(kernel_version_range.1.as_u8()),
         };
         let valid_blockchain_version_range = cc.valid_blockchain_version_range().clone().into_inner();
         let valid_blockchain_version_range = grpc::Range {
@@ -103,7 +95,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             target_time: cc.get_diff_target_block_interval(sha3_pow),
         };
 
-        let proof_of_work = vec![monero_pow, sha3_pow];
+        let proof_of_work = HashMap::from_iter([(0u32, monero_pow), (1u32, sha3_pow)]);
 
         Self {
             coinbase_lock_height: cc.coinbase_lock_height(),
@@ -125,8 +117,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max_script_byte_size: cc.get_max_script_byte_size() as u64,
             faucet_value: cc.faucet_value().as_u64(),
             effective_from_height: cc.effective_from_height(),
-            input_version_range,
-            kernel_version_range,
+            input_version_range: Some(input_version_range),
+            kernel_version_range: Some(kernel_version_range),
             valid_blockchain_version_range: Some(valid_blockchain_version_range),
             proof_of_work,
             transaction_weight: Some(transaction_weight),
