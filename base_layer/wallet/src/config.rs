@@ -123,6 +123,7 @@ impl Default for WalletConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/wallet"),
+            listener_liveness_check_interval: None,
             ..Default::default()
         };
         Self {

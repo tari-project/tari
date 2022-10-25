@@ -303,7 +303,7 @@ pub enum TransactionEvent {
     },
     TransactionValidationStateChanged(OperationId),
     TransactionValidationCompleted(OperationId),
-    TransactionValidationFailed(OperationId),
+    TransactionValidationFailed(OperationId, u64),
     Error(String),
 }
 
@@ -311,34 +311,34 @@ impl fmt::Display for TransactionEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {
-                write!(f, "MempoolBroadcastTimedOut for tx:{}", tx_id)
+                write!(f, "MempoolBroadcastTimedOut for tx:{tx_id}")
             },
             TransactionEvent::ReceivedTransaction(tx) => {
-                write!(f, "ReceivedTransaction for {}", tx)
+                write!(f, "ReceivedTransaction for {tx}")
             },
             TransactionEvent::ReceivedTransactionReply(tx) => {
-                write!(f, "ReceivedTransactionReply for {}", tx)
+                write!(f, "ReceivedTransactionReply for {tx}")
             },
             TransactionEvent::ReceivedFinalizedTransaction(tx) => {
-                write!(f, "ReceivedFinalizedTransaction for {}", tx)
+                write!(f, "ReceivedFinalizedTransaction for {tx}")
             },
             TransactionEvent::TransactionDiscoveryInProgress(tx) => {
-                write!(f, "TransactionDiscoveryInProgress for {}", tx)
+                write!(f, "TransactionDiscoveryInProgress for {tx}")
             },
             TransactionEvent::TransactionSendResult(tx, status) => {
-                write!(f, "TransactionSendResult for {}: {}", tx, status)
+                write!(f, "TransactionSendResult for {tx}: {status}")
             },
             TransactionEvent::TransactionCompletedImmediately(tx) => {
-                write!(f, "TransactionCompletedImmediately for {}", tx)
+                write!(f, "TransactionCompletedImmediately for {tx}")
             },
             TransactionEvent::TransactionCancelled(tx, rejection) => {
-                write!(f, "TransactionCancelled for {}:{:?}", tx, rejection)
+                write!(f, "TransactionCancelled for {tx}:{:?}", rejection)
             },
             TransactionEvent::TransactionBroadcast(tx) => {
-                write!(f, "TransactionBroadcast for {}", tx)
+                write!(f, "TransactionBroadcast for {tx}")
             },
             TransactionEvent::TransactionImported(tx) => {
-                write!(f, "TransactionImported for {}", tx)
+                write!(f, "TransactionImported for {tx}")
             },
             TransactionEvent::FauxTransactionUnconfirmed {
                 tx_id,
@@ -347,18 +347,18 @@ impl fmt::Display for TransactionEvent {
             } => {
                 write!(
                     f,
-                    "FauxTransactionUnconfirmed for {} with num confirmations: {}. is_valid: {}",
-                    tx_id, num_confirmations, is_valid
+                    "FauxTransactionUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. is_valid: \
+                     {is_valid}"
                 )
             },
             TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid } => {
-                write!(f, "FauxTransactionConfirmed for {}. is_valid: {}", tx_id, is_valid)
+                write!(f, "FauxTransactionConfirmed for {tx_id}. is_valid: {is_valid}")
             },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
-                write!(f, "TransactionMined for {}. is_valid: {}", tx_id, is_valid)
+                write!(f, "TransactionMined for {tx_id}. is_valid: {is_valid}")
             },
             TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
-                write!(f, "TransactionMinedRequestTimedOut for {}", tx)
+                write!(f, "TransactionMinedRequestTimedOut for {tx}")
             },
             TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
@@ -367,24 +367,24 @@ impl fmt::Display for TransactionEvent {
             } => {
                 write!(
                     f,
-                    "TransactionMinedUnconfirmed for {} with num confirmations: {}. is_valid: {}",
-                    tx_id, num_confirmations, is_valid
+                    "TransactionMinedUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. is_valid: \
+                     {is_valid}",
                 )
             },
             TransactionEvent::Error(error) => {
-                write!(f, "Error:{}", error)
+                write!(f, "Error:{error}")
             },
             TransactionEvent::TransactionValidationStateChanged(operation_id) => {
-                write!(f, "Transaction validation state changed: {}", operation_id)
+                write!(f, "Transaction validation state changed: {operation_id}")
             },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
-                write!(f, "Transaction validation completed: {}", operation_id)
+                write!(f, "Transaction validation(#{operation_id}) completed")
             },
-            TransactionEvent::TransactionValidationFailed(operation_id) => {
-                write!(f, "Transaction validation failed: {}", operation_id)
+            TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
+                write!(f, "Transaction validation(#{operation_id}) failed: {reason}")
             },
             TransactionEvent::NewBlockMined(tx_id) => {
-                write!(f, "New block mined {}", tx_id)
+                write!(f, "New block mined {tx_id}")
             },
         }
     }

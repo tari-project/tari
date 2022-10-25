@@ -31,8 +31,8 @@ use crate::{
 };
 
 pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket) {
-    let (mut listener, addr) = MemoryTransport.listen("/memory/0".parse().unwrap()).await.unwrap();
-    let (dial_sock, listen_sock) = future::join(MemoryTransport.dial(addr.clone()), listener.next()).await;
+    let (mut listener, addr) = MemoryTransport.listen(&"/memory/0".parse().unwrap()).await.unwrap();
+    let (dial_sock, listen_sock) = future::join(MemoryTransport.dial(&addr), listener.next()).await;
     let (listen_sock, _) = listen_sock.unwrap().unwrap();
     (addr, dial_sock.unwrap(), listen_sock)
 }

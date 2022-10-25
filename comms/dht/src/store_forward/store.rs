@@ -437,13 +437,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         );
 
         if let Some(expires) = message.dht_header.expires {
-            if expires < EpochTime::now() {
-                return SafResult::Err(StoreAndForwardError::InvalidStoreMessage);
+            let now = EpochTime::now();
+            if expires < now {
+                return Err(StoreAndForwardError::NotStoringExpiredMessage { expired: expires, now });
             }
         }
 
-        let stored_message =
-            NewStoredMessage::try_construct(message, priority).ok_or(StoreAndForwardError::InvalidStoreMessage)?;
+        let stored_message = NewStoredMessage::new(message, priority);
         self.saf_requester.insert_message(stored_message).await
     }
 }

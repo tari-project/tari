@@ -41,6 +41,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
+use zeroize::Zeroize;
 
 use crate::{
     error::KeyManagerError,
@@ -107,7 +108,8 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize)]
+#[zeroize(drop)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
@@ -370,13 +372,6 @@ impl CipherSeed {
             .ok_or_else(|| KeyManagerError::CryptographicError("Problem generating encryption key hash".to_string()))?;
 
         Ok(derived_encryption_key.as_bytes().into())
-    }
-}
-
-impl Drop for CipherSeed {
-    fn drop(&mut self) {
-        use clear_on_drop::clear::Clear;
-        Clear::clear(&mut self.entropy);
     }
 }
 

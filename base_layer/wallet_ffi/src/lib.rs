@@ -3919,6 +3919,7 @@ pub unsafe extern "C" fn comms_config_create(
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
+                listener_liveness_check_interval: None,
             };
 
             Box::into_raw(Box::new(config))
@@ -4145,7 +4146,11 @@ unsafe fn init_logging(
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a bool that returns if the validation was successful or not.
+/// callback references and the second parameter is a u64 that returns if the validation was successful or not.
+///         ValidationSuccess,               // 0
+///         ValidationAlreadyBusy            // 1
+///         ValidationInternalFailure        // 2
+///         ValidationCommunicationFailure   // 3
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
@@ -4190,7 +4195,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
-    callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
     recovery_in_progress: *mut bool,
@@ -4232,7 +4237,7 @@ pub unsafe extern "C" fn wallet_create(
         let network = CStr::from_ptr(network_str)
             .to_str()
             .expect("A non-null network should be able to be converted to string");
-        error!(target: LOG_TARGET, "network set to {}", network);
+        info!(target: LOG_TARGET, "network set to {}", network);
         // eprintln!("network set to {}", network);
         match Network::from_str(&*network) {
             Ok(n) => n,
@@ -7951,7 +7956,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: u64) {
         // assert!(true); //optimized out by compiler
     }
 

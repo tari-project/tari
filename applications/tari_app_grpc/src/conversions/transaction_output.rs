@@ -85,7 +85,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
-            script: output.script.as_bytes(),
+            script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(grpc::ComSignature {
                 public_nonce_commitment: Vec::from(output.metadata_signature.public_nonce().as_bytes()),

@@ -27,7 +27,7 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_script::script;
+use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -101,6 +101,7 @@ pub struct ConsensusConstants {
 pub struct OutputVersionRange {
     pub outputs: RangeInclusive<TransactionOutputVersion>,
     pub features: RangeInclusive<OutputFeaturesVersion>,
+    pub opcode: RangeInclusive<OpcodeVersion>,
 }
 
 /// All V0 for Inputs, Outputs + Features, Kernels
@@ -114,6 +115,7 @@ fn version_zero() -> (
     let output_version_range = OutputVersionRange {
         outputs: TransactionOutputVersion::V0..=TransactionOutputVersion::V0,
         features: OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0,
+        opcode: OpcodeVersion::V0..=OpcodeVersion::V0,
     };
 
     (input_version_range, output_version_range, kernel_version_range)
@@ -140,7 +142,7 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, &[u64], MicroTari) {
+    pub fn emission_amounts(&self) -> (MicroTari, &'static [u64], MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
     }
 
@@ -505,29 +507,79 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        vec![ConsensusConstants {
-            effective_from_height: 0,
-            // Todo fix after test
-            coinbase_lock_height: 6,
-            blockchain_version: 0,
-            valid_blockchain_version_range: 0..=0,
-            future_time_limit: 540,
-            difficulty_block_window: 90,
-            max_block_transaction_weight: 127_795,
-            median_timestamp_count: 11,
-            emission_initial: 18_462_816_327 * uT,
-            emission_decay: &ESMERALDA_DECAY_PARAMS,
-            emission_tail: 800 * T,
-            max_randomx_seed_height: 3000,
-            proof_of_work: algos,
-            faucet_value: (10 * 4000) * T,
-            transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
-            input_version_range,
-            output_version_range,
-            kernel_version_range,
-            permitted_output_types: Self::current_permitted_output_types(),
-        }]
+        let output_version_2_range = OutputVersionRange {
+            outputs: TransactionOutputVersion::V0..=TransactionOutputVersion::V0,
+            features: OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0,
+            opcode: OpcodeVersion::V0..=OpcodeVersion::V1,
+        };
+        vec![
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 6,
+                blockchain_version: 0,
+                valid_blockchain_version_range: 0..=0,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &ESMERALDA_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: 3000,
+                proof_of_work: algos.clone(),
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
+                input_version_range: input_version_range.clone(),
+                output_version_range: output_version_range.clone(),
+                kernel_version_range: kernel_version_range.clone(),
+                permitted_output_types: Self::current_permitted_output_types(),
+            },
+            ConsensusConstants {
+                effective_from_height: 23000,
+                coinbase_lock_height: 6,
+                blockchain_version: 1,
+                valid_blockchain_version_range: 0..=1,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &ESMERALDA_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: 3000,
+                proof_of_work: algos.clone(),
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
+                input_version_range: input_version_range.clone(),
+                output_version_range,
+                kernel_version_range: kernel_version_range.clone(),
+                permitted_output_types: Self::current_permitted_output_types(),
+            },
+            ConsensusConstants {
+                effective_from_height: 25000,
+                coinbase_lock_height: 6,
+                blockchain_version: 1,
+                valid_blockchain_version_range: 0..=1,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &ESMERALDA_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: 3000,
+                proof_of_work: algos,
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
+                input_version_range,
+                output_version_range: output_version_2_range,
+                kernel_version_range,
+                permitted_output_types: Self::current_permitted_output_types(),
+            },
+        ]
     }
 
     pub fn mainnet() -> Vec<Self> {
@@ -650,6 +702,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_permitted_output_types(mut self, permitted_output_types: &'static [OutputType]) -> Self {
         self.consensus.permitted_output_types = permitted_output_types;
+        self
+    }
+
+    pub fn with_blockchain_version(mut self, version: u16) -> Self {
+        self.consensus.blockchain_version = version;
         self
     }
 

@@ -84,6 +84,9 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
     ["localnet.base_node.p2p.dht.flood_ban_max_msg_count"]: "100000",
     ["localnet.base_node.p2p.dht.database_url"]: "localnet/dht.db",
     ["localnet.p2p.seeds.dns_seeds_use_dnssec"]: "false",
+    ["localnet.base_node.lmdb.init_size_bytes"]: 16000000,
+    ["localnet.base_node.lmdb.grow_size_bytes"]: 16000000,
+    ["localnet.base_node.lmdb.resize_threshold_bytes"]: 1024,
 
     ["localnet.wallet.identity_file"]: "walletid.json",
     ["localnet.wallet.contacts_auto_ping_interval"]: "5",
@@ -101,9 +104,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
     ["merge_mining_proxy.monerod_use_auth"]: false,
     ["merge_mining_proxy.monerod_username"]: "",
     ["merge_mining_proxy.monerod_password"]: "",
-    // ["localnet.base_node.storage_db_init_size"]: 100000000,
-    // ["localnet.base_node.storage.db_resize_threshold"]: 10000000,
-    // ["localnet.base_node.storage.db_grow_size"]: 20000000,
+
     ["merge_mining_proxy.wait_for_initial_sync_at_startup"]: false,
     ["miner.num_mining_threads"]: "1",
     ["miner.mine_on_tip_only"]: true,

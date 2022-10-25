@@ -48,7 +48,7 @@ impl TorDnsResolver {
     }
 
     pub async fn connect(self) -> Result<TcpSocks5Client, DnsResolverError> {
-        let mut client = connect_inner(self.socks_config.proxy_address)
+        let mut client = connect_inner(&self.socks_config.proxy_address)
             .await
             .map_err(DnsResolverError::ProxyConnectFailed)?;
         client.with_authentication(self.socks_config.authentication)?;
@@ -56,7 +56,7 @@ impl TorDnsResolver {
     }
 }
 
-async fn connect_inner(addr: Multiaddr) -> io::Result<TcpSocks5Client> {
+async fn connect_inner(addr: &Multiaddr) -> io::Result<TcpSocks5Client> {
     let socket = SocksTransport::create_socks_tcp_transport().dial(addr).await?;
     Ok(Socks5Client::new(socket))
 }

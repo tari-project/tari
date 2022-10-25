@@ -59,6 +59,9 @@ use crate::{
 #[derive(Debug, Clone, Zeroize)]
 #[zeroize(drop)]
 pub struct CipherKey(chacha20::Key);
+
+#[derive(Debug, Clone, Zeroize)]
+#[zeroize(drop)]
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
@@ -86,11 +89,12 @@ fn get_message_padding_length(message_length: usize) -> usize {
     }
 }
 
-/// Pads a message to a multiple of MESSAGE_BASE_LENGTH excluding the additional prefix space
+/// Pads a message to a multiple of MESSAGE_BASE_LENGTH excluding the additional prefix space.
+/// This function returns the number of additional padding bytes appended to the message.
 fn pad_message_to_base_length_multiple(
     message: &mut BytesMut,
     additional_prefix_space: usize,
-) -> Result<(), DhtEncryptError> {
+) -> Result<usize, DhtEncryptError> {
     // We require a 32-bit length representation, and also don't want to overflow after including this encoding
     if message.len() > u32::MAX as usize {
         return Err(DhtEncryptError::PaddingError("Message is too long".to_string()));
@@ -99,10 +103,10 @@ fn pad_message_to_base_length_multiple(
         get_message_padding_length(message.len().checked_sub(additional_prefix_space).ok_or_else(|| {
             DhtEncryptError::PaddingError("Message length shorter than the additional_prefix_space".to_string())
         })?);
-    message.reserve(message.len() + padding_length);
-    message.extend(iter::repeat(0u8).take(padding_length));
 
-    Ok(())
+    message.resize(message.len() + padding_length, 0);
+
+    Ok(padding_length)
 }
 
 /// Returns the unpadded message. The messages must have the length prefixed to it and the nonce is removec.
@@ -445,7 +449,9 @@ mod test {
             .collect::<Vec<_>>();
 
         let mut pad_message = BytesMut::from(message);
-        pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
+        let pad_len = pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
+        // For small messages less than MESSAGE_BASE_LENGTH we can expect an exact capacity
+        assert_eq!(pad_message.capacity(), message.len() + pad_len);
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);

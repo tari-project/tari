@@ -30,7 +30,10 @@ members = [
     "applications/tari_miner",
 
 ]
-#
+
+# Add here until we move to edition=2021
+resolver = "2"
+
 
 # Shutdown when panicking so we can see the error, specifically for the wallet
 [profile.release]

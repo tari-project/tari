@@ -102,6 +102,7 @@ fn test_monero_blocks() {
             max_difficulty: 1.into(),
             target_time: 200,
         })
+        .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
     let header_validator = HeaderValidator::new(cm.clone());

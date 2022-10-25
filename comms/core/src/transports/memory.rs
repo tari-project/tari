@@ -64,9 +64,9 @@ impl Transport for MemoryTransport {
     type Listener = Listener;
     type Output = MemorySocket;
 
-    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+    async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
-        let port = parse_addr(&addr)?;
+        let port = parse_addr(addr)?;
         let listener = MemoryListener::bind(port)?;
         let actual_port = listener.local_addr();
         let mut actual_addr = Multiaddr::empty();
@@ -74,9 +74,9 @@ impl Transport for MemoryTransport {
         Ok((Listener { inner: listener }, actual_addr))
     }
 
-    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+    async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
-        let port = parse_addr(&addr)?;
+        let port = parse_addr(addr)?;
         Ok(MemorySocket::connect(port)?)
     }
 }
@@ -140,7 +140,7 @@ mod test {
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {
         let t = MemoryTransport::default();
 
-        let (listener, addr) = t.listen("/memory/0".parse().unwrap()).await?;
+        let (listener, addr) = t.listen(&"/memory/0".parse().unwrap()).await?;
 
         let listener = async move {
             let (item, _listener) = listener.into_future().await;
@@ -151,7 +151,7 @@ mod test {
             assert_eq!(buf, b"hello world");
         };
 
-        let mut outbound = t.dial(addr).await?;
+        let mut outbound = t.dial(&addr).await?;
 
         let dialer = async move {
             outbound.write_all(b"hello world").await.unwrap();
@@ -166,10 +166,10 @@ mod test {
     async fn unsupported_multiaddrs() {
         let t = MemoryTransport::default();
 
-        let err = t.listen("/ip4/127.0.0.1/tcp/0".parse().unwrap()).await.unwrap_err();
+        let err = t.listen(&"/ip4/127.0.0.1/tcp/0".parse().unwrap()).await.unwrap_err();
         assert!(matches!(err.kind(), io::ErrorKind::InvalidInput));
 
-        let err = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap()).await.unwrap_err();
+        let err = t.dial(&"/ip4/127.0.0.1/tcp/22".parse().unwrap()).await.unwrap_err();
         assert!(matches!(err.kind(), io::ErrorKind::InvalidInput));
     }
 

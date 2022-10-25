@@ -229,9 +229,9 @@ mod test {
         Box::from_raw(balance);
     }
 
-    unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, _result: bool) {
+    unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, result: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.callback_transaction_validation_complete += request_key as u32;
+        lock.callback_transaction_validation_complete += request_key as u32 + result as u32;
         drop(lock);
     }
 
@@ -626,6 +626,15 @@ mod test {
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationCompleted(4u64.into())))
             .unwrap();
+        transaction_event_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationFailed(0u64.into(), 1)))
+            .unwrap();
+        transaction_event_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationFailed(0u64.into(), 2)))
+            .unwrap();
+        transaction_event_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationFailed(0u64.into(), 3)))
+            .unwrap();
 
         balance.pending_incoming_balance += faux_unconfirmed_tx.amount;
         mock_output_manager_service_state.set_balance(balance.clone());
@@ -737,7 +746,7 @@ mod test {
         assert!(lock.callback_txo_validation_internal_failure);
         assert_eq!(lock.callback_contacts_liveness_data_updated, 2);
         assert_eq!(lock.callback_balance_updated, 7);
-        assert_eq!(lock.callback_transaction_validation_complete, 7);
+        assert_eq!(lock.callback_transaction_validation_complete, 13);
         assert_eq!(lock.connectivity_status_callback_called, 7);
 
         drop(lock);

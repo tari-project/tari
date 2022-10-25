@@ -80,19 +80,19 @@ impl SocksTransport {
 
     async fn socks_connect(
         tcp: TcpTransport,
-        socks_config: SocksConfig,
-        dest_addr: Multiaddr,
+        socks_config: &SocksConfig,
+        dest_addr: &Multiaddr,
     ) -> io::Result<TcpStream> {
         // Create a new connection to the SOCKS proxy
-        let socks_conn = tcp.dial(socks_config.proxy_address).await?;
+        let socks_conn = tcp.dial(&socks_config.proxy_address).await?;
         let mut client = Socks5Client::new(socks_conn);
 
         client
-            .with_authentication(socks_config.authentication)
+            .with_authentication(socks_config.authentication.clone())
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
         client
-            .connect(&dest_addr)
+            .connect(dest_addr)
             .await
             .map(|(socket, _)| socket)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
@@ -105,18 +105,18 @@ impl Transport for SocksTransport {
     type Listener = <TcpTransport as Transport>::Listener;
     type Output = <TcpTransport as Transport>::Output;
 
-    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+    async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         self.tcp_transport.listen(addr).await
     }
 
-    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+    async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         // Bypass the SOCKS proxy and connect to the address directly
-        if self.socks_config.proxy_bypass_predicate.check(&addr) {
+        if self.socks_config.proxy_bypass_predicate.check(addr) {
             debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
             return self.tcp_transport.dial(addr).await;
         }
 
-        let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
+        let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
     }
 }
