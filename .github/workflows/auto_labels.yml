@@ -20,7 +20,7 @@ jobs:
 
       - name: Read PR number
         id: pr_num
-        uses: juliangruber/read-file-action@v1.0.0
+        uses: juliangruber/read-file-action@v1.1.6
         with:
           path: ./pr_num.txt
 
@@ -44,7 +44,7 @@ jobs:
 
       - name: Read PR number
         id: pr_num
-        uses: juliangruber/read-file-action@v1.0.0
+        uses: juliangruber/read-file-action@v1.1.6
         with:
           path: ./pr_num.txt
 
