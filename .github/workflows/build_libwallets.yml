@@ -37,11 +37,11 @@ jobs:
         id: envs_setup
         run: |
           TOOLCHAIN=${{ github.event.inputs.toolchain }}
-          echo "::set-output name=toolchain::${TOOLCHAIN:-${{ env.toolchain_default }}}"
+          echo "toolchain=${TOOLCHAIN:-${{ env.toolchain_default }}}" >> $GITHUB_OUTPUT
           BUILD_ANDROID=${{ github.event.inputs.build_android }}
-          echo "::set-output name=build_android::${BUILD_ANDROID:-true}"
+          echo "build_android=${BUILD_ANDROID:-true}" >> $GITHUB_OUTPUT
           BUILD_IOS=${{ github.event.inputs.build_ios }}
-          echo "::set-output name=build_ios::${BUILD_IOS:-true}"
+          echo "build_ios=${BUILD_IOS:-true}" >> $GITHUB_OUTPUT
 
   builds_run:
     needs: builds_envs_setup
