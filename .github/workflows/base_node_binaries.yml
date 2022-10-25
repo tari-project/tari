@@ -49,7 +49,7 @@ jobs:
           matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
           echo $matrix
           echo $matrix | jq .
-          echo "matrix={$matrix}" >> $GITHUB_OUTPUT
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
   matrix-check:
     runs-on: ubuntu-latest
