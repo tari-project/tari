@@ -713,73 +713,99 @@ pub fn check_permitted_output_types(
     Ok(())
 }
 
+pub fn validate_input_version(
+    consensus_constants: &ConsensusConstants,
+    input: &TransactionInput,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.input_version_range().contains(&input.version) {
+        let msg = format!(
+            "Transaction input contains a version not allowed by consensus ({:?})",
+            input.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    Ok(())
+}
+
+pub fn validate_output_version(
+    consensus_constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    let valid_output_version = consensus_constants
+        .output_version_range()
+        .outputs
+        .contains(&output.version);
+
+    if !valid_output_version {
+        let msg = format!(
+            "Transaction output version is not allowed by consensus ({:?})",
+            output.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    let valid_features_version = consensus_constants
+        .output_version_range()
+        .features
+        .contains(&output.features.version);
+
+    if !valid_features_version {
+        let msg = format!(
+            "Transaction output features version is not allowed by consensus ({:?})",
+            output.features.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    for opcode in output.script.as_slice() {
+        if !consensus_constants
+            .output_version_range()
+            .opcode
+            .contains(&opcode.get_version())
+        {
+            let msg = format!(
+                "Transaction output script opcode is not allowed by consensus ({})",
+                opcode
+            );
+            return Err(ValidationError::ConsensusError(msg));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_kernel_version(
+    consensus_constants: &ConsensusConstants,
+    kernel: &TransactionKernel,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
+        let msg = format!(
+            "Transaction kernel version is not allowed by consensus ({:?})",
+            kernel.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+    Ok(())
+}
+
 pub fn validate_versions(
     body: &AggregateBody,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
     // validate input version
     for input in body.inputs() {
-        if !consensus_constants.input_version_range().contains(&input.version) {
-            let msg = format!(
-                "Transaction input contains a version not allowed by consensus ({:?})",
-                input.version
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
+        validate_input_version(consensus_constants, input)?;
     }
 
     // validate output version and output features version
     for output in body.outputs() {
-        let valid_output_version = consensus_constants
-            .output_version_range()
-            .outputs
-            .contains(&output.version);
-
-        let valid_features_version = consensus_constants
-            .output_version_range()
-            .features
-            .contains(&output.features.version);
-        if !valid_output_version {
-            let msg = format!(
-                "Transaction output version is not allowed by consensus ({:?})",
-                output.version
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
-
-        if !valid_features_version {
-            let msg = format!(
-                "Transaction output features version is not allowed by consensus ({:?})",
-                output.features.version
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
-        for opcode in output.script.as_slice() {
-            if !consensus_constants
-                .output_version_range()
-                .opcode
-                .contains(&opcode.get_version())
-            {
-                let msg = format!(
-                    "Transaction output script opcode is not allowed by consensus ({})",
-                    opcode
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-        }
-
-        check_permitted_output_types(consensus_constants, output)?;
+        validate_output_version(consensus_constants, output)?;
     }
 
     // validate kernel version
     for kernel in body.kernels() {
-        if !consensus_constants.kernel_version_range().contains(&kernel.version) {
-            let msg = format!(
-                "Transaction kernel version is not allowed by consensus ({:?})",
-                kernel.version
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
+        validate_kernel_version(consensus_constants, kernel)?;
     }
 
     Ok(())

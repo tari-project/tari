@@ -27,7 +27,13 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_outputs, check_total_burned, validate_versions},
+        helpers::{
+            check_inputs_are_utxos,
+            check_outputs,
+            check_permitted_output_types,
+            check_total_burned,
+            validate_versions,
+        },
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -129,7 +135,11 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
 
         self.validate_excess_sig_not_in_db(tx)?;
 
-        validate_versions(tx.body(), consensus_constants)
+        validate_versions(tx.body(), consensus_constants)?;
+        for output in tx.body.outputs() {
+            check_permitted_output_types(consensus_constants, output)?;
+        }
+        Ok(())
     }
 }
 
