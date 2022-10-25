@@ -261,7 +261,8 @@ impl Opcode {
     pub fn get_version(&self) -> OpcodeVersion {
         match self {
             Opcode::CheckMultiSigVerify(..) => OpcodeVersion::V1,
-            _ => OpcodeVersion::V0,
+// ... expand existing,
+            _ => OpcodeVersion::V2,
         }
     }
 
