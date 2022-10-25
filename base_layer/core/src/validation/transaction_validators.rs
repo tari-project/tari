@@ -27,12 +27,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{
-        helpers::{
-            check_inputs_are_utxos,
-            check_outputs,
-            check_total_burned,
-            validate_versions,
-        },
+        helpers::{check_inputs_are_utxos, check_outputs, check_total_burned, validate_versions},
         MempoolTransactionValidation,
         ValidationError,
     },

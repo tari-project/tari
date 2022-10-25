@@ -260,9 +260,42 @@ pub enum Opcode {
 impl Opcode {
     pub fn get_version(&self) -> OpcodeVersion {
         match self {
-            Opcode::CheckMultiSigVerify(..) => OpcodeVersion::V1,
-// ... expand existing,
-            _ => OpcodeVersion::V2,
+            Opcode::CheckHeightVerify(..) |
+            Opcode::CheckHeight(..) |
+            Opcode::CompareHeightVerify |
+            Opcode::CompareHeight |
+            Opcode::Nop |
+            Opcode::PushZero |
+            Opcode::PushOne |
+            Opcode::PushHash(..) |
+            Opcode::PushInt(..) |
+            Opcode::PushPubKey(..) |
+            Opcode::Drop |
+            Opcode::Dup |
+            Opcode::RevRot |
+            Opcode::GeZero |
+            Opcode::GtZero |
+            Opcode::LeZero |
+            Opcode::LtZero |
+            Opcode::Add |
+            Opcode::Sub |
+            Opcode::Equal |
+            Opcode::EqualVerify |
+            Opcode::Or(..) |
+            Opcode::OrVerify(..) |
+            Opcode::HashBlake256 |
+            Opcode::HashSha256 |
+            Opcode::HashSha3 |
+            Opcode::CheckSig(..) |
+            Opcode::CheckSigVerify(..) |
+            Opcode::CheckMultiSig(..) |
+            Opcode::CheckMultiSigVerify(..) |
+            Opcode::ToRistrettoPoint |
+            Opcode::Return |
+            Opcode::IfThen |
+            Opcode::Else |
+            Opcode::EndIf => OpcodeVersion::V0,
+            Opcode::CheckMultiSigVerifyAggregatePubKey(..) => OpcodeVersion::V1,
         }
     }
 
