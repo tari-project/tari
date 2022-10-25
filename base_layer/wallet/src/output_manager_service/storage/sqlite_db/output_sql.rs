@@ -45,7 +45,7 @@ use tari_script::{ExecutionStack, TariScript};
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        input_selection::UtxoSelectionCriteria,
+        input_selection::{UtxoSelectionCriteria, UtxoSelectionMode},
         service::Balance,
         storage::{
             database::{OutputBackendQuery, SortDirection},
@@ -197,10 +197,19 @@ impl OutputSql {
         tip_height: Option<u64>,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+
         let mut query = outputs::table
             .into_boxed()
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .order_by(outputs::spending_priority.desc());
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        };
 
         match &selection_criteria.filter {
             UtxoSelectionFilter::Standard => {
@@ -214,6 +223,7 @@ impl OutputSql {
                     query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
                 }
             },
+
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
                     0 => query,
@@ -229,15 +239,11 @@ impl OutputSql {
             query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
         }
 
-        match selection_criteria.ordering {
-            UtxoSelectionOrdering::SmallestFirst => {
-                query = query.then_order_by(outputs::value.asc());
-            },
-            UtxoSelectionOrdering::LargestFirst => {
-                query = query.then_order_by(outputs::value.desc());
-            },
+        query = match selection_criteria.ordering {
+            UtxoSelectionOrdering::SmallestFirst => query.then_order_by(outputs::value.asc()),
+            UtxoSelectionOrdering::LargestFirst => query.then_order_by(outputs::value.desc()),
             UtxoSelectionOrdering::Default => {
-                let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+                // NOTE: keeping filtering by `script_lock_height` and `maturity` for all modes
                 // lets get the max value for all utxos
                 let max: Option<i64> = outputs::table
                     .filter(outputs::status.eq(OutputStatus::Unspent as i32))
@@ -247,41 +253,23 @@ impl OutputSql {
                     .select(outputs::value)
                     .first(conn)
                     .optional()?;
+
                 match max {
-                    Some(max) if amount > max as u64 => {
-                        // Want to reduce the number of inputs to reduce fees
-                        query = query.then_order_by(outputs::value.desc());
-                    },
-                    Some(_) => {
-                        // Use the smaller utxos to make up this transaction.
-                        query = query.then_order_by(outputs::value.asc());
-                    },
-                    None => {
-                        // No spendable UTXOs?
-                        query = query.then_order_by(outputs::value.asc());
-                    },
+                    // Want to reduce the number of inputs to reduce fees
+                    Some(max) if amount > max as u64 => query.then_order_by(outputs::value.desc()),
+
+                    // Use the smaller utxos to make up this transaction.
+                    _ => query.then_order_by(outputs::value.asc()),
                 }
             },
         };
 
-        match tip_height {
-            Some(tip_height) => {
-                let i64_tip_height = i64::try_from(tip_height).unwrap_or(i64::MAX);
-                query = query
-                    .filter(outputs::script_lock_height.le(i64_tip_height))
-                    .filter(outputs::maturity.le(i64_tip_height));
-            },
-            None => {
-                // If we don't know the current tip height, order by maturity ASC to reduce the chances of a locked
-                // output being used.
-                query = query.then_order_by(outputs::maturity.asc());
-            },
-        }
         // debug!(
         //     target: LOG_TARGET,
         //     "Executing UTXO select query: {}",
         //     diesel::debug_query(&query)
         // );
+
         Ok(query.load(conn)?)
     }
 
