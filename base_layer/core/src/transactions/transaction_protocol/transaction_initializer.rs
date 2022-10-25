@@ -29,7 +29,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
+    types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -222,29 +222,6 @@ impl SenderTransactionInitializer {
         output: UnblindedOutput,
         sender_offset_private_key: PrivateKey,
     ) -> Result<&mut Self, BuildError> {
-        let commitment_factory = CommitmentFactory::default();
-        let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
-        let e = TransactionOutput::build_metadata_signature_challenge(
-            output.version,
-            &output.script,
-            &output.features,
-            &output.sender_offset_public_key,
-            output.metadata_signature.public_nonce(),
-            &commitment,
-            &output.covenant,
-            &output.encrypted_value,
-            output.minimum_value_promise,
-        );
-        if !output.metadata_signature.verify_challenge(
-            &(&commitment + &output.sender_offset_public_key),
-            &e,
-            &commitment_factory,
-        ) {
-            return self.clone().build_err(&*format!(
-                "Metadata signature not valid, cannot add output: {:?}",
-                output
-            ))?;
-        }
         self.excess_blinding_factor = &self.excess_blinding_factor + &output.spending_key;
         self.sender_custom_outputs.push(output);
         self.sender_offset_private_keys.push(sender_offset_private_key);

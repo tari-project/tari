@@ -81,6 +81,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a transaction exists in any of the collections
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
+    fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>;
     /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_outbound_transaction(
@@ -117,7 +122,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel coinbase transactions at a specific block height
-    fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
+    fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
     /// Find coinbase transaction at a specific block height for a given amount
     fn find_coinbase_transaction_at_block_height(
         &self,
@@ -424,6 +429,14 @@ where T: TransactionBackend + 'static
         Ok(*t)
     }
 
+    pub fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.update_completed_transaction(tx_id, transaction)
+    }
+
     pub fn get_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let t = self.db.fetch_imported_transactions()?;
         Ok(t)
@@ -693,7 +706,7 @@ where T: TransactionBackend + 'static
         &self,
         block_height: u64,
     ) -> Result<(), TransactionStorageError> {
-        self.db.cancel_coinbase_transaction_at_block_height(block_height)
+        self.db.cancel_coinbase_transactions_at_block_height(block_height)
     }
 
     pub fn find_coinbase_transaction_at_block_height(

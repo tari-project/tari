@@ -33,7 +33,7 @@ use tari_test_utils::paths::create_temporary_data_path;
 use crate::helpers::database::create_orphan_block;
 
 #[test]
-fn lmdb_insert_contains_delete_and_fetch_orphan() {
+fn test_lmdb_insert_contains_delete_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus = ConsensusManagerBuilder::new(network).build();
     let mut db = create_test_db();
@@ -63,7 +63,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
 }
 
 #[test]
-fn lmdb_file_lock() {
+fn test_lmdb_file_lock() {
     // Create temporary test folder
     let temp_path = create_temporary_data_path();
 

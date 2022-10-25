@@ -159,7 +159,7 @@ impl TransactionInput {
         };
     }
 
-    pub(super) fn build_script_challenge(
+    pub fn build_script_challenge(
         version: TransactionInputVersion,
         nonce_commitment: &Commitment,
         script: &TariScript,
@@ -270,9 +270,11 @@ impl TransactionInput {
             SpentOutput::OutputData { ref script, .. } => {
                 match script.execute_with_context(&self.input_data, &context)? {
                     StackItem::PublicKey(pubkey) => Ok(pubkey),
-                    _ => Err(TransactionError::ScriptExecutionError(
-                        "The script executed successfully but it did not leave a public key on the stack".to_string(),
-                    )),
+                    item => Err(TransactionError::ScriptExecutionError(format!(
+                        "The script executed successfully but it did not leave a public key on the stack. Remaining \
+                         stack item was {:?}",
+                        item
+                    ))),
                 }
             },
         }

@@ -30,7 +30,7 @@ use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, ComSignature, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -65,7 +65,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, Opcode, StackItem, TariScript};
+use tari_script::{inputs, script, ExecutionStack, Opcode, StackItem, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -267,24 +267,20 @@ where
                 total_signature_nonce,
                 metadata_signature_nonce,
                 wallet_script_secret_key,
-            } => {
-                let transaction_output = self
-                    .encumber_aggregate_utxo(
-                        tx_id,
-                        fee_per_gram,
-                        output_hash,
-                        signatures,
-                        total_script_pubkey,
-                        total_offset_pubkey,
-                        total_signature_nonce,
-                        metadata_signature_nonce,
-                        wallet_script_secret_key,
-                    )
-                    .await?;
-                Ok(OutputManagerResponse::ConvertedToTransaction(Box::new(
-                    transaction_output,
-                )))
-            },
+            } => self
+                .encumber_aggregate_utxo(
+                    tx_id,
+                    fee_per_gram,
+                    output_hash,
+                    signatures,
+                    total_script_pubkey,
+                    total_offset_pubkey,
+                    total_signature_nonce,
+                    metadata_signature_nonce,
+                    wallet_script_secret_key,
+                )
+                .await
+                .map(OutputManagerResponse::EncumberAggregateUtxo),
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
@@ -1271,7 +1267,7 @@ where
         total_signature_nonce: PublicKey,
         metadata_signature_nonce: PublicKey,
         wallet_script_secret_key: String,
-    ) -> Result<Transaction, OutputManagerError> {
+    ) -> Result<(Transaction, MicroTari, MicroTari, PublicKey), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
@@ -1291,12 +1287,16 @@ where
         let db_input = self.resources.db.get_unspent_output(output_hash)?;
         let mut input: UnblindedOutput = db_input.clone().into();
 
+        let mut script_signatures = Vec::new();
+
         for signature in &signatures {
-            input.input_data.push(StackItem::from(signature.clone()))?;
+            script_signatures.push(StackItem::Signature(signature.clone()));
         }
+        input.input_data = ExecutionStack::new(script_signatures);
 
         let wallet_script_secret_key = PrivateKey::from_hex(&wallet_script_secret_key)
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        let total_script_key = PublicKey::from_secret_key(&wallet_script_secret_key) + &total_script_pubkey;
         input.script_private_key = wallet_script_secret_key;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1313,6 +1313,7 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())
             .with_tx_id(tx_id)
+            .with_lock_height(0)
             .with_input(
                 input.clone().as_transaction_input_with_partial_signature(
                     &self.resources.factories.commitment,
@@ -1327,13 +1328,7 @@ where
         let amount = input.value - fee;
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_value = EncryptedValue::default();
         let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -1348,6 +1343,12 @@ where
             &encrypted_value,
             minimum_amount_promise,
         )?;
+
+        let metadata_signature = ComSignature::new(
+            metadata_signature.public_nonce() + &metadata_signature_nonce,
+            metadata_signature.u().clone(),
+            metadata_signature.v().clone(),
+        );
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 amount,
@@ -1356,9 +1357,9 @@ where
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                PublicKey::from_secret_key(&sender_offset_private_key),
+                &total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
-                0,
+                u64::MAX,
                 covenant,
                 encrypted_value,
                 minimum_amount_promise,
@@ -1372,7 +1373,6 @@ where
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
         let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
@@ -1388,14 +1388,13 @@ where
             tx_id
         );
         self.resources.db.encumber_outputs(tx_id, vec![db_input], vec![utxo])?;
-        self.confirm_encumberance(tx_id)?;
 
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
 
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize_partial_tx(&factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok(tx)
+        Ok((tx, amount, fee, total_script_key))
     }
 
     #[allow(clippy::too_many_lines)]

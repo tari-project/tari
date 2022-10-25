@@ -122,7 +122,10 @@ pub enum CliCommands {
     CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
     CreateKeyPair(CreateKeyPairArgs),
     EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
+    SpendAggregateUtxo(SpendAggregateUtxoArgs),
     SignMessage(SignMessageArgs),
+    CreateScriptSig(CreateScriptSigArgs),
+    CreateMetaSig(CreateMetaSigArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
@@ -188,12 +191,49 @@ pub struct SignMessageArgs {
 pub struct EncumberAggregateUtxoArgs {
     pub fee_per_gram: MicroTari,
     pub output_hash: String,
-    pub signatures: Vec<UniSignature>,
-    pub total_script_pubkey: UniPublicKey,
-    pub total_offset_pubkey: UniPublicKey,
-    pub total_signature_nonce: UniPublicKey,
-    pub metadata_signature_nonce: UniPublicKey,
     pub wallet_script_secret_key: String,
+    #[clap(long)]
+    pub script_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub offset_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub script_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub metadata_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub signatures: Vec<UniSignature>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SpendAggregateUtxoArgs {
+    pub ix_id: u64,
+    #[clap(long)]
+    pub meta_signatures: Vec<UniSignature>,
+    #[clap(long)]
+    pub script_signatures: Vec<UniSignature>,
+    #[clap(long)]
+    pub script_offset_keys: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateScriptSigArgs {
+    pub secret_key: String,
+    pub secret_nonce: String,
+    pub input_script: String,
+    pub input_stack: String,
+    pub total_nonce: String,
+    pub total_script_key: UniPublicKey,
+    pub commitment: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateMetaSigArgs {
+    pub secret_script_key: String,
+    pub secret_offset_key: String,
+    pub secret_nonce: String,
+    pub total_nonce: String,
+    pub total_meta_key: UniPublicKey,
+    pub commitment: String,
 }
 
 #[derive(Debug, Args, Clone)]
