@@ -136,6 +136,55 @@ pub struct PowAlgorithmConstants {
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
+    /// Constructor
+    pub fn new(
+        effective_from_height: u64,
+        coinbase_lock_height: u64,
+        blockchain_version: u16,
+        valid_blockchain_version_range: RangeInclusive<u16>,
+        future_time_limit: u64,
+        difficulty_block_window: u64,
+        max_block_transaction_weight: u64,
+        median_timestamp_count: usize,
+        emission_initial: MicroTari,
+        emission_decay: &'static [u64],
+        emission_tail: MicroTari,
+        max_randomx_seed_height: u64,
+        proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
+        faucet_value: MicroTari,
+        transaction_weight: TransactionWeight,
+        max_script_byte_size: usize,
+        input_version_range: RangeInclusive<TransactionInputVersion>,
+        output_version_range: OutputVersionRange,
+        kernel_version_range: RangeInclusive<TransactionKernelVersion>,
+        permitted_output_types: &'static [OutputType],
+        validator_node_timeout: u64,
+    ) -> Self {
+        Self {
+            effective_from_height,
+            coinbase_lock_height,
+            blockchain_version,
+            valid_blockchain_version_range,
+            future_time_limit,
+            difficulty_block_window,
+            max_block_transaction_weight,
+            median_timestamp_count,
+            emission_initial,
+            emission_decay,
+            emission_tail,
+            max_randomx_seed_height,
+            proof_of_work,
+            faucet_value,
+            transaction_weight,
+            max_script_byte_size,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
+            permitted_output_types,
+            validator_node_timeout,
+        }
+    }
+
     /// The height at which these constants become effective
     pub fn effective_from_height(&self) -> u64 {
         self.effective_from_height
