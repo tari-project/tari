@@ -20,38 +20,26 @@
 # automatically configured (default = )
 #public_address =
 
-# The asset worker will adhere to this phased timeout for the asset (default = 30 s)
-#phase_timeout = 30
-
 # The Tari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
 #base_node_grpc_address = "127.0.0.1/tcp/18142"
 
 # The Tari console wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
 #wallet_grpc_address = "127.0.0.1/tcp/18143"
 
-# If set to false, there will be no scanning at all. (default = true)
-#scan_for_assets = true
-
 # How often do we want to scan the base layer for changes. (default = 10)
-#new_asset_scanning_interval = 10
-
-# If set then only the specific assets will be checked. (= ["<pubkey>"]) (default = )
-# assets_allow_list =
+#base_layer_scanning_interval = 10
 
 # The relative path to store persistent data (default = "data/validator_node")
 #data_dir = "data/validator_node"
 
-# The constitution will auto accept contracts if true (default = false)
-#constitution_auto_accept = false
+# JSON-RPC listener address
+# json_rpc_address = "127.0.0.1:18200"
 
-# Constitution confirmation time in block height (default = 20)
-#constitution_management_confirmation_time = 20
+# HTTP UI listener address
+# http_ui_address = "127.0.0.1:5000"
 
-# Constitution polling interval in block height (default = 120)
-constitution_management_polling_interval = 5
+# Set to true to enable auto registration for each epoch.
+# auto_register = true
 
-# Constitution polling interval in time (seconds) (default = 60)
-#constitution_management_polling_interval_in_seconds = 60
-
-# GRPC address of the validator node  application (default = "/ip4/127.0.0.1/tcp/18144")
-#grpc_address = "/ip4/127.0.0.1/tcp/18144"
+[validator_node.p2p]
+# transport = "tor"
