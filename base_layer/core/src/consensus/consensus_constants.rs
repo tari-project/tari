@@ -142,7 +142,7 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, &[u64], MicroTari) {
+    pub fn emission_amounts(&self) -> (MicroTari, &'static [u64], MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
     }
 
