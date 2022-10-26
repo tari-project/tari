@@ -1123,14 +1123,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_constants(
         &self,
-        _request: Request<tari_rpc::Empty>,
+        request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
-        // TODO: Switch to request height
-        Ok(Response::new(
-            self.network.create_consensus_constants().pop().unwrap().into(),
-        ))
+
+        let block_height = request.into_inner().block_height;
+        let network_consensus_constants = self.network.create_consensus_constants();
+
+        let mut consensus_constants = &network_consensus_constants[0];
+
+        for cc in &network_consensus_constants[1..] {
+            let effective_from_height = cc.effective_from_height();
+            if effective_from_height > block_height {
+                break;
+            }
+            consensus_constants = cc;
+        }
+
+        Ok(Response::new(tari_rpc::ConsensusConstants::from(
+            consensus_constants.clone(),
+        )))
     }
 
     async fn get_block_size(
