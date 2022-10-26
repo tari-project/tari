@@ -1129,17 +1129,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
 
         let block_height = request.into_inner().block_height;
-        let network_consensus_constants = self.network.create_consensus_constants();
 
-        let mut consensus_constants = &network_consensus_constants[0];
-
-        for cc in &network_consensus_constants[1..] {
-            let effective_from_height = cc.effective_from_height();
-            if effective_from_height > block_height {
-                break;
-            }
-            consensus_constants = cc;
-        }
+        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
+        let consensus_constants = consensus_manager.consensus_constants(block_height);
 
         Ok(Response::new(tari_rpc::ConsensusConstants::from(
             consensus_constants.clone(),
