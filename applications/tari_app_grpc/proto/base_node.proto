@@ -40,7 +40,7 @@ service BaseNode {
     // Returns the block timing for the chain heights
     rpc GetBlockTiming(HeightRequest) returns (BlockTimingResponse);
     // Returns the network Constants
-    rpc GetConstants(Empty) returns (ConsensusConstants);
+    rpc GetConstants(BlockHeight) returns (ConsensusConstants);
     // Returns Block Sizes
     rpc GetBlockSize (BlockGroupRequest) returns (BlockGroupResponse);
     // Returns Block Fees

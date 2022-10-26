@@ -32,6 +32,11 @@ message Range {
 /// An Empty placeholder for endpoints without request parameters
 message Empty {}
 
+/// Define an interface for block height
+message BlockHeight {
+    uint64 block_height = 1;
+}
+
 // Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 // employed by redefining this type.
 message Signature {
