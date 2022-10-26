@@ -9228,9 +9228,9 @@ mod test {
             // println!("{:?}", mnemonic_seq);
 
             let mnemonic = vec![
-                "scale", "poem", "sorry", "language", "gorilla", "despair", "alarm", "jungle", "invite", "orient",
-                "blast", "try", "jump", "escape", "estate", "reward", "race", "taxi", "pitch", "soccer", "matter",
-                "team", "parrot", "enter",
+                "parade", "foam", "dirt", "easily", "coyote", "hurry", "category", "hawk", "other", "patient", "gain",
+                "certain", "diet", "hurry", "prepare", "print", "chair", "blur", "humor", "amount", "raise", "guard",
+                "crouch", "noise",
             ];
 
             let seed_words = seed_words_create();

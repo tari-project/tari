@@ -181,8 +181,8 @@ mod test {
     #[wasm_bindgen_test]
     fn it_creates_key_manager_from() {
         let bytes = [
-            0, 2, 116, 75, 54, 160, 21, 1, 43, 55, 107, 155, 189, 230, 182, 215, 17, 191, 94, 156, 114, 136, 40, 175,
-            144, 166, 93, 233, 179, 11, 8, 49, 139,
+            0, 51, 51, 135, 119, 105, 176, 118, 226, 143, 252, 180, 103, 0, 79, 167, 147, 131, 44, 90, 219, 96, 251,
+            87, 70, 56, 131, 169, 240, 208, 18, 43, 134,
         ];
         let seed = CipherSeed::from_enciphered_bytes(&bytes, None).unwrap();
         let seed = JsValue::from_serde(&seed).unwrap();
@@ -194,7 +194,7 @@ mod test {
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
-            "84feaddf54f1b4321db67f7aae382c338d03c56280a417651c4e0cde3363d00a".to_string()
+            "861236415198eda054744b04c9f41f620d96c36d1affb85b3b80b2afe7cc5d05".to_string()
         )
     }
 
