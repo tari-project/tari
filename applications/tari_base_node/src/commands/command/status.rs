@@ -130,6 +130,20 @@ impl CommandContext {
                 num_active_rpc_sessions, self.config.base_node.p2p.rpc_max_simultaneous_sessions
             ),
         );
+
+        match self.comms.listening_info().liveness_status() {
+            LivenessStatus::Disabled => {},
+            LivenessStatus::Checking => {
+                status_line.add("⏳️️");
+            },
+            LivenessStatus::Unreachable => {
+                status_line.add("️🔌");
+            },
+            LivenessStatus::Live(latency) => {
+                status_line.add(format!("⚡️ {:.2?}", latency));
+            },
+        }
+
         if full_log {
             status_line.add_field(
                 "RandomX",
@@ -139,19 +153,6 @@ impl CommandContext {
                     self.state_machine_info.borrow().randomx_vm_flags
                 ),
             );
-        }
-
-        match self.comms.listening_info().liveness_status() {
-            LivenessStatus::Disabled => {},
-            LivenessStatus::Checking => {
-                status_line.add("⏳️️");
-            },
-            LivenessStatus::Unreachable => {
-                status_line.add("‼️");
-            },
-            LivenessStatus::Live(latency) => {
-                status_line.add(format!("⚡️ {:.2?}", latency));
-            },
         }
 
         let target = "base_node::app::status";
