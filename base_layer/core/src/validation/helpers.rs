@@ -39,7 +39,7 @@ use crate::{
         monero_difficulty,
         monero_rx::MoneroPowData,
         randomx_factory::RandomXFactory,
-        sha3_difficulty,
+        sha3x_difficulty,
         AchievedTargetDifficulty,
         Difficulty,
         PowAlgorithm,
@@ -178,7 +178,7 @@ pub fn check_target_difficulty(
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3_difficulty(block_header),
+        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {

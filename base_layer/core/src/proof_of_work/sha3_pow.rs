@@ -27,13 +27,14 @@ use crate::{
     proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
 };
 
-/// A simple sha3 proof of work. This is currently intended to be used for testing and perhaps Testnet until
-/// Monero merge-mining is active.
+/// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
+/// algorithm as described in [RFC-0131](https://rfc.tari.com/RFC-0131_Mining.html).
 ///
-/// The proof of work difficulty is given by `H256(header )` where Hnnn is the sha3 digest of length
-/// `nnn` bits.
-pub fn sha3_difficulty(header: &BlockHeader) -> Difficulty {
-    sha3_difficulty_with_hash(header).0
+/// In short Sha3X is a triple Keccak Sha3-256 hash of the nonce, mining hash and PoW mode byte.
+/// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
+/// can be used to mine tXTR on testnets.
+pub fn sha3x_difficulty(header: &BlockHeader) -> Difficulty {
+    sha3x_difficulty_with_hash(header).0
 }
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
@@ -52,8 +53,9 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
     .to_vec()
 }
 
-fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+fn sha3x_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let hash = sha3_hash(header);
+    let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);
     let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())
@@ -66,7 +68,7 @@ pub mod test {
 
     use crate::{
         blocks::BlockHeader,
-        proof_of_work::{sha3_pow::sha3_difficulty, Difficulty, PowAlgorithm},
+        proof_of_work::{sha3_pow::sha3x_difficulty, Difficulty, PowAlgorithm},
     };
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
@@ -75,7 +77,7 @@ pub mod test {
     fn mine_sha3(target_difficulty: Difficulty, header: &mut BlockHeader) -> u64 {
         header.nonce = 0;
         // We're mining over here!
-        while sha3_difficulty(header) < target_difficulty {
+        while sha3x_difficulty(header) < target_difficulty {
             header.nonce += 1;
         }
         header.nonce
@@ -96,6 +98,6 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 1;
-        assert_eq!(sha3_difficulty(&header), Difficulty::from(28));
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(3));
     }
 }
