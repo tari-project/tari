@@ -90,7 +90,7 @@ pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseE
     let (rest, identifier) = take_while1(|ch| ch != '=')(line)?;
     let (rest, _) = chr('=')(rest)?;
 
-    let lines = rest.split('\n');
+    let lines = rest.lines();
     let parts = lines
         .filter(|s| !s.is_empty())
         .flat_map(|line| {
