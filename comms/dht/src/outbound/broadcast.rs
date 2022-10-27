@@ -35,7 +35,7 @@ use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
-    types::{CommsPublicKey, CommsDHKE},
+    types::{CommsDHKE, CommsPublicKey},
     Bytes,
     BytesMut,
 };

@@ -457,7 +457,8 @@ mod test {
         pipeline::SinkService,
         runtime,
         test_utils::mocks::create_connectivity_mock,
-        wrap_in_envelope_body, types::CommsDHKE,
+        types::CommsDHKE,
+        wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
     use tokio::{sync::mpsc, task, time};

@@ -33,7 +33,7 @@ use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline::PipelineError,
-    types::{CommsPublicKey, CommsDHKE},
+    types::{CommsDHKE, CommsPublicKey},
     BytesMut,
 };
 use tari_utilities::ByteArray;

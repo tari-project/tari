@@ -27,7 +27,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,
-    types::{CommsDatabase, CommsDHKE, CommsPublicKey, CommsSecretKey},
+    types::{CommsDHKE, CommsDatabase, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
 use tari_crypto::keys::PublicKey;

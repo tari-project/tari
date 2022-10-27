@@ -41,9 +41,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
     BufMut,
 };
-use tari_crypto::{
-    tari_utilities::{epoch_time::EpochTime, ByteArray},
-};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
 use zeroize::Zeroize;
 
 use crate::{

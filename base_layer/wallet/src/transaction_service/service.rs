@@ -37,7 +37,10 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::{peer_manager::NodeIdentity, types::{CommsDHKE, CommsPublicKey}};
+use tari_comms::{
+    peer_manager::NodeIdentity,
+    types::{CommsDHKE, CommsPublicKey},
+};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     covenants::Covenant,
@@ -1062,10 +1065,9 @@ where
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let spend_key = PrivateKey::from_bytes(
-            CommsDHKE::new(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
-        )
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let spend_key =
+            PrivateKey::from_bytes(CommsDHKE::new(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes())
+                .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
@@ -1223,10 +1225,9 @@ where
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let spend_key = PrivateKey::from_bytes(
-            CommsDHKE::new(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes(),
-        )
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let spend_key =
+            PrivateKey::from_bytes(CommsDHKE::new(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes())
+                .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;

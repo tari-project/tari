@@ -2558,11 +2558,7 @@ where
                         // match found
                         Some(matched_key) => {
                             match PrivateKey::from_bytes(
-                                CommsDHKE::new(
-                                    &matched_key.private_key,
-                                    &output.sender_offset_public_key,
-                                )
-                                .as_bytes(),
+                                CommsDHKE::new(&matched_key.private_key, &output.sender_offset_public_key).as_bytes(),
                             ) {
                                 Ok(spending_sk) => scanned_outputs.push((
                                     output.clone(),
