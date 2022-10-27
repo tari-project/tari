@@ -71,10 +71,7 @@ impl LogTab {
             Err(err) => format!("Error reading log : {}", err),
         };
         // Convert the content into Spans
-        let mut text: Vec<Spans> = content
-            .split('\n')
-            .map(|line| self.format_line(line.to_string()))
-            .collect();
+        let mut text: Vec<Spans> = content.lines().map(|line| self.format_line(line.to_string())).collect();
         // We want newest at the top
         text.reverse();
         // Render the Paragraph
