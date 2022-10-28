@@ -43,4 +43,4 @@ wasm-bindgen-test = "0.3.28"
 [features]
 avx2 = ["tari_crypto/simd_backend"]
 js = ["getrandom/js", "js-sys"]
-wasm = ["wasm-bindgen", "js", "tari_common_types", "console_error_panic_hook"]
+wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "tari_common_types", "console_error_panic_hook"]
