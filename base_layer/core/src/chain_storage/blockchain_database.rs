@@ -238,8 +238,8 @@ where B: BlockchainBackend
             });
             txn.set_pruned_height(0);
             txn.set_horizon_data(kernel_sum, utxo_sum);
+            txn.set_pruning_horizon(config.pruning_horizon);
             blockchain_db.write(txn)?;
-            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         } else if !blockchain_db.block_exists(genesis_block.accumulated_data().hash)? {
             // Check the genesis block in the DB.
             error!(
@@ -1675,6 +1675,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
+    // We dont have to try and recover from here, as this will only be headers and not complete blocks. This means they
+    // are not part of any state, and only here temporally from a sync etc.
     for h in 0..steps_back {
         let mut txn = DbTransaction::new();
         info!(
@@ -1711,46 +1713,42 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         steps_back = effective_pruning_horizon;
     }
     for h in 0..steps_back {
-        let mut txn = DbTransaction::new();
-        info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
-        let block = fetch_block(db, last_block_height - h, false)?;
-        let block = Arc::new(block.try_into_chain_block()?);
-        txn.delete_block(*block.hash());
-        txn.delete_header(last_block_height - h);
-        if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
-            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
-            // can't recover from this apart from resync from another peer. Failure here
-            // should not be common as this chain has a valid proof of work that has been
-            // tested at this point in time.
-            txn.insert_chained_orphan(block.clone());
-        }
-        removed_blocks.push(block);
         // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
-        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
+        let next_block = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
             0
         } else {
             last_block_height - h - 1
         })?;
-        let metadata = db.fetch_chain_metadata()?;
-        let expected_block_hash = *metadata.best_block();
-        txn.set_best_block(
-            chain_header.height(),
-            chain_header.accumulated_data().hash,
-            chain_header.accumulated_data().total_accumulated_difficulty,
-            expected_block_hash,
-            chain_header.timestamp(),
-        );
-        // Update metadata
-        debug!(
-            target: LOG_TARGET,
-            "Updating best block to height (#{}), total accumulated difficulty: {}",
-            chain_header.height(),
-            chain_header.accumulated_data().total_accumulated_difficulty
-        );
-        db.write(txn)?;
+        match rewind_block(db, last_block_height - h, prune_past_horizon, &next_block) {
+            Ok(block) => removed_blocks.push(block),
+            Err(e) => {
+                // We encountered some error here so lets try to re_add the block we removed to restore the chain we
+                // had.
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to rewind the block chain, trying to recover the blockchain to previous height: {} ",
+                    e
+                );
+                let mut txn = DbTransaction::new();
+
+                for block in removed_blocks.into_iter().rev() {
+                    if !prune_past_horizon {
+                        txn.delete_orphan(block.accumulated_data().hash);
+                    }
+                    insert_best_block(&mut txn, block)?;
+                }
+                db.write(txn)?;
+                return Err(e);
+            },
+        }
     }
 
     if prune_past_horizon {
+        // This is a destructive operation, so we dont care about trying to preserve state
+        // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
+        // can't recover from this apart from resync from another peer. Failure here
+        // should not be common as this chain has a valid proof of work that has been
+        // tested at this point in time.
         // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
         // have to delete the headers as they are still valid.
         // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
@@ -1769,6 +1767,46 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     }
 
     Ok(removed_blocks)
+}
+
+fn rewind_block<T: BlockchainBackend>(
+    db: &mut T,
+    height: u64,
+    prune_past_horizon: bool,
+    next_block: &ChainHeader,
+) -> Result<Arc<ChainBlock>, ChainStorageError> {
+    let mut txn = DbTransaction::new();
+    info!(target: LOG_TARGET, "Deleting block {}", height);
+    let block = fetch_block(db, height, false)?;
+    debug!(target: LOG_TARGET, "Goint to delete block: {}", block);
+    let block = Arc::new(block.try_into_chain_block()?);
+    txn.delete_block(*block.hash());
+    txn.delete_header(height);
+    if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
+        // We only try to save the blocks in the orphan pool is we wont go past the pruning horizon and if the block
+        // does not already exists in the orphan database.
+        txn.insert_chained_orphan(block.clone());
+    }
+
+    let metadata = db.fetch_chain_metadata()?;
+    let expected_block_hash = *metadata.best_block();
+    txn.set_best_block(
+        next_block.height(),
+        next_block.accumulated_data().hash,
+        next_block.accumulated_data().total_accumulated_difficulty,
+        expected_block_hash,
+        next_block.timestamp(),
+    );
+    // Update metadata
+    debug!(
+        target: LOG_TARGET,
+        "Updating best block to height (#{}), total accumulated difficulty: {}",
+        next_block.height(),
+        next_block.accumulated_data().total_accumulated_difficulty
+    );
+    db.write(txn)?;
+
+    Ok(block)
 }
 
 fn rewind_to_hash<T: BlockchainBackend>(
@@ -1969,7 +2007,8 @@ fn reorganize_chain<T: BlockchainBackend>(
     for block in chain {
         let mut txn = DbTransaction::new();
         let block_hash = *block.hash();
-        txn.delete_orphan(block_hash);
+        // Reading from the Db and fetching something like the metadata should not give a problem or error. On the odd
+        // case that this fails, it is extremely likely that trying to restore the chain will also fail
         let chain_metadata = backend.fetch_chain_metadata()?;
         if let Err(e) = block_validator.validate_body_for_valid_orphan(backend, block, &chain_metadata) {
             warn!(
@@ -1985,11 +2024,19 @@ fn reorganize_chain<T: BlockchainBackend>(
             restore_reorged_chain(backend, fork_hash, removed_blocks)?;
             return Err(e.into());
         }
-
-        insert_best_block(&mut txn, block.clone())?;
+        txn.delete_orphan(block_hash);
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
+        if let Err(e) = insert_best_block(&mut txn, block.clone()) {
+            warn!(
+                target: LOG_TARGET,
+                "Failed extract Monero data: {:?}. Restoring last chain.", e
+            );
+
+            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            return Err(e);
+        }
         if let Err(e) = backend.write(txn) {
             warn!(
                 target: LOG_TARGET,
@@ -2012,31 +2059,6 @@ fn reorganize_chain<T: BlockchainBackend>(
 
     Ok(removed_blocks)
 }
-// fn hydrate_block<T: BlockchainBackend>(
-//     backend: &mut T,
-//     block: Arc<ChainBlock>,
-// ) -> Result<Arc<ChainBlock>, ChainStorageError> {
-//     if !block.block().body.has_compact_inputs() {
-//         return Ok(block);
-//     }
-//
-//     for input in block.block().body.inputs() {
-//         let output = backend.fetch_mmr_leaf(MmrTree::Utxo, input.mmr_index())?;
-//         let output = output.ok_or_else(|| ChainStorageError::ValueNotFound {
-//             entity: "Output".to_string(),
-//             field: "mmr_index".to_string(),
-//             value: input.mmr_index().to_string(),
-//         })?;
-//         let output = TransactionOutput::try_from(output)?;
-//         let input = TransactionInput::new_with_commitment(input.features(), output.commitment());
-//         block.block_mut().body_mut().add_input(input);
-//     }
-//     backend.fetch_unspent_output_hash_by_commitment()
-//     let block = hydrate_block_from_db(backend, block_hash, block.header().clone())?;
-//     txn.delete_orphan(block_hash);
-//     backend.write(txn)?;
-//     Ok(block)
-// }
 
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
@@ -2076,12 +2098,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     if db.contains(&DbKey::OrphanBlock(hash))? {
         return Ok(vec![]);
     }
-
+    let mut txn = DbTransaction::new();
     let parent = match db.fetch_orphan_chain_tip_by_hash(&block.header.prev_hash)? {
         Some(curr_parent) => {
-            let mut txn = DbTransaction::new();
             txn.remove_orphan_chain_tip(block.header.prev_hash);
-            db.write(txn)?;
             info!(
                 target: LOG_TARGET,
                 "New orphan extends a chain in the current candidate tip set"
@@ -2116,8 +2136,6 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                         block.header.height,
                         hash_hex
                     );
-
-                    let mut txn = DbTransaction::new();
                     txn.insert_orphan(block);
                     db.write(txn)?;
                 }
@@ -2139,7 +2157,6 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     let chain_header = chain_block.to_chain_header();
 
     // Extend orphan chain tip.
-    let mut txn = DbTransaction::new();
     if !db.contains(&DbKey::OrphanBlock(chain_block.accumulated_data().hash))? {
         txn.insert_orphan(chain_block.to_arc_block());
     }
@@ -2221,6 +2238,11 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 db.write(txn)?;
             },
         };
+    }
+    // This is for an edge case, where all child blocks from the original block are invalid blocks, this mean there
+    // effectively is no child blocks, so we return the original block as the only tip.
+    if res.is_empty() {
+        res.push(prev_chain_header);
     }
     Ok(res)
 }

@@ -295,6 +295,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let timer = Instant::now();
             let (header, header_accum_data) = header.into_parts();
+            trace!(
+                target: LOG_TARGET,
+                "Downloaded block from peer: {}",
+                Block::new(header.clone(), body.clone())
+            );
 
             let block = match self.block_validator.validate_body(Block::new(header, body)).await {
                 Ok(block) => block,
