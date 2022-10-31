@@ -70,28 +70,28 @@ jobs:
           echo "SHA short - ${VSHA_SHORT}"
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
           TOOLCHAIN=${{ github.event.inputs.toolchain }}
-          echo "::set-output name=toolchain::${TOOLCHAIN:-${{ env.toolchain_default }}}"
+          echo "toolchain=${TOOLCHAIN:-${{ env.toolchain_default }}}" >> $GITHUB_OUTPUT
           if [[ "${{ github.ref }}" =~ ^refs/tags/v* ]] && [ "${{ github.event_name }}" != "workflow_dispatch" ] ; then
             echo "Tagged Build - Build everything"
             VERSION="${{ github.ref_name }}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
             echo "Version used - ${VERSION}"
-            echo "::set-output name=platforms::linux/arm64, linux/amd64"
-            echo "::set-output name=version::${VERSION}"
-            echo "::set-output name=tag_alias::latest"
-            echo "::set-output name=build_items::all"
+            echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "tag_alias=latest" >> $GITHUB_OUTPUT
+            echo "build_items=all" >> $GITHUB_OUTPUT
           fi
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] ; then
             echo "Manual Build - selective"
-            echo "::set-output name=platforms::${{ github.event.inputs.platforms }}"
-            echo "::set-output name=version::${{ github.event.inputs.version }}"
-            echo "::set-output name=tag_alias::${{ github.event.inputs.tag_alias }}"
-            echo "::set-output name=build_items::${{ github.event.inputs.build_items }}"
+            echo "platforms=${{ github.event.inputs.platforms }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag_alias=${{ github.event.inputs.tag_alias }}" >> $GITHUB_OUTPUT
+            echo "build_items=${{ github.event.inputs.build_items }}" >> $GITHUB_OUTPUT
           fi
           if [ "${{ github.event_name }}" == "schedule" ] && [ "${{ github.event.schedule }}" == "05 00 * * *" ] ; then
             echo "Daily Build - limited"
-            echo "::set-output name=platforms::linux/amd64"
-            echo "::set-output name=tag_alias::latest-daily"
-            echo "::set-output name=build_items::tari_all"
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+            echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
+            echo "build_items=tari_all" >> $GITHUB_OUTPUT
           fi
 
   builds_run:

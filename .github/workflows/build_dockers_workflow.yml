@@ -88,8 +88,7 @@ jobs:
 
           echo $matrix
           echo $matrix | jq .
-          echo "::set-output name=matrix::$matrix"
-          #echo "matrix=${matrix}" >> $GITHUB_ENV
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
   docker_build:
     name: Docker building ${{ matrix.builds.image_name }}
@@ -160,7 +159,7 @@ jobs:
           fi
 
       - name: Login to Docker Image Provider
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           registry: ${{ secrets.DOCKER_PROVIDER }}
           username: ${{ secrets.DOCKER_USERNAME }}
