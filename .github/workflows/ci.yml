@@ -28,7 +28,7 @@ jobs:
     runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -59,7 +59,7 @@ jobs:
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -85,7 +85,7 @@ jobs:
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -115,7 +115,7 @@ jobs:
     runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: install ripgrep
         run: |
           wget https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
@@ -128,7 +128,7 @@ jobs:
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
