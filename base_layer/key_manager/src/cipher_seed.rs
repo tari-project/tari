@@ -116,8 +116,8 @@ pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
-    entropy: Vec<u8>,
-    salt: Vec<u8>,
+    entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
+    salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]>,
 }
 
 impl CipherSeed {
@@ -148,10 +148,10 @@ impl CipherSeed {
 
     /// Generate a new seed with a given birthday
     fn new_with_birthday(birthday: u16) -> Self {
-        let mut entropy = vec![0u8; CIPHER_SEED_ENTROPY_BYTES];
+        let mut entropy = Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]);
         OsRng.fill_bytes(entropy.as_mut());
-        let mut salt = vec![0u8; CIPHER_SEED_MAIN_SALT_BYTES];
-        OsRng.fill_bytes(&mut salt);
+        let mut salt = Box::new([0u8; CIPHER_SEED_MAIN_SALT_BYTES]);
+        OsRng.fill_bytes(salt.as_mut());
 
         Self {
             version: CIPHER_SEED_VERSION,
@@ -165,14 +165,14 @@ impl CipherSeed {
     pub fn encipher(&self, passphrase: Option<String>) -> Result<Vec<u8>, KeyManagerError> {
         // Derive encryption and MAC keys from passphrase and main salt
         let passphrase = Zeroizing::new(passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string()));
-        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, &self.salt)?;
+        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, self.salt.as_ref())?;
 
         // Generate the MAC
         let mac = Self::generate_mac(
             &self.birthday.to_le_bytes(),
             self.entropy.as_ref(),
             CIPHER_SEED_VERSION,
-            &self.salt,
+            self.salt.as_ref(),
             mac_key.as_ref(),
         )?;
 
@@ -181,18 +181,18 @@ impl CipherSeed {
             CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES,
         ));
         secret_data.extend(&self.birthday.to_le_bytes());
-        secret_data.extend(&self.entropy);
+        secret_data.extend(self.entropy.iter());
         secret_data.extend(&mac);
 
         // Encrypt the secret data
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), &self.salt)?;
+        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), self.salt.as_ref())?;
 
         // Assemble the final seed: version, main salt, secret data, checksum
         let mut encrypted_seed =
             Vec::<u8>::with_capacity(1 + CIPHER_SEED_MAIN_SALT_BYTES + secret_data.len() + CIPHER_SEED_CHECKSUM_BYTES);
         encrypted_seed.push(CIPHER_SEED_VERSION);
         encrypted_seed.extend(secret_data.iter());
-        encrypted_seed.extend(&self.salt);
+        encrypted_seed.extend(self.salt.iter());
 
         let mut crc_hasher = CrcHasher::new();
         crc_hasher.update(encrypted_seed.as_slice());
@@ -239,23 +239,37 @@ impl CipherSeed {
 
         // Derive encryption and MAC keys from passphrase and main salt
         let passphrase = Zeroizing::new(passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string()));
-        let salt = encrypted_seed
-            .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES);
-        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, &salt)?;
+        let salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]> = encrypted_seed
+            .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| KeyManagerError::InvalidData)?;
+        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, salt.as_ref())?;
 
         // Decrypt the secret data: birthday, entropy, MAC
         let mut secret_data = Zeroizing::new(encrypted_seed.split_off(1));
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), &salt)?;
+        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), salt.as_ref())?;
 
         // Parse secret data
         let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
-        let entropy = Zeroizing::new(secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES)); // wrapped in case of MAC failure
+        let entropy: Zeroizing<[u8; CIPHER_SEED_ENTROPY_BYTES]> = Zeroizing::new(
+            secret_data
+                .split_off(CIPHER_SEED_BIRTHDAY_BYTES)
+                .try_into()
+                .map_err(|_| KeyManagerError::InvalidData)?,
+        ); // wrapped in case of MAC failure
         let mut birthday_bytes = [0u8; CIPHER_SEED_BIRTHDAY_BYTES];
         birthday_bytes.copy_from_slice(&secret_data);
         let birthday = u16::from_le_bytes(birthday_bytes);
 
         // Generate the MAC
-        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.as_ref(), version, &salt, mac_key.as_ref())?;
+        let expected_mac = Self::generate_mac(
+            &birthday_bytes,
+            entropy.as_ref(),
+            version,
+            salt.as_ref(),
+            mac_key.as_ref(),
+        )?;
 
         // Verify the MAC in constant time to avoid leaking data
         if mac.ct_eq(&expected_mac).unwrap_u8() == 0 {
@@ -265,7 +279,7 @@ impl CipherSeed {
         Ok(Self {
             version,
             birthday,
-            entropy: (*entropy).clone(),
+            entropy: Box::from(*entropy),
             salt,
         })
     }
@@ -291,8 +305,8 @@ impl CipherSeed {
     }
 
     /// Get a reference to the seed entropy
-    pub fn entropy(&self) -> &Vec<u8> {
-        &self.entropy
+    pub fn entropy(&self) -> &[u8] {
+        self.entropy.as_ref()
     }
 
     /// Get the seed birthday
