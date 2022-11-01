@@ -16,6 +16,10 @@ Install rust
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
+unattended rust install
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+```
 
 ```bash
 source "$HOME/.cargo/env"
@@ -73,13 +77,33 @@ cd tari
 # Need for RandomX
 ```bash
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+export BINDGEN_EXTRA_CLANG_ARGS='--sysroot /usr/aarch64-linux-gnu/include/'
+```
+Sample of the errors seen, if the above envs are not set
+```
+Compiling randomx-rs v1.1.13 (https://github.com/tari-project/randomx-rs?tag=v1.1.13#c33f8679)
+error: linking with `cc` failed: exit status: 1
+|
+= note: "cc" "-Wl,--version-script=/tmp/rustcsAUjg7/list" "/tmp/rustcsAUjg7/symbols.o" "/home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o"
+```
+...
+```
+/usr/bin/ld: /home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: Relocations in generic ELF (EM: 183)
+/home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: error adding symbols: File in wrong format
+collect2: error: ld returned 1 exit status
+
+
+error: could not compile `randomx-rs` due to previous error
+warning: build failed, waiting for other jobs to finish...
+```
+Might not need these older envs
+```
 export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
 export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
 export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
-export BINDGEN_EXTRA_CLANG_ARGS='--sysroot /usr/aarch64-linux-gnu/include/'
 ```
 
-# Needed for croaring-sys
+# Needed in the past for croaring-sys
 ```bash
 export ARCH=generic
 export ROARING_ARCH=generic
@@ -106,4 +130,11 @@ cargo build --locked \
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu
+```
+```bash
+cross build --locked \
+  --release --features safe \
+  --target aarch64-unknown-linux-gnu \
+  --bin tari_base_node --bin tari_console_wallet \
+  --bin tari_merge_mining_proxy --bin tari_miner
 ```
