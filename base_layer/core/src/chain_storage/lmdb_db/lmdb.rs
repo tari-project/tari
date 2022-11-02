@@ -446,7 +446,8 @@ pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, Ch
     Ok(num_deleted)
 }
 
-/// Used for migrations, you probably dont want to use this.
+/// Used for migrations, you probably dont want to use this as it loops though the entire database.
+#[allow(dead_code)]
 pub(super) fn lmdb_map_inplace<F, V, R>(
     txn: &WriteTransaction<'_>,
     db: &Database,
