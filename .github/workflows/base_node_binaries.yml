@@ -1,7 +1,7 @@
 ---
 name: Build Matrix of Binaries
 
-on:
+'on':
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
@@ -49,7 +49,7 @@ jobs:
           matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
           echo $matrix
           echo $matrix | jq .
-          echo "::set-output name=matrix::$matrix"
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
   matrix-check:
     runs-on: ubuntu-latest
@@ -179,7 +179,6 @@ jobs:
         uses: Swatinem/rust-cache@v1
 
       - name: Build rust binaries
-        #if: ${{ matrix.builds.name != 'linux-arm64' }}
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
@@ -308,7 +307,7 @@ jobs:
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg"
@@ -323,7 +322,7 @@ jobs:
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-release" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
 
       - name: Artifact upload for Windows installer
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: startsWith(runner.os,'Windows')
         with:
           name: "tari_windows_installer"
@@ -348,13 +347,13 @@ jobs:
           fi
 
       - name: Artifact upload for Archive
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
       - name: Artifact upload for Miner
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: tari_miner-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
@@ -427,7 +426,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - name: Download binaries
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
