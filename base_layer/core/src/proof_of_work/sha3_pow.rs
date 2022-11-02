@@ -94,7 +94,7 @@ pub mod test {
     }
 
     pub fn get_header() -> BlockHeader {
-        let mut header = BlockHeader::new(0);
+        let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
         let epoch_secs =
@@ -107,7 +107,7 @@ pub mod test {
     #[test]
     fn validate_max_target() {
         let mut header = get_header();
-        header.nonce = 1;
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(3));
+        header.nonce = 14;
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(25));
     }
 }
