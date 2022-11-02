@@ -12,20 +12,8 @@ Using Vagrant and VirtualBox has a baseline for building needs, including tools,
 
 Linux ARM64 can be built using Vagrant and VirtualBox or Docker and cross
 
-Install rust
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-unattended rust install
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-```
-
-```bash
-source "$HOME/.cargo/env"
-```
-
-From - https://github.com/tari-project/tari/blob/development/scripts/install_ubuntu_dependencies.sh
+# Prep Ubuntu for development
+# From - https://github.com/tari-project/tari/blob/development/scripts/install_ubuntu_dependencies.sh
 ```bash
 sudo apt-get update
 sudo apt-get install \
@@ -46,7 +34,7 @@ sudo apt-get install \
   zip
 ```
 
-From Cross.toml
+# Prep Ubuntu for cross-compile aarch64/arm64 on x86_64
 ```bash
 sudo apt-get install \
   pkg-config-aarch64-linux-gnu \
@@ -54,7 +42,20 @@ sudo apt-get install \
   g++-aarch64-linux-gnu
 ```
 
-# Prep rust for cross-compile
+# Install rust
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+# or unattended rust install
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+```
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+# Prep rust for cross-compile aarch64/arm64 on x86_64
 ```bash
 rustup target add aarch64-unknown-linux-gnu
 rustup toolchain install stable-aarch64-unknown-linux-gnu
@@ -74,7 +75,7 @@ git clone git@github.com:tari-project/tari.git
 cd tari
 ```
 
-# Need for RandomX
+# Needed for RandomX
 ```bash
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 export BINDGEN_EXTRA_CLANG_ARGS='--sysroot /usr/aarch64-linux-gnu/include/'
@@ -91,7 +92,6 @@ error: linking with `cc` failed: exit status: 1
 /usr/bin/ld: /home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: Relocations in generic ELF (EM: 183)
 /home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: error adding symbols: File in wrong format
 collect2: error: ld returned 1 exit status
-
 
 error: could not compile `randomx-rs` due to previous error
 warning: build failed, waiting for other jobs to finish...
