@@ -31,7 +31,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{
@@ -540,7 +540,7 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
     let mut num_tries = 0;
 
-    while sha3_difficulty(header) != achieved_difficulty {
+    while sha3x_difficulty(header) != achieved_difficulty {
         header.nonce += 1;
         num_tries += 1;
         if num_tries > 10_000_000 {
