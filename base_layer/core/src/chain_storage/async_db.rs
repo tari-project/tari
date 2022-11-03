@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::{ActiveValidatorNode, TemplateRegistrationEntry};
+use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
         Block,
@@ -268,8 +268,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
     make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(PublicKey, [u8;32])>, "fetch_active_validator_nodes");
-
-    make_async_fn!(fetch_committee(height: u64, shard: [u8;32]) -> Vec<ActiveValidatorNode>, "fetch_committee");
 
     make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> Option<[u8;32]>, "get_shard_key");
 

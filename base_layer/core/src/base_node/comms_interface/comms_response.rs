@@ -32,7 +32,7 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{ActiveValidatorNode, TemplateRegistrationEntry},
+    chain_storage::TemplateRegistrationEntry,
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -57,7 +57,6 @@ pub enum NodeCommsResponse {
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
     FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
-    FetchCommitteeResponse(Vec<ActiveValidatorNode>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
@@ -94,7 +93,6 @@ impl Display for NodeCommsResponse {
                 resp.not_found.len()
             ),
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
-            FetchCommitteeResponse(_) => write!(f, "FetchCommitteeResponse"),
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
         }

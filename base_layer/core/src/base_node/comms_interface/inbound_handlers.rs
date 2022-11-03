@@ -369,10 +369,6 @@ where B: BlockchainBackend + 'static
                     active_validator_nodes,
                 ))
             },
-            NodeCommsRequest::FetchCommittee { height, shard } => {
-                let validator_nodes = self.blockchain_db.fetch_committee(height, shard).await?;
-                Ok(NodeCommsResponse::FetchCommitteeResponse(validator_nodes))
-            },
             NodeCommsRequest::GetShardKey { height, public_key } => {
                 let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
                 Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))

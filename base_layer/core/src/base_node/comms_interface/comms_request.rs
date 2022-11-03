@@ -67,10 +67,6 @@ pub enum NodeCommsRequest {
     FetchValidatorNodesKeys {
         height: u64,
     },
-    FetchCommittee {
-        height: u64,
-        shard: [u8; 32],
-    },
     GetShardKey {
         height: u64,
         public_key: PublicKey,
@@ -124,9 +120,6 @@ impl Display for NodeCommsRequest {
             },
             FetchValidatorNodesKeys { height } => {
                 write!(f, "FetchValidatorNodesKeys ({})", height)
-            },
-            FetchCommittee { height, shard } => {
-                write!(f, "FetchCommittee height ({}), shard({:?})", height, shard)
             },
             GetShardKey { height, public_key } => {
                 write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)

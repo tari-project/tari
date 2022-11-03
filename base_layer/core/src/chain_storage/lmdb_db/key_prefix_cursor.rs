@@ -82,7 +82,14 @@ where V: DeserializeOwned
         }
     }
 
-    pub fn seek_gte(&mut self, key: &[u8]) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
+    // This function could be used later in cases where multiple seeks are required.
+    #[cfg(test)]
+    pub fn reset_to(&mut self, prefix_key: &'a [u8]) {
+        self.has_seeked = false;
+        self.prefix_key = prefix_key;
+    }
+
+    fn seek_gte(&mut self, key: &[u8]) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
         self.has_seeked = true;
         let seek_result = self.cursor.seek_range_k(&self.access, key).to_opt()?;
         let (k, v) = match seek_result {
@@ -103,5 +110,68 @@ where V: DeserializeOwned
         }
         let val = deserialize::<V>(v)?;
         Ok(Some((k.to_vec(), val)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use lmdb_zero::{db, ReadTransaction, WriteTransaction};
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+    use tari_test_utils::paths::create_temporary_data_path;
+
+    use crate::chain_storage::lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert};
+
+    #[test]
+    fn test_lmdb_get_prefix_cursor() {
+        let temp_path = create_temporary_data_path();
+
+        let lmdb_store = LMDBBuilder::new()
+            .set_path(&temp_path)
+            .set_env_config(LMDBConfig::default())
+            .set_max_number_of_databases(1)
+            .add_database("test", db::CREATE)
+            .build()
+            .unwrap();
+
+        let db = lmdb_store.get_handle("test").unwrap();
+        {
+            let txn = WriteTransaction::new(lmdb_store.env()).unwrap();
+            lmdb_insert(&txn, &db.db(), &[0xffu8, 0, 0, 0], &1u64, "test").unwrap();
+            lmdb_insert(&txn, &db.db(), &[0x2bu8, 0, 0, 1], &2u64, "test").unwrap();
+            lmdb_insert(&txn, &db.db(), &[0x2bu8, 0, 1, 1], &3u64, "test").unwrap();
+            lmdb_insert(&txn, &db.db(), &[0x2bu8, 1, 1, 0], &4u64, "test").unwrap();
+            lmdb_insert(&txn, &db.db(), &[0x2bu8, 1, 1, 1], &5u64, "test").unwrap();
+            lmdb_insert(&txn, &db.db(), &[0x00u8, 1, 1, 1], &5u64, "test").unwrap();
+            txn.commit().unwrap();
+        }
+
+        {
+            let txn = ReadTransaction::new(lmdb_store.env()).unwrap();
+            let db = db.db();
+            let mut cursor = lmdb_get_prefix_cursor::<u64>(&txn, &db, &[0x2b]).unwrap();
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 0, 0, 1], 2));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 0, 1, 1], 3));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 0], 4));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 1], 5));
+            assert_eq!(cursor.next().unwrap(), None);
+
+            cursor.reset_to(&[0x2b, 1, 1]);
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 0], 4));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 1], 5));
+            assert_eq!(cursor.next().unwrap(), None);
+
+            cursor.reset_to(&[0x11]);
+            assert_eq!(cursor.next().unwrap(), None);
+        }
+
+        fs::remove_dir_all(&temp_path).expect("Could not delete temporary file");
     }
 }

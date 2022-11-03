@@ -1437,27 +1437,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn get_committee(
-        &self,
-        request: Request<tari_rpc::GetCommitteeRequest>,
-    ) -> Result<Response<tari_rpc::GetCommitteeResponse>, Status> {
-        let request = request.into_inner();
-        let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetCommittee");
-        let mut handler = self.node_service.clone();
-        let response = handler
-            .get_committee(request.height, request.shard_key.try_into().unwrap())
-            .await
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Error {}", e);
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?
-            .iter()
-            .map(|a| a.shard_key.to_vec())
-            .collect();
-        Ok(Response::new(tari_rpc::GetCommitteeResponse { public_key: response }))
-    }
-
     async fn get_shard_key(
         &self,
         request: Request<tari_rpc::GetShardKeyRequest>,
