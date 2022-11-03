@@ -46,7 +46,7 @@ jobs:
           override: true
 
       - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Build libwallet libraries
         uses: actions-rs/cargo@v1
@@ -115,7 +115,7 @@ jobs:
         run: brew install cmake
 
       - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Build libwallet libraries
         run: |

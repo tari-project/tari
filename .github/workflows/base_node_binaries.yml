@@ -111,31 +111,29 @@ jobs:
         if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
         run: |
           sudo apt-get update
-          sudo apt-get -y install \
-            openssl \
-            libssl-dev \
-            pkg-config \
-            libsqlite3-dev \
-            clang-10 \
-            git \
-            cmake \
-            libc++-dev \
-            libc++abi-dev \
-            libprotobuf-dev \
-            protobuf-compiler \
-            libncurses5-dev \
-            libncursesw5-dev \
-            zip
+          sudo bash scripts/install_ubuntu_dependencies.sh
 
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
-        run: brew install cmake zip coreutils automake autoconf
+        run: brew install cmake coreutils automake autoconf
 
       - name: Install Windows dependencies
+        #continue-on-error: true  # WARNING: workaround
         if: startsWith(runner.os,'Windows')
         run: |
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
-          choco upgrade llvm zip psutils openssl strawberryperl -y
+          # Bug in choco - need to install each package individually
+          choco upgrade llvm -y
+          choco upgrade psutils -y
+          choco upgrade openssl -y
+          choco upgrade strawberryperl -y
+
+      - name: Debugging - Upload logs if dependences failures
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.TBN_FILENAME }}-windows-dependences-logs
+          path: C:\ProgramData\chocolatey\logs\chocolatey.log
 
       - name: Set environment variables - Nix
         if: "!startsWith(runner.os,'Windows')"
@@ -176,14 +174,9 @@ jobs:
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
       - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
-      - name: Revert Cargo.toml for Ubuntu to cross-compile ARM64
-        if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name == 'linux-arm64' }}
-        run: sed -i-bak -e '/^resolver/s/2/1/' Cargo.toml
-
-      - name: Build rust binaries - Normal
-        #if: ${{ matrix.builds.name != 'linux-arm64' }}
+      - name: Build rust binaries
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
@@ -193,7 +186,7 @@ jobs:
           command: build
           args: --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }} ${{ matrix.builds.flags }} --locked
 
-      - name: Copy binaries to folder for zipping
+      - name: Copy binaries to folder for archiving
         shell: bash
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
@@ -338,7 +331,8 @@ jobs:
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
           cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
-          zip -j "${{ env.BINFILE }}.zip" *
+          #zip -j "${{ env.BINFILE }}.zip" *
+          7z a "${{ env.BINFILE }}.zip" *
           echo "Compute shasum"
           ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
           cat "${{ env.BINFILE }}.zip.sha256"
