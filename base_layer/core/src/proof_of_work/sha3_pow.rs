@@ -34,7 +34,10 @@ use crate::{
 /// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
 /// can be used to mine tXTR on testnets.
 pub fn sha3x_difficulty(header: &BlockHeader) -> Difficulty {
-    sha3x_difficulty_with_hash(header).0
+    match header.version {
+        2 => sha3x_difficulty_with_hash(header).0,
+        _ => old_sha3_difficulty_with_hash(header).0,
+    }
 }
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
@@ -56,6 +59,13 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
 fn sha3x_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
+    let hash = Sha3_256::digest(&hash);
+    let difficulty = big_endian_difficulty(&hash);
+    (difficulty, hash.to_vec())
+}
+
+fn old_sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+    let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())
@@ -84,7 +94,7 @@ pub mod test {
     }
 
     pub fn get_header() -> BlockHeader {
-        let mut header = BlockHeader::new(0);
+        let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
         let epoch_secs =
@@ -97,7 +107,7 @@ pub mod test {
     #[test]
     fn validate_max_target() {
         let mut header = get_header();
-        header.nonce = 1;
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(3));
+        header.nonce = 14;
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(25));
     }
 }
