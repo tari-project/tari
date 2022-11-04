@@ -120,6 +120,9 @@ pub struct CipherSeed {
     salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]>,
 }
 
+// This is a separate type to make the linter happy
+type DerivedCipherSeedKeys = Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), KeyManagerError>;
+
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     /// Generate a new seed
@@ -345,7 +348,7 @@ impl CipherSeed {
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
-    fn derive_keys(passphrase: &str, salt: &[u8]) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), KeyManagerError> {
+    fn derive_keys(passphrase: &str, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
         let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
             .chain(salt)
