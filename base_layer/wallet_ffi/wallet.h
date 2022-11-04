@@ -2472,48 +2472,6 @@ struct TariCoinPreview *wallet_preview_coin_split(struct TariWallet *wallet,
                                                   int32_t *error_ptr);
 
 /**
- * Signs a message using the public key of the TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer.
- * `msg` - The message pointer.
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- * ## Returns
- * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
- * public nonce, seperated by a pipe character. Empty if an error occured.
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
- */
-char *wallet_sign_message(struct TariWallet *wallet,
-                          const char *msg,
-                          int *error_out);
-
-/**
- * Verifies the signature of the message signed by a TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer.
- * `public_key` - The pointer to the TariPublicKey of the wallet which originally signed the message
- * `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
- * signature and public nonce seperated by a pipe character.
- * `msg` - The pointer to the msg the signature will be checked against.
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- * ## Returns
- * `bool` - Returns if the signature is valid or not, will be false if an error occurs.
- *
- * # Safety
- * None
- */
-bool wallet_verify_message_signature(struct TariWallet *wallet,
-                                     TariPublicKey *public_key,
-                                     const char *hex_sig_nonce,
-                                     const char *msg,
-                                     int *error_out);
-
-/**
  * Adds a base node peer to the TariWallet
  *
  * ## Arguments
