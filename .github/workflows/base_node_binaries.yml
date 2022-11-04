@@ -178,12 +178,7 @@ jobs:
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v1
 
-      - name: Revert Cargo.toml for Ubuntu to cross-compile ARM64
-        if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name == 'linux-arm64' }}
-        run: sed -i-bak -e '/^resolver/s/2/1/' Cargo.toml
-
-      - name: Build rust binaries - Normal
-        #if: ${{ matrix.builds.name != 'linux-arm64' }}
+      - name: Build rust binaries
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
