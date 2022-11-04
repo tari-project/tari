@@ -27,9 +27,8 @@ use std::{
     ops::Deref,
 };
 
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 use tari_utilities::{ByteArray, ByteArrayError};
-
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 const MAX_ARR_SIZE: usize = 63;
 

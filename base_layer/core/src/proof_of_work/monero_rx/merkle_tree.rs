@@ -33,11 +33,9 @@ use monero::{
     consensus::{Decodable, Encodable},
     Hash,
 };
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding};
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding},
-    proof_of_work::monero_rx::error::MergeMineError,
-};
+use crate::proof_of_work::monero_rx::error::MergeMineError;
 
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {

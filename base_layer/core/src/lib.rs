@@ -26,8 +26,7 @@ pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[macro_use]
-pub mod covenants;
+
 #[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
@@ -45,9 +44,6 @@ pub mod proto;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
-
-#[cfg(feature = "transactions")]
-pub mod transactions;
 
 mod common;
 

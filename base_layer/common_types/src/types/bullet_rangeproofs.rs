@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use std::{
+    fmt,
+    io,
+    io::{Error, Read, Write},
+};
 
 use serde::{
     de::{self, Visitor},
@@ -29,6 +33,7 @@ use serde::{
     Serialize,
     Serializer,
 };
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 use tari_crypto::hashing::AsFixedBytes;
 use tari_utilities::{hex::*, ByteArray, ByteArrayError};
 
@@ -114,5 +119,25 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
         } else {
             deserializer.deserialize_bytes(RangeProofVisitor)
         }
+    }
+}
+
+impl ConsensusEncoding for BulletRangeProof {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.0.consensus_encode(writer)
+    }
+}
+
+impl ConsensusEncodingSized for BulletRangeProof {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.0.consensus_encode_exact_size()
+    }
+}
+
+impl ConsensusDecoding for BulletRangeProof {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_RANGEPROOF_SIZE: usize = 1024;
+        let bytes = MaxSizeBytes::<MAX_RANGEPROOF_SIZE>::consensus_decode(reader)?;
+        Ok(Self(bytes.into()))
     }
 }

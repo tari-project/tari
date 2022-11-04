@@ -29,12 +29,10 @@ use std::{
 
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    proof_of_work::PowAlgorithm,
-};
+use crate::proof_of_work::PowAlgorithm;
 
 pub trait AchievedDifficulty {}
 

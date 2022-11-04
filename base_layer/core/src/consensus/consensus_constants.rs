@@ -31,7 +31,7 @@ use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    consensus::{network::NetworkConsensus, ConsensusEncodingSized},
+    consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},

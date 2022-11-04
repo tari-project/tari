@@ -48,6 +48,12 @@ use std::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
+use tari_consensus_encoding::{
+    ConsensusDecoding,
+    ConsensusEncoding,
+    ConsensusEncodingSized,
+    DomainSeparatedConsensusHasher,
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
@@ -55,7 +61,6 @@ use thiserror::Error;
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
     blocks::BlocksHashDomain,
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 

@@ -24,17 +24,24 @@ use std::collections::HashSet;
 
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, FixedHash, PublicKey};
+use tari_consensus_encoding::{ConsensusEncodingSized, ConsensusManager};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
+use tari_transactions::{
+    aggregated_body::AggregateBody,
+    tari_amount::MicroTari,
+    transaction_components::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    CryptoFactories,
+};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{emission::Emission, ConsensusConstants, ConsensusEncodingSized, ConsensusManager},
+    consensus::{emission::Emission, ConsensusConstants},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -44,12 +51,6 @@ use crate::{
         Difficulty,
         PowAlgorithm,
         PowError,
-    },
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroTari,
-        transaction_components::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        CryptoFactories,
     },
     validation::ValidationError,
 };

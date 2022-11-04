@@ -69,11 +69,6 @@ struct Covenant;
 
 struct EmojiSet;
 
-/**
- * value: u64 + tag: [u8; 16]
- */
-struct EncryptedValue;
-
 struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
@@ -81,11 +76,6 @@ struct FeePerGramStatsResponse;
 struct InboundTransaction;
 
 struct OutboundTransaction;
-
-/**
- * Options for UTXO's
- */
-struct OutputFeatures;
 
 /**
  * Configuration for a comms node
@@ -157,15 +147,6 @@ struct TariSeedWords;
 
 struct TariWallet;
 
-/**
- * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
- * why it is necessary, refer to the
- * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
- * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
- * this transaction can be mined) and the transaction fee, in cleartext.
- */
-struct TransactionKernel;
-
 struct TransactionSendStatus;
 
 struct TransportConfig;
@@ -185,7 +166,7 @@ struct TariCoinPreview {
   uint64_t fee;
 };
 
-typedef struct TransactionKernel TariTransactionKernel;
+typedef TransactionKernel TariTransactionKernel;
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
@@ -291,9 +272,9 @@ typedef ComSignature TariCommitmentSignature;
 
 typedef struct Covenant TariCovenant;
 
-typedef struct EncryptedValue TariEncryptedValue;
+typedef EncryptedValue TariEncryptedValue;
 
-typedef struct OutputFeatures TariOutputFeatures;
+typedef OutputFeatures TariOutputFeatures;
 
 typedef struct Contact TariContact;
 

@@ -33,17 +33,20 @@ function update_versions {
    infrastructure/shutdown
    infrastructure/storage
    infrastructure/test_utils
+   base_layer/base_layer_proto
    base_layer/common_types
    base_layer/core
    base_layer/key_manager
    base_layer/mmr
    base_layer/p2p
    base_layer/service_framework
+   base_layer/transactions
    base_layer/wallet
    base_layer/wallet_ffi
    base_layer/tari_mining_helper_ffi
    common
    common_sqlite
+   consensus_encoding
    comms/core
    comms/dht
    comms/rpc_macros

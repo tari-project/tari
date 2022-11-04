@@ -33,12 +33,12 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,

@@ -1,0 +1,35 @@
+[package]
+name = "tari_transactions"
+version = "0.38.8"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+tari_consensus_encoding = { path = "../../consensus_encoding"}
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_script = { path = "../../infrastructure/tari_script" }
+tari_base_layer_proto = { path = "../../base_layer/base_layer_proto"}
+tari_common = { version = "^0.38", path = "../../common" }
+
+bitflags = "1.0.4"
+chacha20poly1305 = "0.9.0"
+decimal-rs = "0.1.20"
+derivative = "2.2.0"
+digest = "0.9.0"
+integer-encoding = "3.0.2"
+log = "0.4"
+newtype-ops = "0.1.4"
+num-traits = "0.2.15"
+num-derive = "0.3.3"
+rand = "0.7.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+serde_repr = "0.1.8"
+strum_macros = "0.22"
+thiserror = "1.0.26"
+
+[build-dependencies]
+tari_common = { version = "^0.38", path = "../../common", features = ["build"] }

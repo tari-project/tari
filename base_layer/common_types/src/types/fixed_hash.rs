@@ -23,11 +23,13 @@
 use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
+    io::{Error, Read, Write},
     ops::{Deref, DerefMut},
 };
 
 use digest::{consts::U32, generic_array};
 use serde::{Deserialize, Serialize};
+use tari_consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 use tari_utilities::hex::{Hex, HexError};
 
 const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
@@ -140,5 +142,39 @@ impl DerefMut for FixedHash {
 impl Display for FixedHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.to_hex())
+    }
+}
+
+impl ConsensusEncoding for FixedHash {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.deref().consensus_encode(writer)?;
+        Ok(())
+    }
+}
+impl ConsensusEncodingSized for FixedHash {
+    fn consensus_encode_exact_size(&self) -> usize {
+        FixedHash::byte_size()
+    }
+}
+
+impl ConsensusDecoding for FixedHash {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let buf = <[u8; FixedHash::byte_size()] as ConsensusDecoding>::consensus_decode(reader)?;
+        Ok(buf.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{rngs::OsRng, RngCore};
+
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let mut hash = FixedHash::zero();
+        OsRng.fill_bytes(&mut *hash);
+        check_consensus_encoding_correctness(hash).unwrap();
     }
 }

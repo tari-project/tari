@@ -31,14 +31,11 @@ use monero::{
     consensus::{Decodable, Encodable},
     cryptonote::hash::Hashable,
 };
+use tari_consensus_encodiing::{ConsensusDecoding, ConsensusEncoding, FromConsensusBytes};
 use tari_utilities::hex::{to_hex, Hex};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{
-    blocks::BlockHeader,
-    consensus::{ConsensusDecoding, ConsensusEncoding, FromConsensusBytes},
-    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
-};
+use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
 
 /// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
 /// pow.
