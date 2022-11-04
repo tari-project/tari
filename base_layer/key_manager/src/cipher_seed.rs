@@ -295,14 +295,9 @@ impl CipherSeed {
             .finalize();
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
-        let mut key = Key::clone_from_slice(encryption_key);
-
         // Encrypt/decrypt the data
-        let mut cipher = ChaCha20::new(&key, Nonce::from_slice(encryption_nonce));
+        let mut cipher = ChaCha20::new(Key::from_slice(encryption_key), Nonce::from_slice(encryption_nonce));
         cipher.apply_keystream(data);
-
-        // We need to specifically zeroize the key
-        key.zeroize();
 
         Ok(())
     }
