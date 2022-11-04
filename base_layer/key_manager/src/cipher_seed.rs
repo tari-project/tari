@@ -40,7 +40,7 @@ use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, Hidden};
 use zeroize::Zeroize;
 
 use crate::{
@@ -404,7 +404,7 @@ impl Mnemonic<CipherSeed> for CipherSeed {
         &self,
         language: MnemonicLanguage,
         passphrase: Option<String>,
-    ) -> Result<Vec<String>, KeyManagerError> {
+    ) -> Result<Hidden<Vec<String>>, KeyManagerError> {
         Ok(from_bytes(&self.encipher(passphrase)?, language)?)
     }
 }

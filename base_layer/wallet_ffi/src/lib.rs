@@ -6698,7 +6698,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
     }
 
     match (*wallet).wallet.get_seed_words(&MnemonicLanguage::English) {
-        Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
+        Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words.into_inner()))),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);

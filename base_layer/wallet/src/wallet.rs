@@ -69,7 +69,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::{ByteArray, Hidden, SafePassword};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -697,7 +697,7 @@ where
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Hidden<Vec<String>>, WalletError> {
         let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),

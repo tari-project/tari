@@ -24,7 +24,10 @@ use std::{cmp::Ordering, slice::Iter};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use tari_utilities::bit::{bytes_to_bits, checked_bits_to_uint};
+use tari_utilities::{
+    bit::{bytes_to_bits, checked_bits_to_uint},
+    Hidden,
+};
 
 use crate::{
     diacritics::*,
@@ -171,7 +174,7 @@ fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Re
 }
 
 /// Converts a vector of bytes to a sequence of mnemonic words using the specified language
-pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
+pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Hidden<Vec<String>>, MnemonicError> {
     let mut bits = bytes_to_bits(bytes);
 
     // Pad with zeros if length not divisible by 11
@@ -194,7 +197,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
         mnemonic_sequence.push(mnemonic_word);
     }
 
-    Ok(mnemonic_sequence)
+    Ok(Hidden::from(mnemonic_sequence))
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
@@ -255,7 +258,7 @@ pub trait Mnemonic<T> {
         &self,
         language: MnemonicLanguage,
         passphrase: Option<String>,
-    ) -> Result<Vec<String>, KeyManagerError>;
+    ) -> Result<Hidden<Vec<String>>, KeyManagerError>;
 }
 
 #[cfg(test)]
