@@ -17,7 +17,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 
 arrayvec = "0.7.1"
-argon2 = { version = "0.2", features = ["std"] }
+argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
 console_error_panic_hook = { version = "0.1.7", optional = true }
@@ -35,6 +35,7 @@ strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"], optional = true }
 zeroize = "1"
+subtle = "2.4.1"
 
 [dev-dependencies]
 sha2 = "0.9.8"

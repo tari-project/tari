@@ -4907,7 +4907,7 @@ dependencies = [
 name = "tari_key_manager"
 version = "0.38.8"
 dependencies = [
- "argon2 0.2.4",
+ "argon2 0.4.1",
  "arrayvec 0.7.2",
  "blake2 0.9.2",
  "chacha20 0.7.3",
@@ -4924,6 +4924,7 @@ dependencies = [
  "sha2 0.9.9",
  "strum",
  "strum_macros",
+ "subtle",
  "tari_common_types",
  "tari_crypto",
  "tari_utilities",
