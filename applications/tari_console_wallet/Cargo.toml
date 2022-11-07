@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.38.7"
+version = "0.38.8"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -31,7 +31,7 @@ bitflags = "1.2.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.1.1", features = ["derive", "env"] }
 config = "0.13.0"
-crossterm = { version = "0.17" }
+crossterm = { version = "0.25.0" }
 digest = "0.9.0"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 log = { version = "0.4.8", features = ["std"] }

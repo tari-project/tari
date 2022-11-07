@@ -123,7 +123,7 @@ impl EmissionSchedule {
             if !n.starts_with("0.") {
                 return None;
             }
-            if !n.chars().skip(2).all(|i| ('0'..='9').contains(&i)) {
+            if !n.chars().skip(2).all(|i| i.is_ascii_digit()) {
                 return None;
             }
             let arr = n.chars().skip(2).map(|i| i as u8 - 48).collect::<Vec<u8>>();

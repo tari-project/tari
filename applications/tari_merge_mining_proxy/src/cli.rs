@@ -32,14 +32,14 @@ pub(crate) struct Cli {
     pub common: CommonCliArgs,
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
-    pub network: Option<String>,
+    pub network: Option<Network>,
 }
 
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.network.clone().unwrap_or_else(|| default_network.to_string());
-        overrides.push(("merge_mining_proxy.override_from".to_string(), network));
+        let network = self.network.unwrap_or(default_network);
+        overrides.push(("merge_mining_proxy.override_from".to_string(), network.to_string()));
         overrides
     }
 }

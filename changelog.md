@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.38.8](https://github.com/tari-project/tari/compare/v0.38.7...v0.38.8) (2022-10-25)
+
+
+### Features
+
+* add deepsource config ([dceea99](https://github.com/tari-project/tari/commit/dceea99968c803cc8c638df376c4d5cf6966ada9))
+* add more detailed error mapping for the ffi ([#4840](https://github.com/tari-project/tari/issues/4840)) ([b27391e](https://github.com/tari-project/tari/commit/b27391ead238f36dd7042a1a6cfde231f7ac8d41))
+* add multisig script that returns aggregate of signed public keys ([#4742](https://github.com/tari-project/tari/issues/4742)) ([c004e30](https://github.com/tari-project/tari/commit/c004e30925049865bc84fa5c3ce4cd06b2765882))
+* add opcode versions ([#4836](https://github.com/tari-project/tari/issues/4836)) ([c8abe99](https://github.com/tari-project/tari/commit/c8abe998454d9f0ddbc3cfa627979c7d24b8d5ec))
+* better FFI feedback from transaction validation ([#4827](https://github.com/tari-project/tari/issues/4827)) ([3c97be4](https://github.com/tari-project/tari/commit/3c97be46ac3bfcde378a38e03c7cfa8cc2436298))
+* **comms:** adds periodic socket-level liveness checks ([#4819](https://github.com/tari-project/tari/issues/4819)) ([2bea05f](https://github.com/tari-project/tari/commit/2bea05f89c52edf39d849a4dc9e917d13381e51c))
+
+
+### Bug Fixes
+
+* **base-node:** use Network::from_str to parse network in cli ([#4838](https://github.com/tari-project/tari/issues/4838)) ([47d279e](https://github.com/tari-project/tari/commit/47d279ed506c815f3db30c4b63c2b7ed7e9283dc))
+* **comms/rpc:** measures client-side latency to first message received ([#4817](https://github.com/tari-project/tari/issues/4817)) ([02b8660](https://github.com/tari-project/tari/commit/02b8660f3293abdbef11a27123916044c9682f82))
+* **core:** dont request full non-tip block if block is empty ([#4802](https://github.com/tari-project/tari/issues/4802)) ([becff0f](https://github.com/tari-project/tari/commit/becff0fe94714d70bf9bd5f1f214343d24e61cfe))
+* **core:** increase sync timeouts ([#4800](https://github.com/tari-project/tari/issues/4800)) ([87dfab5](https://github.com/tari-project/tari/commit/87dfab518402309c1f5eea35027b552afcba06ff))
+* **core:** periodically commit large transaction in prune_to_height ([#4805](https://github.com/tari-project/tari/issues/4805)) ([700a007](https://github.com/tari-project/tari/commit/700a0077731f2955cb7686fc72b808f26553c39f))
+* **dht:** fix over allocation for encrypted messages ([#4832](https://github.com/tari-project/tari/issues/4832)) ([d29a64c](https://github.com/tari-project/tari/commit/d29a64c975951cd362fb98027870282f244bf218))
+* **dht:** zeroize AEAD keys on drop ([#4843](https://github.com/tari-project/tari/issues/4843)) ([9957222](https://github.com/tari-project/tari/commit/9957222e452fe09936550dbe1e4cbc4abbfc4365))
+* list-connections ([#4841](https://github.com/tari-project/tari/issues/4841)) ([23b2c9a](https://github.com/tari-project/tari/commit/23b2c9a529f6ce7523de23dd46c5a1ff911abec8))
+* remove clear_on_drop dependency ([#4848](https://github.com/tari-project/tari/issues/4848)) ([9edbbce](https://github.com/tari-project/tari/commit/9edbbce9c78c91ba74b4dd74c176c849ed11ee4e))
+
 ### [0.38.7](https://github.com/tari-project/tari/compare/v0.38.6...v0.38.7) (2022-10-11)
 
 

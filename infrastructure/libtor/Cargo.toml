@@ -11,7 +11,7 @@ tari_shutdown = { version = "^0.38", path = "../shutdown"}
 
 derivative = "2.2.0"
 log = "0.4.8"
-log4rs = { version = "1.0.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
+log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
 multiaddr = { version = "0.14.0" }
 rand = "0.7.3"
 tempfile = "3.1.0"

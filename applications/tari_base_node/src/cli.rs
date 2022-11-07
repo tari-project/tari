@@ -49,21 +49,17 @@ pub struct Cli {
     pub watch: Option<String>,
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
-    pub network: Option<String>,
+    pub network: Option<Network>,
 }
 
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self
-            .network
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| default_network.to_string());
+        let network = self.network.unwrap_or(default_network);
         overrides.push(("base_node.override_from".to_string(), network.to_string()));
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
         overrides.push(("auto_update.override_from".to_string(), network.to_string()));
-        overrides.push(("metrics.override_from".to_string(), network));
+        overrides.push(("metrics.override_from".to_string(), network.to_string()));
         overrides
     }
 }

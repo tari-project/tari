@@ -36,7 +36,7 @@ use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_core::{
     blocks::BlockHeader,
     consensus::{ConsensusDecoding, ToConsensusBytes},
-    proof_of_work::sha3_difficulty,
+    proof_of_work::sha3x_difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 
@@ -263,7 +263,7 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
             return 2;
         },
     };
-    let difficulty = sha3_difficulty(&block_header);
+    let difficulty = sha3x_difficulty(&block_header);
     difficulty.as_u64()
 }
 
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn share_validate(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
     }
-    let difficulty = sha3_difficulty(&block_header).as_u64();
+    let difficulty = sha3x_difficulty(&block_header).as_u64();
     if difficulty >= template_difficulty {
         0
     } else if difficulty >= share_difficulty {
@@ -357,8 +357,8 @@ mod tests {
         let mut block = create_test_block();
         block.header.nonce = rand::thread_rng().gen();
         for _ in 0..20000 {
-            if sha3_difficulty(&block.header) >= difficulty {
-                return Ok((sha3_difficulty(&block.header), block.header.nonce));
+            if sha3x_difficulty(&block.header) >= difficulty {
+                return Ok((sha3x_difficulty(&block.header), block.header.nonce));
             }
             block.header.nonce += 1;
         }
@@ -370,8 +370,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 15151693527177504675;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(8707);
+        const NONCE: u64 = 1368783905506569398;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(3549);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;

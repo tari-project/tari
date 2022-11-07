@@ -397,6 +397,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub fn delete_orphan(&mut self, hash: HashOutput) -> &mut Self {
+        self.transaction.delete_orphan(hash);
+        self
+    }
+
     pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64) -> &mut Self {
         self.transaction.insert_bad_block(hash, height);
         self

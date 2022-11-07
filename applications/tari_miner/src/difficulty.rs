@@ -23,7 +23,7 @@
 use std::convert::TryInto;
 
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3_difficulty};
+use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::errors::MinerError;
@@ -67,7 +67,7 @@ impl BlockHeaderSha3 {
     #[inline]
     pub fn difficulty(&mut self) -> Difficulty {
         self.hashes = self.hashes.saturating_add(1);
-        sha3_difficulty(&self.header).into()
+        sha3x_difficulty(&self.header).into()
     }
 
     #[allow(clippy::cast_possible_wrap)]
@@ -84,7 +84,7 @@ impl BlockHeaderSha3 {
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_core::proof_of_work::sha3_difficulty as core_sha3_difficulty;
+    use tari_core::proof_of_work::sha3x_difficulty as core_sha3_difficulty;
 
     use super::*;
 
