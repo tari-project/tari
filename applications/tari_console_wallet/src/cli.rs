@@ -58,7 +58,8 @@ pub struct Cli {
     /// Force wallet recovery
     #[clap(long, alias = "recover")]
     pub recovery: bool,
-    /// Supply the optional wallet seed words for recovery on the command line
+    /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
+    /// separated. e.g. --seed-words "seed1 seed2 ..."
     #[clap(long, alias = "seed-words")]
     pub seed_words: Option<String>,
     /// Supply the optional file name to save the wallet seed words into
@@ -81,7 +82,7 @@ pub struct Cli {
     pub command_mode_auto_exit: bool,
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
-    pub network: Option<String>,
+    pub network: Option<Network>,
     #[clap(long, env = "TARI_WALLET_ENABLE_GRPC", alias = "enable-grpc")]
     pub grpc_enabled: bool,
     #[clap(long, env = "TARI_WALLET_GRPC_ADDRESS")]
@@ -93,10 +94,10 @@ pub struct Cli {
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.network.clone().unwrap_or_else(|| default_network.to_string());
-        overrides.push(("wallet.network".to_string(), network.clone()));
-        overrides.push(("wallet.override_from".to_string(), network.clone()));
-        overrides.push(("p2p.seeds.override_from".to_string(), network));
+        let network = self.network.unwrap_or(default_network);
+        overrides.push(("wallet.network".to_string(), network.to_string()));
+        overrides.push(("wallet.override_from".to_string(), network.to_string()));
+        overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
         // Either of these configs enable grpc
         if let Some(ref addr) = self.grpc_address {
             overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));

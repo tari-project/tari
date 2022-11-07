@@ -23,6 +23,7 @@
 use std::{fmt, net::SocketAddr};
 
 use serde_derive::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[derive(Clone, Copy, Debug)]
 pub enum KeyType {
@@ -78,26 +79,13 @@ impl fmt::Display for KeyBlob<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize)]
+#[zeroize(drop)]
 pub enum PrivateKey {
     /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).
     Rsa1024(String),
     /// The server should use the ed25519 v3 key provided in as KeyBlob (v3).
     Ed25519V3(String),
-}
-
-impl Drop for PrivateKey {
-    fn drop(&mut self) {
-        use clear_on_drop::clear::Clear;
-        match self {
-            PrivateKey::Rsa1024(ref mut key) => {
-                Clear::clear(key);
-            },
-            PrivateKey::Ed25519V3(ref mut key) => {
-                Clear::clear(key);
-            },
-        }
-    }
 }
 
 /// Represents a mapping between an onion port and a proxied address (usually 127.0.0.1:xxxx).

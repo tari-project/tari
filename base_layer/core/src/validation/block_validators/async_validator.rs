@@ -160,6 +160,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .commitment
             .commit_value(&total_kernel_offset, total_reward.as_u64());
         let db = self.db.inner().clone();
+        let constants = self.rules.consensus_constants(height).clone();
         task::spawn_blocking(move || {
             let db = db.db_read_access()?;
             let timer = Instant::now();
@@ -175,6 +176,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     return Err(ValidationError::UnsortedOrDuplicateKernel);
                 }
 
+                helpers::validate_kernel_version(&constants, kernel)?;
                 kernel.verify_signature()?;
 
                 if kernel.is_coinbase() {
@@ -248,6 +250,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let db = self.db.inner().clone();
         let prev_hash: [u8; 32] = header.prev_hash.as_slice().try_into().unwrap_or([0; 32]);
         let height = header.height;
+        let constants = self.rules.consensus_constants(height).clone();
         task::spawn_blocking(move || {
             let timer = Instant::now();
             let mut aggregate_input_key = PublicKey::default();
@@ -295,6 +298,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     );
                     return Err(TransactionError::InputMaturity.into());
                 }
+
+                helpers::validate_input_version(&constants, input)?;
 
                 match helpers::check_input_is_utxo(&*db, input) {
                     Err(ValidationError::UnknownInput) => {
@@ -402,6 +407,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
 
+                        helpers::validate_output_version(&constants, output)?;
                         helpers::check_permitted_output_types(&constants, output)?;
                         helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
                         output.verify_metadata_signature()?;

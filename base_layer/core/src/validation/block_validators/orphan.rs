@@ -37,6 +37,7 @@ use crate::{
             check_permitted_output_types,
             check_sorting_and_duplicates,
             check_total_burned,
+            validate_versions,
         },
         OrphanValidation,
         ValidationError,
@@ -88,6 +89,8 @@ impl OrphanValidation for OrphanBlockValidator {
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
         let constants = self.rules.consensus_constants(height);
+        validate_versions(&block.body, constants)?;
+        trace!(target: LOG_TARGET, "SV - Block body versions are ok for {} ", &block_id);
         check_block_weight(block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 

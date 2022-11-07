@@ -34,7 +34,7 @@ use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         transaction_components::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
@@ -109,7 +109,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     // hash changing. This introduces the required entropy
     block.header.nonce = rand::thread_rng().gen();
     for _i in 0..20000 {
-        if sha3_difficulty(&block.header) == difficulty {
+        if sha3x_difficulty(&block.header) == difficulty {
             return Ok(block);
         }
         block.header.nonce += 1;

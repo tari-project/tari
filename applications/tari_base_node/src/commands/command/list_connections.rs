@@ -124,7 +124,7 @@ impl CommandContext {
         println!();
         println!("Wallets");
         println!("-------");
-        if nodes.is_empty() {
+        if clients.is_empty() {
             println!("No active wallet connections.");
         } else {
             println!();

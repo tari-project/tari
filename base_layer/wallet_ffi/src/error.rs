@@ -313,6 +313,35 @@ impl From<WalletError> for LibWalletError {
                 code: 432,
                 message: format!("{:?}", w),
             },
+            WalletError::WalletStorageError(WalletStorageError::IoError(_)) => Self {
+                code: 433,
+                message: format!("{:?}", w),
+            },
+            WalletError::WalletStorageError(WalletStorageError::FileError(_)) => Self {
+                code: 434,
+                message: format!("{:?}", w),
+            },
+            // these are general catch errors to try and reduce 999 when we get it with zero additional logging
+            WalletError::SetLoggerError(_) => Self {
+                code: 994,
+                message: format!("{:?}", w),
+            },
+            WalletError::ConnectivityError(_) => Self {
+                code: 995,
+                message: format!("{:?}", w),
+            },
+            WalletError::ServiceInitializationError(_) => Self {
+                code: 996,
+                message: format!("{:?}", w),
+            },
+            WalletError::CommsInitializationError(_) => Self {
+                code: 997,
+                message: format!("{:?}", w),
+            },
+            WalletError::WalletStorageError(_) => Self {
+                code: 998,
+                message: format!("{:?}", w),
+            },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,

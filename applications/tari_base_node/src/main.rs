@@ -69,14 +69,14 @@
 /// `whoami` - Displays identity information about this Base Node and it's wallet
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
-use std::{process, str::FromStr, sync::Arc};
+use std::{process, sync::Arc};
 
 use clap::Parser;
 use log::*;
 use opentelemetry::{self, global};
 use tari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_base_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
-use tari_common::{configuration::Network, exit_codes::ExitError, initialize_logging, load_configuration};
+use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -114,8 +114,8 @@ fn main_inner() -> Result<(), ExitError> {
     )?;
 
     let mut config = ApplicationConfig::load_from(&cfg)?;
-    if let Some(network) = &cli.network {
-        config.base_node.network = Network::from_str(network)?;
+    if let Some(network) = cli.network {
+        config.base_node.network = network;
     }
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 

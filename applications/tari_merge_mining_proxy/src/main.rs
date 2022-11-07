@@ -31,10 +31,7 @@ mod proxy;
 #[cfg(test)]
 mod test;
 
-use std::{
-    convert::Infallible,
-    io::{stdout, Write},
-};
+use std::{convert::Infallible, io::stdout};
 
 use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};

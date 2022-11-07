@@ -3,7 +3,7 @@
 # See https://www.conventionalcommits.org/en/v1.0.0/ for more information
 name: PR
 
-on:
+'on':
   pull_request:
     types:
       - opened

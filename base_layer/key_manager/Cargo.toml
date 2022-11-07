@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.38.7"
+version = "0.38.8"
 edition = "2021"
 
 [lib]
@@ -20,7 +20,6 @@ arrayvec = "0.7.1"
 argon2 = { version = "0.2", features = ["std"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
-clear_on_drop = "=0.2.4"
 console_error_panic_hook = { version = "0.1.7", optional = true }
 crc32fast = "1.2.1"
 derivative = "2.2.0"
@@ -35,6 +34,7 @@ thiserror = "1.0.26"
 strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"], optional = true }
+zeroize = "1"
 
 [dev-dependencies]
 sha2 = "0.9.8"

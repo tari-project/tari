@@ -79,52 +79,52 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
 }
 
 // Opcode constants: Block Height Checks
-pub const OP_CHECK_HEIGHT_VERIFY: u8 = 0x66;
-pub const OP_CHECK_HEIGHT: u8 = 0x67;
-pub const OP_COMPARE_HEIGHT_VERIFY: u8 = 0x68;
-pub const OP_COMPARE_HEIGHT: u8 = 0x69;
+const OP_CHECK_HEIGHT_VERIFY: u8 = 0x66;
+const OP_CHECK_HEIGHT: u8 = 0x67;
+const OP_COMPARE_HEIGHT_VERIFY: u8 = 0x68;
+const OP_COMPARE_HEIGHT: u8 = 0x69;
 
 // Opcode constants: Stack Manipulation
-pub const OP_DROP: u8 = 0x70;
-pub const OP_DUP: u8 = 0x71;
-pub const OP_REV_ROT: u8 = 0x72;
-pub const OP_PUSH_HASH: u8 = 0x7a;
-pub const OP_PUSH_ZERO: u8 = 0x7b;
-pub const OP_NOP: u8 = 0x73;
-pub const OP_PUSH_ONE: u8 = 0x7c;
-pub const OP_PUSH_INT: u8 = 0x7d;
-pub const OP_PUSH_PUBKEY: u8 = 0x7e;
+const OP_DROP: u8 = 0x70;
+const OP_DUP: u8 = 0x71;
+const OP_REV_ROT: u8 = 0x72;
+const OP_PUSH_HASH: u8 = 0x7a;
+const OP_PUSH_ZERO: u8 = 0x7b;
+const OP_NOP: u8 = 0x73;
+const OP_PUSH_ONE: u8 = 0x7c;
+const OP_PUSH_INT: u8 = 0x7d;
+const OP_PUSH_PUBKEY: u8 = 0x7e;
 
 // Opcode constants: Math Operations
-pub const OP_EQUAL: u8 = 0x80;
-pub const OP_EQUAL_VERIFY: u8 = 0x81;
-pub const OP_ADD: u8 = 0x93;
-pub const OP_SUB: u8 = 0x94;
-pub const OP_GE_ZERO: u8 = 0x82;
-pub const OP_GT_ZERO: u8 = 0x83;
-pub const OP_LE_ZERO: u8 = 0x84;
-pub const OP_LT_ZERO: u8 = 0x85;
+const OP_EQUAL: u8 = 0x80;
+const OP_EQUAL_VERIFY: u8 = 0x81;
+const OP_ADD: u8 = 0x93;
+const OP_SUB: u8 = 0x94;
+const OP_GE_ZERO: u8 = 0x82;
+const OP_GT_ZERO: u8 = 0x83;
+const OP_LE_ZERO: u8 = 0x84;
+const OP_LT_ZERO: u8 = 0x85;
 
 // Opcode constants: Boolean Logic
 pub const OP_OR_VERIFY: u8 = 0x64;
 pub const OP_OR: u8 = 0x65;
 
 // Opcode constants: Cryptographic Operations
-pub const OP_CHECK_SIG: u8 = 0xac;
-pub const OP_CHECK_SIG_VERIFY: u8 = 0xad;
-pub const OP_CHECK_MULTI_SIG: u8 = 0xae;
-pub const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
-pub const OP_HASH_BLAKE256: u8 = 0xb0;
-pub const OP_HASH_SHA256: u8 = 0xb1;
-pub const OP_HASH_SHA3: u8 = 0xb2;
-pub const OP_TO_RISTRETTO_POINT: u8 = 0xb3;
-pub const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb4;
+const OP_CHECK_SIG: u8 = 0xac;
+const OP_CHECK_SIG_VERIFY: u8 = 0xad;
+const OP_CHECK_MULTI_SIG: u8 = 0xae;
+const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
+const OP_HASH_BLAKE256: u8 = 0xb0;
+const OP_HASH_SHA256: u8 = 0xb1;
+const OP_HASH_SHA3: u8 = 0xb2;
+const OP_TO_RISTRETTO_POINT: u8 = 0xb3;
+const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb4;
 
 // Opcode constants: Miscellaneous
-pub const OP_RETURN: u8 = 0x60;
-pub const OP_IF_THEN: u8 = 0x61;
-pub const OP_ELSE: u8 = 0x62;
-pub const OP_END_IF: u8 = 0x63;
+const OP_RETURN: u8 = 0x60;
+const OP_IF_THEN: u8 = 0x61;
+const OP_ELSE: u8 = 0x62;
+const OP_END_IF: u8 = 0x63;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Opcode {
@@ -229,14 +229,17 @@ pub enum Opcode {
     /// Identical to CheckSig, except that nothing is pushed to the stack if the signature is valid, and the operation
     /// fails with VERIFY_FAILED if the signature is invalid.
     CheckSigVerify(Box<Message>),
-    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
-    /// push 1 to the stack, otherwise push 0.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
+    /// pushes 1 to the stack, otherwise pushes 0.
     CheckMultiSig(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the m signatures are valid, and the
-    /// operation fails with VERIFY_FAILED if any of the signatures are invalid.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message
+    /// nothing is pushed to the stack, otherwise, the script fails with VERIFY_FAILED.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pop m signatures from the stack. If m signatures out of the provided n public keys sign the 32-byte message,
-    /// push the aggregate of the public keys to the stack, otherwise fails with VERIFY_FAILED.
+    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
+    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
+    /// pushes the aggregate of the public keys to the stack, otherwise, the script fails with VERIFY_FAILED.
     CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
     /// Pops the top element which must be a valid 32-byte scalar or hash and calculates the corresponding Ristretto
     /// point, and pushes the result to the stack. Fails with EMPTY_STACK if the stack is empty.
@@ -258,6 +261,47 @@ pub enum Opcode {
 }
 
 impl Opcode {
+    pub fn get_version(&self) -> OpcodeVersion {
+        match self {
+            Opcode::CheckHeightVerify(..) |
+            Opcode::CheckHeight(..) |
+            Opcode::CompareHeightVerify |
+            Opcode::CompareHeight |
+            Opcode::Nop |
+            Opcode::PushZero |
+            Opcode::PushOne |
+            Opcode::PushHash(..) |
+            Opcode::PushInt(..) |
+            Opcode::PushPubKey(..) |
+            Opcode::Drop |
+            Opcode::Dup |
+            Opcode::RevRot |
+            Opcode::GeZero |
+            Opcode::GtZero |
+            Opcode::LeZero |
+            Opcode::LtZero |
+            Opcode::Add |
+            Opcode::Sub |
+            Opcode::Equal |
+            Opcode::EqualVerify |
+            Opcode::Or(..) |
+            Opcode::OrVerify(..) |
+            Opcode::HashBlake256 |
+            Opcode::HashSha256 |
+            Opcode::HashSha3 |
+            Opcode::CheckSig(..) |
+            Opcode::CheckSigVerify(..) |
+            Opcode::CheckMultiSig(..) |
+            Opcode::CheckMultiSigVerify(..) |
+            Opcode::ToRistrettoPoint |
+            Opcode::Return |
+            Opcode::IfThen |
+            Opcode::Else |
+            Opcode::EndIf => OpcodeVersion::V0,
+            Opcode::CheckMultiSigVerifyAggregatePubKey(..) => OpcodeVersion::V1,
+        }
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Vec<Opcode>, ScriptError> {
         let mut script = Vec::new();
         let mut bytes_copy = bytes;
@@ -563,6 +607,13 @@ impl fmt::Display for Opcode {
             EndIf => write!(fmt, "EndIf"),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum OpcodeVersion {
+    V0 = 0,
+    V1 = 1,
 }
 
 #[cfg(test)]
