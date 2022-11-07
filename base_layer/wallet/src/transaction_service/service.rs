@@ -1062,14 +1062,14 @@ where
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys 
+        // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let shared_secret = CommsDHKE::new(&sender_offset_private_key, &dest_pubkey);
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
@@ -1223,13 +1223,13 @@ where
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys 
+        // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let shared_secret = CommsDHKE::new(&sender_offset_private_key, &dest_pubkey);
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
@@ -2665,7 +2665,7 @@ fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<Priva
         WalletOutputRewindKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
             .finalize()
-            .as_ref()
+            .as_ref(),
     )
 }
 
@@ -2675,7 +2675,7 @@ fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<P
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
             .finalize()
-            .as_ref()
+            .as_ref(),
     )
 }
 
@@ -2685,7 +2685,7 @@ fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<Pri
         WalletOutputSpendingKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
             .finalize()
-            .as_ref()
+            .as_ref(),
     )
 }
 

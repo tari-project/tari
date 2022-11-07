@@ -2321,7 +2321,10 @@ where
         pre_image: PublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let shared_secret = CommsDHKE::new(self.node_identity.as_ref().secret_key(), &output.sender_offset_public_key);
+        let shared_secret = CommsDHKE::new(
+            self.node_identity.as_ref().secret_key(),
+            &output.sender_offset_public_key,
+        );
         let blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
@@ -2551,15 +2554,13 @@ where
 
                         // match found
                         Some(matched_key) => {
-                            let shared_secret = CommsDHKE::new(
-                                &matched_key.private_key,
-                                &output.sender_offset_public_key
-                            );
+                            let shared_secret =
+                                CommsDHKE::new(&matched_key.private_key, &output.sender_offset_public_key);
                             scanned_outputs.push((
                                 output.clone(),
                                 OutputSource::OneSided,
                                 matched_key.private_key.clone(),
-                                shared_secret
+                                shared_secret,
                             ));
                         },
                     }
@@ -2732,7 +2733,7 @@ fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<Priva
         WalletOutputRewindKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
             .finalize()
-            .as_ref()
+            .as_ref(),
     )
 }
 
@@ -2742,7 +2743,7 @@ fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<P
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
             .finalize()
-            .as_ref()
+            .as_ref(),
     )
 }
 
