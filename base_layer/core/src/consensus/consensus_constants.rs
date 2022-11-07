@@ -329,7 +329,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
-            validator_node_timeout: 0,
+            validator_node_timeout: 100,
         }]
     }
 
