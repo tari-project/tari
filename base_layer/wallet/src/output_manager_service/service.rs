@@ -32,7 +32,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
     covenants::Covenant,
@@ -62,7 +62,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
 use tari_script::{inputs, script, Opcode, TariScript};
@@ -2322,7 +2322,7 @@ where
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(
+            CommsDHKE::new(
                 self.node_identity.as_ref().secret_key(),
                 &output.sender_offset_public_key,
             )
@@ -2558,11 +2558,7 @@ where
                         // match found
                         Some(matched_key) => {
                             match PrivateKey::from_bytes(
-                                CommsPublicKey::shared_secret(
-                                    &matched_key.private_key,
-                                    &output.sender_offset_public_key,
-                                )
-                                .as_bytes(),
+                                CommsDHKE::new(&matched_key.private_key, &output.sender_offset_public_key).as_bytes(),
                             ) {
                                 Ok(spending_sk) => scanned_outputs.push((
                                     output.clone(),
@@ -2591,7 +2587,7 @@ where
                     // computing shared secret
                     let shared_secret = PrivateKey::from_bytes(
                         WalletHasher::new_with_label("stealth_address")
-                            .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
+                            .chain(CommsDHKE::new(&wallet_sk, nonce.as_ref()).as_bytes())
                             .finalize()
                             .as_ref(),
                     )
@@ -2603,7 +2599,7 @@ where
                     }
 
                     match PrivateKey::from_bytes(
-                        CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
+                        CommsDHKE::new(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
                     ) {
                         Ok(spending_sk) => scanned_outputs.push((
                             output.clone(),
