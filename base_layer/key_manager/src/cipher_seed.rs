@@ -34,7 +34,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::{ByteArray, Hidden};
+use tari_utilities::Hidden;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
