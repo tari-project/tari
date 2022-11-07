@@ -399,6 +399,8 @@ These labels indicate the level or type of experience needed to address. Example
 
 * `W-consensus_breaking` - This PR changes consensus rules and would require a hard-fork to implement.
 * `W-network_breaking` - This PR changes networking messages and requires care when deploying.
+* `W-transaction_breaking` - This PR changes data that wallets use to send transactions. This might not cause 
+a hard fork, but wallets may not be able to recover funds or interact with each other.
 
 [git commit farming]: https://www.tari.com/git-farming/ "The Tari Blog: Git farming or, How to get your PRs merged into Tari"
 
