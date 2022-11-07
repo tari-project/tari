@@ -50,6 +50,9 @@ macro_rules! consensus_encoding_varint_impl {
 consensus_encoding_varint_impl!(u16);
 consensus_encoding_varint_impl!(u32);
 consensus_encoding_varint_impl!(u64);
+consensus_encoding_varint_impl!(i16);
+consensus_encoding_varint_impl!(i32);
+consensus_encoding_varint_impl!(i64);
 
 #[cfg(test)]
 mod test {
@@ -64,6 +67,15 @@ mod test {
         check_consensus_encoding_correctness(subject).unwrap();
 
         let subject = u64::MAX;
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        let subject = i16::MIN;
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        let subject = i32::MIN;
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        let subject = i64::MIN;
         check_consensus_encoding_correctness(subject).unwrap();
     }
 }
