@@ -5202,7 +5202,7 @@ dependencies = [
 name = "tari_wallet"
 version = "0.38.8"
 dependencies = [
- "argon2 0.2.4",
+ "argon2 0.4.1",
  "async-trait",
  "bincode",
  "blake2 0.9.2",
@@ -5246,6 +5246,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tower",
+ "zeroize",
 ]
 
 [[package]]

@@ -20,17 +20,36 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{
+    password_hash::{Decimal, SaltString},
+    Argon2,
+    PasswordHasher,
+};
 use rand::rngs::OsRng;
 use zeroize::Zeroizing;
 
 pub fn create_salted_hashed_password(password: &[u8]) -> argon2::password_hash::Result<Zeroizing<String>> {
-    let argon2 = Argon2::default();
-    // Generate a random salt
+    // Generate a 16-byte random salt
     let passphrase_salt = SaltString::generate(&mut OsRng);
 
-    // Hash the password, this is placed in the configuration file
-    let hashed_password = argon2.hash_password(password, &passphrase_salt)?;
+    // Use the recommended OWASP parameters, which are not the default:
+    // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+    let params = argon2::Params::new(
+        37 * 1024, // m-cost: 37 MiB, converted to KiB
+        1,         // t-cost
+        1,         // p-cost
+        None,      // output length: default
+    )?;
+
+    // Hash the password; this is placed in the configuration file
+    // We explicitly use the recommended algorithm and version due to the API
+    let hashed_password = Argon2::default().hash_password_customized(
+        password,
+        Some(argon2::Algorithm::Argon2id.ident()),
+        Some(argon2::Version::V0x13 as Decimal), // for some reason we need to use the numerical representation here
+        params,
+        &passphrase_salt,
+    )?;
 
     Ok(Zeroizing::new(hashed_password.to_string()))
 }
