@@ -480,32 +480,6 @@ async fn test_do_not_overwrite_master_key() {
     .unwrap();
 }
 
-#[tokio::test]
-async fn test_sign_message() {
-    let factories = CryptoFactories::default();
-    let dir = tempdir().unwrap();
-
-    let shutdown = Shutdown::new();
-    let mut wallet = create_wallet(
-        dir.path(),
-        "wallet_db",
-        factories.clone(),
-        shutdown.to_signal(),
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-
-    let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
-    let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-    let message = "Tragedy will find us.";
-    let schnorr = wallet.sign_message(secret, nonce, message).unwrap();
-    let signature = schnorr.get_signature().clone();
-
-    assert!(wallet.verify_message_signature(public_key, public_nonce, signature, message.into()));
-}
-
 #[test]
 fn test_many_iterations_store_and_forward_send_tx() {
     for _n in 1..=10 {
@@ -789,9 +763,9 @@ async fn test_recovery_birthday() {
     // println!("{:?}", mnemonic_seq);
 
     let seed_words: Vec<String> = [
-        "octavo", "joroba", "aplicar", "lamina", "semilla", "tiempo", "codigo", "contar", "maniqui", "guiso",
-        "imponer", "barba", "torpedo", "mejilla", "fijo", "grave", "caer", "libertad", "sol", "sordo", "alacran",
-        "bucle", "diente", "vereda",
+        "octubre", "rinon", "ameno", "rigido", "verbo", "dosis", "ocaso", "fallo", "tez", "ladron", "entrar", "pedal",
+        "fortuna", "ahogo", "llanto", "mascara", "intuir", "buey", "cubrir", "anillo", "cajon", "entrar", "clase",
+        "latir",
     ]
     .iter()
     .map(|w| w.to_string())

@@ -27,7 +27,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,
-    types::{CommsDatabase, CommsPublicKey, CommsSecretKey},
+    types::{CommsDHKE, CommsDatabase, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
 use tari_crypto::keys::PublicKey;
@@ -97,7 +97,7 @@ pub fn make_dht_header(
         );
         let signature = make_valid_message_signature(node_identity, &binding_message_representation);
         if flags.is_encrypted() {
-            let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
+            let shared_secret = CommsDHKE::new(e_secret_key, node_identity.public_key());
             let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
             message_signature = crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature)?;
         }
@@ -200,7 +200,7 @@ pub fn make_dht_envelope<T: prost::Message>(
 ) -> Result<DhtEnvelope, DhtOutboundError> {
     let (e_secret_key, e_public_key) = make_keypair();
     let message = if flags.is_encrypted() {
-        let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
+        let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let mut message = prepare_message(true, message);
         crypt::encrypt(&key_message, &mut message).unwrap();

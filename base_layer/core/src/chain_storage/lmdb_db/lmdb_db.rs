@@ -2603,7 +2603,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     drop(txn);
 
     if n < MIGRATION_VERSION {
-        tari_script_execution_stack_bug_migration::migrate(db)?;
+        // Add migrations here
         info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
         let txn = db.write_transaction()?;
         lmdb_replace(
@@ -2616,79 +2616,4 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     }
 
     Ok(())
-}
-
-// TODO: this is a temporary fix, remove
-mod tari_script_execution_stack_bug_migration {
-    use serde::{Deserialize, Serialize};
-    use tari_common_types::types::{ComSignature, PublicKey};
-    use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr};
-    use tari_script::{ExecutionStack, HashValue, ScalarValue, StackItem};
-
-    use super::*;
-    use crate::{
-        chain_storage::lmdb_db::lmdb::lmdb_map_inplace,
-        transactions::transaction_components::{SpentOutput, TransactionInputVersion},
-    };
-
-    pub fn migrate(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-        {
-            let txn = db.read_transaction()?;
-            // Only perform migration if necessary
-            if lmdb_len(&txn, &db.inputs_db)? == 0 {
-                return Ok(());
-            }
-        }
-        unsafe {
-            LMDBStore::resize(&db.env, &LMDBConfig::new(0, 1024 * 1024 * 1024, 0))?;
-        }
-        let txn = db.write_transaction()?;
-        lmdb_map_inplace(&txn, &db.inputs_db, |mut v: TransactionInputRowDataV0| {
-            let mut items = Vec::with_capacity(v.input.input_data.items.len());
-            while let Some(item) = v.input.input_data.items.pop() {
-                if let StackItemV0::Commitment(ref commitment) = item {
-                    let pk = PublicKey::from_bytes(commitment.as_bytes()).unwrap();
-                    items.push(StackItem::PublicKey(pk));
-                } else {
-                    items.push(unsafe { mem::transmute(item) });
-                }
-            }
-            let mut v = unsafe { mem::transmute::<_, TransactionInputRowData>(v) };
-            v.input.input_data = ExecutionStack::new(items);
-            Some(v)
-        })?;
-        txn.commit()?;
-        Ok(())
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub(crate) struct TransactionInputRowDataV0 {
-        pub input: TransactionInputV0,
-        pub header_hash: HashOutput,
-        pub mmr_position: u32,
-        pub hash: HashOutput,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct TransactionInputV0 {
-        version: TransactionInputVersion,
-        spent_output: SpentOutput,
-        input_data: ExecutionStackV0,
-        script_signature: ComSignature,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct ExecutionStackV0 {
-        items: Vec<StackItemV0>,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    enum StackItemV0 {
-        Number(i64),
-        Hash(HashValue),
-        Scalar(ScalarValue),
-        Commitment(PedersenCommitment),
-        PublicKey(RistrettoPublicKey),
-        Signature(RistrettoSchnorr),
-    }
 }

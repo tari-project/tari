@@ -30,11 +30,11 @@ use snow::{
 use tari_crypto::{
     hash::blake2::Blake256,
     hashing::DomainSeparatedHasher,
-    keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
+    keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
 
-use crate::types::{CommsCoreHashDomain, CommsPublicKey, CommsSecretKey};
+use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
@@ -66,7 +66,7 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
-fn noise_kdf(shared_key: &CommsPublicKey) -> [u8; 32] {
+fn noise_kdf(shared_key: &CommsDHKE) -> [u8; 32] {
     let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
     Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
 }
@@ -114,7 +114,7 @@ impl Dh for CommsDiffieHellman {
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
-        let shared = CommsPublicKey::shared_secret(&self.secret_key, &pk);
+        let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash, out);
         Ok(())
@@ -156,7 +156,7 @@ mod test {
         };
 
         let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
-        let expected_shared = CommsPublicKey::shared_secret(&secret_key2, &public_key);
+        let expected_shared = CommsDHKE::new(&secret_key2, &public_key);
         let expected_shared = noise_kdf(&expected_shared);
 
         let mut out = [0; 32];

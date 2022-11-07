@@ -27,8 +27,16 @@ use std::{
 
 use tari_common_types::types::Commitment;
 
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+pub enum UtxoSelectionMode {
+    #[default]
+    Safe,
+    ListingOnly,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct UtxoSelectionCriteria {
+    pub mode: UtxoSelectionMode,
     pub filter: UtxoSelectionFilter,
     pub ordering: UtxoSelectionOrdering,
     pub excluding: Vec<Commitment>,
