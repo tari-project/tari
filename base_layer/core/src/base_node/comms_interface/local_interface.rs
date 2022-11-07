@@ -38,7 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{ActiveValidatorNode, TemplateRegistrationEntry},
+    chain_storage::TemplateRegistrationEntry,
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -291,21 +291,6 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_committee(
-        &mut self,
-        height: u64,
-        shard: [u8; 32],
-    ) -> Result<Vec<ActiveValidatorNode>, CommsInterfaceError> {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchCommittee { height, shard })
-            .await??
-        {
-            NodeCommsResponse::FetchCommitteeResponse(validator_node) => Ok(validator_node),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

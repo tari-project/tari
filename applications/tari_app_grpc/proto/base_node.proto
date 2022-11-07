@@ -91,7 +91,6 @@ service BaseNode {
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
     // Get VNs
     rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
-    rpc GetCommittee(GetCommitteeRequest) returns (GetCommitteeResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
     // Get templates
     rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
@@ -449,16 +448,6 @@ message GetActiveValidatorNodesRequest {
 message GetActiveValidatorNodesResponse {
     bytes shard_key = 1;
     bytes public_key = 2;
-}
-
-
-message GetCommitteeRequest {
-    uint64 height = 1;
-    bytes shard_key = 2;
-}
-
-message GetCommitteeResponse {
-    repeated bytes public_key = 1;
 }
 
 message GetShardKeyRequest {

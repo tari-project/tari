@@ -41,7 +41,7 @@ use tari_common_types::{
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{ActiveValidatorNode, TemplateRegistrationEntry};
+use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
         Block,
@@ -1186,11 +1186,6 @@ where B: BlockchainBackend
     pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height)
-    }
-
-    pub fn fetch_committee(&self, height: u64, shard: [u8; 32]) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_committee(height, shard)
     }
 
     pub fn fetch_template_registrations<T: RangeBounds<u64>>(
