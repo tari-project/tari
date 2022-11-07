@@ -307,6 +307,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     if let Err(err) = self
                         .db
                         .write_transaction()
+                        .delete_orphan(header_hash)
                         .insert_bad_block(header_hash, current_height)
                         .commit()
                         .await
@@ -333,6 +334,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let timer = Instant::now();
             self.db
                 .write_transaction()
+                .delete_orphan(header_hash)
                 .insert_block_body(block.clone())
                 .set_best_block(
                     block.height(),

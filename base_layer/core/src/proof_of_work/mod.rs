@@ -49,7 +49,7 @@ pub use proof_of_work_algorithm::PowAlgorithm;
 #[cfg(feature = "base_node")]
 mod sha3_pow;
 #[cfg(feature = "base_node")]
-pub use sha3_pow::sha3_difficulty;
+pub use sha3_pow::sha3x_difficulty;
 #[cfg(all(test, feature = "base_node"))]
 pub use sha3_pow::test as sha3_test;
 
