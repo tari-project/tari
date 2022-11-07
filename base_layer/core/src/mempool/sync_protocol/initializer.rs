@@ -102,7 +102,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                         target: LOG_TARGET,
                         "Mempool sync still on hold, waiting for node to do initial sync",
                     );
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_secs(30)).await;
                 }
                 log_mdc::extend(mdc.clone());
             }
