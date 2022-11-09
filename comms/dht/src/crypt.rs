@@ -38,13 +38,10 @@ use prost::bytes::BytesMut;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     message::MessageExt,
-    types::{CommsPublicKey, CommsSecretKey},
+    types::{CommsDHKE, CommsPublicKey},
     BufMut,
 };
-use tari_crypto::{
-    keys::DiffieHellmanSharedSecret,
-    tari_utilities::{epoch_time::EpochTime, ByteArray},
-};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
 use zeroize::Zeroize;
 
 use crate::{
@@ -65,17 +62,6 @@ pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
-
-/// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
-    // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
-    //       currently possible because (Compressed)RistrettoPoint does not implement it.
-    let k = CommsPublicKey::shared_secret(secret_key, public_key);
-    let mut output = [0u8; 32];
-
-    output.copy_from_slice(k.as_bytes());
-    output
-}
 
 fn get_message_padding_length(message_length: usize) -> usize {
     if message_length == 0 {
@@ -147,17 +133,17 @@ fn get_original_message_from_padded_text(padded_message: &mut BytesMut) -> Resul
     Ok(())
 }
 
-pub fn generate_key_message(data: &[u8]) -> CipherKey {
+pub fn generate_key_message(data: &CommsDHKE) -> CipherKey {
     // domain separated hash of data (e.g. ecdh shared secret) using hashing API
-    let domain_separated_hash = comms_dht_hash_domain_key_message().chain(data).finalize();
+    let domain_separated_hash = comms_dht_hash_domain_key_message().chain(data.as_bytes()).finalize();
 
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     CipherKey(*Key::from_slice(domain_separated_hash.as_ref()))
 }
 
-pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> AuthenticatedCipherKey {
+pub fn generate_key_signature_for_authenticated_encryption(data: &CommsDHKE) -> AuthenticatedCipherKey {
     // domain separated of data (e.g. ecdh shared secret) using hashing API
-    let domain_separated_hash = comms_dht_hash_domain_key_signature().chain(data).finalize();
+    let domain_separated_hash = comms_dht_hash_domain_key_signature().chain(data.as_bytes()).finalize();
 
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     AuthenticatedCipherKey(*chacha20poly1305::Key::from_slice(domain_separated_hash.as_ref()))
@@ -377,7 +363,7 @@ mod test {
     #[test]
     fn decryption_fails_in_case_tag_is_manipulated() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let key_data = generate_ecdh_secret(&sk, &pk);
+        let key_data = CommsDHKE::new(&sk, &pk);
         let key = generate_key_signature_for_authenticated_encryption(&key_data);
 
         let signature = b"Top secret message, handle with care".as_slice();
@@ -401,7 +387,7 @@ mod test {
     #[test]
     fn decryption_fails_in_case_body_message_is_manipulated() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let key_data = generate_ecdh_secret(&sk, &pk);
+        let key_data = CommsDHKE::new(&sk, &pk);
         let key = generate_key_signature_for_authenticated_encryption(&key_data);
 
         let signature = b"Top secret message, handle with care".as_slice();
@@ -423,8 +409,8 @@ mod test {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let (other_sk, other_pk) = CommsPublicKey::random_keypair(&mut OsRng);
 
-        let key_data = generate_ecdh_secret(&sk, &pk);
-        let other_key_data = generate_ecdh_secret(&other_sk, &other_pk);
+        let key_data = CommsDHKE::new(&sk, &pk);
+        let other_key_data = CommsDHKE::new(&other_sk, &other_pk);
 
         let key = generate_key_signature_for_authenticated_encryption(&key_data);
         let other_key = generate_key_signature_for_authenticated_encryption(&other_key_data);

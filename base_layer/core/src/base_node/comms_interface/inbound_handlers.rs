@@ -774,11 +774,11 @@ where B: BlockchainBackend + 'static
         fn update_target_difficulty(block: &ChainBlock) {
             match block.header().pow_algo() {
                 PowAlgorithm::Sha3 => {
-                    metrics::target_difficulty_sha(block.height())
+                    metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
                 PowAlgorithm::Monero => {
-                    metrics::target_difficulty_monero(block.height())
+                    metrics::target_difficulty_monero()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

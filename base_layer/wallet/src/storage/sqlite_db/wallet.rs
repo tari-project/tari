@@ -28,7 +28,7 @@ use std::{
 };
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{rand_core::OsRng, Decimal, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
 use chacha20poly1305::{aead::NewAead, Key, Tag, XChaCha20Poly1305, XNonce};
@@ -47,6 +47,7 @@ use tari_utilities::{
     SafePassword,
 };
 use tokio::time::Instant;
+use zeroize::Zeroizing;
 
 use crate::{
     error::WalletStorageError,
@@ -408,23 +409,53 @@ impl WalletBackend for WalletSqliteDatabase {
             return Err(WalletStorageError::AlreadyEncrypted);
         }
 
-        let argon2 = Argon2::default();
-        let passphrase_salt = SaltString::generate(&mut OsRng);
+        // Use the recommended OWASP parameters, which are not the default:
+        // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
 
-        let passphrase_hash = argon2
-            .hash_password_simple(passphrase.reveal(), &passphrase_salt)
+        // These are the parameters for the passphrase hash
+        let params_passphrase = argon2::Params::new(
+            37 * 1024, // m-cost: 37 MiB, converted to KiB
+            1,         // t-cost
+            1,         // p-cost
+            None,      // output length: default is fine for this use
+        )
+        .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+        // These are the parameters for the encryption key
+        // We set them separately to ensure a proper key size
+        let params_encryption = argon2::Params::new(
+            37 * 1024,              // m-cost: 37 MiB, converted to KiB
+            1,                      // t-cost
+            1,                      // p-cost
+            Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
+        )
+        .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+        // Hash the passphrase to a PHC string for later verification
+        let passphrase_salt = SaltString::generate(&mut OsRng);
+        let passphrase_hash = argon2::Argon2::default()
+            .hash_password_customized(
+                passphrase.reveal(),
+                Some(argon2::Algorithm::Argon2id.ident()),
+                Some(argon2::Version::V0x13 as Decimal), // the API requires the numerical version representation
+                params_passphrase,
+                &passphrase_salt,
+            )
             .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
             .to_string();
+
+        // Hash the passphrase to produce a ChaCha20-Poly1305 key
         let encryption_salt = SaltString::generate(&mut OsRng);
+        let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
+        argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
+            .hash_password_into(
+                passphrase.reveal(),
+                encryption_salt.as_bytes(),
+                derived_encryption_key.as_mut(),
+            )
+            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-        let derived_encryption_key = argon2
-            .hash_password_simple(passphrase.reveal(), encryption_salt.as_str())
-            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
-            .hash
-            .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
-
-        let key = Key::from_slice(derived_encryption_key.as_bytes());
-        let cipher = XChaCha20Poly1305::new(key);
+        let cipher = XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref()));
 
         WalletSettingSql::new(DbKey::PassphraseHash.to_string(), passphrase_hash).set(&conn)?;
         WalletSettingSql::new(DbKey::EncryptionSalt.to_string(), encryption_salt.as_str().to_string()).set(&conn)?;
@@ -608,18 +639,33 @@ fn check_db_encryption_status(
             let stored_hash =
                 PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
+            // Check the passphrase PHC string against the provided passphrase
             if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
                 error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
                 return Err(WalletStorageError::InvalidPassphrase);
             }
 
-            let derived_encryption_key = argon2
-                .hash_password_simple(passphrase.reveal(), encryption_salt.as_str())
-                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
-                .hash
-                .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
-            let key = Key::from_slice(derived_encryption_key.as_bytes());
-            Some(XChaCha20Poly1305::new(key))
+            // Use the recommended OWASP parameters, which are not the default:
+            // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+            let params_encryption = argon2::Params::new(
+                37 * 1024,              // m-cost: 37 MiB, converted to KiB
+                1,                      // t-cost
+                1,                      // p-cost
+                Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
+            )
+            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+            // Hash the passphrase to produce a ChaCha20-Poly1305 key
+            let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
+            argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
+                .hash_password_into(
+                    passphrase.reveal(),
+                    encryption_salt.as_bytes(),
+                    derived_encryption_key.as_mut(),
+                )
+                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+            Some(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref())))
         },
         _ => None,
     };

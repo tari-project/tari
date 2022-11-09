@@ -182,9 +182,9 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
 
     let cipher_seed = CipherSeed::from_mnemonic(
         &[
-            "cactus", "fruit", "amount", "strong", "join", "tuna", "combine", "actor", "plug", "north", "defense",
-            "husband", "roof", "alpha", "present", "daughter", "spare", "trial", "border", "bridge", "actor",
-            "receive", "leader", "fashion",
+            "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion",
+            "myself", "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park",
+            "midnight", "quantum", "bright", "carbon",
         ]
         .iter()
         .map(ToString::to_string)

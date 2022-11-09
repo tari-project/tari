@@ -120,7 +120,7 @@ impl TryFrom<ImportStatus> for TransactionStatus {
             ImportStatus::Imported => Ok(TransactionStatus::Imported),
             ImportStatus::FauxUnconfirmed => Ok(TransactionStatus::FauxUnconfirmed),
             ImportStatus::FauxConfirmed => Ok(TransactionStatus::FauxConfirmed),
-            ImportStatus::Coinbase => Ok(TransactionStatus::Coinbase),
+            ImportStatus::Coinbase => Ok(TransactionStatus::MinedConfirmed),
         }
     }
 }
