@@ -559,6 +559,8 @@ impl WalletBackend for WalletSqliteDatabase {
                 .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             WalletSettingSql::new(DbKey::TorId.to_string(), tor_string).set(&conn)?;
         }
+        //this is the last remove encryption so lets force a sql lite checkpoint
+            conn.execute("PRAGMA wal_checkpoint(2)")?;
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         std::mem::drop((*current_cipher).take());
