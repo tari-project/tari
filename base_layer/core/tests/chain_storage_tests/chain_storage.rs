@@ -71,7 +71,7 @@ use crate::helpers::{
         generate_new_block_with_coinbase,
     },
     database::create_orphan_block,
-    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
+    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb, create_new_blockchain_with_db},
 };
 
 #[test]
@@ -236,6 +236,45 @@ fn test_rewind_to_height() {
     assert_eq!(db.get_height().unwrap(), 3);
     db.rewind_to_height(1).unwrap();
     assert_eq!(db.get_height().unwrap(), 1);
+}
+
+#[test]
+fn test_rewind_to_height_failure() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let network = Network::LocalNet;
+
+    let mut db = TempDatabase::new();
+    // We need to set 12 writes before a failure.
+    // 1- For add Gen block, 1- for adding all the block data for height 0
+    // 3 * 1 to insert orphan, 1 to extend tip, 1 to add block
+    // 1 to rewind 1 block before fail
+    db.set_fail_write_counter(12);
+    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain_with_db(network, db);
+
+    // Block 1
+    let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
+    unpack_enum!(
+        BlockAddResult::Ok(_b1) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
+    );
+    // Block 2
+    let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
+    unpack_enum!(
+        BlockAddResult::Ok(_b2) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
+    );
+    // Block 3
+    let schema = vec![
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T, 500_000 * uT]),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
+    ];
+    unpack_enum!(
+        BlockAddResult::Ok(_b3) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
+    );
+    db.rewind_to_height(1).unwrap_err();
+    // rewind should have failed, so we should still be at height 3
+    assert_eq!(db.get_height().unwrap(), 3);
 }
 
 #[test]

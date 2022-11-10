@@ -106,24 +106,44 @@ pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<T
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    create_store_with_consensus_and_validators(rules, validators)
+    let db = create_test_db();
+    create_store_with_consensus_and_validators_and_db(rules, validators, db)
+}
+
+pub fn create_store_with_consensus_and_validators_and_db(
+    rules: ConsensusManager,
+    validators: Validators<TempDatabase>,
+    db: TempDatabase,
+) -> BlockchainDatabase<TempDatabase> {
+    create_store_with_consensus_and_validators_and_config_and_db(
+        rules,
+        validators,
+        BlockchainDatabaseConfig::default(),
+        db,
+    )
 }
 
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
 ) -> BlockchainDatabase<TempDatabase> {
-    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
+    let db = create_test_db();
+    create_store_with_consensus_and_validators_and_config_and_db(
+        rules,
+        validators,
+        BlockchainDatabaseConfig::default(),
+        db,
+    )
 }
 
-pub fn create_store_with_consensus_and_validators_and_config(
+pub fn create_store_with_consensus_and_validators_and_config_and_db(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
+    db: TempDatabase,
 ) -> BlockchainDatabase<TempDatabase> {
-    let backend = create_test_db();
     BlockchainDatabase::new(
-        backend,
+        db,
         rules.clone(),
         validators,
         config,
@@ -132,15 +152,46 @@ pub fn create_store_with_consensus_and_validators_and_config(
     .unwrap()
 }
 
-pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+pub fn create_store_with_consensus_and_validators_and_config(
+    rules: ConsensusManager,
+    validators: Validators<TempDatabase>,
+    config: BlockchainDatabaseConfig,
+) -> BlockchainDatabase<TempDatabase> {
+    let db = create_test_db();
+    BlockchainDatabase::new(
+        db,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
+}
+
+pub fn create_store_with_consensus_and_db(
+    rules: ConsensusManager,
+    db: TempDatabase,
+) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
         MockValidator::new(true),
         OrphanBlockValidator::new(rules.clone(), false, factories),
     );
-    create_store_with_consensus_and_validators(rules, validators)
+    create_store_with_consensus_and_validators_and_db(rules, validators, db)
 }
+
+pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+    let db = create_test_db();
+    let factories = CryptoFactories::default();
+    let validators = Validators::new(
+        BodyOnlyValidator::new(rules.clone()),
+        MockValidator::new(true),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
+    );
+    create_store_with_consensus_and_validators_and_db(rules, validators, db)
+}
+
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let rules = create_consensus_rules();
     create_store_with_consensus(rules)
@@ -154,6 +205,8 @@ pub struct TempDatabase {
     path: PathBuf,
     db: Option<LMDBDatabase>,
     delete_on_drop: bool,
+    fail_write_counter: u64,
+    write_counter: u64,
 }
 
 impl TempDatabase {
@@ -164,6 +217,8 @@ impl TempDatabase {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
             path: temp_path,
             delete_on_drop: true,
+            fail_write_counter: 0,
+            write_counter: 0,
         }
     }
 
@@ -172,12 +227,20 @@ impl TempDatabase {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
+            write_counter: 0,
+            fail_write_counter: 0,
         }
     }
 
     pub fn disable_delete_on_drop(&mut self) -> &mut Self {
         self.delete_on_drop = false;
         self
+    }
+
+    // sets after how many writes the write tx will fail once, then continue working
+    pub fn set_fail_write_counter(&mut self, counter: u64) {
+        self.write_counter = 0;
+        self.fail_write_counter = counter;
     }
 }
 
@@ -207,6 +270,11 @@ impl Drop for TempDatabase {
 
 impl BlockchainBackend for TempDatabase {
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        if self.fail_write_counter != 0u64 && self.write_counter >= self.fail_write_counter {
+            self.fail_write_counter = 0;
+            return Err(ChainStorageError::AccessError("failed write".to_string()));
+        }
+        self.write_counter += 1;
         self.db.as_mut().unwrap().write(tx)
     }
 
@@ -540,7 +608,8 @@ impl TestBlockchain {
 
     pub fn with_validators(validators: Validators<TempDatabase>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build();
-        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let db = create_test_db();
+        let db = create_store_with_consensus_and_validators_and_db(rules.clone(), validators, db);
         Self::new(db, rules)
     }
 

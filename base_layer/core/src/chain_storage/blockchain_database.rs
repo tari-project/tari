@@ -1726,8 +1726,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
                 // had.
                 error!(
                     target: LOG_TARGET,
-                    "Failed to rewind the block chain, trying to recover the blockchain to previous height: {} ",
-                    e
+                    "Failed to rewind the block chain, trying to recover the blockchain to previous height: {} ", e
                 );
                 let mut txn = DbTransaction::new();
 
@@ -1778,7 +1777,7 @@ fn rewind_block<T: BlockchainBackend>(
     let mut txn = DbTransaction::new();
     info!(target: LOG_TARGET, "Deleting block {}", height);
     let block = fetch_block(db, height, false)?;
-    debug!(target: LOG_TARGET, "Goint to delete block: {}", block);
+    debug!(target: LOG_TARGET, "Going to delete block: {}", block);
     let block = Arc::new(block.try_into_chain_block()?);
     txn.delete_block(*block.hash());
     txn.delete_header(height);
@@ -2096,6 +2095,12 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     // There cannot be any _new_ tips if we've seen this orphan block before
     if db.contains(&DbKey::OrphanBlock(hash))? {
+        info!(
+            target: LOG_TARGET,
+            "Orphan #{} ({}) already found in orphan database",
+            block.header.height,
+            hash.to_hex()
+        );
         return Ok(vec![]);
     }
     let mut txn = DbTransaction::new();
@@ -2123,22 +2128,14 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 curr_parent
             },
             None => {
-                let hash_hex = hash.to_hex();
-                if db.contains(&DbKey::OrphanBlock(hash))? {
-                    info!(
-                        target: LOG_TARGET,
-                        "Orphan #{} ({}) already found in orphan database", block.header.height, hash_hex
-                    );
-                } else {
-                    info!(
-                        target: LOG_TARGET,
-                        "Orphan #{} ({}) was not connected to any previous headers. Inserting as true orphan",
-                        block.header.height,
-                        hash_hex
-                    );
-                    txn.insert_orphan(block);
-                    db.write(txn)?;
-                }
+                info!(
+                    target: LOG_TARGET,
+                    "Orphan #{} ({}) was not connected to any previous headers. Inserting as true orphan",
+                    block.header.height,
+                    hash.to_hex()
+                );
+                txn.insert_orphan(block);
+                db.write(txn)?;
                 return Ok(vec![]);
             },
         },

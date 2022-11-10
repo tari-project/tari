@@ -792,6 +792,7 @@ impl LMDBDatabase {
                 "The first header inserted must have height 0. Height provided: {}",
                 header.height
             )));
+        } else {
         }
 
         lmdb_insert(

@@ -26,7 +26,7 @@ use tari_core::{
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
-    test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
+    test_helpers::blockchain::{create_store_with_consensus, create_store_with_consensus_and_db, TempDatabase},
     transactions::{
         tari_amount::{uT, T},
         transaction_components::UnblindedOutput,
@@ -146,6 +146,35 @@ pub fn create_new_blockchain(
         .build();
     (
         create_store_with_consensus(consensus_manager.clone()),
+        vec![block0],
+        vec![vec![output]],
+        consensus_manager,
+    )
+}
+
+/// Create a new blockchain database containing only the Genesis block
+#[allow(dead_code)]
+pub fn create_new_blockchain_with_db(
+    network: Network,
+    db: TempDatabase,
+) -> (
+    BlockchainDatabase<TempDatabase>,
+    Vec<ChainBlock>,
+    Vec<Vec<UnblindedOutput>>,
+    ConsensusManager,
+) {
+    let factories = CryptoFactories::default();
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
+        .build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .add_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    (
+        create_store_with_consensus_and_db(consensus_manager.clone(), db),
         vec![block0],
         vec![vec![output]],
         consensus_manager,
