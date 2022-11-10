@@ -51,12 +51,6 @@ tokio = { version = "1.20", features = ["signal"] }
 tonic = "0.6.2"
 tracing = "0.1.26"
 
-# network tracing, rt-tokio for async batch export
-opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
-opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio", "collector_client", "reqwest_collector_client"] }
-tracing-opentelemetry = "0.15.0"
-tracing-subscriber = "0.2.20"
-
 # Metrics
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = ["server"] }
 

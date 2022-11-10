@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env, process};
+use std::process;
 
 use clap::Parser;
 use cli::Cli;
@@ -34,7 +34,6 @@ use init::{
     WalletBoot,
 };
 use log::*;
-use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::consts;
 use tari_common::{
@@ -48,7 +47,6 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 use crate::{config::ApplicationConfig, init::wallet_mode, recovery::get_seed_from_seed_words};
@@ -107,10 +105,6 @@ fn main_inner() -> Result<(), ExitError> {
         .enable_all()
         .build()
         .expect("Failed to build a runtime!");
-
-    if cli.tracing_enabled {
-        enable_tracing();
-    }
 
     info!(
         target: LOG_TARGET,
@@ -247,29 +241,6 @@ fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSe
     } else {
         Ok(None)
     }
-}
-
-fn enable_tracing() {
-    // To run:
-    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
-    // To view the UI after starting the container (default):
-    // http://localhost:16686
-    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("tari::console_wallet")
-        .with_tags(vec![
-            KeyValue::new("pid", process::id().to_string()),
-            KeyValue::new(
-                "current_exe",
-                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
-            ),
-        ])
-        .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap();
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-    let subscriber = Registry::default().with(telemetry);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }
 
 fn setup_grpc_config(config: &mut ApplicationConfig) {
