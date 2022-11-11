@@ -24,12 +24,16 @@ use std::{cmp::Ordering, slice::Iter};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use tari_utilities::bit::{bytes_to_bits, checked_bits_to_uint};
+use tari_utilities::{
+    bit::{bytes_to_bits, checked_bits_to_uint},
+    Hidden,
+};
 
 use crate::{
     diacritics::*,
     error::{KeyManagerError, MnemonicError},
     mnemonic_wordlists::*,
+    KeyManagerHiddenType,
 };
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
@@ -255,7 +259,7 @@ pub trait Mnemonic<T> {
         &self,
         language: MnemonicLanguage,
         passphrase: Option<String>,
-    ) -> Result<Vec<String>, KeyManagerError>;
+    ) -> Result<Hidden<Vec<String>, KeyManagerHiddenType>, KeyManagerError>;
 }
 
 #[cfg(test)]

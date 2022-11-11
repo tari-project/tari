@@ -34,12 +34,14 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hash::blake2::Blake256;
+use tari_utilities::hidden::Hidden;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
     mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
+    KeyManagerHiddenType,
     LABEL_ARGON_ENCODING,
     LABEL_CHACHA20_ENCODING,
     LABEL_MAC_GENERATION,
@@ -343,6 +345,7 @@ impl CipherSeed {
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
+    // TODO: passhphrase should be SafePassword
     fn derive_keys(passphrase: &str, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
         let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
@@ -369,8 +372,8 @@ impl CipherSeed {
             .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 password hash".to_string()))?;
 
         // Split off the keys
-        let encryption_key = Zeroizing::new(main_key.as_ref()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES].to_vec());
-        let mac_key = Zeroizing::new(main_key.as_ref()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..].to_vec());
+        let encryption_key = Zeroizing::new(main_key.as_ref()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES].to_vec()); // TODO
+        let mac_key = Zeroizing::new(main_key.as_ref()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..].to_vec()); // TODO
         Ok((encryption_key, mac_key))
     }
 }
@@ -404,8 +407,11 @@ impl Mnemonic<CipherSeed> for CipherSeed {
         &self,
         language: MnemonicLanguage,
         passphrase: Option<String>,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        Ok(from_bytes(&self.encipher(passphrase)?, language)?)
+    ) -> Result<Hidden<Vec<String>, KeyManagerHiddenType>, KeyManagerError> {
+        Ok(Hidden::<Vec<String>, KeyManagerHiddenType>::hide(from_bytes(
+            &self.encipher(passphrase)?,
+            language,
+        )?))
     }
 }
 
@@ -543,13 +549,14 @@ mod test {
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::Japanese, None)
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
+        match CipherSeed::from_mnemonic(mnemonic_seq.reveal(), None) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
             Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
         // Language known
-        let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
-            .expect("Couldn't create CipherSeed from Mnemonic with Language");
+        let mnemonic_seed =
+            CipherSeed::from_mnemonic_with_language(mnemonic_seq.reveal(), MnemonicLanguage::Japanese, None)
+                .expect("Couldn't create CipherSeed from Mnemonic with Language");
         assert_eq!(seed, mnemonic_seed);
         // Invalid Mnemonic sequence
         let mnemonic_seq = vec![
@@ -577,7 +584,7 @@ mod test {
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        match CipherSeed::from_mnemonic(&mnemonic_seq, Some("Passphrase".to_string())) {
+        match CipherSeed::from_mnemonic(mnemonic_seq.reveal(), Some("Passphrase".to_string())) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
             Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
@@ -586,7 +593,7 @@ mod test {
             .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
             .expect("Couldn't convert CipherSeed to Mnemonic");
         assert!(
-            CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_err(),
+            CipherSeed::from_mnemonic(mnemonic_seq.reveal(), Some("WrongPassphrase".to_string())).is_err(),
             "Should not be able to derive seed with wrong passphrase"
         );
     }

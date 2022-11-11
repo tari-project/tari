@@ -30,13 +30,15 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,
 };
+use tari_utilities::Hidden;
+use zeroize::Zeroize;
 
-use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
+use crate::{cipher_seed::CipherSeed, mac_domain_hasher, KeyManagerHiddenType, LABEL_DERIVE_KEY};
 
-#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct DerivedKey<K>
-where K: SecretKey
+where K: SecretKey + Zeroize
 {
     #[derivative(Debug = "ignore")]
     #[serde(skip_serializing)]
@@ -44,7 +46,7 @@ where K: SecretKey
     pub key_index: u64,
 }
 
-#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> {
     #[derivative(Debug = "ignore")]
@@ -58,7 +60,7 @@ pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> 
 
 impl<K, D> KeyManager<K, D>
 where
-    K: SecretKey,
+    K: SecretKey + Zeroize,
     D: Digest + LengthExtensionAttackResistant,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
@@ -85,7 +87,7 @@ where
 
     /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
     /// hash function H which is Length attack resistant, such as Blake2b.
-    pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
+    pub fn derive_key(&self, key_index: u64) -> Result<Hidden<DerivedKey<K>, KeyManagerHiddenType>, ByteArrayError> {
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
         // input
@@ -98,13 +100,16 @@ where
         let derive_key = derive_key.as_ref();
 
         match K::from_bytes(derive_key) {
-            Ok(k) => Ok(DerivedKey { k, key_index }),
+            Ok(k) => Ok(Hidden::<DerivedKey<K>, KeyManagerHiddenType>::hide(DerivedKey {
+                k,
+                key_index,
+            })),
             Err(e) => Err(e),
         }
     }
 
     /// Generate next deterministic private key derived from master key
-    pub fn next_key(&mut self) -> Result<DerivedKey<K>, ByteArrayError> {
+    pub fn next_key(&mut self) -> Result<Hidden<DerivedKey<K>, KeyManagerHiddenType>, ByteArrayError> {
         self.primary_key_index += 1;
         self.derive_key(self.primary_key_index)
     }
@@ -124,7 +129,7 @@ where
 
 impl<K, D> Default for KeyManager<K, D>
 where
-    K: SecretKey,
+    K: SecretKey + Zeroize,
     D: Digest + LengthExtensionAttackResistant,
 {
     fn default() -> Self {
@@ -158,11 +163,11 @@ mod test {
         let next_key2 = next_key2_result.unwrap();
         let derived_key1 = derived_key1_result.unwrap();
         let derived_key2 = derived_key2_result.unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
-        assert_eq!(next_key1.k, derived_key1.k);
-        assert_eq!(next_key2.k, derived_key2.k);
-        assert_eq!(next_key1.key_index, desired_key_index1);
-        assert_eq!(next_key2.key_index, desired_key_index2);
+        assert_ne!(next_key1.reveal().k, next_key2.reveal().k);
+        assert_eq!(next_key1.reveal().k, derived_key1.reveal().k);
+        assert_eq!(next_key2.reveal().k, derived_key2.reveal().k);
+        assert_eq!(next_key1.reveal().key_index, desired_key_index1);
+        assert_eq!(next_key2.reveal().key_index, desired_key_index2);
     }
 
     #[test]
@@ -178,11 +183,11 @@ mod test {
         let next_key2 = next_key2_result.unwrap();
         let derived_key1 = derived_key1_result.unwrap();
         let derived_key2 = derived_key2_result.unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
-        assert_eq!(next_key1.k, derived_key1.k);
-        assert_eq!(next_key2.k, derived_key2.k);
-        assert_eq!(next_key1.key_index, desired_key_index1);
-        assert_eq!(next_key2.key_index, desired_key_index2);
+        assert_ne!(next_key1.reveal().k, next_key2.reveal().k);
+        assert_eq!(next_key1.reveal().k, derived_key1.reveal().k);
+        assert_eq!(next_key2.reveal().k, derived_key2.reveal().k);
+        assert_eq!(next_key1.reveal().key_index, desired_key_index1);
+        assert_eq!(next_key2.reveal().key_index, desired_key_index2);
     }
 
     #[test]
@@ -192,6 +197,6 @@ mod test {
         let mut km2 = KeyManager::<RistrettoSecretKey, Blake256>::from(x, "other".to_string(), 0);
         let next_key1 = km1.next_key().unwrap();
         let next_key2 = km2.next_key().unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
+        assert_ne!(next_key1.reveal().k, next_key2.reveal().k);
     }
 }

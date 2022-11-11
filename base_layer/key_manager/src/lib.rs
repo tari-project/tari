@@ -6,6 +6,7 @@ use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
+use tari_utilities::{hidden::HiddenLabel, hidden_label};
 
 pub mod cipher_seed;
 pub mod diacritics;
@@ -30,3 +31,5 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
 ) -> DomainSeparatedHasher<D, KeyManagerDomain> {
     DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(label)
 }
+
+hidden_label!(KeyManagerHiddenType);
