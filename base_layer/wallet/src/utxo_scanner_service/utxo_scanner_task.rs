@@ -325,7 +325,11 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.height_of_longest_chain()).unwrap_or(0);
+        let wallet_birthday_height = self.get_birthday_header_height_hash(client).await?.height;
+        let chain_height = tip_info
+            .metadata
+            .map(|m| m.height_of_longest_chain())
+            .unwrap_or(wallet_birthday_height);
         let end_header = client.get_header_by_height(chain_height).await?;
         let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
 
