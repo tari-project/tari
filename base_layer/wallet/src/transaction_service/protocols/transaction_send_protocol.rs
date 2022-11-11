@@ -26,6 +26,7 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::HashOutput,
 };
@@ -87,7 +88,7 @@ pub enum TransactionSendProtocolStage {
 
 pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
-    dest_pubkey: CommsPublicKey,
+    dest_address: TariAddress,
     amount: MicroTari,
     fee_per_gram: MicroTari,
     message: String,
@@ -112,7 +113,7 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
-        dest_pubkey: CommsPublicKey,
+        dest_address: TariAddress,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
@@ -130,7 +131,7 @@ where
             resources,
             transaction_reply_receiver: Some(transaction_reply_receiver),
             cancellation_receiver: Some(cancellation_receiver),
-            dest_pubkey,
+            dest_address,
             amount,
             fee_per_gram,
             message,
@@ -324,7 +325,7 @@ where
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             let outbound_tx = OutboundTransaction::new(
                 tx_id,
-                self.dest_pubkey.clone(),
+                self.dest_address.clone(),
                 self.amount,
                 fee,
                 sender_protocol.clone(),
@@ -468,7 +469,7 @@ where
                     let rr_tx_id = rr.tx_id;
                     reply = Some(rr);
 
-                    if outbound_tx.destination_public_key != spk {
+                    if outbound_tx.destination_address.public_key() != &spk {
                         warn!(
                             target: LOG_TARGET,
                             "Transaction Reply did not come from the expected Public Key"
@@ -483,7 +484,7 @@ where
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
                         let _ = send_transaction_cancelled_message(
-                            self.id,self.dest_pubkey.clone(),
+                            self.id,self.dest_address.public_key().clone(),
                             self.resources.outbound_message_service.clone(), )
                         .await.map_err(|e| {
                             warn!(
@@ -570,8 +571,8 @@ where
 
         let completed_transaction = CompletedTransaction::new(
             tx_id,
-            self.resources.node_identity.public_key().clone(),
-            outbound_tx.destination_public_key.clone(),
+            self.resources.wallet_identity.address.clone(),
+            outbound_tx.destination_address,
             outbound_tx.amount,
             outbound_tx.fee,
             tx.clone(),
@@ -596,7 +597,7 @@ where
         send_finalized_transaction_message(
             tx_id,
             tx.clone(),
-            self.dest_pubkey.clone(),
+            self.dest_address.public_key().clone(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,
             self.resources.config.transaction_routing_mechanism,
@@ -670,14 +671,14 @@ where
 
         info!(
             target: LOG_TARGET,
-            "Attempting to Send Transaction (TxId: {}) to recipient with Public Key: {}", self.id, self.dest_pubkey,
+            "Attempting to Send Transaction (TxId: {}) to recipient with address: {}", self.id, self.dest_address,
         );
 
         match self
             .resources
             .outbound_message_service
             .send_direct(
-                self.dest_pubkey.clone(),
+                self.dest_address.public_key().clone(),
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
                 "transaction send".to_string(),
             )
@@ -688,7 +689,7 @@ where
                     if wait_on_dial(
                         send_states,
                         self.id,
-                        self.dest_pubkey.clone(),
+                        self.dest_address.public_key().clone(),
                         "Transaction",
                         self.resources.config.direct_send_timeout,
                     )
@@ -703,10 +704,10 @@ where
                     // minutes after wallet shutdown.
                     info!(
                         target: LOG_TARGET,
-                        "Direct Send result was {}. Sending SAF for TxId: {} to recipient with Public Key: {}",
+                        "Direct Send result was {}. Sending SAF for TxId: {} to recipient with Address: {}",
                         direct_send_result,
                         self.id,
-                        self.dest_pubkey,
+                        self.dest_address,
                     );
                     match self.send_transaction_store_and_forward(msg.clone()).await {
                         Ok(res) => {
@@ -752,7 +753,7 @@ where
                             target: LOG_TARGET,
                             "Sending SAF for TxId {} failed; we will still wait for discovery of {} to complete ({:?})",
                             self.id,
-                            self.dest_pubkey,
+                            self.dest_address,
                             e
                         ),
                     }
@@ -761,12 +762,12 @@ where
                         Ok(SendMessageResponse::Queued(send_states)) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
+                                "Discovery of {} completed for TxID: {}", self.dest_address, self.id
                             );
                             direct_send_result = wait_on_dial(
                                 send_states,
                                 self.id,
-                                self.dest_pubkey.clone(),
+                                self.dest_address.public_key().clone(),
                                 "Transaction",
                                 self.resources.config.direct_send_timeout,
                             )
@@ -820,8 +821,8 @@ where
             .resources
             .outbound_message_service
             .closest_broadcast(
-                self.dest_pubkey.clone(),
-                OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
+                self.dest_address.public_key().clone(),
+                OutboundEncryption::encrypt_for(self.dest_address.public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
             )
@@ -884,7 +885,7 @@ where
         );
         let _ = send_transaction_cancelled_message(
             self.id,
-            self.dest_pubkey.clone(),
+            self.dest_address.public_key().clone(),
             self.resources.outbound_message_service.clone(),
         )
         .await

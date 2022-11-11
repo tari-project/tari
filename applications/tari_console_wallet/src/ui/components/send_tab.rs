@@ -123,7 +123,7 @@ impl SendTab {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("(T)o (Public Key or Emoji ID) :"),
+                    .title("(T)o (Tari Address or Emoji ID) :"),
             );
         f.render_widget(to_input, vert_chunks[1]);
 
@@ -402,7 +402,7 @@ impl SendTab {
                 .and_then(|i| app_state.get_contact(i))
                 .cloned()
             {
-                self.to_field = c.public_key;
+                self.to_field = c.address;
                 self.send_input_mode = SendInputMode::Amount;
                 self.show_contacts = false;
             }
@@ -577,7 +577,8 @@ impl<B: Backend> Component<B> for SendTab {
             'm' => self.send_input_mode = SendInputMode::Message,
             's' | 'o' | 'x' => {
                 if self.to_field.is_empty() {
-                    self.error_message = Some("Destination Public Key/Emoji ID\nPress Enter to continue.".to_string());
+                    self.error_message =
+                        Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());
                     return;
                 }
                 if self.amount_field.is_empty() && self.selected_unique_id.is_none() {

@@ -25,12 +25,15 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use chrono::Utc;
 use futures::StreamExt;
 use rand::rngs::OsRng;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common::configuration::Network;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+};
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsPublicKey,
     NodeIdentity,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
@@ -80,7 +83,7 @@ use tari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    util::watch::Watch,
+    util::{wallet_identity::WalletIdentity, watch::Watch},
 };
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
@@ -142,14 +145,14 @@ pub async fn setup() -> (
         broadcast::channel(200);
 
     let shutdown = Shutdown::new();
-
+    let wallet_identity = WalletIdentity::new(client_node_identity, Network::LocalNet);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
-        node_identity: client_node_identity,
+        wallet_identity,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {
             broadcast_monitoring_timeout: Duration::from_secs(3),
@@ -185,8 +188,8 @@ pub async fn add_transaction_to_database(
     let tx1 = (*txs1[0]).clone();
     let completed_tx1 = CompletedTransaction::new(
         tx_id,
-        CommsPublicKey::default(),
-        CommsPublicKey::default(),
+        TariAddress::default(),
+        TariAddress::default(),
         amount,
         200 * uT,
         tx1,

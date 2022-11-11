@@ -169,8 +169,8 @@ message GetTransactionInfoResponse {
 
 message TransactionInfo {
     uint64 tx_id = 1;
-    bytes source_pk = 2;
-    bytes dest_pk = 3;
+    bytes source_address = 2;
+    bytes dest_address = 3;
     TransactionStatus status = 4;
     TransactionDirection direction = 5;
     uint64 amount = 6;
@@ -310,8 +310,8 @@ message TransactionEventRequest{
 message TransactionEvent {
     string event = 1;
     string tx_id = 2;
-    bytes source_pk = 3;
-    bytes dest_pk = 4;
+    bytes source_address = 3;
+    bytes dest_address = 4;
     string status = 5;
     string direction = 6;
     uint64 amount = 7;

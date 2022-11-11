@@ -57,20 +57,20 @@ impl ReceiveTab {
             .title(Span::styled("Connection Details", Style::default().fg(Color::White)));
         f.render_widget(block, chunks[0]);
 
-        const ITEM_01: &str = "Public Key:     ";
+        const ITEM_01: &str = "Tari Address:     ";
         const ITEM_02: &str = "Node ID:        ";
-        const ITEM_03: &str = "Public Address: ";
+        const ITEM_03: &str = "Network Address: ";
         const ITEM_04: &str = "Emoji ID:       ";
 
-        // Public Key
-        let public_key_text = Spans::from(vec![
+        // Tari address
+        let tari_address_text = Spans::from(vec![
             Span::styled(ITEM_01, Style::default().fg(Color::Magenta)),
             Span::styled(
-                app_state.get_identity().public_key.clone(),
+                app_state.get_identity().tari_address.clone(),
                 Style::default().fg(Color::White),
             ),
         ]);
-        let paragraph = Paragraph::new(public_key_text).block(Block::default());
+        let paragraph = Paragraph::new(tari_address_text).block(Block::default());
         f.render_widget(paragraph, details_chunks[0]);
 
         // NodeId
@@ -85,14 +85,14 @@ impl ReceiveTab {
         f.render_widget(paragraph, details_chunks[1]);
 
         // Public Address
-        let public_ddress_text = Spans::from(vec![
+        let public_address_text = Spans::from(vec![
             Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
             Span::styled(
-                app_state.get_identity().public_address.clone(),
+                app_state.get_identity().network_address.clone(),
                 Style::default().fg(Color::White),
             ),
         ]);
-        let paragraph = Paragraph::new(public_ddress_text).block(Block::default());
+        let paragraph = Paragraph::new(public_address_text).block(Block::default());
         f.render_widget(paragraph, details_chunks[2]);
 
         // Emoji ID

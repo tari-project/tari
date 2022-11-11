@@ -38,8 +38,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
+use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -86,7 +85,7 @@ where TBackend: TransactionBackend + 'static
     output_manager_service: OutputManagerHandle,
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
-    comms_public_key: CommsPublicKey,
+    comms_address: TariAddress,
     balance_cache: Balance,
     connectivity_status_watch: watch::Receiver<OnlineStatus>,
     contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
@@ -103,7 +102,7 @@ where TBackend: TransactionBackend + 'static
         output_manager_service: OutputManagerHandle,
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
-        comms_public_key: CommsPublicKey,
+        comms_address: TariAddress,
         connectivity_status_watch: watch::Receiver<OnlineStatus>,
         contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -211,7 +210,7 @@ where TBackend: TransactionBackend + 'static
             output_manager_service,
             dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
-            comms_public_key,
+            comms_address,
             balance_cache: Balance::zero(),
             connectivity_status_watch,
             contacts_liveness_events,
@@ -443,7 +442,7 @@ where TBackend: TransactionBackend + 'static
         debug!(
             target: LOG_TARGET,
             "Calling Contacts Liveness Data Updated callback function for contact {}",
-            data.public_key(),
+            data.address(),
         );
         let boxing = Box::into_raw(Box::new(data));
         unsafe {
@@ -468,11 +467,11 @@ where TBackend: TransactionBackend + 'static
             transaction = Some(tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id) {
             let mut outbound_tx = CompletedTransaction::from(tx);
-            outbound_tx.source_public_key = self.comms_public_key.clone();
+            outbound_tx.source_address = self.comms_address.clone();
             transaction = Some(outbound_tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id) {
             let mut inbound_tx = CompletedTransaction::from(tx);
-            inbound_tx.destination_public_key = self.comms_public_key.clone();
+            inbound_tx.destination_address = self.comms_address.clone();
             transaction = Some(inbound_tx);
         } else {
         };

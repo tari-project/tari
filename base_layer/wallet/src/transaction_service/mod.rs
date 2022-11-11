@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
@@ -56,6 +55,7 @@ use crate::{
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
     },
+    util::wallet_identity::WalletIdentity,
 };
 
 pub mod config;
@@ -78,7 +78,7 @@ where
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
     tx_backend: Option<T>,
-    node_identity: Arc<NodeIdentity>,
+    wallet_identity: WalletIdentity,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
 }
@@ -92,7 +92,7 @@ where
         config: TransactionServiceConfig,
         subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
-        node_identity: Arc<NodeIdentity>,
+        wallet_identity: WalletIdentity,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<W>,
     ) -> Self {
@@ -100,7 +100,7 @@ where
             config,
             subscription_factory,
             tx_backend: Some(backend),
-            node_identity,
+            wallet_identity,
             factories,
             wallet_database: Some(wallet_database),
         }
@@ -204,7 +204,7 @@ where
             .take()
             .expect("Cannot start Transaction Service without providing a wallet database");
 
-        let node_identity = self.node_identity.clone();
+        let wallet_identity = self.wallet_identity.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
 
@@ -228,7 +228,7 @@ where
                 outbound_message_service,
                 connectivity,
                 publisher,
-                node_identity,
+                wallet_identity,
                 factories,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
