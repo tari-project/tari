@@ -25,15 +25,18 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use lmdb_zero::traits::AsLmdbBytes;
 use tari_utilities::hex::to_hex;
 
-#[derive(Debug, Clone, Copy)]
-pub(super) struct CompositeKey<const KEY_LEN: usize> {
-    bytes: [u8; KEY_LEN],
+use crate::chain_storage::ChainStorageError;
+
+#[derive(Debug, Clone)]
+pub(super) struct CompositeKey<const L: usize> {
+    bytes: Box<[u8; L]>,
     len: usize,
 }
 
-impl<const KEY_LEN: usize> CompositeKey<KEY_LEN> {
+impl<const L: usize> CompositeKey<L> {
     pub fn new() -> Self {
         Self {
             bytes: Self::new_buf(),
@@ -41,10 +44,20 @@ impl<const KEY_LEN: usize> CompositeKey<KEY_LEN> {
         }
     }
 
+    pub fn try_from_parts<T: AsRef<[u8]>>(parts: &[T]) -> Result<Self, ChainStorageError> {
+        let mut key = Self::new();
+        for part in parts {
+            if !key.push(part) {
+                return Err(ChainStorageError::CompositeKeyLengthExceeded);
+            }
+        }
+        Ok(key)
+    }
+
     pub fn push<T: AsRef<[u8]>>(&mut self, bytes: T) -> bool {
         let b = bytes.as_ref();
         let new_len = self.len + b.len();
-        if new_len > KEY_LEN {
+        if new_len > L {
             return false;
         }
         self.bytes[self.len..new_len].copy_from_slice(b);
@@ -61,18 +74,18 @@ impl<const KEY_LEN: usize> CompositeKey<KEY_LEN> {
     }
 
     /// Returns a fixed 0-filled byte array.
-    const fn new_buf() -> [u8; KEY_LEN] {
-        [0x0u8; KEY_LEN]
+    fn new_buf() -> Box<[u8; L]> {
+        Box::new([0x0u8; L])
     }
 }
 
-impl<const KEY_LEN: usize> Display for CompositeKey<KEY_LEN> {
+impl<const L: usize> Display for CompositeKey<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", to_hex(self.as_bytes()))
     }
 }
 
-impl<const KEY_LEN: usize> Deref for CompositeKey<KEY_LEN> {
+impl<const L: usize> Deref for CompositeKey<L> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -80,14 +93,20 @@ impl<const KEY_LEN: usize> Deref for CompositeKey<KEY_LEN> {
     }
 }
 
-impl<const KEY_LEN: usize> DerefMut for CompositeKey<KEY_LEN> {
+impl<const L: usize> DerefMut for CompositeKey<L> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_bytes_mut()
     }
 }
 
-impl<const KEY_LEN: usize> AsRef<[u8]> for CompositeKey<KEY_LEN> {
+impl<const L: usize> AsRef<[u8]> for CompositeKey<L> {
     fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl<const L: usize> AsLmdbBytes for CompositeKey<L> {
+    fn as_lmdb_bytes(&self) -> &[u8] {
         self.as_bytes()
     }
 }

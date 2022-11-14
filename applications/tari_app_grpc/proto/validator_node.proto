@@ -118,7 +118,7 @@ message Authority {
     bytes proxied_by = 3;
 }
 
-message InvokeMethodRequest{
+message InvokeMethodRequest {
     bytes contract_id = 1;
     uint32 template_id = 2;
     string method = 3;

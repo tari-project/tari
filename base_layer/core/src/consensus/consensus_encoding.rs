@@ -30,10 +30,13 @@ mod hashing;
 mod integers;
 mod micro_tari;
 mod script;
+mod string;
 mod vec;
+
 use std::io;
 
 pub use hashing::{ConsensusHasher, DomainSeparatedConsensusHasher};
+pub use string::MaxSizeString;
 pub use vec::MaxSizeVec;
 
 pub use self::bytes::MaxSizeBytes;
@@ -91,6 +94,16 @@ impl<T: ConsensusDecoding + ?Sized> FromConsensusBytes<T> for T {
         }
         Ok(decoded)
     }
+}
+
+pub fn read_byte<R: io::Read>(reader: &mut R) -> Result<u8, io::Error> {
+    let mut buf = [0u8; 1];
+    reader.read_exact(&mut buf)?;
+    Ok(buf[0])
+}
+
+pub fn write_byte<W: io::Write>(writer: &mut W, byte: u8) -> Result<(), io::Error> {
+    writer.write_all(&[byte])
 }
 
 #[cfg(test)]

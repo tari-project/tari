@@ -88,6 +88,7 @@ async fn it_checks_the_coinbase_reward() {
 
     let (block, _) = blockchain.create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ));
     let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
+    println!("err {:?}", err);
     assert!(matches!(
         err,
         ValidationError::TransactionError(TransactionError::InvalidCoinbase)

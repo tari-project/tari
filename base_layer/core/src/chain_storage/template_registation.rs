@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,22 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::FixedHash;
 
-use tari_core::transactions::transaction_components::SideChainFeatures;
+use crate::transactions::transaction_components::CodeTemplateRegistration;
 
-use crate::tari_rpc as grpc;
-
-impl From<SideChainFeatures> for grpc::SideChainFeatures {
-    fn from(_value: SideChainFeatures) -> Self {
-        Self {}
-    }
-}
-
-impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
-    type Error = String;
-
-    fn try_from(_features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
-        Ok(Self {})
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TemplateRegistrationEntry {
+    pub registration_data: CodeTemplateRegistration,
+    pub output_hash: FixedHash,
+    pub block_height: u64,
+    pub block_hash: FixedHash,
 }

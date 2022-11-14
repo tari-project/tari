@@ -61,6 +61,8 @@ message BlockHeader {
     uint64 output_mmr_size = 14;
     // Sum of script offsets for all kernels in this block.
     bytes total_script_offset = 15;
+    // Merkle root of validator nodes
+    bytes validator_node_mr = 16;
 }
 
 // Metadata required for validating the Proof of Work calculation

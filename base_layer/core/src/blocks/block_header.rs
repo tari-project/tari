@@ -110,6 +110,8 @@ pub struct BlockHeader {
     pub nonce: u64,
     /// Proof of work summary
     pub pow: ProofOfWork,
+    /// Merkle root of all active validator node.
+    pub validator_node_mr: FixedHash,
 }
 
 impl BlockHeader {
@@ -130,6 +132,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         }
     }
 
@@ -162,6 +165,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         }
     }
 
@@ -263,6 +267,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             total_script_offset: header_template.total_script_offset,
             nonce: 0,
             pow: header_template.pow,
+            validator_node_mr: FixedHash::zero(),
         }
     }
 }

@@ -53,7 +53,7 @@ use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
-use crate::{bootstrap::BaseNodeBootstrapper, config::DatabaseType, ApplicationConfig};
+use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -172,9 +172,11 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
+            let rules = ConsensusManager::builder(app_config.base_node.network).build();
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
+                rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
