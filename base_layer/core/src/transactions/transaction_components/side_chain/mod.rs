@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod sidechain_features;
-pub use sidechain_features::SideChainFeatures;
-// Length of FixedString
-pub const FIXED_STR_LEN: usize = 32;
-pub type FixedString = [u8; FIXED_STR_LEN];
+mod sidechain_feature;
+pub use sidechain_feature::SideChainFeature;
 
+mod template_registration;
+mod validator_node_registration;
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
+pub use validator_node_registration::ValidatorNodeRegistration;
 
 hash_domain!(
     ContractAcceptanceHashDomain,

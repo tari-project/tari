@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(dead_code, unused)]
+
 use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
@@ -468,6 +470,7 @@ mod test {
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::HashGrpcPassword(_) => {},
+                CliCommands::RegisterValidatorNode(_) => {},
             }
         }
         assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);

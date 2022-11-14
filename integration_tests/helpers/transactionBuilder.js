@@ -224,7 +224,7 @@ class TransactionBuilder {
       unique_id: features.unique_id
         ? Buffer.from(features.unique_id, "utf8")
         : null,
-      sidechain_features: null,
+      sidechain_feature: null,
       parent_public_key: null,
       asset: null,
       mint_non_fungible: null,

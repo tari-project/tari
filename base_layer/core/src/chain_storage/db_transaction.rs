@@ -30,6 +30,7 @@ use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
+use super::{ActiveValidatorNode, TemplateRegistrationEntry};
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
@@ -358,6 +359,12 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    InsertValidatorNode {
+        validator_node: ActiveValidatorNode,
+    },
+    InsertTemplateRegistration {
+        template_registration: TemplateRegistrationEntry,
+    },
 }
 
 impl fmt::Display for WriteOperation {
@@ -454,6 +461,12 @@ impl fmt::Display for WriteOperation {
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            InsertValidatorNode { validator_node } => {
+                write!(f, "Inserting VN {:?}", validator_node)
+            },
+            InsertTemplateRegistration { template_registration } => {
+                write!(f, "Inserting Template {:?}", template_registration)
+            },
         }
     }
 }

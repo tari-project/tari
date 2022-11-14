@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -66,6 +66,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
         Reorg,
+        TemplateRegistrationEntry,
         UtxoMinedInfo,
         Validators,
     },
@@ -159,17 +160,19 @@ pub struct TempDatabase {
 impl TempDatabase {
     pub fn new() -> Self {
         let temp_path = create_temporary_data_path();
+        let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
     }
 
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
+        let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }
@@ -409,6 +412,25 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_all_reorgs()
+    }
+
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+    }
+
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+        self.db.as_ref().unwrap().get_shard_key(height, public_key)
+    }
+
+    fn fetch_template_registrations(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_template_registrations(start_height, end_height)
     }
 }
 

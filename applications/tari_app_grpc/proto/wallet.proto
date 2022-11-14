@@ -71,9 +71,13 @@ service Wallet {
     rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
     // This will claim a HTLC refund transaction
     rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
+    // Creates a transaction with a template registration output
+    rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
     rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
+
+    rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 }
 
 message GetVersionRequest { }
@@ -96,6 +100,7 @@ message CreateBurnTransactionRequest{
     uint64 fee_per_gram = 2;
     string message = 3;
 }
+
 
 message PaymentRecipient {
     string address = 1;
@@ -257,6 +262,16 @@ message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
 
+message CreateTemplateRegistrationRequest {
+    TemplateRegistration template_registration = 1;
+    uint64 fee_per_gram = 2;
+}
+
+message CreateTemplateRegistrationResponse {
+    uint64 tx_id = 1;
+    bytes template_address = 2;
+}
+
 message CancelTransactionRequest {
     uint64 tx_id = 1;
 }
@@ -306,4 +321,17 @@ message TransactionEvent {
 
 message TransactionEventResponse {
     TransactionEvent transaction  = 1;
+}
+
+message RegisterValidatorNodeRequest {
+    bytes validator_node_public_key = 1;
+    Signature validator_node_signature = 2;
+    uint64 fee_per_gram = 3;
+    string message = 4;
+}
+
+message RegisterValidatorNodeResponse {
+    uint64 transaction_id = 1;
+    bool is_success = 2;
+    string failure_message = 3;
 }

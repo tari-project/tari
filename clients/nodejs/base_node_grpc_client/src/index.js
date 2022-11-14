@@ -42,7 +42,8 @@ function Client(address = "127.0.0.1:18142") {
     "getTipInfo",
     "searchUtxos",
     "getTokens",
-    "getNetworkDifficulty"
+    "getNetworkDifficulty",
+    "getActiveValidatorNodes",
   ];
   methods.forEach((method) => {
     this[method] = (arg) => this.inner[method]().sendMessage(arg);

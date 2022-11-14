@@ -4,9 +4,10 @@
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 
+use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
         Block,
@@ -191,4 +192,12 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches all tracked reorgs
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
+
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
+    fn fetch_template_registrations(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
 }

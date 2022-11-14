@@ -1,0 +1,207 @@
+// Copyright 2022. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#[macro_use]
+mod table;
+
+mod bootstrap;
+mod builder;
+pub mod cli;
+mod commands;
+pub mod config;
+mod grpc;
+#[cfg(feature = "metrics")]
+mod metrics;
+mod recovery;
+mod utils;
+
+use std::{env, process, sync::Arc};
+
+use commands::{cli_loop::CliLoop, command::CommandContext};
+use futures::FutureExt;
+use log::*;
+use opentelemetry::{self, global, KeyValue};
+use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
+use tari_common::{
+    configuration::bootstrap::{grpc_default_port, ApplicationType},
+    exit_codes::{ExitCode, ExitError},
+};
+use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::task;
+use tonic::transport::Server;
+use tracing_subscriber::{layer::SubscriberExt, Registry};
+
+use crate::cli::Cli;
+pub use crate::{
+    config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
+    metrics::MetricsConfig,
+};
+
+const LOG_TARGET: &str = "tari::base_node::app";
+
+pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<ApplicationConfig>) -> Result<(), ExitError> {
+    let shutdown = Shutdown::new();
+
+    let data_dir = config.base_node.data_dir.clone();
+    let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
+
+    let mut config_path = data_dir.clone();
+    config_path.push("config.toml");
+
+    let cli = Cli {
+        common: CommonCliArgs {
+            base_path: data_dir_str,
+            config: config_path.into_os_string().into_string().unwrap(),
+            log_config: None,
+            log_level: None,
+            config_property_overrides: vec![],
+        },
+        init: true,
+        tracing_enabled: false,
+        rebuild_db: false,
+        non_interactive_mode: true,
+        watch: None,
+        network: None,
+    };
+
+    run_base_node_with_cli(node_identity, config, cli, shutdown).await
+}
+
+/// Sets up the base node and runs the cli_loop
+pub async fn run_base_node_with_cli(
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+    cli: Cli,
+    shutdown: Shutdown,
+) -> Result<(), ExitError> {
+    if cli.tracing_enabled {
+        enable_tracing();
+    }
+
+    #[cfg(feature = "metrics")]
+    {
+        metrics::install(
+            ApplicationType::BaseNode,
+            &node_identity,
+            &config.metrics,
+            shutdown.to_signal(),
+        );
+    }
+
+    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
+    log_mdc::insert("node-id", node_identity.node_id().to_string());
+
+    if cli.rebuild_db {
+        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
+        recovery::initiate_recover_db(&config.base_node)?;
+        recovery::run_recovery(&config.base_node)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+        return Ok(());
+    };
+
+    // Build, node, build!
+    let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
+
+    if config.base_node.grpc_enabled {
+        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        });
+        // Go, GRPC, go go
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+    }
+
+    // Run, node, run!
+    let context = CommandContext::new(&ctx, shutdown);
+    let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
+    if cli.non_interactive_mode {
+        println!("Node started in non-interactive mode (pid = {})", process::id());
+    } else {
+        info!(
+            target: LOG_TARGET,
+            "Node has been successfully configured and initialized. Starting CLI loop."
+        );
+    }
+    if !config.base_node.force_sync_peers.is_empty() {
+        warn!(
+            target: LOG_TARGET,
+            "Force Sync Peers have been set! This node will only sync to the nodes in this set."
+        );
+    }
+
+    info!(target: LOG_TARGET, "Tari base node has STARTED");
+    main_loop.cli_loop().await;
+
+    ctx.wait_for_shutdown().await;
+
+    println!("Goodbye!");
+    Ok(())
+}
+
+fn enable_tracing() {
+    // To run:
+    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    // To view the UI after starting the container (default):
+    // http://localhost:16686
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tari::base_node")
+        .with_tags(vec![
+            KeyValue::new("pid", process::id().to_string()),
+            KeyValue::new(
+                "current_exe",
+                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
+            ),
+            KeyValue::new("version", consts::APP_VERSION),
+        ])
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
+}
+
+/// Runs the gRPC server
+async fn run_grpc(
+    grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
+    grpc_address: Multiaddr,
+    interrupt_signal: ShutdownSignal,
+) -> Result<(), anyhow::Error> {
+    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+
+    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
+    Server::builder()
+        .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
+        .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
+        .await
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
+            err
+        })?;
+
+    info!(target: LOG_TARGET, "Stopping GRPC");
+    Ok(())
+}

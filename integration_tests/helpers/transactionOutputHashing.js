@@ -22,7 +22,7 @@ const featuresToConsensusBytes = function (features) {
     Buffer.from([parseInt(features.maturity || 0)]),
     // output_type
     Buffer.from([features.output_type]),
-    // sidechain_features
+    // sidechain_feature
     // TODO: SideChainFeatures
     encodeOption(null),
     // metadata
