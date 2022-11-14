@@ -34,38 +34,21 @@ use crate::{
 /// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
 /// can be used to mine tXTR on testnets.
 pub fn sha3x_difficulty(header: &BlockHeader) -> Difficulty {
-    match header.version {
-        2 => sha3x_difficulty_with_hash(header).0,
-        _ => old_sha3_difficulty_with_hash(header).0,
-    }
+    sha3x_difficulty_with_hash(header).0
 }
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
-    let sha = Sha3_256::new();
-    match header.version {
-        0 => sha
-            .chain(header.mining_hash())
-            .chain(header.nonce.to_le_bytes())
-            .chain(header.pow.to_bytes()),
-        _ => sha
-            .chain(header.nonce.to_le_bytes())
-            .chain(header.mining_hash())
-            .chain(header.pow.to_bytes()),
-    }
-    .finalize()
-    .to_vec()
+    Sha3_256::new()
+        .chain(header.nonce.to_le_bytes())
+        .chain(header.mining_hash())
+        .chain(header.pow.to_bytes())
+        .finalize()
+        .to_vec()
 }
 
 fn sha3x_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
-    let hash = Sha3_256::digest(&hash);
-    let difficulty = big_endian_difficulty(&hash);
-    (difficulty, hash.to_vec())
-}
-
-fn old_sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
-    let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())

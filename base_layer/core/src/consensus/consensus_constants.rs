@@ -507,11 +507,6 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let output_version_2_range = OutputVersionRange {
-            outputs: TransactionOutputVersion::V0..=TransactionOutputVersion::V0,
-            features: OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0,
-            opcode: OpcodeVersion::V0..=OpcodeVersion::V1,
-        };
         let consensus_constants_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
@@ -534,29 +529,8 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
         };
-        let consensus_constants_2 = ConsensusConstants {
-            effective_from_height: 23000,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 0..=1,
-            ..consensus_constants_1.clone()
-        };
-        let consensus_constants_3 = ConsensusConstants {
-            effective_from_height: 25000,
-            output_version_range: output_version_2_range,
-            ..consensus_constants_2.clone()
-        };
-        let consensus_constants_4 = ConsensusConstants {
-            effective_from_height: 33000,
-            blockchain_version: 2,
-            ..consensus_constants_3.clone()
-        };
 
-        vec![
-            consensus_constants_1,
-            consensus_constants_2,
-            consensus_constants_3,
-            consensus_constants_4,
-        ]
+        vec![consensus_constants_1]
     }
 
     pub fn mainnet() -> Vec<Self> {
