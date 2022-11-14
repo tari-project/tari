@@ -34,13 +34,12 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{env, process, sync::Arc};
+use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
-use opentelemetry::{self, global, KeyValue};
-use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
+use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -49,7 +48,6 @@ use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::Server;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 use crate::cli::Cli;
 pub use crate::{
@@ -77,7 +75,6 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
             config_property_overrides: vec![],
         },
         init: true,
-        tracing_enabled: false,
         rebuild_db: false,
         non_interactive_mode: true,
         watch: None,
@@ -94,10 +91,6 @@ pub async fn run_base_node_with_cli(
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
-    if cli.tracing_enabled {
-        enable_tracing();
-    }
-
     #[cfg(feature = "metrics")]
     {
         metrics::install(
@@ -158,30 +151,6 @@ pub async fn run_base_node_with_cli(
 
     println!("Goodbye!");
     Ok(())
-}
-
-fn enable_tracing() {
-    // To run:
-    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
-    // To view the UI after starting the container (default):
-    // http://localhost:16686
-    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("tari::base_node")
-        .with_tags(vec![
-            KeyValue::new("pid", process::id().to_string()),
-            KeyValue::new(
-                "current_exe",
-                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
-            ),
-            KeyValue::new("version", consts::APP_VERSION),
-        ])
-        .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap();
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-    let subscriber = Registry::default().with(telemetry);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }
 
 /// Runs the gRPC server

@@ -73,7 +73,6 @@ use std::{process, sync::Arc};
 
 use clap::Parser;
 use log::*;
-use opentelemetry::{self, global};
 use tari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_base_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};

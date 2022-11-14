@@ -31,8 +31,6 @@ mod ui;
 mod utils;
 mod wallet_modes;
 
-use std::{env, process};
-
 pub use cli::Cli;
 use init::{
     boot,
@@ -44,7 +42,6 @@ use init::{
     WalletBoot,
 };
 use log::*;
-use opentelemetry::{self, global, KeyValue};
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use tari_common::{
@@ -57,7 +54,6 @@ use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
@@ -80,7 +76,6 @@ pub fn run_wallet(runtime: Runtime, config: &mut ApplicationConfig) -> Result<()
             log_level: None,
             config_property_overrides: vec![],
         },
-        tracing_enabled: false,
         password: None,
         change_password: false,
         recovery: false,
@@ -101,10 +96,6 @@ pub fn run_wallet(runtime: Runtime, config: &mut ApplicationConfig) -> Result<()
 }
 
 pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli: Cli) -> Result<(), ExitError> {
-    if cli.tracing_enabled {
-        enable_tracing();
-    }
-
     info!(
         target: LOG_TARGET,
         "== {} ({}) ==",
@@ -237,27 +228,4 @@ fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSe
     } else {
         Ok(None)
     }
-}
-
-fn enable_tracing() {
-    // To run:
-    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
-    // To view the UI after starting the container (default):
-    // http://localhost:16686
-    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("tari::console_wallet")
-        .with_tags(vec![
-            KeyValue::new("pid", process::id().to_string()),
-            KeyValue::new(
-                "current_exe",
-                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
-            ),
-        ])
-        .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap();
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-    let subscriber = Registry::default().with(telemetry);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }
