@@ -37,7 +37,10 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::NodeIdentity,
+    types::{CommsDHKE, CommsPublicKey},
+};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     covenants::Covenant,
@@ -66,8 +69,8 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
-    tari_utilities::ByteArray,
+    keys::{PublicKey as PKtrait, SecretKey},
+    tari_utilities::{ByteArray, ByteArrayError},
 };
 use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, script, TariScript};
@@ -119,7 +122,9 @@ use crate::{
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
-    WalletSecretKeysDomainHasher,
+    WalletOutputEncryptionKeysDomainHasher,
+    WalletOutputRewindKeysDomainHasher,
+    WalletOutputSpendingKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -1056,30 +1061,29 @@ where
 
         // Prepare receiver part of the transaction
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
-        // bytes to enable conversion into a private key to be used as the spending key
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let spend_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
-        )
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let shared_secret = CommsDHKE::new(&sender_offset_private_key, &dest_pubkey);
+        let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
         let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
-            encryption_key: encryption_key.clone(),
+            rewind_blinding_key,
+            encryption_key,
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spend_key.clone(),
+            spending_key.clone(),
             &self.resources.factories,
             &rewind_data,
         );
@@ -1090,12 +1094,12 @@ where
             .resources
             .factories
             .commitment
-            .commit_value(&spend_key, amount.into());
+            .commit_value(&spending_key, amount.into());
         let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
-            spend_key,
+            spending_key,
             output.features.clone(),
             script,
             inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
@@ -1218,19 +1222,18 @@ where
 
         // Prepare receiver part of the transaction
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
-        // bytes to enable conversion into a private key to be used as the spending key
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let spend_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes(),
-        )
-        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let shared_secret = CommsDHKE::new(&sender_offset_private_key, &dest_pubkey);
+        let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         let rewind_data = RewindData {
             rewind_blinding_key,
             encryption_key,
@@ -1239,7 +1242,7 @@ where
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spend_key,
+            spending_key,
             &self.resources.factories,
             &rewind_data,
         );
@@ -2656,12 +2659,34 @@ pub struct PendingCoinbaseSpendingKey {
     pub spending_key: PrivateKey,
 }
 
-fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    WalletSecretKeysDomainHasher::new()
-        .chain(key.as_bytes())
-        .finalize()
-        .as_ref()
-        .to_vec()
+/// Generate an output rewind key from a Diffie-Hellman shared secret
+fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputRewindKeysDomainHasher::new()
+            .chain(shared_secret.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
+}
+
+/// Generate an output encryption key from a Diffie-Hellman shared secret
+fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputEncryptionKeysDomainHasher::new()
+            .chain(shared_secret.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
+}
+
+/// Generate an output spending key from a Diffie-Hellman shared secret
+fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputSpendingKeysDomainHasher::new()
+            .chain(shared_secret.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result
@@ -2691,7 +2716,7 @@ mod tests {
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
         let c = WalletHasher::new_with_label("stealth_address")
-            .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
+            .chain(CommsDHKE::new(&r, &big_a).as_bytes())
             .finalize();
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
@@ -2708,7 +2733,7 @@ mod tests {
         {
             // calculating Ks with the provided R nonce from the script
             let c = WalletHasher::new_with_label("stealth_address")
-                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
+                .chain(CommsDHKE::new(&a, big_r).as_bytes())
                 .finalize();
 
             // computing a spending key `Ks=(c+b)G` for comparison

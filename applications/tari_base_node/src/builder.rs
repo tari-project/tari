@@ -72,7 +72,6 @@ pub struct BaseNodeContext {
 impl BaseNodeContext {
     /// Waits for shutdown of the base node state machine and comms.
     /// This call consumes the NodeContainer instance.
-    #[tracing::instrument(name = "base_node::wait_for_shutdown", skip(self))]
     pub async fn wait_for_shutdown(self) {
         self.state_machine().shutdown_signal().wait().await;
         info!(target: LOG_TARGET, "Waiting for communications stack shutdown");

@@ -86,19 +86,23 @@ impl ServiceInitializer for MempoolSyncInitializer {
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let mut status_watch = state_machine.get_status_info_watch();
-            if !status_watch.borrow().bootstrapped {
-                debug!(target: LOG_TARGET, "Waiting for node to bootstrap...");
+            if !status_watch.borrow().state_info.is_synced() {
+                debug!(target: LOG_TARGET, "Waiting for node to do initial sync...");
                 while status_watch.changed().await.is_ok() {
                     log_mdc::extend(mdc.clone());
-                    if status_watch.borrow().bootstrapped {
-                        debug!(target: LOG_TARGET, "Node bootstrapped. Starting mempool sync protocol");
+                    if status_watch.borrow().state_info.is_synced() {
+                        dbg!();
+                        debug!(
+                            target: LOG_TARGET,
+                            "Initial sync is done. Starting mempool sync protocol"
+                        );
                         break;
                     }
                     trace!(
                         target: LOG_TARGET,
-                        "Mempool sync still on hold, waiting for bootstrap to finish",
+                        "Mempool sync still on hold, waiting for node to do initial sync",
                     );
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_secs(30)).await;
                 }
                 log_mdc::extend(mdc.clone());
             }

@@ -44,9 +44,6 @@ use tari_utilities::{
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    /// Enable tracing
-    #[clap(long, aliases = &["tracing", "enable-tracing"])]
-    pub tracing_enabled: bool,
     /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
     /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
     /// possible.

@@ -34,9 +34,6 @@ pub(crate) struct Cli {
     /// Create a default configuration file if it doesn't exist
     #[clap(long)]
     pub init: bool,
-    /// Enable tracing
-    #[clap(long, aliases = &["tracing", "enable-tracing"])]
-    pub tracing_enabled: bool,
     /// This will rebuild the db, adding block for block in
     // TODO: Should be a command rather
     #[clap(long, alias = "rebuild_db")]
