@@ -316,12 +316,12 @@ impl Opcode {
             Opcode::CheckSigVerify(..) |
             Opcode::CheckMultiSig(..) |
             Opcode::CheckMultiSigVerify(..) |
+            Opcode::CheckMultiSigVerifyAggregatePubKey(..) |
             Opcode::ToRistrettoPoint |
             Opcode::Return |
             Opcode::IfThen |
             Opcode::Else |
             Opcode::EndIf => OpcodeVersion::V0,
-            Opcode::CheckMultiSigVerifyAggregatePubKey(..) => OpcodeVersion::V1,
         }
     }
 
@@ -636,7 +636,6 @@ impl fmt::Display for Opcode {
 #[repr(u8)]
 pub enum OpcodeVersion {
     V0 = 0,
-    V1 = 1,
 }
 
 #[cfg(test)]
