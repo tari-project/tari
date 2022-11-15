@@ -700,9 +700,9 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
-        // Calculate the unix epoch time of two days before the wallet birthday.
+        // Calculate the unix epoch time of two weeks (14 days) before the wallet birthday.
         // This is to avoid any weird time zone issues
-        let epoch_time = get_birthday_from_unix_epoch(birthday, 2u16);
+        let epoch_time = get_birthday_from_unix_epoch(birthday, 14u16);
 
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
