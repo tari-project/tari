@@ -33,5 +33,5 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
 }
 
 pub fn get_birthday_from_unix_epoch(birthday: u16, to_days: u16) -> u64 {
-    u64::from(birthday.saturating_sub(to_days) * 24 * 60 * 60) + BIRTHDAY_GENESIS_FROM_UNIX_EPOCH
+    u64::from(birthday.saturating_sub(to_days)) * 24 * 60 * 60 + BIRTHDAY_GENESIS_FROM_UNIX_EPOCH
 }
