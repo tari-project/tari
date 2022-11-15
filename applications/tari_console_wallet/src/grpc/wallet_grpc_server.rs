@@ -43,6 +43,8 @@ use tari_app_grpc::{
         CoinSplitResponse,
         CreateBurnTransactionRequest,
         CreateBurnTransactionResponse,
+        CreateTemplateRegistrationRequest,
+        CreateTemplateRegistrationResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -59,6 +61,8 @@ use tari_app_grpc::{
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        RegisterValidatorNodeRequest,
+        RegisterValidatorNodeResponse,
         RevalidateRequest,
         RevalidateResponse,
         SendShaAtomicSwapRequest,
@@ -82,8 +86,8 @@ use tari_common_types::{
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{OutputFeatures, UnblindedOutput},
+    tari_amount::{MicroTari, T},
+    transaction_components::{CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput},
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
@@ -880,6 +884,102 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }))
             },
         }
+    }
+
+    async fn create_template_registration(
+        &self,
+        request: Request<CreateTemplateRegistrationRequest>,
+    ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
+        let mut output_manager = self.wallet.output_manager_service.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let template_registration = CodeTemplateRegistration::try_from(
+            message
+                .template_registration
+                .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
+        )
+        .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
+        let fee_per_gram = message.fee_per_gram;
+
+        let message = format!("Template registration {}", template_registration.template_name);
+        let output = output_manager
+            .create_output_with_features(1 * T, OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let (tx_id, transaction) = output_manager
+            .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Template registration transaction: {:?}", transaction
+        );
+
+        let reg_output = transaction
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
+            .unwrap();
+        let template_address = reg_output.hash();
+
+        transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateTemplateRegistrationResponse {
+            tx_id: tx_id.as_u64(),
+            template_address: template_address.to_vec(),
+        }))
+    }
+
+    async fn register_validator_node(
+        &self,
+        request: Request<RegisterValidatorNodeRequest>,
+    ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let validator_node_public_key = CommsPublicKey::from_bytes(&request.validator_node_public_key)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        let validator_node_signature = request
+            .validator_node_signature
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+            .try_into()
+            .unwrap();
+
+        let response = match transaction_service
+            .register_validator_node(
+                validator_node_public_key,
+                validator_node_signature,
+                UtxoSelectionCriteria::default(),
+                request.fee_per_gram.into(),
+                request.message,
+            )
+            .await
+        {
+            Ok(tx) => RegisterValidatorNodeResponse {
+                transaction_id: tx.as_u64(),
+                is_success: true,
+                failure_message: Default::default(),
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                RegisterValidatorNodeResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+        Ok(Response::new(response))
     }
 }
 

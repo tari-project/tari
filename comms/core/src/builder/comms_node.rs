@@ -26,7 +26,7 @@ use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
+    sync::{broadcast, mpsc, watch},
 };
 
 use super::{CommsBuilderError, CommsShutdown};
@@ -37,6 +37,8 @@ use crate::{
         ConnectionManagerRequest,
         ConnectionManagerRequester,
         ListenerInfo,
+        LivenessCheck,
+        LivenessStatus,
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -132,6 +134,7 @@ impl UnspawnedCommsNode {
     }
 
     /// Spawn a new node using the specified [Transport](crate::transports::Transport).
+    #[allow(clippy::too_many_lines)]
     pub async fn spawn_with_transport<TTransport>(self, transport: TTransport) -> Result<CommsNode, CommsBuilderError>
     where
         TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
@@ -187,8 +190,8 @@ impl UnspawnedCommsNode {
         let noise_config = NoiseConfig::new(node_identity.clone());
 
         let mut connection_manager = ConnectionManager::new(
-            connection_manager_config,
-            transport,
+            connection_manager_config.clone(),
+            transport.clone(),
             noise_config,
             dial_backoff,
             connection_manager_request_rx,
@@ -235,6 +238,19 @@ impl UnspawnedCommsNode {
             node_identity.public_address()
         );
 
+        // Spawn liveness check now that we have the final address
+        let liveness_watch = connection_manager_config
+            .liveness_self_check_interval
+            .map(|interval| {
+                LivenessCheck::spawn(
+                    transport,
+                    node_identity.public_address(),
+                    interval,
+                    shutdown_signal.clone(),
+                )
+            })
+            .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1);
+
         Ok(CommsNode {
             shutdown_signal,
             connection_manager_requester,
@@ -242,6 +258,7 @@ impl UnspawnedCommsNode {
             listening_info,
             node_identity,
             peer_manager,
+            liveness_watch,
             hidden_service,
             complete_signals: ext_context.drain_complete_signals(),
         })
@@ -286,6 +303,8 @@ pub struct CommsNode {
     peer_manager: Arc<PeerManager>,
     /// The bind addresses of the listener(s)
     listening_info: ListenerInfo,
+    /// Current liveness status
+    liveness_watch: watch::Receiver<LivenessStatus>,
     /// `Some` if the comms node is configured to run via a hidden service, otherwise `None`
     hidden_service: Option<tor::HiddenService>,
     /// The 'reciprocal' shutdown signals for each comms service
@@ -326,6 +345,11 @@ impl CommsNode {
     /// Return [ListenerInfo]
     pub fn listening_info(&self) -> &ListenerInfo {
         &self.listening_info
+    }
+
+    /// Returns the current liveness status
+    pub fn liveness_status(&self) -> LivenessStatus {
+        *self.liveness_watch.borrow()
     }
 
     /// Return the Ip/Tcp address that this node is listening on

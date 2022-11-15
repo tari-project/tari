@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -38,6 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::TemplateRegistrationEntry,
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -276,6 +277,68 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_active_validator_nodes(
+        &mut self,
+        height: u64,
+    ) -> Result<Vec<(PublicKey, [u8; 32])>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchValidatorNodesKeys { height })
+            .await??
+        {
+            NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_shard_key(
+        &mut self,
+        height: u64,
+        public_key: PublicKey,
+    ) -> Result<Option<[u8; 32]>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetShardKey { height, public_key })
+            .await??
+        {
+            NodeCommsResponse::GetShardKeyResponse(shard_key) => Ok(shard_key),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_template_registrations(
+        &mut self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<TemplateRegistrationEntry>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchTemplateRegistrations {
+                start_height,
+                end_height,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches UTXOs that are not spent for the given block hash up to the current chain tip.
+    pub async fn fetch_unspent_utxos_in_block(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash })
+            .await??
+        {
+            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

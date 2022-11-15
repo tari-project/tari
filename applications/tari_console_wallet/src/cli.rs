@@ -41,7 +41,7 @@ use tari_utilities::{
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 #[allow(clippy::struct_excessive_bools)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
     /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
@@ -131,6 +131,7 @@ pub enum CliCommands {
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
+    RegisterValidatorNode(RegisterValidatorNodeArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -265,4 +266,13 @@ pub struct ClaimShaAtomicSwapRefundArgs {
 pub struct HashPasswordArgs {
     /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
     pub short: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RegisterValidatorNodeArgs {
+    pub validator_node_public_key: UniPublicKey,
+    pub validator_node_public_nonce: UniPublicKey,
+    pub validator_node_signature: Vec<u8>,
+    #[clap(short, long, default_value = "Registering VN")]
+    pub message: String,
 }

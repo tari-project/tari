@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,23 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, io, path::Path};
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::FixedHash;
 
-use fs2::FileExt;
+use crate::transactions::transaction_components::CodeTemplateRegistration;
 
-/// Acquire an exclusive OS level write lock at the given path. A file named .lock is written in
-/// this path.
-///
-/// ## Parameters
-/// `path` - Path of the lock file
-///
-/// ## Returns
-/// Returns a File handle that must be retained to keep the file lock active.
-/// Returns an IO error if the file lock cannot be acquired.
-pub fn try_lock_exclusive<P: AsRef<Path>>(path: P) -> Result<File, io::Error> {
-    let lock_file_path = path.as_ref().join(".lock");
-    let file = File::create(lock_file_path)?;
-    // Attempt to acquire exclusive OS level Write Lock
-    file.try_lock_exclusive()?;
-    Ok(file)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TemplateRegistrationEntry {
+    pub registration_data: CodeTemplateRegistration,
+    pub output_hash: FixedHash,
+    pub block_height: u64,
+    pub block_hash: FixedHash,
 }

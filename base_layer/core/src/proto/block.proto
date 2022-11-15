@@ -51,6 +51,8 @@ message BlockHeader {
     uint64 output_mmr_size = 14;
     // Sum of script offsets for all kernels in this block.
     bytes total_script_offset = 15;
+    // Merkle root of validator nodes
+    bytes validator_node_merkle_root = 16;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.

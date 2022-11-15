@@ -32,7 +32,7 @@ mod new_block_template;
 mod output_features;
 mod peer;
 mod proof_of_work;
-mod sidechain_features;
+mod sidechain_feature;
 mod signature;
 mod transaction;
 mod transaction_input;

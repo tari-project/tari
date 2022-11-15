@@ -36,11 +36,12 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
+use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
         Block,
@@ -91,6 +92,7 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     PrunedWitnessMmr,
+    ValidatorNodeMmr,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -435,6 +437,11 @@ where B: BlockchainBackend
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_utxos_in_block(&hash, deleted.as_deref())
+    }
+
+    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_outputs_in_block(&hash)
     }
 
     /// Returns the number of UTXOs in the current unspent set
@@ -814,6 +821,7 @@ where B: BlockchainBackend
         block.header.output_mr = roots.output_mr;
         block.header.witness_mr = roots.witness_mr;
         block.header.output_mmr_size = roots.output_mmr_size;
+        block.header.validator_node_mr = roots.validator_node_mr;
         Ok(block)
     }
 
@@ -835,6 +843,11 @@ where B: BlockchainBackend
     pub fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_mmr_size(tree)
+    }
+
+    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.get_shard_key(height, public_key)
     }
 
     /// Tries to add a block to the longest chain.
@@ -1169,6 +1182,25 @@ where B: BlockchainBackend
         txn.clear_all_reorgs();
         db.write(txn)
     }
+
+    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_active_validator_nodes(height)
+    }
+
+    pub fn fetch_template_registrations<T: RangeBounds<u64>>(
+        &self,
+        range: T,
+    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let (start, mut end) = convert_to_option_bounds(range);
+        if end.is_none() {
+            // `(n..)` means fetch block headers until this node's tip
+            end = Some(db.fetch_last_header()?.height);
+        }
+        let (start, end) = (start.unwrap_or(0), end.unwrap());
+        db.fetch_template_registrations(start, end)
+    }
 }
 
 fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
@@ -1189,20 +1221,24 @@ pub struct MmrRoots {
     pub output_mr: FixedHash,
     pub witness_mr: FixedHash,
     pub output_mmr_size: u64,
+    pub validator_node_mr: FixedHash,
 }
 
 impl std::fmt::Display for MmrRoots {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "MMR Roots")?;
-        writeln!(f, "Input MR        : {}", &self.input_mr.to_hex())?;
-        writeln!(f, "Witness MR      : {}", &self.witness_mr.to_hex())?;
-        writeln!(f, "Kernel MR       : {}", &self.kernel_mr.to_hex())?;
-        writeln!(f, "Kernel MMR Size : {}", &self.kernel_mmr_size)?;
-        writeln!(f, "Output MR       : {}", &self.output_mr.to_hex())?;
-        writeln!(f, "Output MMR Size : {}", &self.output_mmr_size)
+        writeln!(f, "Input MR        : {}", self.input_mr)?;
+        writeln!(f, "Witness MR      : {}", self.witness_mr)?;
+        writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
+        writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
+        writeln!(f, "Output MR       : {}", self.output_mr)?;
+        writeln!(f, "Output MMR Size : {}", self.output_mmr_size)?;
+        writeln!(f, "Validator MR    : {}", self.validator_node_mr)?;
+        Ok(())
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
@@ -1305,6 +1341,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
+    let mut validator_nodes = db.fetch_active_validator_nodes(metadata.height_of_longest_chain() + 1)?;
+    validator_nodes.sort();
+    let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.1.to_vec()).collect());
+
     let mmr_roots = MmrRoots {
         kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
@@ -1312,6 +1352,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         output_mr: FixedHash::try_from(output_mmr.get_merkle_root()?)?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: FixedHash::try_from(witness_mmr.get_merkle_root()?)?,
+        validator_node_mr: FixedHash::try_from(vn_mmr.get_merkle_root()?)?,
     };
     Ok(mmr_roots)
 }

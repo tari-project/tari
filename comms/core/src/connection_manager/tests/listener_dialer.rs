@@ -66,7 +66,7 @@ async fn listen() -> Result<(), Box<dyn Error>> {
         shutdown.to_signal(),
     );
 
-    let (mut bind_addr, _) = listener.listen().await?;
+    let mut bind_addr = listener.listen().await?;
 
     unpack_enum!(Protocol::Memory(port) = bind_addr.pop().unwrap());
     assert!(port > 0);
@@ -103,7 +103,7 @@ async fn smoke() {
     listener.set_supported_protocols(supported_protocols.clone());
 
     // Get the listening address of the peer
-    let (address, _) = listener.listen().await.unwrap();
+    let address = listener.listen().await.unwrap();
 
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
@@ -207,7 +207,7 @@ async fn banned() {
     listener.set_supported_protocols(supported_protocols.clone());
 
     // Get the listener address of the peer
-    let (address, _) = listener.listen().await.unwrap();
+    let address = listener.listen().await.unwrap();
 
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // The listener has banned the dialer peer

@@ -73,6 +73,8 @@ pub enum TransactionError {
     ConsensusEncodingError(String),
     #[error("Committee contains too many members: contains {len} members but maximum is {max}")]
     InvalidCommitteeLength { len: usize, max: usize },
+    #[error("Missing validator node signature")]
+    MissingValidatorNodeSignature,
 }
 
 impl From<CovenantError> for TransactionError {

@@ -26,10 +26,11 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
+use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
         Block,
@@ -63,7 +64,6 @@ use crate::{
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
-
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
@@ -109,7 +109,7 @@ macro_rules! make_async_fn {
      $(#[$outer:meta])*
      $fn:ident$(< $( $lt:tt $( : $clt:path )? ),+ >)?($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
         $(#[$outer])*
-        pub async fn $fn$(< $( $lt $( : $clt )? ),+ +Sync+Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
+        pub async fn $fn$(< $( $lt $( : $clt )? ),+ + Sync + Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
             let mut mdc = vec![];
             log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
@@ -162,6 +162,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
     make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
+
+    make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<PrunedOutput>, "fetch_outputs_in_block");
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
@@ -264,6 +266,12 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
+
+    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(PublicKey, [u8;32])>, "fetch_active_validator_nodes");
+
+    make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> Option<[u8;32]>, "get_shard_key");
+
+    make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {
