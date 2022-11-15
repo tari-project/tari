@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
 use digest::Digest;
 use tari_crypto::{
     hash_domain,
@@ -29,4 +30,8 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
     label: &'static str,
 ) -> DomainSeparatedHasher<D, KeyManagerDomain> {
     DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(label)
+}
+
+pub fn get_birthday_from_unix_epoch(birthday: u16, to_days: u16) -> u64 {
+    u64::from(birthday.saturating_sub(to_days) * 24 * 60 * 60) + BIRTHDAY_GENESIS_FROM_UNIX_EPOCH
 }

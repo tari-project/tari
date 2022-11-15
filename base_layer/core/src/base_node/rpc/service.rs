@@ -555,7 +555,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let mut right_height = tip_header.height();
 
         while left_height <= right_height {
-            dbg!("FLAG2: right_height = {}", right_height);
             let mut mid_height = (left_height + right_height) / 2;
 
             if mid_height == 0 {
@@ -594,7 +593,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 left_height = mid_height;
             }
         }
-        
+
         Ok(Response::new(0u64))
     }
 
