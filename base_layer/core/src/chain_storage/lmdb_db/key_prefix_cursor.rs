@@ -62,26 +62,6 @@ where V: DeserializeOwned
         }
     }
 
-    /// Returns the item on or before the given seek key, progressing backwards until the key prefix no longer matches
-    #[allow(dead_code)]
-    pub fn prev(&mut self) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
-        if !self.has_seeked {
-            let prefix_key = self.prefix_key;
-            if let Some((k, val)) = self.seek_gte(prefix_key)? {
-                // seek_range_k returns the greater key, so we only want to return the current value that was seeked to
-                // if it exactly matches the prefix_key
-                if k == prefix_key {
-                    return Ok(Some((k, val)));
-                }
-            }
-        }
-
-        match self.cursor.prev(&self.access).to_opt()? {
-            Some((k, v)) => Self::deserialize_if_matches(self.prefix_key, k, v),
-            None => Ok(None),
-        }
-    }
-
     // This function could be used later in cases where multiple seeks are required.
     #[cfg(test)]
     pub fn reset_to(&mut self, prefix_key: &'a [u8]) {
