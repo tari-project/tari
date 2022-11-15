@@ -550,10 +550,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_tip_header()
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
+
         let mut left_height = 0u64;
         let mut right_height = tip_header.height();
 
         while left_height <= right_height {
+            dbg!("FLAG2: right_height = {}", right_height);
             let mut mid_height = (left_height + right_height) / 2;
 
             if mid_height == 0 {
@@ -580,7 +582,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .ok_or_else(|| {
                     RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height - 1))
                 })?;
-
             if requested_epoch_time < mid_header.timestamp.as_u64() &&
                 requested_epoch_time >= before_mid_header.timestamp.as_u64()
             {
@@ -593,7 +594,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 left_height = mid_height;
             }
         }
-
+        
         Ok(Response::new(0u64))
     }
 

@@ -325,11 +325,7 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = client.get_tip_info().await?;
-        let wallet_birthday_height = self.get_birthday_header_height_hash(client).await?.height;
-        let chain_height = tip_info
-            .metadata
-            .map(|m| m.height_of_longest_chain())
-            .unwrap_or(wallet_birthday_height);
+        let chain_height = tip_info.metadata.map(|m| m.height_of_longest_chain()).unwrap_or(0);
         let end_header = client.get_header_by_height(chain_height).await?;
         let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
 
@@ -706,6 +702,7 @@ where
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
         let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
+        dbg!("FLAG: birthday epoch time is: {}", epoch_time);
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
             Err(e) => {
