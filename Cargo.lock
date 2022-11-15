@@ -4480,7 +4480,6 @@ dependencies = [
  "config",
  "derivative",
  "dirs-next 1.0.2",
- "fs2",
  "git2",
  "log",
  "log4rs",
