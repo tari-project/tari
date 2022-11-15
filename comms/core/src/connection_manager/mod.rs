@@ -52,6 +52,7 @@ mod peer_connection;
 pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
 
 mod liveness;
+pub(crate) use liveness::LivenessCheck;
 pub use liveness::LivenessStatus;
 
 mod wire_mode;
