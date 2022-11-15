@@ -445,4 +445,3 @@ pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, Ch
     }
     Ok(num_deleted)
 }
-
