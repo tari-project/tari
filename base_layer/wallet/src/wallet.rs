@@ -51,7 +51,6 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
-    KeyManagerHiddenType,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -670,10 +669,7 @@ where
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub fn get_seed_words(
-        &self,
-        language: &MnemonicLanguage,
-    ) -> Result<Hidden<Vec<String>, KeyManagerHiddenType>, WalletError> {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Hidden<Vec<String>>, WalletError> {
         let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),
@@ -724,7 +720,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );
-    Ok(comms_key_manager.derive_key(0)?.k)
+    Ok(comms_key_manager.derive_key(0)?.reveal().k)
 }
 
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided

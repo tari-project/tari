@@ -131,7 +131,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db4ce4441f99dbd377ca8a8f57b698c44d0d6e712d8329b5040da5a64aa1ce73"
 dependencies = [
  "base64ct",
- "blake2 0.10.4",
+ "blake2 0.10.5",
  "password-hash",
 ]
 
@@ -344,9 +344,9 @@ dependencies = [
 
 [[package]]
 name = "blake2"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9cf849ee05b2ee5fba5e36f97ff8ec2533916700fc0758d40d92136a42f3388"
+checksum = "b12e5fd123190ce1c2e559308a94c9bacad77907d4c6005d9e58fe1a0689e55e"
 dependencies = [
  "digest 0.10.5",
 ]
@@ -623,9 +623,9 @@ checksum = "17cc5e6b5ab06331c33589842070416baa137e8b0eb912b008cfd4a78ada7919"
 
 [[package]]
 name = "chrono"
-version = "0.4.22"
+version = "0.4.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfd4d1b31faaa3a89d7934dbded3111da0d2ef28e3ebccdb4f0179f5929d1ef1"
+checksum = "16b0a3d9ed01224b22057780a37bb8c5dbfe1be8ba48678e7bf57ec4b385411f"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -2260,9 +2260,12 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9b7d56ba4a8344d6be9729995e6b06f928af29998cdf79fe390cbf6b1fee838"
+checksum = "3afef3b6eff9ce9d8ff9b3601125eec7f0c8cbac7abd14f355d053fa56c98768"
+dependencies = [
+ "cpufeatures",
+]
 
 [[package]]
 name = "lazy_static"
@@ -3064,9 +3067,9 @@ dependencies = [
 
 [[package]]
 name = "os_str_bytes"
-version = "6.3.1"
+version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3baf96e39c5359d2eb0dd6ccb42c62b91d9678aa68160d261b9e0ccbf9e9dea9"
+checksum = "7b5bf27447411e9ee3ff51186bf7a08e16c341efdde93f4d823e8844429bed7e"
 
 [[package]]
 name = "packed_simd_2"
@@ -4131,6 +4134,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-wasm-bindgen"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cfc62771e7b829b517cb213419236475f434fb480eddd76112ae182d274434a"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "serde_cbor"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4348,7 +4362,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "774d05a3edae07ce6d68ea6984f3c05e9bba8927e3dd591e3b479e5b03213d0d"
 dependencies = [
  "aes-gcm",
- "blake2 0.10.4",
+ "blake2 0.10.5",
  "chacha20poly1305",
  "curve25519-dalek 4.0.0-pre.2",
  "rand_core 0.6.4",
@@ -4697,7 +4711,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bitflags 1.3.2",
- "blake2 0.10.4",
+ "blake2 0.10.5",
  "bytes 1.2.1",
  "chrono",
  "cidr",
@@ -4916,8 +4930,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.15.7"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.7#bd66b3d2021bf0b391d50f1ba8db339a62231738"
+version = "0.16.0"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.16.0#8f3bce7ed1ece78d58c90ba9abda59cbfa0863f6"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",
@@ -4931,6 +4945,7 @@ dependencies = [
  "once_cell",
  "rand 0.7.3",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "sha3",
  "tari_bulletproofs",
@@ -5239,7 +5254,7 @@ dependencies = [
 [[package]]
 name = "tari_utilities"
 version = "0.4.8"
-source = "git+https://github.com/AaronFeickert/tari_utilities.git?branch=clandestine#31cfd74d82ddf181f70bf94928f23437366bae82"
+source = "git+https://github.com/AaronFeickert/tari_utilities.git?branch=clandestine#c3d2f7f235ec595b4664b3b82ce6da69213644f5"
 dependencies = [
  "base58-monero 0.3.2",
  "base64 0.13.1",
@@ -5294,7 +5309,7 @@ dependencies = [
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
- "tari_utilities 0.4.7",
+ "tari_utilities 0.4.8",
  "tempfile",
  "thiserror",
  "tokio",

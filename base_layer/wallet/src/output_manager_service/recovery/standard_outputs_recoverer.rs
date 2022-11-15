@@ -38,6 +38,7 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 use tari_script::{inputs, script, Opcode};
+use tari_utilities::Hidden;
 
 use crate::{
     key_manager_service::KeyManagerInterface,
@@ -203,7 +204,7 @@ where
                 .master_key_manager
                 .find_key_index(
                     OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
-                    &output.spending_key,
+                    Hidden::hide(output.spending_key),
                 )
                 .await?;
 
@@ -218,7 +219,7 @@ where
                 .master_key_manager
                 .find_key_index(
                     OutputManagerKeyManagerBranch::Spend.get_branch_key(),
-                    &output.spending_key,
+                    Hidden::hide(output.spending_key),
                 )
                 .await?;
 
@@ -237,8 +238,8 @@ where
                 .await?
         };
 
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_key));
-        output.script_private_key = script_key;
+        output.input_data = inputs!(PublicKey::from_secret_key(script_key.reveal()));
+        output.script_private_key = *script_key.reveal();
         Ok(())
     }
 }

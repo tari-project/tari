@@ -24,6 +24,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
+use tari_utilities::Hidden;
 use tokio::sync::RwLock;
 
 use crate::{
@@ -85,7 +86,7 @@ impl KeyManagerMock {
         let km = lock.get_mut(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.next_key()?;
         Ok(NextKeyResult {
-            key: key.k,
+            key: Hidden::hide(key.reveal().k),
             index: km.key_index(),
         })
     }
@@ -95,22 +96,26 @@ impl KeyManagerMock {
         &self,
         branch: String,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
+    ) -> Result<Hidden<PrivateKey>, KeyManagerServiceError> {
         let lock = self.key_managers.read().await;
         let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.derive_key(index)?;
-        Ok(key.k)
+        Ok(Hidden::hide(key.reveal().k))
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index_mock(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
+    pub async fn find_key_index_mock(
+        &self,
+        branch: String,
+        key: Hidden<PrivateKey>,
+    ) -> Result<u64, KeyManagerServiceError> {
         let lock = self.key_managers.read().await;
         let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
 
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == *key {
+            if km.derive_key(i)?.reveal().k == *key.reveal() {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }
@@ -150,7 +155,7 @@ impl KeyManagerInterface for KeyManagerMock {
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
+    ) -> Result<Hidden<PrivateKey>, KeyManagerServiceError> {
         self.get_key_at_index_mock(branch.into(), index).await
     }
 
@@ -165,7 +170,7 @@ impl KeyManagerInterface for KeyManagerMock {
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,
-        key: &PrivateKey,
+        key: Hidden<PrivateKey>,
     ) -> Result<u64, KeyManagerServiceError> {
         self.find_key_index_mock(branch.into(), key).await
     }

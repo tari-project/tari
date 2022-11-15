@@ -27,13 +27,14 @@ use strum_macros::{Display, EnumString};
 use tari_utilities::{
     bit::{bytes_to_bits, checked_bits_to_uint},
     Hidden,
+    SafePassword,
 };
 
 use crate::{
     diacritics::*,
     error::{KeyManagerError, MnemonicError},
     mnemonic_wordlists::*,
-    KeyManagerHiddenType,
+    SeedWords,
 };
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
@@ -56,7 +57,7 @@ pub enum MnemonicLanguage {
 impl MnemonicLanguage {
     /// Detects the mnemonic language of a specific word by searching all defined mnemonic word lists
     pub fn from(mnemonic_word: &str) -> Result<MnemonicLanguage, MnemonicError> {
-        let words = vec![mnemonic_word.to_string()];
+        let words = SeedWords::new(&[mnemonic_word.to_string()]);
         MnemonicLanguage::detect_language(&words)
     }
 
@@ -88,14 +89,14 @@ impl MnemonicLanguage {
     }
 
     /// Detects the language of a list of words
-    pub fn detect_language(words: &[String]) -> Result<MnemonicLanguage, MnemonicError> {
-        let count = words.iter().len();
+    pub fn detect_language(words: &SeedWords) -> Result<MnemonicLanguage, MnemonicError> {
+        let count = words.len();
         match count.cmp(&1) {
             Ordering::Less => {
                 return Err(MnemonicError::UnknownLanguage);
             },
             Ordering::Equal => {
-                let word = words.get(0).ok_or(MnemonicError::EncodeInvalidLength)?;
+                let word = words.get_word(0)?;
                 for language in MnemonicLanguage::iterator() {
                     if find_mnemonic_index_from_word(word, *language).is_ok() {
                         return Ok(*language);
@@ -104,7 +105,8 @@ impl MnemonicLanguage {
                 return Err(MnemonicError::UnknownLanguage);
             },
             Ordering::Greater => {
-                for word in words {
+                for word_ind in 0..words.len() {
+                    let word = words.get_word(word_ind)?;
                     let mut languages = Vec::with_capacity(MnemonicLanguage::iterator().len());
                     // detect all languages in which a word falls into
                     for language in MnemonicLanguage::iterator() {
@@ -116,7 +118,8 @@ impl MnemonicLanguage {
                     // yielded from the initial word for this iteration
                     for language in languages {
                         let mut consistent = true;
-                        for compare in words {
+                        for compare_ind in 0..words.len() {
+                            let compare = words.get_word(compare_ind)?;
                             if compare != word && find_mnemonic_index_from_word(compare, language).is_err() {
                                 consistent = false;
                             }
@@ -135,19 +138,27 @@ impl MnemonicLanguage {
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language
 fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Result<usize, MnemonicError> {
-    let lowercase_word = word.to_lowercase();
+    let lowercase_word = Hidden::hide(word.to_lowercase());
     let search_result = match language {
         // Search through languages are ordered according to the predominance (number of speakers in the world) of that
         // language
         MnemonicLanguage::ChineseSimplified => {
-            MNEMONIC_CHINESE_SIMPLIFIED_WORDS.binary_search(&lowercase_word.as_str())
+            MNEMONIC_CHINESE_SIMPLIFIED_WORDS.binary_search(&lowercase_word.reveal().as_str())
         },
-        MnemonicLanguage::English => MNEMONIC_ENGLISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
-        MnemonicLanguage::French => MNEMONIC_FRENCH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
-        MnemonicLanguage::Italian => MNEMONIC_ITALIAN_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
-        MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS.binary_search(&lowercase_word.as_str()),
-        MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.binary_search(&lowercase_word.as_str()),
-        MnemonicLanguage::Spanish => MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
+        MnemonicLanguage::English => {
+            MNEMONIC_ENGLISH_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
+        },
+        MnemonicLanguage::French => {
+            MNEMONIC_FRENCH_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
+        },
+        MnemonicLanguage::Italian => {
+            MNEMONIC_ITALIAN_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
+        },
+        MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS.binary_search(&lowercase_word.reveal().as_str()),
+        MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.binary_search(&lowercase_word.reveal().as_str()),
+        MnemonicLanguage::Spanish => {
+            MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(&lowercase_word.reveal()).reveal().as_str())
+        },
     };
     match search_result {
         Ok(v) => Ok(v),
@@ -175,7 +186,7 @@ fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Re
 }
 
 /// Converts a vector of bytes to a sequence of mnemonic words using the specified language
-pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
+pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords, MnemonicError> {
     let mut bits = bytes_to_bits(bytes);
 
     // Pad with zeros if length not divisible by 11
@@ -198,12 +209,12 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
         mnemonic_sequence.push(mnemonic_word);
     }
 
-    Ok(mnemonic_sequence)
+    Ok(SeedWords::new(mnemonic_sequence.as_slice()))
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is detected
-pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes(mnemonic_seq: &SeedWords) -> Result<Vec<u8>, MnemonicError> {
     let language = MnemonicLanguage::detect_language(mnemonic_seq)?;
     to_bytes_with_language(mnemonic_seq, &language)
 }
@@ -223,14 +234,19 @@ pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
 /// 1) the first output 'a' is last 8 bits from input 'A', we have leftover 3 bits from 'A'
 /// 2) We add 5 bits from 'B' to generate 'b', the leftover is 6 bits from 'B'
 /// 3) We add 2 bits from 'C to generate 'c', now we have 8 bits needed to generate 'd' and we have 1 bit leftover.
-pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes_with_language(mnemonic_seq: &SeedWords, language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
     const MASK: u64 = (1u64 << 8) - 1;
     let mut bytes = Vec::new();
     let mut rest = 0u64;
     let mut rest_bits: u8 = 0;
 
-    for curr_word in mnemonic_seq {
-        let index = find_mnemonic_index_from_word(curr_word, *language)? as u64;
+    for curr_ind in 0..mnemonic_seq.len() {
+        let index = find_mnemonic_index_from_word(
+            mnemonic_seq
+                .get_word(curr_ind)
+                .map_err(|_| MnemonicError::IndexOutOfBounds)?,
+            *language,
+        )? as u64;
         // Add 11 bits to the front
         rest += index << rest_bits;
         rest_bits += 11;
@@ -249,17 +265,17 @@ pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLangua
 }
 
 pub trait Mnemonic<T> {
-    fn from_mnemonic(mnemonic_seq: &[String], passphrase: Option<String>) -> Result<T, KeyManagerError>;
+    fn from_mnemonic(mnemonic_seq: &SeedWords, passphrase: Option<SafePassword>) -> Result<T, KeyManagerError>;
     fn from_mnemonic_with_language(
-        mnemonic_seq: &[String],
+        mnemonic_seq: &SeedWords,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
+        passphrase: Option<SafePassword>,
     ) -> Result<T, KeyManagerError>;
     fn to_mnemonic(
         &self,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
-    ) -> Result<Hidden<Vec<String>, KeyManagerHiddenType>, KeyManagerError>;
+        passphrase: Option<SafePassword>,
+    ) -> Result<SeedWords, KeyManagerError>;
 }
 
 #[cfg(test)]
@@ -339,45 +355,54 @@ mod test {
         assert!(MnemonicLanguage::from("desvelado").is_err()); // Invalid Mnemonic Spanish word
 
         // English/Spanish + English/French -> English
-        let words1 = vec![
+        let words1 = SeedWords::new(&[
             "album".to_string(),
             "area".to_string(),
             "opera".to_string(),
             "abandon".to_string(),
-        ];
+        ]);
         assert_eq!(
             MnemonicLanguage::detect_language(&words1),
             Ok(MnemonicLanguage::English)
         );
 
         // English/Spanish + English/French + Italian/Spanish
-        let words2 = vec![
+        let words2 = SeedWords::new(&[
             "album".to_string(),
             "area".to_string(),
             "opera".to_string(),
             "abandon".to_string(),
             "tipico".to_string(),
-        ];
+        ]);
         assert!(MnemonicLanguage::detect_language(&words2).is_err());
 
         // bounds check (last word is invalid)
-        let words3 = vec![
+        let words3 = SeedWords::new(&[
             "album".to_string(),
             "area".to_string(),
             "opera".to_string(),
             "abandon".to_string(),
             "topazio".to_string(),
-        ];
+        ]);
         assert!(MnemonicLanguage::detect_language(&words3).is_err());
 
         // building up a word list: English/French + French -> French
         let mut words = Vec::with_capacity(3);
         words.push("concert".to_string());
-        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::English));
+        assert_eq!(
+            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            Ok(MnemonicLanguage::English)
+        );
         words.push("abandon".to_string());
-        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::English));
+        assert_eq!(
+            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            Ok(MnemonicLanguage::English)
+        );
         words.push("barbier".to_string());
-        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::French));
+        assert_eq!(
+            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            Ok(MnemonicLanguage::French)
+        );
     }
 
     #[test]

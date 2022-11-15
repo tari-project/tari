@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
-use tari_utilities::{hidden::HiddenLabel, hidden_label};
+use tari_utilities::{hidden::Hidden, hidden_type};
+use zeroize::Zeroize;
+
+use crate::{
+    cipher_seed::{CIPHER_SEED_ENCRYPTION_KEY_BYTES, CIPHER_SEED_MAC_KEY_BYTES},
+    error::MnemonicError,
+};
 
 pub mod cipher_seed;
 pub mod diacritics;
@@ -32,4 +39,30 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
     DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(label)
 }
 
-hidden_label!(KeyManagerHiddenType);
+hidden_type!(CipherSeedEncryptionKey, [u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
+hidden_type!(CipherSeedMacKey, [u8; CIPHER_SEED_MAC_KEY_BYTES]);
+
+#[derive(Debug, Clone)]
+pub struct SeedWords {
+    words: Vec<Hidden<String>>,
+}
+
+impl SeedWords {
+    pub fn new(words: &[String]) -> Self {
+        Self {
+            words: words.into_iter().map(|m| Hidden::hide(m.clone())).collect::<Vec<_>>(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.words.len()
+    }
+
+    pub fn get_word(&self, index: usize) -> Result<&String, MnemonicError> {
+        if index > self.len() - 1 {
+            return Err(MnemonicError::IndexOutOfBounds);
+        }
+
+        Ok(self.words[index].reveal())
+    }
+}

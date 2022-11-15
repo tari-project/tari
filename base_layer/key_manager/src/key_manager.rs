@@ -33,7 +33,7 @@ use tari_crypto::{
 use tari_utilities::Hidden;
 use zeroize::Zeroize;
 
-use crate::{cipher_seed::CipherSeed, mac_domain_hasher, KeyManagerHiddenType, LABEL_DERIVE_KEY};
+use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
 
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
@@ -87,7 +87,7 @@ where
 
     /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
     /// hash function H which is Length attack resistant, such as Blake2b.
-    pub fn derive_key(&self, key_index: u64) -> Result<Hidden<DerivedKey<K>, KeyManagerHiddenType>, ByteArrayError> {
+    pub fn derive_key(&self, key_index: u64) -> Result<Hidden<DerivedKey<K>>, ByteArrayError> {
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
         // input
@@ -100,16 +100,13 @@ where
         let derive_key = derive_key.as_ref();
 
         match K::from_bytes(derive_key) {
-            Ok(k) => Ok(Hidden::<DerivedKey<K>, KeyManagerHiddenType>::hide(DerivedKey {
-                k,
-                key_index,
-            })),
+            Ok(k) => Ok(Hidden::<DerivedKey<K>>::hide(DerivedKey { k, key_index })),
             Err(e) => Err(e),
         }
     }
 
     /// Generate next deterministic private key derived from master key
-    pub fn next_key(&mut self) -> Result<Hidden<DerivedKey<K>, KeyManagerHiddenType>, ByteArrayError> {
+    pub fn next_key(&mut self) -> Result<Hidden<DerivedKey<K>>, ByteArrayError> {
         self.primary_key_index += 1;
         self.derive_key(self.primary_key_index)
     }

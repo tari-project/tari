@@ -25,6 +25,7 @@ use std::sync::Arc;
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::cipher_seed::CipherSeed;
+use tari_utilities::Hidden;
 use tokio::sync::RwLock;
 
 use crate::key_manager_service::{
@@ -85,7 +86,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
+    ) -> Result<Hidden<PrivateKey>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -96,7 +97,7 @@ where TBackend: KeyManagerBackend + 'static
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,
-        key: &PrivateKey,
+        key: Hidden<PrivateKey>,
     ) -> Result<u64, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()

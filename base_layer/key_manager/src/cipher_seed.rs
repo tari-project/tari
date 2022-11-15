@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem::size_of};
+use std::{convert::TryFrom, mem::size_of, str::FromStr};
 
 use argon2;
 use chacha20::{
@@ -34,14 +34,16 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::hidden::Hidden;
+use tari_utilities::{hidden::Hidden, SafePassword};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
     mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
-    KeyManagerHiddenType,
+    CipherSeedEncryptionKey,
+    CipherSeedMacKey,
+    SeedWords,
     LABEL_ARGON_ENCODING,
     LABEL_CHACHA20_ENCODING,
     LABEL_MAC_GENERATION,
@@ -123,7 +125,7 @@ pub struct CipherSeed {
 }
 
 // This is a separate type to make the linter happy
-type DerivedCipherSeedKeys = Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), KeyManagerError>;
+type DerivedCipherSeedKeys = Result<(CipherSeedEncryptionKey, CipherSeedMacKey), KeyManagerError>;
 
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
@@ -167,9 +169,12 @@ impl CipherSeed {
     }
 
     /// Generate an encrypted seed from a passphrase
-    pub fn encipher(&self, passphrase: Option<String>) -> Result<Vec<u8>, KeyManagerError> {
+    pub fn encipher(&self, passphrase: Option<SafePassword>) -> Result<Vec<u8>, KeyManagerError> {
         // Derive encryption and MAC keys from passphrase and main salt
-        let passphrase = Zeroizing::new(passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string()));
+        let passphrase = passphrase.unwrap_or_else(|| {
+            SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
+                .expect("Failed to parse default cipher seed passphrase to SafePassword")
+        });
         let (encryption_key, mac_key) = Self::derive_keys(&passphrase, self.salt.as_ref())?;
 
         // Generate the MAC
@@ -178,7 +183,7 @@ impl CipherSeed {
             self.entropy.as_ref(),
             CIPHER_SEED_VERSION,
             self.salt.as_ref(),
-            mac_key.as_ref(),
+            mac_key.reveal(),
         )?;
 
         // Assemble the secret data to be encrypted: birthday, entropy, MAC
@@ -190,7 +195,7 @@ impl CipherSeed {
         secret_data.extend(&mac);
 
         // Encrypt the secret data
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), self.salt.as_ref())?;
+        Self::apply_stream_cipher(&mut secret_data, encryption_key.reveal(), self.salt.as_ref())?;
 
         // Assemble the final seed: version, main salt, secret data, checksum
         let mut encrypted_seed =
@@ -208,7 +213,10 @@ impl CipherSeed {
     }
 
     /// Recover a seed from encrypted data and a passphrase
-    pub fn from_enciphered_bytes(encrypted_seed: &[u8], passphrase: Option<String>) -> Result<Self, KeyManagerError> {
+    pub fn from_enciphered_bytes(
+        encrypted_seed: &[u8],
+        passphrase: Option<SafePassword>,
+    ) -> Result<Self, KeyManagerError> {
         // Check the length: version, birthday, entropy, MAC, salt, checksum
         if encrypted_seed.len() !=
             1 + CIPHER_SEED_BIRTHDAY_BYTES +
@@ -243,7 +251,10 @@ impl CipherSeed {
         }
 
         // Derive encryption and MAC keys from passphrase and main salt
-        let passphrase = Zeroizing::new(passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string()));
+        let passphrase = passphrase.unwrap_or_else(|| {
+            SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
+                .expect("Failed to parse default cipher seed passphrase to SafePassword")
+        });
         let salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]> = encrypted_seed
             .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
             .into_boxed_slice()
@@ -253,7 +264,7 @@ impl CipherSeed {
 
         // Decrypt the secret data: birthday, entropy, MAC
         let mut secret_data = Zeroizing::new(encrypted_seed.split_off(1));
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.as_ref(), salt.as_ref())?;
+        Self::apply_stream_cipher(&mut secret_data, encryption_key.reveal(), salt.as_ref())?;
 
         // Parse secret data
         let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
@@ -273,7 +284,7 @@ impl CipherSeed {
             entropy.as_ref(),
             version,
             salt.as_ref(),
-            mac_key.as_ref(),
+            mac_key.reveal(),
         )?;
 
         // Verify the MAC in constant time to avoid leaking data
@@ -346,7 +357,7 @@ impl CipherSeed {
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
     // TODO: passhphrase should be SafePassword
-    fn derive_keys(passphrase: &str, salt: &[u8]) -> DerivedCipherSeedKeys {
+    fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
         let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
             .chain(salt)
@@ -365,15 +376,23 @@ impl CipherSeed {
         .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 parameters".to_string()))?;
 
         // Derive the main key from the password in place
-        let mut main_key = Zeroizing::new([0u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES + CIPHER_SEED_MAC_KEY_BYTES]);
+        let mut main_key = Hidden::hide([0u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES + CIPHER_SEED_MAC_KEY_BYTES]);
         let hasher = argon2::Argon2::new(argon2::Algorithm::Argon2d, argon2::Version::V0x13, params);
         hasher
-            .hash_password_into(passphrase.as_bytes(), argon2_salt, main_key.as_mut())
+            .hash_password_into(passphrase.reveal(), argon2_salt, main_key.reveal_mut())
             .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 password hash".to_string()))?;
 
         // Split off the keys
-        let encryption_key = Zeroizing::new(main_key.as_ref()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES].to_vec()); // TODO
-        let mac_key = Zeroizing::new(main_key.as_ref()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..].to_vec()); // TODO
+        let mut encryption_key = CipherSeedEncryptionKey::from([0u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
+        encryption_key
+            .reveal_mut()
+            .copy_from_slice(&main_key.reveal()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
+
+        let mut mac_key = CipherSeedMacKey::from([0u8; CIPHER_SEED_MAC_KEY_BYTES]);
+        mac_key
+            .reveal_mut()
+            .copy_from_slice(&main_key.reveal()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..]);
+
         Ok((encryption_key, mac_key))
     }
 }
@@ -387,16 +406,19 @@ impl Default for CipherSeed {
 impl Mnemonic<CipherSeed> for CipherSeed {
     /// Generates a CipherSeed that represent the provided mnemonic sequence of words, the language of the mnemonic
     /// sequence is autodetected
-    fn from_mnemonic(mnemonic_seq: &[String], passphrase: Option<String>) -> Result<CipherSeed, KeyManagerError> {
+    fn from_mnemonic(
+        mnemonic_seq: &SeedWords,
+        passphrase: Option<SafePassword>,
+    ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes(mnemonic_seq)?;
         CipherSeed::from_enciphered_bytes(&bytes, passphrase)
     }
 
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
     fn from_mnemonic_with_language(
-        mnemonic_seq: &[String],
+        mnemonic_seq: &SeedWords,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
+        passphrase: Option<SafePassword>,
     ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes_with_language(mnemonic_seq, &language)?;
         CipherSeed::from_enciphered_bytes(&bytes, passphrase)
@@ -406,44 +428,51 @@ impl Mnemonic<CipherSeed> for CipherSeed {
     fn to_mnemonic(
         &self,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
-    ) -> Result<Hidden<Vec<String>, KeyManagerHiddenType>, KeyManagerError> {
-        Ok(Hidden::<Vec<String>, KeyManagerHiddenType>::hide(from_bytes(
-            &self.encipher(passphrase)?,
-            language,
-        )?))
+        passphrase: Option<SafePassword>,
+    ) -> Result<SeedWords, KeyManagerError> {
+        Ok(from_bytes(&self.encipher(passphrase)?, language)?)
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use crc32fast::Hasher as CrcHasher;
+    use tari_utilities::SafePassword;
 
     use crate::{
         cipher_seed::{CipherSeed, CIPHER_SEED_VERSION},
         error::KeyManagerError,
         mnemonic::{Mnemonic, MnemonicLanguage},
+        SeedWords,
     };
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
         let seed = CipherSeed::new();
 
-        let mut enciphered_seed = seed.encipher(Some("Passphrase".to_string())).unwrap();
+        let mut enciphered_seed = seed
+            .encipher(Some(SafePassword::from_str("Passphrase").unwrap()))
+            .unwrap();
 
         let deciphered_seed =
-            CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())).unwrap();
+            CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap()))
+                .unwrap();
 
         assert_eq!(seed, deciphered_seed);
 
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("WrongPassphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(
+            &enciphered_seed,
+            Some(SafePassword::from_str("WrongPassphrase").unwrap()),
+        ) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Version should not match"),
         }
 
         enciphered_seed[0] = CIPHER_SEED_VERSION + 1; // this is an unsupported version
 
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Err(KeyManagerError::VersionMismatch) => (),
             _ => panic!("Version should not match"),
         }
@@ -453,7 +482,7 @@ mod test {
 
         // flip some bits
         enciphered_seed[1] = !enciphered_seed[1];
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Err(KeyManagerError::CrcError) => (),
             _ => panic!("Crc should not match"),
         }
@@ -479,7 +508,7 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
@@ -506,7 +535,7 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
@@ -532,7 +561,7 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
@@ -549,14 +578,13 @@ mod test {
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::Japanese, None)
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        match CipherSeed::from_mnemonic(mnemonic_seq.reveal(), None) {
+        match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
             Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
         // Language known
-        let mnemonic_seed =
-            CipherSeed::from_mnemonic_with_language(mnemonic_seq.reveal(), MnemonicLanguage::Japanese, None)
-                .expect("Couldn't create CipherSeed from Mnemonic with Language");
+        let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
+            .expect("Couldn't create CipherSeed from Mnemonic with Language");
         assert_eq!(seed, mnemonic_seed);
         // Invalid Mnemonic sequence
         let mnemonic_seq = vec![
@@ -566,6 +594,7 @@ mod test {
         .iter()
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
+        let mnemonic_seq = SeedWords::new(&mnemonic_seq);
         // Language not known
         match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(_k) => panic!(),
@@ -582,18 +611,24 @@ mod test {
     fn cipher_seed_to_and_from_mnemonic_with_passphrase() {
         let seed = CipherSeed::new();
         let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .to_mnemonic(
+                MnemonicLanguage::Spanish,
+                Some(SafePassword::from_str("Passphrase").unwrap()),
+            )
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        match CipherSeed::from_mnemonic(mnemonic_seq.reveal(), Some("Passphrase".to_string())) {
+        match CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
             Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
 
         let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .to_mnemonic(
+                MnemonicLanguage::Spanish,
+                Some(SafePassword::from_str("Passphrase").unwrap()),
+            )
             .expect("Couldn't convert CipherSeed to Mnemonic");
         assert!(
-            CipherSeed::from_mnemonic(mnemonic_seq.reveal(), Some("WrongPassphrase".to_string())).is_err(),
+            CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("WrongPassphrase").unwrap())).is_err(),
             "Should not be able to derive seed with wrong passphrase"
         );
     }

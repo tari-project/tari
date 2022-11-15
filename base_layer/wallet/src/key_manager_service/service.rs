@@ -24,6 +24,7 @@ use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
+use tari_utilities::Hidden;
 
 use crate::types::KeyDigest;
 
@@ -94,12 +95,16 @@ where TBackend: KeyManagerBackend + 'static
         let key = km.next_key()?;
         self.db.increment_key_index(branch)?;
         Ok(NextKeyResult {
-            key: key.k,
+            key: Hidden::hide(key.reveal().k),
             index: km.key_index(),
         })
     }
 
-    pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_key_at_index(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<Hidden<PrivateKey>, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(&branch)
@@ -107,7 +112,7 @@ where TBackend: KeyManagerBackend + 'static
             .lock()
             .await;
         let key = km.derive_key(index)?;
-        Ok(key.k)
+        Ok(Hidden::hide(key.reveal().k))
     }
 
     pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
@@ -121,7 +126,7 @@ where TBackend: KeyManagerBackend + 'static
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
+    pub async fn find_key_index(&self, branch: String, key: Hidden<PrivateKey>) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(&branch)
@@ -132,7 +137,7 @@ where TBackend: KeyManagerBackend + 'static
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == *key {
+            if km.derive_key(i)?.reveal().k == *key.reveal() {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }
