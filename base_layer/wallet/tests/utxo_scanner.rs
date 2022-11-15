@@ -74,11 +74,12 @@ use support::{
     transaction_service_mock::make_transaction_service_mock,
     utils::make_input,
 };
-use tari_comms::types::CommsPublicKey;
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::TariAddress;
 use tari_wallet::{
     output_manager_service::storage::OutputSource,
     transaction_service::handle::TransactionServiceRequest,
-    util::watch::Watch,
+    util::{wallet_identity::WalletIdentity, watch::Watch},
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
@@ -146,6 +147,7 @@ async fn setup(
     task::spawn(oms_mock.run());
 
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let wallet_identity = WalletIdentity::new(node_identity, Network::default());
     let (event_sender, _) = broadcast::channel(200);
 
     let temp_dir = tempdir().unwrap();
@@ -194,7 +196,7 @@ async fn setup(
         wallet_connectivity_mock,
         oms_handle,
         ts_handle,
-        node_identity,
+        wallet_identity,
         factories,
         shutdown.to_signal(),
         event_sender,
@@ -445,7 +447,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
-            source_public_key,
+            source_address,
             message,
             maturity: _,
             import_status: _,
@@ -455,7 +457,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         } = req
         {
             assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
-            assert_eq!(source_public_key, CommsPublicKey::default());
+            assert_eq!(source_address, TariAddress::default());
         }
     }
 
@@ -512,7 +514,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
-            source_public_key: _,
+            source_address: _,
             message,
             maturity: _,
             import_status: _,
@@ -884,7 +886,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
-            source_public_key: _,
+            source_address: _,
             message,
             maturity: _,
             import_status: _,
@@ -972,7 +974,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
-            source_public_key: _,
+            source_address: _,
             message,
             maturity: _,
             import_status: _,

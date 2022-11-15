@@ -30,6 +30,7 @@ use std::{
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{PublicKey, Signature},
 };
@@ -43,7 +44,6 @@ use tari_core::{
     },
 };
 use tari_service_framework::reply_channel::SenderService;
-use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -75,7 +75,7 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SendTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -96,7 +96,7 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     SendOneSidedTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -104,18 +104,18 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     SendOneSidedToStealthAddressTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
-    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, UtxoSelectionCriteria, MicroTari, String),
+    SendShaAtomicSwapTransaction(TariAddress, MicroTari, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
-        source_public_key: CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -152,17 +152,11 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
             Self::SendTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
-            } => write!(
-                f,
-                "SendTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
-            ),
+            } => write!(f, "SendTransaction (to {}, {}, {})", destination, amount, message),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
             Self::RegisterValidatorNode {
                 validator_node_public_key,
@@ -170,28 +164,24 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(f, "Registering VN ({}, {})", validator_node_public_key, message),
             Self::SendOneSidedTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
             } => write!(
                 f,
                 "SendOneSidedTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
+                destination, amount, message
             ),
             Self::SendOneSidedToStealthAddressTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
             } => write!(
                 f,
                 "SendOneSidedToStealthAddressTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
+                destination, amount, message
             ),
             Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg)
@@ -199,7 +189,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
             Self::ImportUtxoWithStatus {
                 amount,
-                source_public_key,
+                source_address,
                 message,
                 maturity,
                 import_status,
@@ -209,7 +199,7 @@ impl fmt::Display for TransactionServiceRequest {
             } => write!(
                 f,
                 "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?} and {:?})",
-                source_public_key,
+                source_address,
                 amount,
                 message,
                 maturity.unwrap_or(0),
@@ -447,7 +437,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -457,7 +447,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -497,7 +487,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_one_sided_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -507,7 +497,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -546,7 +536,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -556,7 +546,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -690,7 +680,7 @@ impl TransactionServiceHandle {
     pub async fn import_utxo_with_status(
         &mut self,
         amount: MicroTari,
-        source_public_key: CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -702,7 +692,7 @@ impl TransactionServiceHandle {
             .handle
             .call(TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
-                source_public_key,
+                source_address,
                 message,
                 maturity,
                 import_status,
@@ -861,7 +851,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
@@ -870,7 +860,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 fee_per_gram,

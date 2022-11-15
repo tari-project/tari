@@ -32,7 +32,7 @@ use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    emoji::EmojiId,
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::PublicKey,
 };
@@ -40,17 +40,14 @@ use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
-    NodeIdentity,
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,
     weight::TransactionWeight,
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{from_hex, Hex};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
@@ -60,6 +57,7 @@ use tari_wallet::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
+    util::wallet_identity::WalletIdentity,
     WalletConfig,
     WalletSqlite,
 };
@@ -100,8 +98,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        node_identity: &NodeIdentity,
-        network: Network,
+        wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
@@ -109,7 +106,7 @@ impl AppState {
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
         let output_manager_service = wallet.output_manager_service.clone();
-        let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
+        let inner = AppStateInner::new(wallet_identity, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
 
         let inner = Arc::new(RwLock::new(inner));
@@ -212,17 +209,16 @@ impl AppState {
         }
     }
 
-    pub async fn upsert_contact(&mut self, alias: String, public_key_or_emoji_id: String) -> Result<(), UiError> {
+    pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        let public_key = match CommsPublicKey::from_hex(public_key_or_emoji_id.as_str()) {
-            Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key_or_emoji_id.as_str())
-                .map_err(|_| UiError::PublicKeyParseError)?
-                .to_public_key(),
+        let address = match TariAddress::from_emoji_string(&tari_emoji) {
+            Ok(address) => address,
+            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
+                .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
-        let contact = Contact::new(alias, public_key, None, None);
+        let contact = Contact::new(alias, address, None, None);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
@@ -232,30 +228,29 @@ impl AppState {
     }
 
     // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, pub_key: &RistrettoPublicKey) -> String {
-        let pub_key_hex = format!("{}", pub_key);
+    pub fn get_alias(&self, address: &TariAddress) -> String {
+        let address_hex = address.to_hex();
 
         match self
             .cached_data
             .contacts
             .iter()
-            .find(|&contact| contact.public_key.eq(&pub_key_hex))
+            .find(|&contact| contact.address.eq(&address_hex))
         {
             Some(contact) => contact.alias.clone(),
-            None => pub_key_hex,
+            None => address_hex,
         }
     }
 
-    pub async fn delete_contact(&mut self, public_key: String) -> Result<(), UiError> {
+    pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
-            Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
-                .map_err(|_| UiError::PublicKeyParseError)?
-                .to_public_key(),
+        let address = match TariAddress::from_emoji_string(&tari_emoji) {
+            Ok(address) => address,
+            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
+                .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
-        inner.wallet.contacts_service.remove_contact(public_key).await?;
+        inner.wallet.contacts_service.remove_contact(address).await?;
 
         inner.refresh_contacts_state().await?;
         drop(inner);
@@ -265,7 +260,7 @@ impl AppState {
 
     pub async fn send_transaction(
         &mut self,
-        public_key: String,
+        address: String,
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
@@ -273,11 +268,10 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
-            Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
-                .map_err(|_| UiError::PublicKeyParseError)?
-                .to_public_key(),
+        let address = match TariAddress::from_emoji_string(&address) {
+            Ok(address) => address,
+            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
+                .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -285,7 +279,7 @@ impl AppState {
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
-            public_key,
+            address,
             MicroTari::from(amount),
             selection_criteria,
             output_features,
@@ -300,7 +294,7 @@ impl AppState {
 
     pub async fn send_one_sided_transaction(
         &mut self,
-        public_key: String,
+        address: String,
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
@@ -308,19 +302,17 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
-            Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(public_key.as_str())
-                .map_err(|_| UiError::PublicKeyParseError)?
-                .to_public_key(),
+        let address = match TariAddress::from_emoji_string(&address) {
+            Ok(address) => address,
+            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
+                .map_err(|_| UiError::PublicKeyParseError)?,
         };
-
         let output_features = OutputFeatures { ..Default::default() };
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_transaction_task(
-            public_key,
+            address,
             MicroTari::from(amount),
             selection_criteria,
             output_features,
@@ -335,7 +327,7 @@ impl AppState {
 
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
-        dest_pubkey: String,
+        address: String,
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
@@ -343,11 +335,10 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let dest_pubkey = match CommsPublicKey::from_hex(dest_pubkey.as_str()) {
-            Ok(pk) => pk,
-            Err(_) => EmojiId::from_emoji_string(dest_pubkey.as_str())
-                .map_err(|_| UiError::PublicKeyParseError)?
-                .to_public_key(),
+        let address = match TariAddress::from_emoji_string(&address) {
+            Ok(address) => address,
+            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
+                .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -355,7 +346,7 @@ impl AppState {
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_to_stealth_address_transaction(
-            dest_pubkey,
+            address,
             MicroTari::from(amount),
             selection_criteria,
             output_features,
@@ -577,13 +568,12 @@ pub struct AppStateInner {
 
 impl AppStateInner {
     pub fn new(
-        node_identity: &NodeIdentity,
-        network: Network,
+        wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
     ) -> Self {
-        let data = AppStateData::new(node_identity, network, base_node_selected, base_node_config);
+        let data = AppStateData::new(wallet_identity, base_node_selected, base_node_config);
 
         AppStateInner {
             updated: false,
@@ -1005,8 +995,8 @@ impl AppStateInner {
 #[derive(Clone)]
 pub struct CompletedTransactionInfo {
     pub tx_id: TxId,
-    pub source_public_key: CommsPublicKey,
-    pub destination_public_key: CommsPublicKey,
+    pub source_address: TariAddress,
+    pub destination_address: TariAddress,
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub excess_signature: String,
@@ -1037,8 +1027,8 @@ impl CompletedTransactionInfo {
 
         Self {
             tx_id: tx.tx_id,
-            source_public_key: tx.source_public_key.clone(),
-            destination_public_key: tx.destination_public_key.clone(),
+            source_address: tx.source_address.clone(),
+            destination_address: tx.destination_address.clone(),
             amount: tx.amount,
             fee: tx.fee,
             excess_signature,
@@ -1089,14 +1079,9 @@ pub struct EventListItem {
 }
 
 impl AppStateData {
-    pub fn new(
-        node_identity: &NodeIdentity,
-        network: Network,
-        base_node_selected: Peer,
-        base_node_config: PeerConfig,
-    ) -> Self {
-        let eid = EmojiId::from_public_key(node_identity.public_key()).to_emoji_string();
-        let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
+    pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
+        let eid = wallet_identity.address.to_emoji_string();
+        let qr_link = format!("tari_address://{}", wallet_identity.address.to_hex());
         let code = QrCode::new(qr_link).unwrap();
         let image = code
             .render::<unicode::Dense1x2>()
@@ -1108,11 +1093,11 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            public_key: node_identity.public_key().to_string(),
-            public_address: node_identity.public_address().to_string(),
+            tari_address: wallet_identity.address.to_hex(),
+            network_address: wallet_identity.node_identity.public_address().to_string(),
             emoji_id: eid,
             qr_code: image,
-            node_id: node_identity.node_id().to_string(),
+            node_id: wallet_identity.node_identity.node_id().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -1159,8 +1144,8 @@ impl AppStateData {
 
 #[derive(Clone)]
 pub struct MyIdentity {
-    pub public_key: String,
-    pub public_address: String,
+    pub tari_address: String,
+    pub network_address: String,
     pub emoji_id: String,
     pub qr_code: String,
     pub node_id: String,

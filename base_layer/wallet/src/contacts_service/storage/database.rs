@@ -27,7 +27,8 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::peer_manager::NodeId;
 
 use crate::contacts_service::error::ContactsServiceStorageError;
 
@@ -36,23 +37,18 @@ const LOG_TARGET: &str = "wallet::contacts_service::database";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub alias: String,
-    pub public_key: CommsPublicKey,
+    pub address: TariAddress,
     pub node_id: NodeId,
     pub last_seen: Option<NaiveDateTime>,
     pub latency: Option<u32>,
 }
 
 impl Contact {
-    pub fn new(
-        alias: String,
-        public_key: CommsPublicKey,
-        last_seen: Option<NaiveDateTime>,
-        latency: Option<u32>,
-    ) -> Self {
+    pub fn new(alias: String, address: TariAddress, last_seen: Option<NaiveDateTime>, latency: Option<u32>) -> Self {
         Self {
             alias,
-            public_key: public_key.clone(),
-            node_id: NodeId::from_key(&public_key),
+            node_id: NodeId::from_key(address.public_key()),
+            address,
             last_seen,
             latency,
         }
@@ -69,7 +65,7 @@ pub trait ContactsBackend: Send + Sync + Clone {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
-    Contact(CommsPublicKey),
+    Contact(TariAddress),
     ContactId(NodeId),
     Contacts,
 }
@@ -77,12 +73,12 @@ pub enum DbKey {
 pub enum DbValue {
     Contact(Box<Contact>),
     Contacts(Vec<Contact>),
-    PublicKey(Box<CommsPublicKey>),
+    TariAddress(Box<TariAddress>),
 }
 
 #[allow(clippy::large_enum_variant)]
 pub enum DbKeyValuePair {
-    Contact(CommsPublicKey, Contact),
+    Contact(TariAddress, Contact),
     LastSeen(NodeId, NaiveDateTime, Option<i32>),
 }
 
@@ -118,9 +114,9 @@ where T: ContactsBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub fn get_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+    pub fn get_contact(&self, address: TariAddress) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
-        fetch!(db_clone, pub_key, Contact)
+        fetch!(db_clone, address, Contact)
     }
 
     pub fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
@@ -138,7 +134,7 @@ where T: ContactsBackend + 'static
 
     pub fn upsert_contact(&self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
         self.db.write(WriteOperation::Upsert(Box::new(DbKeyValuePair::Contact(
-            contact.public_key.clone(),
+            contact.address.clone(),
             contact,
         ))))?;
         Ok(())
@@ -149,7 +145,7 @@ where T: ContactsBackend + 'static
         node_id: &NodeId,
         last_seen: NaiveDateTime,
         latency: Option<u32>,
-    ) -> Result<CommsPublicKey, ContactsServiceStorageError> {
+    ) -> Result<TariAddress, ContactsServiceStorageError> {
         let result = self
             .db
             .write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
@@ -159,21 +155,21 @@ where T: ContactsBackend + 'static
             ))))?
             .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
         match result {
-            DbValue::PublicKey(k) => Ok(*k),
+            DbValue::TariAddress(k) => Ok(*k),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),
             )),
         }
     }
 
-    pub fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+    pub fn remove_contact(&self, address: TariAddress) -> Result<Contact, ContactsServiceStorageError> {
         let result = self
             .db
-            .write(WriteOperation::Remove(DbKey::Contact(pub_key.clone())))?
-            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(pub_key.clone())))?;
+            .write(WriteOperation::Remove(DbKey::Contact(address.clone())))?
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(address.clone())))?;
         match result {
             DbValue::Contact(c) => Ok(*c),
-            DbValue::Contacts(_) | DbValue::PublicKey(_) => Err(ContactsServiceStorageError::UnexpectedResult(
+            DbValue::Contacts(_) | DbValue::TariAddress(_) => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),
             )),
         }
@@ -201,7 +197,7 @@ impl Display for DbValue {
         match self {
             DbValue::Contact(_) => f.write_str("Contact"),
             DbValue::Contacts(_) => f.write_str("Contacts"),
-            DbValue::PublicKey(_) => f.write_str("PublicKey"),
+            DbValue::TariAddress(_) => f.write_str("Address"),
         }
     }
 }

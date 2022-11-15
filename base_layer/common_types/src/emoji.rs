@@ -75,7 +75,7 @@ const INTERNAL_SIZE: usize = 32; // number of bytes used for the internal repres
 const CHECKSUM_SIZE: usize = 1; // number of bytes in the checksum
 
 // The emoji table, mapping byte values to emoji characters
-const EMOJI: [char; DICT_SIZE] = [
+pub const EMOJI: [char; DICT_SIZE] = [
     '🌀', '🌂', '🌈', '🌊', '🌋', '🌍', '🌙', '🌝', '🌞', '🌟', '🌠', '🌰', '🌴', '🌵', '🌷', '🌸', '🌹', '🌻', '🌽',
     '🍀', '🍁', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🍎', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕',
     '🍗', '🍚', '🍞', '🍟', '🍠', '🍣', '🍦', '🍩', '🍪', '🍫', '🍬', '🍭', '🍯', '🍰', '🍳', '🍴', '🍵', '🍶', '🍷',
@@ -94,7 +94,7 @@ const EMOJI: [char; DICT_SIZE] = [
 
 // The reverse table, mapping emoji to characters to byte values
 lazy_static! {
-    static ref REVERSE_EMOJI: HashMap<char, u8> = {
+    pub static ref REVERSE_EMOJI: HashMap<char, u8> = {
         let mut m = HashMap::with_capacity(DICT_SIZE);
         EMOJI.iter().enumerate().for_each(|(i, c)| {
             m.insert(*c, i as u8);

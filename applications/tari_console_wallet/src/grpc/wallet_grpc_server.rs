@@ -81,6 +81,7 @@ use tari_app_grpc::{
     },
 };
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, PublicKey, Signature},
 };
@@ -297,7 +298,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = CommsPublicKey::from_hex(&message.address)
+        let address = TariAddress::from_hex(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -458,11 +459,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let pk = CommsPublicKey::from_hex(&dest.address)
+                let address = TariAddress::from_hex(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,
-                    pk,
+                    address,
                     dest.amount,
                     dest.fee_per_gram,
                     dest.message,
@@ -473,15 +474,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients {
+        for (hex_address, address, amount, fee_per_gram, message, payment_type) in recipients {
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
-                    address,
+                    hex_address,
                     if payment_type == PaymentType::StandardMimblewimble as i32 {
                         transaction_service
                             .send_transaction(
-                                pk,
+                                address,
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
@@ -492,7 +493,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     } else if payment_type == PaymentType::OneSided as i32 {
                         transaction_service
                             .send_one_sided_transaction(
-                                pk,
+                                address,
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
@@ -503,7 +504,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     } else {
                         transaction_service
                             .send_one_sided_to_stealth_address_transaction(
-                                pk,
+                                address,
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
@@ -606,10 +607,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::unknown(err.to_string()))?;
 
         let wallet_pk = self.wallet.comms.node_identity_ref().public_key();
-
+        let wallet_network = self.wallet.network.as_network();
+        let wallet_address = TariAddress::new(wallet_pk.clone(), wallet_network);
         let transactions = transactions
             .map(|(tx_id, tx)| match tx {
-                Some(tx) => convert_wallet_transaction_into_transaction_info(tx, wallet_pk),
+                Some(tx) => convert_wallet_transaction_into_transaction_info(tx, &wallet_address),
                 None => TransactionInfo::not_found(tx_id),
             })
             .collect();
@@ -716,8 +718,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
-                        source_pk: txn.source_public_key.to_vec(),
-                        dest_pk: txn.destination_public_key.to_vec(),
+                        source_address: txn.source_address.to_bytes().to_vec(),
+                        dest_address: txn.destination_address.to_bytes().to_vec(),
                         status: TransactionStatus::from(txn.status) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
@@ -792,7 +794,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 wallet
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
-                        &CommsPublicKey::default(),
+                        TariAddress::default(),
                         "Imported via gRPC".to_string(),
                     )
                     .await
@@ -1023,8 +1025,8 @@ fn simple_event(event: &str) -> TransactionEvent {
     TransactionEvent {
         event: event.to_string(),
         tx_id: String::default(),
-        source_pk: vec![],
-        dest_pk: vec![],
+        source_address: vec![],
+        dest_address: vec![],
         status: event.to_string(),
         direction: event.to_string(),
         amount: 0,
@@ -1035,14 +1037,14 @@ fn simple_event(event: &str) -> TransactionEvent {
 
 fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
-    wallet_pk: &CommsPublicKey,
+    wallet_address: &TariAddress,
 ) -> TransactionInfo {
     use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_pk: tx.source_public_key.to_vec(),
-            dest_pk: wallet_pk.to_vec(),
+            source_address: tx.source_address.to_bytes().to_vec(),
+            dest_address: wallet_address.to_bytes().to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1054,8 +1056,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_pk: wallet_pk.to_vec(),
-            dest_pk: tx.destination_public_key.to_vec(),
+            source_address: wallet_address.to_bytes().to_vec(),
+            dest_address: tx.destination_address.to_bytes().to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1067,8 +1069,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_pk: tx.source_public_key.to_vec(),
-            dest_pk: tx.destination_public_key.to_vec(),
+            source_address: tx.source_address.to_bytes().to_vec(),
+            dest_address: tx.destination_address.to_bytes().to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled.is_some(),

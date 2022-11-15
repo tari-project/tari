@@ -206,7 +206,7 @@ where T: ContactsBackend + 'static
                 self.liveness.check_add_monitored_peer(c.node_id).await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Saved: \nAlias: {}\nPubKey: {} ", c.alias, c.public_key
+                    "Contact Saved: \nAlias: {}\nAddress: {} ", c.alias, c.address
                 );
                 Ok(ContactsServiceResponse::ContactSaved)
             },
@@ -217,7 +217,7 @@ where T: ContactsBackend + 'static
                     .await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Removed: \nAlias: {}\nPubKey: {} ", result.alias, result.public_key
+                    "Contact Removed: \nAlias: {}\nAddress: {} ", result.alias, result.address
                 );
                 Ok(ContactsServiceResponse::ContactRemoved(result))
             },
@@ -284,7 +284,7 @@ where T: ContactsBackend + 'static
                             continue;
                         }
                         let data = ContactsLivenessData::new(
-                            contact.public_key.clone(),
+                            contact.address.clone(),
                             contact.node_id.clone(),
                             contact.latency,
                             contact.last_seen,
