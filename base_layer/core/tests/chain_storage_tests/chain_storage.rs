@@ -66,6 +66,7 @@ use crate::helpers::{
         create_chain_header,
         create_genesis_block,
         find_header_with_achieved_difficulty,
+        generate_block_with_achieved_difficulty,
         generate_new_block,
         generate_new_block_with_achieved_difficulty,
         generate_new_block_with_coinbase,
@@ -319,6 +320,157 @@ fn test_rewind_past_horizon_height() {
     assert_eq!(metadata.height_of_longest_chain(), 0);
 }
 
+#[test]
+fn test_handle_tip_reorg_with_zero_conf() {
+    // GB --> A1 --> A2 --> A3(Low PoW)      [Main Chain]
+    //          \--> B2 --> B3 -- B4 --> B5(Highest PoW)  [Forked Chain]
+
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // Block A1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager,
+    )
+    .unwrap();
+    // Block A2
+    let txs_1 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T]);
+    let (tx_1, utxos_1) = spend_utxos(txs_1);
+    // create zero conf
+    let txs_2 = txn_schema!(from: vec![utxos_1[0].clone()], to: vec![4 * T]);
+    let (tx_2, utxos_2) = spend_utxos(txs_2);
+    let txns = vec![tx_1, tx_2];
+
+    outputs.push(utxos_2);
+    generate_block_with_achieved_difficulty(&mut store, &mut blocks, txns, Difficulty::from(3), &consensus_manager)
+        .unwrap();
+
+    // Block A3
+    let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 3);
+
+    // Create Forked Chain
+
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
+    let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+    let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+    // Block B2
+    let txs = vec![txn_schema!(
+        from: vec![
+            orphan_outputs[1][0].clone(),
+            orphan_outputs[1][1].clone(),
+            orphan_outputs[1][2].clone(),
+            orphan_outputs[1][3].clone(),
+            orphan_outputs[1][4].clone(),
+        ],
+        to: vec![5 * T, 5 * T, 5 * T, 5 * T, 5 * T]
+    )];
+    generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(7),
+        &consensus_manager,
+    )
+    .unwrap();
+
+    // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].to_arc_block()) {
+    } else {
+        panic!();
+    }
+
+    assert_eq!(store.fetch_tip_header().unwrap().header(), orphan_blocks[2].header());
+
+    // Check that B2 was removed from the block orphans and A2 has been orphaned.
+    assert!(store.fetch_orphan(*orphan_blocks[2].hash()).is_err());
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
+    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 2);
+
+    // Block B3
+    let txs = vec![
+        txn_schema!(from: vec![orphan_outputs[2][0].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][1].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][2].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][3].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][4].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][5].clone()], to: vec![3 * T]),
+    ];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+
+    if let Ok(BlockAddResult::Ok { .. }) = store.add_block(orphan_blocks[3].to_arc_block()) {
+    } else {
+        panic!();
+    }
+    // Block B4
+    let txs = vec![
+        txn_schema!(from: vec![orphan_outputs[3][0].clone()], to: vec![1500000 * uT]),
+        txn_schema!(from: vec![orphan_outputs[3][1].clone()], to: vec![1500000 * uT]),
+    ];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+
+    if let Ok(BlockAddResult::Ok { .. }) = store.add_block(orphan_blocks[4].to_arc_block()) {
+    } else {
+        panic!();
+    }
+
+    // Block B5
+    let txs = vec![
+        txn_schema!(from: vec![orphan_outputs[4][0].clone()], to: vec![50000 * uT]),
+        txn_schema!(from: vec![orphan_outputs[4][1].clone()], to: vec![50000 * uT]),
+    ];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+
+    if let Ok(BlockAddResult::Ok { .. }) = store.add_block(orphan_blocks[5].to_arc_block()) {
+    } else {
+        panic!();
+    }
+    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 5);
+}
 #[test]
 fn test_handle_tip_reorg() {
     // GB --> A1 --> A2(Low PoW)      [Main Chain]
