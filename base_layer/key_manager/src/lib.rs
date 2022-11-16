@@ -3,7 +3,6 @@
 
 use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
 use digest::Digest;
-use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
@@ -57,10 +56,8 @@ pub struct SeedWords {
 }
 
 impl SeedWords {
-    pub fn new(words: &[String]) -> Self {
-        Self {
-            words: words.into_iter().map(|m| Hidden::hide(m.clone())).collect::<Vec<_>>(),
-        }
+    pub fn new(words: Vec<Hidden<String>>) -> Self {
+        Self { words }
     }
 
     pub fn len(&self) -> usize {
@@ -73,5 +70,9 @@ impl SeedWords {
         }
 
         Ok(self.words[index].reveal())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.words.is_empty()
     }
 }

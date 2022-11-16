@@ -439,7 +439,7 @@ mod test {
     use std::str::FromStr;
 
     use crc32fast::Hasher as CrcHasher;
-    use tari_utilities::SafePassword;
+    use tari_utilities::{Hidden, SafePassword};
 
     use super::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
     use crate::{
@@ -594,9 +594,9 @@ mod test {
             "cover", "vote", "federal", "husband", "cave", "alone", "dynamic", "reopen", "visa", "young", "gas",
         ]
         .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
-        let mnemonic_seq = SeedWords::new(&mnemonic_seq);
+        .map(|x| Hidden::hide(x.to_string()))
+        .collect::<Vec<Hidden<String>>>();
+        let mnemonic_seq = SeedWords::new(mnemonic_seq);
         // Language not known
         match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(_k) => panic!(),

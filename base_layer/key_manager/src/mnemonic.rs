@@ -57,7 +57,7 @@ pub enum MnemonicLanguage {
 impl MnemonicLanguage {
     /// Detects the mnemonic language of a specific word by searching all defined mnemonic word lists
     pub fn from(mnemonic_word: &str) -> Result<MnemonicLanguage, MnemonicError> {
-        let words = SeedWords::new(&[mnemonic_word.to_string()]);
+        let words = SeedWords::new(vec![Hidden::hide(mnemonic_word.to_string())]);
         MnemonicLanguage::detect_language(&words)
     }
 
@@ -157,7 +157,7 @@ fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Resu
         MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS.binary_search(&lowercase_word.reveal().as_str()),
         MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.binary_search(&lowercase_word.reveal().as_str()),
         MnemonicLanguage::Spanish => {
-            MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(&lowercase_word.reveal()).reveal().as_str())
+            MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
         },
     };
     match search_result {
@@ -199,17 +199,17 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
     bits.resize(padded_size, false);
 
     // Group each set of 11 bits to form one mnemonic word
-    let mut mnemonic_sequence: Vec<String> = Vec::new();
+    let mut mnemonic_sequence: Vec<Hidden<String>> = Vec::new();
     for i in 0..bits.len() / group_bit_count {
         let start_index = i * group_bit_count;
         let stop_index = start_index + group_bit_count;
         let sub_v = &bits[start_index..stop_index];
         let word_index = checked_bits_to_uint(sub_v).ok_or(MnemonicError::BitsToIntConversion)?;
-        let mnemonic_word = find_mnemonic_word_from_index(word_index, language)?;
+        let mnemonic_word = Hidden::hide(find_mnemonic_word_from_index(word_index, language)?);
         mnemonic_sequence.push(mnemonic_word);
     }
 
-    Ok(SeedWords::new(mnemonic_sequence.as_slice()))
+    Ok(SeedWords::new(mnemonic_sequence))
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
@@ -355,11 +355,11 @@ mod test {
         assert!(MnemonicLanguage::from("desvelado").is_err()); // Invalid Mnemonic Spanish word
 
         // English/Spanish + English/French -> English
-        let words1 = SeedWords::new(&[
-            "album".to_string(),
-            "area".to_string(),
-            "opera".to_string(),
-            "abandon".to_string(),
+        let words1 = SeedWords::new(vec![
+            Hidden::hide("album".to_string()),
+            Hidden::hide("area".to_string()),
+            Hidden::hide("opera".to_string()),
+            Hidden::hide("abandon".to_string()),
         ]);
         assert_eq!(
             MnemonicLanguage::detect_language(&words1),
@@ -367,40 +367,40 @@ mod test {
         );
 
         // English/Spanish + English/French + Italian/Spanish
-        let words2 = SeedWords::new(&[
-            "album".to_string(),
-            "area".to_string(),
-            "opera".to_string(),
-            "abandon".to_string(),
-            "tipico".to_string(),
+        let words2 = SeedWords::new(vec![
+            Hidden::hide("album".to_string()),
+            Hidden::hide("area".to_string()),
+            Hidden::hide("opera".to_string()),
+            Hidden::hide("abandon".to_string()),
+            Hidden::hide("tipico".to_string()),
         ]);
         assert!(MnemonicLanguage::detect_language(&words2).is_err());
 
         // bounds check (last word is invalid)
-        let words3 = SeedWords::new(&[
-            "album".to_string(),
-            "area".to_string(),
-            "opera".to_string(),
-            "abandon".to_string(),
-            "topazio".to_string(),
+        let words3 = SeedWords::new(vec![
+            Hidden::hide("album".to_string()),
+            Hidden::hide("area".to_string()),
+            Hidden::hide("opera".to_string()),
+            Hidden::hide("abandon".to_string()),
+            Hidden::hide("topazio".to_string()),
         ]);
         assert!(MnemonicLanguage::detect_language(&words3).is_err());
 
         // building up a word list: English/French + French -> French
         let mut words = Vec::with_capacity(3);
-        words.push("concert".to_string());
+        words.push(Hidden::hide("concert".to_string()));
         assert_eq!(
-            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            MnemonicLanguage::detect_language(&SeedWords::new(words.clone())),
             Ok(MnemonicLanguage::English)
         );
-        words.push("abandon".to_string());
+        words.push(Hidden::hide("abandon".to_string()));
         assert_eq!(
-            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            MnemonicLanguage::detect_language(&SeedWords::new(words.clone())),
             Ok(MnemonicLanguage::English)
         );
-        words.push("barbier".to_string());
+        words.push(Hidden::hide("barbier".to_string()));
         assert_eq!(
-            MnemonicLanguage::detect_language(&SeedWords::new(&words)),
+            MnemonicLanguage::detect_language(&SeedWords::new(words)),
             Ok(MnemonicLanguage::French)
         );
     }

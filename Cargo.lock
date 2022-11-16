@@ -4874,7 +4874,7 @@ dependencies = [
  "subtle",
  "tari_common_types",
  "tari_crypto",
- "tari_utilities 0.4.7",
+ "tari_utilities 0.4.8",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-test",
