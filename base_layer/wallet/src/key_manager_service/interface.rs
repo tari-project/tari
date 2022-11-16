@@ -23,7 +23,6 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_utilities::Hidden;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
@@ -36,13 +35,13 @@ pub enum AddResult {
 }
 
 pub struct NextKeyResult {
-    pub key: Hidden<PrivateKey>,
+    pub key: PrivateKey,
     pub index: u64,
 }
 
 impl NextKeyResult {
     pub fn to_public_key(&self) -> PublicKey {
-        PublicKey::from_secret_key(self.key.reveal())
+        PublicKey::from_secret_key(&self.key)
     }
 }
 
@@ -71,13 +70,13 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         branch: T,
         index: u64,
-    ) -> Result<Hidden<PrivateKey>, KeyManagerServiceError>;
+    ) -> Result<PrivateKey, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,
-        key: Hidden<PrivateKey>,
+        key: &PrivateKey,
     ) -> Result<u64, KeyManagerServiceError>;
 
     /// Will update the index of the branch if the index given is higher than the current saved index
