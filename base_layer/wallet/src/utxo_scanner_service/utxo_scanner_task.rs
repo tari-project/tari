@@ -29,6 +29,7 @@ use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
@@ -580,22 +581,19 @@ where
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
-        let default_key = CommsPublicKey::default();
-        let self_key = self.resources.node_identity.public_key().clone();
-
         for (uo, message, import_status, tx_id) in utxos {
-            let source_public_key = if uo.features.is_coinbase() {
+            let source_address = if uo.features.is_coinbase() {
                 // its a coinbase, so we know we mined it and it comes from us.
-                &self_key
+                self.resources.wallet_identity.address.clone()
             } else {
                 // Because we do not know the source public key we are making it the default key of zeroes to make it
                 // clear this value is a placeholder.
-                &default_key
+                TariAddress::default()
             };
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),
-                    source_public_key,
+                    source_address,
                     message,
                     import_status,
                     tx_id,
@@ -653,7 +651,7 @@ where
     pub async fn import_unblinded_utxo_to_transaction_service(
         &mut self,
         unblinded_output: UnblindedOutput,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         import_status: ImportStatus,
         tx_id: TxId,
@@ -665,7 +663,7 @@ where
             .transaction_service
             .import_utxo_with_status(
                 unblinded_output.value,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(unblinded_output.features.maturity),
                 import_status.clone(),

@@ -28,10 +28,10 @@ use std::{
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey, Signature},
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::Transaction,
@@ -42,7 +42,7 @@ use tari_core::transactions::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,
-    pub source_public_key: CommsPublicKey,
+    pub source_address: TariAddress,
     pub amount: MicroTari,
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
@@ -57,7 +57,7 @@ pub struct InboundTransaction {
 impl InboundTransaction {
     pub fn new(
         tx_id: TxId,
-        source_public_key: CommsPublicKey,
+        source_address: TariAddress,
         amount: MicroTari,
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
@@ -66,7 +66,7 @@ impl InboundTransaction {
     ) -> Self {
         Self {
             tx_id,
-            source_public_key,
+            source_address,
             amount,
             receiver_protocol,
             status,
@@ -83,7 +83,7 @@ impl InboundTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutboundTransaction {
     pub tx_id: TxId,
-    pub destination_public_key: CommsPublicKey,
+    pub destination_address: TariAddress,
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub sender_protocol: SenderTransactionProtocol,
@@ -99,7 +99,7 @@ pub struct OutboundTransaction {
 impl OutboundTransaction {
     pub fn new(
         tx_id: TxId,
-        destination_public_key: CommsPublicKey,
+        destination_address: TariAddress,
         amount: MicroTari,
         fee: MicroTari,
         sender_protocol: SenderTransactionProtocol,
@@ -110,7 +110,7 @@ impl OutboundTransaction {
     ) -> Self {
         Self {
             tx_id,
-            destination_public_key,
+            destination_address,
             amount,
             fee,
             sender_protocol,
@@ -128,8 +128,8 @@ impl OutboundTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletedTransaction {
     pub tx_id: TxId,
-    pub source_public_key: CommsPublicKey,
-    pub destination_public_key: CommsPublicKey,
+    pub source_address: TariAddress,
+    pub destination_address: TariAddress,
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub transaction: Transaction,
@@ -151,8 +151,8 @@ pub struct CompletedTransaction {
 impl CompletedTransaction {
     pub fn new(
         tx_id: TxId,
-        source_public_key: CommsPublicKey,
-        destination_public_key: CommsPublicKey,
+        source_address: TariAddress,
+        destination_address: TariAddress,
         amount: MicroTari,
         fee: MicroTari,
         transaction: Transaction,
@@ -171,8 +171,8 @@ impl CompletedTransaction {
         };
         Self {
             tx_id,
-            source_public_key,
-            destination_public_key,
+            source_address,
+            destination_address,
             amount,
             fee,
             transaction,
@@ -205,7 +205,7 @@ impl From<CompletedTransaction> for InboundTransaction {
     fn from(ct: CompletedTransaction) -> Self {
         Self {
             tx_id: ct.tx_id,
-            source_public_key: ct.source_public_key,
+            source_address: ct.source_address,
             amount: ct.amount,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: ct.status,
@@ -223,7 +223,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
     fn from(ct: CompletedTransaction) -> Self {
         Self {
             tx_id: ct.tx_id,
-            destination_public_key: ct.destination_public_key,
+            destination_address: ct.destination_address,
             amount: ct.amount,
             fee: ct.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
@@ -255,8 +255,8 @@ impl From<OutboundTransaction> for CompletedTransaction {
         };
         Self {
             tx_id: tx.tx_id,
-            source_public_key: Default::default(),
-            destination_public_key: tx.destination_public_key,
+            source_address: Default::default(),
+            destination_address: tx.destination_address,
             amount: tx.amount,
             fee: tx.fee,
             status: tx.status,
@@ -285,8 +285,8 @@ impl From<InboundTransaction> for CompletedTransaction {
     fn from(tx: InboundTransaction) -> Self {
         Self {
             tx_id: tx.tx_id,
-            source_public_key: tx.source_public_key,
-            destination_public_key: Default::default(),
+            source_address: tx.source_address,
+            destination_address: Default::default(),
             amount: tx.amount,
             fee: MicroTari::from(0),
             status: tx.status,

@@ -40,6 +40,7 @@ use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
     emoji::EmojiId,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{CommitmentFactory, FixedHash, PublicKey, Signature},
 };
@@ -112,12 +113,12 @@ pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
-    dest_pubkey: PublicKey,
+    destination: TariAddress,
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_transaction(
-            dest_pubkey,
+            destination,
             amount,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -146,11 +147,11 @@ pub async fn init_sha_atomic_swap(
     fee_per_gram: u64,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
-    dest_pubkey: PublicKey,
+    dest_address: TariAddress,
     message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_pubkey, amount, selection_criteria, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -217,12 +218,12 @@ pub async fn send_one_sided(
     fee_per_gram: u64,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
-    dest_pubkey: PublicKey,
+    dest_address: TariAddress,
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_transaction(
-            dest_pubkey,
+            dest_address,
             amount,
             selection_criteria,
             OutputFeatures::default(),
@@ -238,12 +239,12 @@ pub async fn send_one_sided_to_stealth_address(
     fee_per_gram: u64,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
-    dest_pubkey: PublicKey,
+    dest_address: TariAddress,
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_to_stealth_address_transaction(
-            dest_pubkey,
+            dest_address,
             amount,
             selection_criteria,
             OutputFeatures::default(),
@@ -340,7 +341,7 @@ pub async fn make_it_rain(
     start_amount: MicroTari,
     increase_amount: MicroTari,
     start_time: DateTime<Utc>,
-    destination: PublicKey,
+    destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
     message: String,
 ) -> Result<(), CommandError> {
@@ -403,14 +404,14 @@ pub async fn make_it_rain(
                 let delayed_for = Instant::now();
                 let sender_clone = sender.clone();
                 let fee = fee_per_gram;
-                let pk = destination.clone();
+                let address = destination.clone();
                 let msg = message.clone();
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = match transaction_type {
                         MakeItRainTransactionType::Interactive => {
-                            send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                            send_tari(tx_service, fee, amount, address.clone(), msg.clone()).await
                         },
                         MakeItRainTransactionType::OneSided => {
                             send_one_sided(
@@ -418,7 +419,7 @@ pub async fn make_it_rain(
                                 fee,
                                 amount,
                                 UtxoSelectionCriteria::default(),
-                                pk.clone(),
+                                address.clone(),
                                 msg.clone(),
                             )
                             .await
@@ -429,7 +430,7 @@ pub async fn make_it_rain(
                                 fee,
                                 amount,
                                 UtxoSelectionCriteria::default(),
-                                pk.clone(),
+                                address.clone(),
                                 msg.clone(),
                             )
                             .await
@@ -663,7 +664,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    args.destination.into(),
+                    args.destination,
                     args.message,
                 )
                 .await
@@ -681,7 +682,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination.into(),
+                    args.destination,
                     args.message,
                 )
                 .await
@@ -699,7 +700,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination.into(),
+                    args.destination,
                     args.message,
                 )
                 .await
@@ -724,7 +725,7 @@ pub async fn command_runner(
                     args.start_amount,
                     args.increase_amount,
                     args.start_time.unwrap_or_else(Utc::now),
-                    args.destination.into(),
+                    args.destination,
                     transaction_type,
                     args.message,
                 )
@@ -864,7 +865,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination.into(),
+                    args.destination,
                     args.message,
                 )
                 .await

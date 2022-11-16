@@ -20,11 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use futures::future;
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_core::transactions::CryptoFactories;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
@@ -35,7 +33,7 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
-    util::watch::Watch,
+    util::{wallet_identity::WalletIdentity, watch::Watch},
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
@@ -48,17 +46,17 @@ const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
 pub struct UtxoScannerServiceInitializer<T> {
     backend: Option<WalletDatabase<T>>,
     factories: CryptoFactories,
-    node_identity: Arc<NodeIdentity>,
+    wallet_identity: WalletIdentity,
 }
 
 impl<T> UtxoScannerServiceInitializer<T>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, node_identity: Arc<NodeIdentity>) -> Self {
+    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, wallet_identity: WalletIdentity) -> Self {
         Self {
             backend: Some(backend),
             factories,
-            node_identity,
+            wallet_identity,
         }
     }
 }
@@ -88,7 +86,7 @@ where T: WalletBackend + 'static
             .take()
             .expect("Cannot start Utxo scanner service without setting a storage backend");
         let factories = self.factories.clone();
-        let node_identity = self.node_identity.clone();
+        let wallet_identity = self.wallet_identity.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -107,7 +105,7 @@ where T: WalletBackend + 'static
                     wallet_connectivity.clone(),
                     output_manager_service,
                     transaction_service,
-                    node_identity,
+                    wallet_identity,
                     factories,
                     handles.get_shutdown_signal(),
                     event_sender,

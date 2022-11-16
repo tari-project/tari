@@ -130,7 +130,7 @@ pub async fn change_password(
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
 
-    if passphrase != confirmed {
+    if passphrase.reveal() != confirmed.reveal() {
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
@@ -376,7 +376,7 @@ pub async fn init_wallet(
                 let password = prompt_password("Create wallet password: ")?;
                 let confirmed = prompt_password("Confirm wallet password: ")?;
 
-                if password != confirmed {
+                if password.reveal() != confirmed.reveal() {
                     return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
                 }
 

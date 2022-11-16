@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::types::CommsPublicKey;
+use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
 use tari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -33,7 +33,7 @@ use crate::ui::{state::UiTransactionSendStatus, UiError};
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
 pub async fn send_transaction_task(
-    public_key: CommsPublicKey,
+    address: TariAddress,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
@@ -47,7 +47,7 @@ pub async fn send_transaction_task(
     let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
         .send_transaction(
-            public_key,
+            address,
             amount,
             selection_criteria,
             output_features,
@@ -109,7 +109,7 @@ pub async fn send_transaction_task(
 }
 
 pub async fn send_one_sided_transaction_task(
-    public_key: CommsPublicKey,
+    address: TariAddress,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
@@ -122,7 +122,7 @@ pub async fn send_one_sided_transaction_task(
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
         .send_one_sided_transaction(
-            public_key,
+            address,
             amount,
             selection_criteria,
             output_features,
@@ -163,7 +163,7 @@ pub async fn send_one_sided_transaction_task(
 }
 
 pub async fn send_one_sided_to_stealth_address_transaction(
-    dest_pubkey: CommsPublicKey,
+    address: TariAddress,
     amount: MicroTari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
@@ -176,7 +176,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
         .send_one_sided_to_stealth_address_transaction(
-            dest_pubkey,
+            address,
             amount,
             selection_criteria,
             output_features,

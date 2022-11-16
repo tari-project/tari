@@ -30,6 +30,7 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
 use tari_utilities::{
@@ -142,7 +143,7 @@ pub struct DiscoverPeerArgs {
 #[derive(Debug, Args, Clone)]
 pub struct SendTariArgs {
     pub amount: MicroTari,
-    pub destination: UniPublicKey,
+    pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub message: String,
 }
@@ -156,7 +157,7 @@ pub struct BurnTariArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct MakeItRainArgs {
-    pub destination: UniPublicKey,
+    pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
     pub start_amount: MicroTari,
     #[clap(short, long, alias = "tps", default_value_t = 25)]

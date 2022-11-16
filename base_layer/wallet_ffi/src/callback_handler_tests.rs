@@ -11,7 +11,9 @@ mod test {
 
     use chrono::{NaiveDateTime, Utc};
     use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
     use tari_common_types::{
+        tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
@@ -250,9 +252,13 @@ mod test {
         let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let inbound_tx = InboundTransaction::new(
             1u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
             22 * uT,
             rtp,
             TransactionStatus::Pending,
@@ -262,10 +268,18 @@ mod test {
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let completed_tx = CompletedTransaction::new(
             2u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             MicroTari::from(100),
             MicroTari::from(2000),
             Transaction::new(
@@ -287,9 +301,13 @@ mod test {
             .unwrap();
 
         let stp = SenderTransactionProtocol::new_placeholder();
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let outbound_tx = OutboundTransaction::new(
             3u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_address,
             22 * uT,
             23 * uT,
             stp,
@@ -318,11 +336,18 @@ mod test {
             .unwrap();
         db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
             .unwrap();
-
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let faux_unconfirmed_tx = CompletedTransaction::new(
             6u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             MicroTari::from(100),
             MicroTari::from(2000),
             Transaction::new(
@@ -343,10 +368,18 @@ mod test {
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let faux_confirmed_tx = CompletedTransaction::new(
             7u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             MicroTari::from(100),
             MicroTari::from(2000),
             Transaction::new(
@@ -394,6 +427,10 @@ mod test {
         let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
         let (contacts_liveness_events_sender, _) = broadcast::channel(250);
         let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
+        let comms_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
 
         let callback_handler = CallbackHandler::new(
             db,
@@ -402,7 +439,7 @@ mod test {
             oms_handle,
             dht_event_receiver,
             shutdown_signal.to_signal(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            comms_address,
             connectivity_rx,
             contacts_liveness_events,
             received_tx_callback,
@@ -683,12 +720,12 @@ mod test {
 
         let contact = Contact::new(
             "My friend".to_string(),
-            faux_unconfirmed_tx.destination_public_key,
+            faux_unconfirmed_tx.destination_address,
             None,
             None,
         );
         let data = ContactsLivenessData::new(
-            contact.public_key.clone(),
+            contact.address.clone(),
             contact.node_id.clone(),
             contact.latency,
             contact.last_seen,
@@ -699,7 +736,7 @@ mod test {
             .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
             .unwrap();
         let data = ContactsLivenessData::new(
-            contact.public_key.clone(),
+            contact.address.clone(),
             contact.node_id,
             Some(1234),
             Some(Utc::now().naive_utc()),

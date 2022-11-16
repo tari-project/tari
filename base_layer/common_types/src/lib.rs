@@ -24,6 +24,7 @@ pub mod chain_metadata;
 pub mod dammsum;
 pub mod emoji;
 pub mod grpc_authentication;
+pub mod tari_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;

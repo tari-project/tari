@@ -4581,6 +4581,7 @@ dependencies = [
  "lazy_static",
  "rand 0.7.3",
  "serde",
+ "tari_common",
  "tari_crypto",
  "tari_utilities",
  "thiserror",
