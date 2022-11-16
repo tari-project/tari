@@ -49,7 +49,7 @@ use tari_core::{
         transaction_components::{TransactionOutput, UnblindedOutput},
     },
 };
-use tari_key_manager::get_birthday_from_unix_epoch;
+use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -698,9 +698,9 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
-        // Calculate the unix epoch time of two weeks (14 days) before the wallet birthday.
-        // This is to avoid any weird time zone issues
-        let epoch_time = get_birthday_from_unix_epoch(birthday, 14u16);
+        // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
+        // wallet birthday. The latter avoids any possible issues with reorgs.
+        let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
 
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
