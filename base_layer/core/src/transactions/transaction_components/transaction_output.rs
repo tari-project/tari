@@ -223,8 +223,7 @@ impl TransactionOutput {
             .as_ref()
             .and_then(|f| f.validator_node_registration())
         {
-            // TODO: figure out what the validator node should sign
-            if !validator_node_reg.is_valid_signature_for(b"") {
+            if !validator_node_reg.is_valid_signature_for(self.commitment.as_bytes()) {
                 return Err(TransactionError::InvalidSignatureError(
                     "Validator node signature is not valid!".to_string(),
                 ));

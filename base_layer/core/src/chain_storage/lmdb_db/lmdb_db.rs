@@ -1320,7 +1320,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                self.insert_validator_node(txn, &block_hash, &vn_reg, mmr_count)?;
+                self.insert_validator_node(txn, &header, output_hash, &vn_reg)?;
             }
             if let Some(template_reg) = output
                 .features
@@ -1402,6 +1402,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
+        output_hash: HashOutput,
         vn_reg: &ValidatorNodeRegistration,
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);

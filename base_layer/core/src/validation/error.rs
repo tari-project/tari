@@ -30,7 +30,10 @@ use crate::{
     chain_storage::ChainStorageError,
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction_components::{OutputType, TransactionError},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{OutputType, TransactionError},
+    },
 };
 
 #[derive(Debug, Error)]
@@ -136,6 +139,12 @@ pub enum ValidationError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Validator node MMR is not correct")]
     ValidatorNodeMmmrError,
+    #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
+    ValidatorNodeRegistrationMinDepositAmount { min: MicroTari, actual: MicroTari },
+    #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
+    ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
+    #[error("Validator node registration signature failed verification")]
+    InvalidValidatorNodeSignature,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

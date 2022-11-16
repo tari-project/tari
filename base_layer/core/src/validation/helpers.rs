@@ -30,6 +30,7 @@ use tari_crypto::{
     tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -821,6 +822,31 @@ pub fn validate_versions(
         validate_kernel_version(consensus_constants, kernel)?;
     }
 
+    Ok(())
+}
+
+pub fn check_validator_node_registration_utxo(
+    consensus_constants: &ConsensusConstants,
+    utxo: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
+        }
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(),
+                actual: utxo.features.maturity,
+            });
+        }
+
+        if !reg.is_valid_signature_for(utxo.commitment.as_bytes()) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+    }
     Ok(())
 }
 

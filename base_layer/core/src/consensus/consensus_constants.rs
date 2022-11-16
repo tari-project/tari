@@ -304,6 +304,14 @@ impl ConsensusConstants {
         self.vn_registration_shuffle_interval
     }
 
+    pub fn validator_node_registration_min_deposit_amount(&self) -> MicroTari {
+        self.vn_registration_min_deposit_amount
+    }
+
+    pub fn validator_node_registration_min_lock_height(&self) -> u64 {
+        self.vn_registration_lock_height
+    }
+
     /// Returns the current epoch from the given height
     pub fn block_height_to_current_epoch(&self, height: u64) -> VnEpoch {
         VnEpoch(height / self.vn_epoch_length)

@@ -38,6 +38,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
@@ -814,7 +815,7 @@ where B: BlockchainBackend
             header.timestamp = median_timestamp.increase(1);
         }
         let mut block = Block { header, body };
-        let roots = calculate_mmr_roots(&*db, &block)?;
+        let roots = calculate_mmr_roots(&*db, self.rules(), &block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
@@ -835,7 +836,7 @@ where B: BlockchainBackend
             block.body.is_sorted(),
             "calculate_mmr_roots expected a sorted block body, however the block body was not sorted"
         );
-        let mmr_roots = calculate_mmr_roots(&*db, &block)?;
+        let mmr_roots = calculate_mmr_roots(&*db, self.rules(), &block)?;
         Ok((block, mmr_roots))
     }
 
@@ -1240,7 +1241,11 @@ impl std::fmt::Display for MmrRoots {
 
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::similar_names)]
-pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
+pub fn calculate_mmr_roots<T: BlockchainBackend>(
+    db: &T,
+    rules: &ConsensusManager,
+    block: &Block,
+) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;
 
@@ -1341,9 +1346,27 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    let mut validator_nodes = db.fetch_active_validator_nodes(metadata.height_of_longest_chain() + 1)?;
-    validator_nodes.sort();
-    let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.1.to_vec()).collect());
+    let next_height = metadata.height_of_longest_chain() + 1;
+    let epoch_len = rules.consensus_constants(next_height).epoch_length();
+    let validator_node_mr = if next_height % epoch_len == 0 {
+        // At epoch boundary, the MR is rebuilt from the current validator set
+        let validator_nodes = db.fetch_active_validator_nodes(next_height)?;
+        fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
+            use digest::Digest;
+            Blake256::new()
+                .chain(pk.as_bytes())
+                .chain(s.as_slice())
+                .finalize()
+                .to_vec()
+        }
+
+        let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(hash_node).collect());
+        FixedHash::try_from(vn_mmr.get_merkle_root()?)?
+    } else {
+        // MR is unchanged except for epoch boundary
+        let tip_header = db.fetch_tip_header()?;
+        tip_header.header().validator_node_mr
+    };
 
     let mmr_roots = MmrRoots {
         kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
@@ -1352,7 +1375,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         output_mr: FixedHash::try_from(output_mmr.get_merkle_root()?)?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: FixedHash::try_from(witness_mmr.get_merkle_root()?)?,
-        validator_node_mr: FixedHash::try_from(vn_mmr.get_merkle_root()?)?,
+        validator_node_mr,
     };
     Ok(mmr_roots)
 }

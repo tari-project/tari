@@ -126,6 +126,12 @@ impl OutputFeatures {
         }
     }
 
+    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.validator_node_registration())
+    }
+
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
     }

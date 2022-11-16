@@ -183,6 +183,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let mut cursor = self.index_read_cursor()?;
         let key = ShardIdIndexKey::try_from_parts(&[public_key.as_bytes(), &start_height.to_be_bytes()])
             .expect("fetch_shard_key: Composite key length is incorrect");
+
+        // TODO: unused_assignments is a false positive, we might be able to remove this exclusion in future
+        #[allow(unused_assignments)]
         let mut shard_key = None;
         // Find the first entry at or above start_height
         match cursor.seek_range::<ShardIdIndexKey>(&key.as_bytes())? {

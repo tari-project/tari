@@ -65,26 +65,6 @@ where V: DeserializeOwned
         }
     }
 
-    // /// Returns the item on or before the given seek key, progressing backwards until the key prefix no longer
-    // matches #[allow(dead_code)]
-    // pub fn prev(&mut self) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
-    //     if !self.has_seeked {
-    //         let prefix_key = self.prefix_key;
-    //         if let Some((k, val)) = self.seek_gte(prefix_key)? {
-    //             // seek_range_k returns the greater key, so we only want to return the current value that was seeked
-    // to             // if it exactly matches the prefix_key
-    //             if k == prefix_key {
-    //                 return Ok(Some((k, val)));
-    //             }
-    //         }
-    //     }
-    //
-    //     match self.cursor.prev(&self.access).to_opt()? {
-    //         Some((k, v)) => Self::deserialize_if_matches(self.prefix_key, k, v),
-    //         None => Ok(None),
-    //     }
-    // }
-
     // This function could be used later in cases where multiple seeks are required.
     #[cfg(test)]
     pub fn reset_to(&mut self, prefix_key: &'a [u8]) {
@@ -115,63 +95,6 @@ where V: DeserializeOwned
         Ok(Some((k.to_vec(), val)))
     }
 }
-
-// pub struct LmdbRangeCursor<'a, K, V> {
-//     cursor: LmdbReadCursor<'a, V>,
-//     start_key: Option<K>,
-//     end_key: Option<K>,
-//     inclusive: bool,
-// }
-//
-// impl<'a, K: Copy, V> LmdbRangeCursor<'a, K, V> {
-//     pub(super) fn new<R: RangeBounds<K>>(cursor: LmdbReadCursor<'a, V>, range: R) -> Self {
-//         Self {
-//             cursor,
-//             start_key: match range.start_bound() {
-//                 Bound::Included(k) | Bound::Excluded(k) => Some(*k),
-//                 Bound::Unbounded => None,
-//             },
-//             end_key: match range.end_bound() {
-//                 Bound::Included(k) |
-//                 Bound::Excluded(k) => Some
-//                 Bound::Unbounded => {}
-//             },
-//             inclusive,
-//         }
-//     }
-//
-//     /// Returns the item on or after the start key, progressing forwards until the end key is reached
-//     pub fn next(&mut self) -> Result<Option<(K, V)>, ChainStorageError>
-//     where K: DeserializeOwned {
-//         let (k, v) = match self.cursor.next()? {
-//             Some(r) => r,
-//             None => return Ok(None),
-//         };
-//         let key = deserialize::<K>(&k)?;
-//         if let Some(end_key) = &self.end_key {
-//             if key > *end_key {
-//                 return Ok(None);
-//             }
-//         }
-//         Ok(Some((key, v)))
-//     }
-//
-//     /// Returns the item on or before the end key, progressing backwards until the start key is reached
-//     pub fn prev(&mut self) -> Result<Option<(K, V)>, ChainStorageError>
-//     where K: DeserializeOwned {
-//         let (k, v) = match self.cursor.prev()? {
-//             Some(r) => r,
-//             None => return Ok(None),
-//         };
-//         let key = deserialize::<K>(&k)?;
-//         if let Some(start_key) = &self.start_key {
-//             if key < *start_key {
-//                 return Ok(None);
-//             }
-//         }
-//         Ok(Some((key, v)))
-//     }
-// }
 
 pub struct LmdbReadCursor<'a, V> {
     cursor: Cursor<'a, 'a>,
@@ -295,36 +218,5 @@ mod tests {
             cursor.reset_to(&[0x11]);
             assert_eq!(cursor.next().unwrap(), None);
         }
-    }
-
-    #[test]
-    fn balh() {
-        let temp_path = create_temporary_data_path();
-
-        let lmdb_store = LMDBBuilder::new()
-            .set_path(&temp_path)
-            .set_env_config(LMDBConfig::default())
-            .set_max_number_of_databases(1)
-            .add_database("test", db::CREATE)
-            .build()
-            .unwrap();
-
-        let db = lmdb_store.get_handle("test").unwrap();
-        let txn = WriteTransaction::new(lmdb_store.env()).unwrap();
-        {
-            let mut access = txn.access();
-            let f = lmdb_zero::put::Flags::empty();
-            access.put(&db.db(), "Fruit4", "Orange", f).unwrap();
-            access.put(&db.db(), "Fruit1", "Apple", f).unwrap();
-            access.put(&db.db(), "Animal", "Badger", f).unwrap();
-            // access.put(&db.db(), "Veggie", "Carrot", f).unwrap();
-
-            let mut cursor = txn.cursor(db.db()).unwrap();
-            assert_eq!(("Fruit1", "Apple"), cursor.seek_range_k(&access, "Banana").unwrap());
-            assert_eq!(("Fruit4", "Orange"), cursor.next(&access).unwrap());
-            assert!(cursor.seek_range_k::<str, str>(&access, "Veggie").is_err());
-        }
-        txn.commit().unwrap();
-        fs::remove_dir_all(&temp_path).expect("Could not delete temporary file");
     }
 }
