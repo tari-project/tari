@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom, iter::FromIterator};
 
 use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 
@@ -30,6 +30,73 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
     fn from(cc: ConsensusConstants) -> Self {
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
         let weight_params = cc.transaction_weight().params();
+        let input_version_range = cc.input_version_range().clone().into_inner();
+        let input_version_range = grpc::Range {
+            min: u64::from(input_version_range.0.as_u8()),
+            max: u64::from(input_version_range.1.as_u8()),
+        };
+        let kernel_version_range = cc.kernel_version_range().clone().into_inner();
+        let kernel_version_range = grpc::Range {
+            min: u64::from(kernel_version_range.0.as_u8()),
+            max: u64::from(kernel_version_range.1.as_u8()),
+        };
+        let valid_blockchain_version_range = cc.valid_blockchain_version_range().clone().into_inner();
+        let valid_blockchain_version_range = grpc::Range {
+            min: u64::from(valid_blockchain_version_range.0),
+            max: u64::from(valid_blockchain_version_range.1),
+        };
+        let transaction_weight = cc.transaction_weight();
+        let metadata_bytes_per_gram = if let Some(val) = transaction_weight.params().metadata_bytes_per_gram {
+            u64::from(val)
+        } else {
+            0u64
+        };
+        let transaction_weight = grpc::WeightParams {
+            kernel_weight: cc.transaction_weight().params().kernel_weight,
+            input_weight: cc.transaction_weight().params().input_weight,
+            output_weight: cc.transaction_weight().params().output_weight,
+            metadata_bytes_per_gram,
+        };
+        let output_version_range = cc.output_version_range();
+        let outputs = grpc::Range {
+            min: u64::from(output_version_range.outputs.start().as_u8()),
+            max: u64::from(output_version_range.outputs.end().as_u8()),
+        };
+        let features = grpc::Range {
+            min: u64::from(output_version_range.features.start().as_u8()),
+            max: u64::from(output_version_range.features.end().as_u8()),
+        };
+
+        let output_version_range = grpc::OutputsVersion {
+            outputs: Some(outputs),
+            features: Some(features),
+        };
+
+        let permitted_output_types = cc.permitted_output_types();
+        let permitted_output_types = permitted_output_types
+            .iter()
+            .map(|ot| i32::from(ot.as_byte()))
+            .collect::<Vec<i32>>();
+
+        let monero_pow = PowAlgorithm::Monero;
+        let sha3_pow = PowAlgorithm::Sha3;
+
+        let monero_pow = grpc::PowAlgorithmConstants {
+            max_target_time: cc.get_difficulty_max_block_interval(monero_pow),
+            max_difficulty: cc.max_pow_difficulty(monero_pow).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(monero_pow).as_u64(),
+            target_time: cc.get_diff_target_block_interval(monero_pow),
+        };
+
+        let sha3_pow = grpc::PowAlgorithmConstants {
+            max_target_time: cc.get_difficulty_max_block_interval(sha3_pow),
+            max_difficulty: cc.max_pow_difficulty(sha3_pow).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(sha3_pow).as_u64(),
+            target_time: cc.get_diff_target_block_interval(sha3_pow),
+        };
+
+        let proof_of_work = HashMap::from_iter([(0u32, monero_pow), (1u32, sha3_pow)]);
+
         Self {
             coinbase_lock_height: cc.coinbase_lock_height(),
             blockchain_version: cc.blockchain_version().into(),
@@ -46,6 +113,18 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,
             block_weight_kernels: weight_params.kernel_weight,
+            validator_node_timeout: cc.validator_node_timeout(),
+            max_script_byte_size: cc.get_max_script_byte_size() as u64,
+            faucet_value: cc.faucet_value().as_u64(),
+            effective_from_height: cc.effective_from_height(),
+            input_version_range: Some(input_version_range),
+            kernel_version_range: Some(kernel_version_range),
+            valid_blockchain_version_range: Some(valid_blockchain_version_range),
+            proof_of_work,
+            transaction_weight: Some(transaction_weight),
+            max_randomx_seed_height: cc.max_randomx_seed_height(),
+            output_version_range: Some(output_version_range),
+            permitted_output_types,
         }
     }
 }

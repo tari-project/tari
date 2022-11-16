@@ -5,8 +5,8 @@ CREATE TABLE client_key_values (
 
 CREATE TABLE completed_transactions (
     tx_id                       BIGINT PRIMARY KEY NOT NULL,
-    source_public_key           BLOB               NOT NULL,
-    destination_public_key      BLOB               NOT NULL,
+    source_address              BLOB               NOT NULL,
+    destination_address         BLOB               NOT NULL,
     amount                      BIGINT             NOT NULL,
     fee                         BIGINT             NOT NULL, 
     transaction_protocol        TEXT               NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE completed_transactions (
 );
 
 CREATE TABLE contacts (
-    public_key  BLOB PRIMARY KEY NOT NULL UNIQUE,
+    address     BLOB PRIMARY KEY NOT NULL UNIQUE,
     node_id     BLOB             NOT NULL UNIQUE,
     alias       TEXT             NOT NULL,
     last_seen   DATETIME         NULL,
@@ -36,7 +36,7 @@ CREATE TABLE contacts (
 
 CREATE TABLE inbound_transactions (
     tx_id               BIGINT PRIMARY KEY NOT NULL,
-    source_public_key   BLOB               NOT NULL,
+    source_address      BLOB               NOT NULL,
     amount              BIGINT             NOT NULL,
     receiver_protocol   TEXT               NOT NULL,
     message             TEXT               NOT NULL,
@@ -54,14 +54,6 @@ CREATE TABLE key_manager_states (
     timestamp         DATETIME            NOT NULL
 );
 
-CREATE TABLE key_manager_states_old (
-    id                INTEGER PRIMARY KEY NOT NULL,
-    seed              BLOB                NOT NULL,
-    branch_seed       TEXT UNIQUE         NOT NULL,
-    primary_key_index BLOB                NOT NULL,
-    timestamp         DATETIME            NOT NULL
-);
-
 CREATE TABLE known_one_sided_payment_scripts (
     script_hash        BLOB PRIMARY KEY NOT NULL,
     private_key        BLOB             NOT NULL,
@@ -72,7 +64,7 @@ CREATE TABLE known_one_sided_payment_scripts (
 
 CREATE TABLE outbound_transactions (
     tx_id                  BIGINT PRIMARY KEY NOT NULL,
-    destination_public_key BLOB               NOT NULL,
+    destination_address    BLOB               NOT NULL,
     amount                 BIGINT             NOT NULL,
     fee                    BIGINT             NOT NULL,
     sender_protocol        TEXT               NOT NULL,
@@ -110,14 +102,11 @@ CREATE TABLE outputs (
     spent_in_tx_id             BIGINT              NULL,
     coinbase_block_height      UNSIGNED BIGINT     NULL,
     metadata                   BLOB                NULL,
-    features_parent_public_key BLOB                NULL,
-    features_unique_id         BLOB                NULL,
     features_json              TEXT                NOT NULL DEFAULT '{}',
     spending_priority          UNSIGNED INTEGER    NOT NULL DEFAULT 500,
     covenant                   BLOB                NOT NULL,
     mined_timestamp            DATETIME            NULL,
     encrypted_value            BLOB                NOT NULL,
-    contract_id                BLOB                NULL,
     minimum_value_promise    BIGINT              NOT NULL,
     source                     INTEGER             NOT NULL DEFAULT 0,
     CONSTRAINT unique_commitment UNIQUE (commitment)

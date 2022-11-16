@@ -66,7 +66,6 @@ pub use configuration::{
 pub mod dir_utils;
 pub use logging::initialize_logging;
 
-pub mod file_lock;
 mod hashing;
 pub use hashing::{mac_domain_hasher, DomainDigest};
 

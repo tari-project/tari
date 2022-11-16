@@ -169,7 +169,7 @@ A very rough outline of the flow goes as follows:
   ![testing status](./meta/img/status-testing.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
   feature is stabilised and is live on mainnet, the status can be updated to
-  ![stable status](./meta/img/status-active.svg).
+  ![stable status](./meta/img/status-stable.svg).
 
 If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as 
 ![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.

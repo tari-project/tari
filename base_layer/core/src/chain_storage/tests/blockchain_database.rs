@@ -41,7 +41,6 @@ use crate::{
     },
     txn_schema,
 };
-
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
 }
@@ -71,6 +70,7 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block.header.validator_node_mr = mmr_roots.validator_node_mr;
     block
 }
 

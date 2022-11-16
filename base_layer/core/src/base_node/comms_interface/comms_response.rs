@@ -27,12 +27,12 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::UtxoMinedInfo,
+    chain_storage::TemplateRegistrationEntry,
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -55,22 +55,10 @@ pub enum NodeCommsResponse {
     },
     TargetDifficulty(Difficulty),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
-    FetchTokensResponse {
-        outputs: Vec<(TransactionOutput, u64)>,
-    },
-    FetchAssetRegistrationsResponse {
-        outputs: Vec<UtxoMinedInfo>,
-    },
-    FetchAssetMetadataResponse {
-        output: Box<Option<UtxoMinedInfo>>,
-    },
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
-    FetchOutputsForBlockResponse {
-        outputs: Vec<UtxoMinedInfo>,
-    },
-    FetchOutputsByContractIdResponse {
-        outputs: Vec<UtxoMinedInfo>,
-    },
+    FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
+    GetShardKeyResponse(Option<[u8; 32]>),
+    FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
 
 impl Display for NodeCommsResponse {
@@ -98,17 +86,15 @@ impl Display for NodeCommsResponse {
             ),
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
-            FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
-            FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
-            FetchAssetMetadataResponse { .. } => write!(f, "FetchAssetMetadataResponse"),
             FetchMempoolTransactionsByExcessSigsResponse(resp) => write!(
                 f,
                 "FetchMempoolTransactionsByExcessSigsResponse({} transaction(s), {} not found)",
                 resp.transactions.len(),
                 resp.not_found.len()
             ),
-            FetchOutputsForBlockResponse { .. } => write!(f, "FetchConstitutionsResponse"),
-            FetchOutputsByContractIdResponse { .. } => write!(f, "FetchOutputsByContractIdResponse"),
+            FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
+            GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
+            FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
         }
     }
 }

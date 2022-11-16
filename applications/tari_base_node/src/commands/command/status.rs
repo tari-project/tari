@@ -131,7 +131,7 @@ impl CommandContext {
             ),
         );
 
-        match self.comms.listening_info().liveness_status() {
+        match self.comms.liveness_status() {
             LivenessStatus::Disabled => {},
             LivenessStatus::Checking => {
                 status_line.add("⏳️️");

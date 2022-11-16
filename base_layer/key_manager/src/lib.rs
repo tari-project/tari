@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -41,6 +42,14 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
 
 hidden_type!(CipherSeedEncryptionKey, [u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
 hidden_type!(CipherSeedMacKey, [u8; CIPHER_SEED_MAC_KEY_BYTES]);
+
+/// Computes the birthday duration, in seconds, from the unix epoch. Currently, birthday is stored
+/// on the wallet as days since 2022-01-01, mainly to preserve space regarding u16 type. That said,
+/// for wallet synchronization, it is necessary we are compatible with block timestamps (calculated
+/// from unix epoch). This function adds this functionality
+pub fn get_birthday_from_unix_epoch_in_seconds(birthday: u16, to_days: u16) -> u64 {
+    u64::from(birthday.saturating_sub(to_days)) * 24 * 60 * 60 + BIRTHDAY_GENESIS_FROM_UNIX_EPOCH
+}
 
 #[derive(Debug, Clone)]
 pub struct SeedWords {

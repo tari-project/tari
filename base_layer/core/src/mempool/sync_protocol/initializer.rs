@@ -91,7 +91,6 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 while status_watch.changed().await.is_ok() {
                     log_mdc::extend(mdc.clone());
                     if status_watch.borrow().state_info.is_synced() {
-                        dbg!();
                         debug!(
                             target: LOG_TARGET,
                             "Initial sync is done. Starting mempool sync protocol"

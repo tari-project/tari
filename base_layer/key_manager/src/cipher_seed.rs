@@ -441,9 +441,11 @@ mod test {
     use crc32fast::Hasher as CrcHasher;
     use tari_utilities::SafePassword;
 
+    use super::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
     use crate::{
         cipher_seed::{CipherSeed, CIPHER_SEED_VERSION},
         error::KeyManagerError,
+        get_birthday_from_unix_epoch_in_seconds,
         mnemonic::{Mnemonic, MnemonicLanguage},
         SeedWords,
     };
@@ -631,5 +633,47 @@ mod test {
             CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("WrongPassphrase").unwrap())).is_err(),
             "Should not be able to derive seed with wrong passphrase"
         );
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_for_zero_duration() {
+        let birthday = 0u16;
+        let to_days = 0u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(birthday_genesis_time_in_seconds, BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_for_large_to_days() {
+        let birthday = 10u16;
+        let to_days = 16u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(birthday_genesis_time_in_seconds, BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_generally() {
+        let birthday = 100u16;
+        let to_days = 20u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(
+            birthday_genesis_time_in_seconds,
+            BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + u64::from(birthday - to_days) * 24 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn birthday_is_computed_correctly_from_new_wallet() {
+        // birthday is at the half of the year 2022, namely 3th July 2022
+        let cipher_seed = CipherSeed::new_with_birthday(183u16);
+        let birthday = cipher_seed.birthday;
+        let birthday_from_unix_epoch = get_birthday_from_unix_epoch_in_seconds(birthday, 0u16);
+
+        // 1656806400 corresponds to the duration, in seconds, from unix epoch
+        // to 3th July 2022 00:00:00
+        assert_eq!(birthday_from_unix_epoch, 1656806400);
     }
 }

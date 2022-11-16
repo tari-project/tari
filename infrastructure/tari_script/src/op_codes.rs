@@ -129,134 +129,157 @@ const OP_END_IF: u8 = 0x63;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Opcode {
     // Block Height Checks
-    /// Compare the current block height to height. Fails with VERIFY_FAILED if the block height < height.
+    /// Pops the top of the stack as `height`. Compare the current block height to `height`. Fails with
+    /// `IncompatibleTypes` if u64 is not a valid 64-bit unsigned integer. Fails with `VerifyFailed` if the block
+    /// height < `height`.
     CheckHeightVerify(u64),
-    /// Pushes the value of (the current tip height - height) to the stack. In other words, the top of the stack will
-    /// hold the height difference between height and the current height. If the chain has progressed beyond
-    /// height, the value is positive; and negative if the chain has yet to reach height. Fails with STACK_OVERFLOW
-    /// if the stack would exceed the max stack height.
+    /// Pops the top of the stack as `height`. Pushes the value of (the current tip height - `height`) to the stack. In
+    /// other words, the top of the stack will hold the height difference between `height` and the current height.
+    /// If the chain has progressed beyond `height`, the value is positive; and negative if the chain has yet to
+    /// reach `height`. Fails with `IncompatibleTypes` if u64 is not a valid 64-bit unsigned integer. Fails with
+    /// `StackOverflow` if the stack would exceed the max stack height.
     CheckHeight(u64),
-    /// Pops the top of the stack as height and compares it to the current block height. Fails with INVALID_INPUT
-    /// if there is not a valid integer value on top of the stack. Fails with EMPTY_STACK if the stack is empty.
-    /// Fails with VERIFY_FAILED if the block height < height.
+    /// Pops the top of the stack as `height` and compares it to the current block height. Fails with `InvalidInput`
+    /// if there is not a valid integer value on top of the stack. Fails with `StackUnderflow` if the stack is empty.
+    /// Fails with `VerifyFailed` if the block height < `height`.
     CompareHeightVerify,
-    /// Pops the top of the stack as height, then pushes the value of (height - the current height) to the stack. In
-    /// other words, this opcode replaces the top of the stack with the difference between that value and the current
-    /// height. Fails with INVALID_INPUT if there is not a valid integer value on top of the stack. Fails with
-    /// EMPTY_STACK if the stack is empty.
+    /// Pops the top of the stack as `height`, then pushes the value of (`height` - the current height) to the stack.
+    /// In other words, this opcode replaces the top of the stack with the difference between `height` and the
+    /// current height. Fails with `InvalidInput` if there is not a valid integer value on top of the stack. Fails
+    /// with `StackUnderflow` if the stack is empty.
     CompareHeight,
 
     // Stack Manipulation
     /// No op. Does nothing. Never fails.
     Nop,
     /// Pushes a zero onto the stack. This is a very common opcode and has the same effect as PushInt(0) but is more
-    /// compact. Fails with STACK_OVERFLOW if the stack would exceed the max stack height.
+    /// compact. Fails with `StackOverflow` if the stack would exceed the max stack height.
     PushZero,
     /// Pushes a one onto the stack. This is a very common opcode and has the same effect as PushInt(1) but is more
-    /// compact. Fails with STACK_OVERFLOW if the stack would exceed the max stack height.
+    /// compact. Fails with `StackOverflow` if the stack would exceed the max stack height.
     PushOne,
-    /// Push the associated 32-byte value onto the stack. Fails with INVALID_SCRIPT_DATA if HashValue is not a valid 32
-    /// byte sequence Fails with STACK_OVERFLOW if the stack would exceed the max stack height.
+    /// Pushes the associated 32-byte value onto the stack. Fails with `IncompatibleTypes` if HashValue is not a valid
+    /// 32 byte sequence. Fails with `StackOverflow` if the stack would exceed the max stack height.
     PushHash(Box<HashValue>),
-    /// Push the associated 64-bit signed integer onto the stack Fails with INVALID_SCRIPT_DATA if i64 is not a valid
-    /// integer. Fails with STACK_OVERFLOW if the stack would exceed the max stack height.
+    /// Pushes the associated 64-bit signed integer onto the stack Fails with `IncompatibleTypes` if i64 is not a valid
+    /// 64-bit integer. Fails with `StackOverflow` if the stack would exceed the max stack height.
     PushInt(i64),
-    /// Push the associated 32-byte value onto the stack. It will be interpreted as a public key or a commitment. Fails
-    /// with INVALID_SCRIPT_DATA if HashValue is not a valid 32 byte sequence Fails with STACK_OVERFLOW if the stack
-    /// would exceed the max stack height.
+    /// Pushes the associated 32-byte value onto the stack. It will be interpreted as a public key or a commitment.
+    /// Fails with `IncompatibleTypes` if RistrettoPublicKey is not a valid 32 byte sequence. Fails with
+    /// `StackOverflow` if the stack would exceed the max stack height.
     PushPubKey(Box<RistrettoPublicKey>),
-    /// Drops the top stack item. Fails with EMPTY_STACK if the stack is empty.
+    /// Drops the top stack item. Fails with `StackUnderflow` if the stack is empty.
     Drop,
-    /// Duplicates the top stack item. Fails with EMPTY_STACK if the stack is empty. Fails with STACK_OVERFLOW if the
-    /// stack would exceed the max stack height.
+    /// Duplicates the top stack item. Fails with `StackUnderflow` if the stack is empty. Fails with `StackOverflow` if
+    /// the stack would exceed the max stack height.
     Dup,
-    /// Reverse rotation. The top stack item moves into 3rd place, e.g. abc => bca. Fails with EMPTY_STACK if the stack
-    /// has fewer than three items.
+    /// Reverse rotation. The top stack item moves into 3rd place, e.g. abc => bca. Fails with `StackUnderflow` if the
+    /// stack has fewer than three items.
     RevRot,
 
     // Math Operations
-    /// Pops the top stack element as val. If val is greater than or equal to zero, push a 1 to the stack, otherwise
-    /// push 0. Fails with EMPTY_STACK if the stack is empty. Fails with INVALID_INPUT if val is not an integer.
+    /// Pops the top stack element as `val`. If `val` is greater than or equal to zero, push a 1 to the stack,
+    /// otherwise push 0. Fails with `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if `val` is
+    /// not an integer.
     GeZero,
-    /// Pops the top stack element as val. If val is strictly greater than zero, push a 1 to the stack, otherwise push
-    /// 0. Fails with EMPTY_STACK if the stack is empty. Fails with INVALID_INPUT if the item is not an integer.
+    /// Pops the top stack element as `val`. If `val` is strictly greater than zero, push a 1 to the stack, otherwise
+    /// push 0. Fails with `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the item is not an
+    /// integer.
     GtZero,
-    /// Pops the top stack element as val. If val is less than or equal to zero, push a 1 to the stack, otherwise push
-    /// 0. Fails with EMPTY_STACK if the stack is empty. Fails with INVALID_INPUT if the item is not an integer.
+    /// Pops the top stack element as `val`. If `val` is less than or equal to zero, push a 1 to the stack, otherwise
+    /// push 0. Fails with `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the item is not an
+    /// integer.
     LeZero,
-    /// Pops the top stack element as val. If val is strictly less than zero, push a 1 to the stack, otherwise push 0.
-    /// Fails with EMPTY_STACK if the stack is empty. Fails with INVALID_INPUT if the items is not an integer.
+    /// Pops the top stack element as `val`. If `val` is strictly less than zero, push a 1 to the stack, otherwise push
+    /// 0. Fails with `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the items is not an
+    /// integer.
     LtZero,
-    /// Pop two items and push their sum Fails with EMPTY_STACK if the stack has fewer than two items. Fails with
-    /// INVALID_INPUT if the items cannot be added to each other (e.g. an integer and public key).
+    /// Pops two items from the stack and pushes their sum to the stack. Fails with `StackUnderflow` if the stack has
+    /// fewer than two items. Fails with `InvalidInput` if the items cannot be added to each other (e.g. an integer and
+    /// public key).
     Add,
-    /// Pop two items and push the second minus the top Fails with EMPTY_STACK if the stack has fewer than two items.
-    /// Fails with INVALID_INPUT if the items cannot be subtracted from each other (e.g. an integer and public key).
+    /// Pops two items from the stack and pushes the second minus the top to the stack. Fails with `StackUnderflow` if
+    /// the stack has fewer than two items. Fails with `InvalidInput` if the items cannot be subtracted from each other
+    /// (e.g. an integer and public key).
     Sub,
-    /// Pops the top two items, and pushes 1 to the stack if the inputs are exactly equal, 0 otherwise. 0 is also
-    /// pushed if the values cannot be compared (e.g. integer and pubkey). Fails with EMPTY_STACK if the stack has
-    /// fewer than two items.
+    /// Pops the top two items from the stack, and pushes 1 to the stack if the inputs are exactly equal, 0 otherwise.
+    /// A 0 is also pushed if the values cannot be compared (e.g. integer and pubkey). Fails with `StackUnderflow` if
+    /// the stack has fewer than two items.
     Equal,
-    /// Pops the top two items, and compares their values. Fails with EMPTY_STACK if the stack has fewer than two
-    /// items. Fails with VERIFY_FAILED if the top two stack elements are not equal.
+    /// Pops the top two items from the stack, and compares their values. Fails with `StackUnderflow` if the stack has
+    /// fewer than two items. Fails with `VerifyFailed` if the top two stack elements are not equal.
     EqualVerify,
 
     // Boolean Logic
-    /// n + 1 items are popped from the stack. If the last item popped matches at least one of the first n items
-    /// popped, push 1 onto the stack. Push 0 otherwise. Fails with EMPTY_STACK if the stack has fewer than n + 1
-    /// items.
+    /// Pops `n` + 1 items from the stack (with u8 as `n`). If the last item matches at least one of the first `n`
+    /// items, push 1 onto the stack, otherwise push 0 onto the stack. Fails with `StackUnderflow` if the stack has
+    /// fewer than `n` + 1 items. Fails with `InvalidInput` if u8 is not a valid 8-bit unsigned integer.
     Or(u8),
-    /// n + 1 items are popped from the stack. If the last item popped matches at least one of the first n items
-    /// popped, continue. Fail with VERIFY_FAILED otherwise. Fails with EMPTY_STACK if the stack has fewer than n + 1
-    /// items.
+    /// Pops `n` + 1 items from the stack (with u8 as `n`). If the last item matches at least one of the first n items,
+    /// continue. Fails with `StackUnderflow` if the stack has fewer than `n` + 1 items. Fails with `VerifyFailed`
+    /// the last item does not match at least one of the first `n` items. Fails with `InvalidInput` if u8 is not a
+    /// valid 8-bit unsigned integer.
     OrVerify(u8),
 
     // Cryptographic Operations
-    /// Pop the top element, hash it with the Blake256 hash function and push the result to the stack. Fails with
-    /// EMPTY_STACK if the stack is empty.
+    /// Pops the top element, hash it with the Blake256 hash function and push the result to the stack. Fails with
+    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
+    /// value.
     HashBlake256,
-    /// Pop the top element, hash it with the SHA256 hash function and push the result to the stack. Fails with
-    /// EMPTY_STACK if the stack is empty.
+    /// Pops the top element, hash it with the SHA256 hash function and push the result to the stack. Fails with
+    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
+    /// value.
     HashSha256,
-    /// Pop the top element, hash it with the SHA-3 hash function and push the result to the stack. Fails with
-    /// EMPTY_STACK if the stack is empty.
+    /// Pops the top element, hash it with the SHA-3 hash function and push the result to the stack. Fails with
+    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
+    /// value.
     HashSha3,
-    /// Pop the public key and then the signature. If the signature signs the 32-byte message, push 1 to the stack,
-    /// otherwise push 0. Fails with INVALID_SCRIPT_DATA if the Msg is not a valid 32-byte value. Fails with
-    /// EMPTY_STACK if the stack has fewer than 2 items. Fails with INVALID_INPUT if the top stack element is not a
-    /// PublicKey or Commitment. Fails with INVALID_INPUT if the second stack element is not a Signature.
+    /// Pops the public key and then the signature from the stack. If signature validation using the 32-byte message
+    /// and public key succeeds , push 1 to the stack, otherwise push 0. Fails with `IncompatibleTypes` if Message
+    /// is not a valid 32-byte sequence. Fails with `StackUnderflow` if the stack has fewer than 2 items. Fails
+    /// with `InvalidInput` if the top stack element is not a PublicKey. Fails with `InvalidInput` if the second
+    /// stack element is not a Signature.
     CheckSig(Box<Message>),
     /// Identical to CheckSig, except that nothing is pushed to the stack if the signature is valid, and the operation
-    /// fails with VERIFY_FAILED if the signature is invalid.
+    /// fails with `VerifyFailed` if the signature is invalid.
     CheckSigVerify(Box<Message>),
-    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
-    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
-    /// pushes 1 to the stack, otherwise pushes 0.
+    /// Pops exactly `m` signatures from the stack. The multiple signature validation will not succeed if the `m`
+    /// signatures are not unique or if Vec<RistrettoPublicKey> contains a duplicate public key. Each signature is
+    /// validated using the 32-byte message and a public key that match. If signature validation for m unique
+    /// signatures succeeds, push 1 to the stack, otherwise push 0.
+    /// Fails with `IncompatibleTypes` if either `m` (the 1st u8) or `n` (the 2nd u8) is not a valid 8-bit unsigned
+    /// integer, if Vec<RistrettoPublicKey> contains an invalid public key or if Message is not a valid 32-byte
+    /// sequence.
+    /// Fails with `ValueExceedsBounds` if `m` == 0 or if `n` == 0 or if `m` > `n` or if `n` > `MAX_MULTISIG_LIMIT`
+    /// (32) or if the number of public keys provided != `n`.
+    /// Fails with `StackUnderflow` if the stack has fewer than m items.
+    /// Fails with `IncompatibleTypes` if any of the m signatures from the stack is not a valid signature.
+    /// Fails with `InvalidInput` if each of the top m elements is not a Signature.
     CheckMultiSig(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
-    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message
-    /// nothing is pushed to the stack, otherwise, the script fails with VERIFY_FAILED.
+    /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the multiple signature validation is
+    /// either valid or invalid. Fails with `VerifyFailed` if any signature is invalid.
     CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pops exactly m signatures from the stack. This will fail if a public key is used more than once or if there are
-    /// more than m signatures. If all m signatures are out of the provided n public keys sign the 32-byte message,
-    /// pushes the aggregate of the public keys to the stack, otherwise, the script fails with VERIFY_FAILED.
+    /// Identical to CheckMultiSig, except that the aggregate of the public keys is pushed to the stack if multiple
+    /// signature validation succeeds. Fails with `VerifyFailed` if any signature is invalid.
     CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pops the top element which must be a valid 32-byte scalar or hash and calculates the corresponding Ristretto
-    /// point, and pushes the result to the stack. Fails with EMPTY_STACK if the stack is empty.
+    /// Pops the top element from the stack, either a scalar or a hash, calculates the corresponding Ristretto point,
+    /// and pushes the result to the stack. Fails with `StackUnderflow` if the stack is empty. Fails with
+    /// `IncompatibleTypes` if the stack item is not a valid 32 byte sequence.
     ToRistrettoPoint,
 
     // Miscellaneous
-    /// Always fails with VERIFY_FAILED.
+    /// Always fails with `Return`.
     Return,
-    /// Pop the top element of the stack into pred. If pred is 1, the instructions between IFTHEN and ELSE are
-    /// executed. If pred is 0, instructions are popped until ELSE or ENDIF is encountered. If ELSE is encountered,
-    /// instructions are executed until ENDIF is reached. ENDIF is a marker opcode and a no-op. Fails with EMPTY_STACK
-    /// if the stack is empty. If pred is anything other than 0 or 1, the script fails with INVALID_INPUT. If any
-    /// instruction during execution of the clause causes a failure, the script fails with that failure code.
+    /// Pops the top element of the stack into `pred`. If `pred` is 1, the instructions between `IfThen` and `Else` are
+    /// executed. If `pred` is 0, instructions are popped until `Else` or `EndIf` is encountered. If `Else` is
+    /// encountered, instructions are executed until `EndIf` is reached. `EndIf` is a marker opcode and a no-op.
+    /// Fails with `StackUnderflow` if the stack is empty.
+    /// Fails with `InvalidInput` if pred is anything other than 0 or 1.
+    /// Fails with the corresponding failure code if any instruction during execution of the clause causes a failure.
     IfThen,
-    /// Marks the beginning of the else branch.
+    /// Marks the beginning of the `Else` branch.
     Else,
-    /// Marks the end of the if statement.
+    /// Marks the end of the `IfThen` statement.
     EndIf,
 }
 
@@ -293,12 +316,12 @@ impl Opcode {
             Opcode::CheckSigVerify(..) |
             Opcode::CheckMultiSig(..) |
             Opcode::CheckMultiSigVerify(..) |
+            Opcode::CheckMultiSigVerifyAggregatePubKey(..) |
             Opcode::ToRistrettoPoint |
             Opcode::Return |
             Opcode::IfThen |
             Opcode::Else |
             Opcode::EndIf => OpcodeVersion::V0,
-            Opcode::CheckMultiSigVerifyAggregatePubKey(..) => OpcodeVersion::V1,
         }
     }
 
@@ -613,7 +636,6 @@ impl fmt::Display for Opcode {
 #[repr(u8)]
 pub enum OpcodeVersion {
     V0 = 0,
-    V1 = 1,
 }
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use tari_common_types::types::PublicKey;
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
 
@@ -54,7 +54,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
 
         let result = match key {
-            DbKey::Contact(pk) => match ContactSql::find_by_public_key(&pk.to_vec(), &conn) {
+            DbKey::Contact(address) => match ContactSql::find_by_address(&address.to_bytes(), &conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -81,7 +81,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
         match op {
             WriteOperation::Upsert(kvp) => match *kvp {
                 DbKeyValuePair::Contact(k, c) => {
-                    if ContactSql::find_by_public_key_and_update(&conn, &k.to_vec(), UpdateContact {
+                    if ContactSql::find_by_address_and_update(&conn, &k.to_bytes(), UpdateContact {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
@@ -100,15 +100,15 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                         last_seen: Some(Some(date_time)),
                         latency: Some(latency),
                     })?;
-                    return Ok(Some(DbValue::PublicKey(Box::new(
-                        PublicKey::from_vec(&contact.public_key)
+                    return Ok(Some(DbValue::TariAddress(Box::new(
+                        TariAddress::from_bytes(&contact.address)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?,
                     ))));
                 },
                 DbKeyValuePair::Contact(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find_by_public_key_and_delete(&conn, &k.to_vec()) {
+                DbKey::Contact(k) => match ContactSql::find_by_address_and_delete(&conn, &k.to_bytes()) {
                     Ok(c) => {
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
@@ -134,7 +134,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
 #[table_name = "contacts"]
 struct ContactSql {
-    public_key: Vec<u8>,
+    address: Vec<u8>,
     node_id: Vec<u8>,
     alias: String,
     last_seen: Option<NaiveDateTime>,
@@ -155,13 +155,10 @@ impl ContactSql {
         Ok(contacts::table.load::<ContactSql>(conn)?)
     }
 
-    /// Find a particular Contact by their public key, if it exists
-    pub fn find_by_public_key(
-        public_key: &[u8],
-        conn: &SqliteConnection,
-    ) -> Result<ContactSql, ContactsServiceStorageError> {
+    /// Find a particular Contact by their address, if it exists
+    pub fn find_by_address(address: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
         Ok(contacts::table
-            .filter(contacts::public_key.eq(public_key))
+            .filter(contacts::address.eq(address))
             .first::<ContactSql>(conn)?)
     }
 
@@ -172,28 +169,28 @@ impl ContactSql {
             .first::<ContactSql>(conn)?)
     }
 
-    /// Find a particular Contact by their public key, and update it if it exists, returning the affected record
-    pub fn find_by_public_key_and_update(
+    /// Find a particular Contact by their address, and update it if it exists, returning the affected record
+    pub fn find_by_address_and_update(
         conn: &SqliteConnection,
-        public_key: &[u8],
+        address: &[u8],
         updated_contact: UpdateContact,
     ) -> Result<ContactSql, ContactsServiceStorageError> {
         // Note: `get_result` not implemented for SQLite
-        diesel::update(contacts::table.filter(contacts::public_key.eq(public_key)))
+        diesel::update(contacts::table.filter(contacts::address.eq(address)))
             .set(updated_contact)
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
-        ContactSql::find_by_public_key(public_key, conn)
+        ContactSql::find_by_address(address, conn)
     }
 
-    /// Find a particular Contact by their public key, and delete it if it exists, returning the affected record
-    pub fn find_by_public_key_and_delete(
+    /// Find a particular Contact by their address, and delete it if it exists, returning the affected record
+    pub fn find_by_address_and_delete(
         conn: &SqliteConnection,
-        public_key: &[u8],
+        address: &[u8],
     ) -> Result<ContactSql, ContactsServiceStorageError> {
         // Note: `get_result` not implemented for SQLite
-        let contact = ContactSql::find_by_public_key(public_key, conn)?;
-        if diesel::delete(contacts::table.filter(contacts::public_key.eq(public_key))).execute(conn)? == 0 {
+        let contact = ContactSql::find_by_address(address, conn)?;
+        if diesel::delete(contacts::table.filter(contacts::address.eq(address))).execute(conn)? == 0 {
             return Err(ContactsServiceStorageError::ValuesNotFound);
         }
         Ok(contact)
@@ -233,12 +230,11 @@ impl TryFrom<ContactSql> for Contact {
 
     #[allow(clippy::cast_sign_loss)]
     fn try_from(o: ContactSql) -> Result<Self, Self::Error> {
-        let public_key =
-            PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+        let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
-            public_key: public_key.clone(),
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(&public_key),
+            node_id: NodeId::from_key(address.public_key()),
+            address,
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as u32),
@@ -251,9 +247,9 @@ impl TryFrom<ContactSql> for Contact {
 impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {
-            public_key: o.public_key.to_vec(),
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(&o.public_key).to_vec(),
+            node_id: NodeId::from_key(o.address.public_key()).to_vec(),
+            address: o.address.to_bytes().to_vec(),
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as i32),
@@ -275,11 +271,12 @@ mod test {
 
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use tari_common_types::types::{PrivateKey, PublicKey};
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        tari_utilities::ByteArray,
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        tari_address::TariAddress,
+        types::{PrivateKey, PublicKey},
     };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
     use crate::contacts_service::storage::{
@@ -306,7 +303,8 @@ mod test {
             let mut contacts = Vec::new();
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-                contacts.push(Contact::new(names[i].clone(), pub_key, None, None));
+                let address = TariAddress::new(pub_key, Network::default());
+                contacts.push(Contact::new(names[i].clone(), address, None, None));
                 ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
             }
 
@@ -318,11 +316,11 @@ mod test {
 
             assert_eq!(
                 contacts[1],
-                Contact::try_from(ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap())
+                Contact::try_from(ContactSql::find_by_address(&contacts[1].address.to_bytes(), &conn).unwrap())
                     .unwrap()
             );
 
-            ContactSql::find_by_public_key_and_delete(&conn, &contacts[0].public_key.clone().to_vec()).unwrap();
+            ContactSql::find_by_address_and_delete(&conn, &contacts[0].address.clone().to_bytes()).unwrap();
 
             let retrieved_contacts = ContactSql::index(&conn).unwrap();
             assert_eq!(retrieved_contacts.len(), 2);
@@ -331,15 +329,14 @@ mod test {
                 .iter()
                 .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
-            let _c =
-                ContactSql::find_by_public_key_and_update(&conn, &contacts[1].public_key.to_vec(), UpdateContact {
-                    alias: Some("Fred".to_string()),
-                    last_seen: None,
-                    latency: None,
-                })
-                .unwrap();
+            let _c = ContactSql::find_by_address_and_update(&conn, &contacts[1].address.to_bytes(), UpdateContact {
+                alias: Some("Fred".to_string()),
+                last_seen: None,
+                latency: None,
+            })
+            .unwrap();
 
-            let c_updated = ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap();
+            let c_updated = ContactSql::find_by_address(&contacts[1].address.to_bytes(), &conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());
         });
     }

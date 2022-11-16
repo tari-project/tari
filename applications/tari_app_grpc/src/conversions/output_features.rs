@@ -26,7 +26,7 @@ use tari_core::transactions::transaction_components::{
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
-    SideChainFeatures,
+    SideChainFeature,
 };
 
 use crate::tari_rpc as grpc;
@@ -35,9 +35,10 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_features = features
-            .sidechain_features
-            .map(SideChainFeatures::try_from)
+        let sidechain_feature = features
+            .sidechain_feature
+            .and_then(|f| f.side_chain_feature)
+            .map(SideChainFeature::try_from)
             .transpose()?;
 
         let output_type = features
@@ -52,7 +53,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             features.metadata,
-            sidechain_features,
+            sidechain_feature,
         ))
     }
 }
@@ -64,7 +65,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             metadata: features.metadata,
-            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
+            sidechain_feature: features.sidechain_feature.map(Into::into),
         }
     }
 }
