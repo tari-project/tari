@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,39 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
-
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{HashOutput, PublicKey};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct SideChainFeatures {}
-
-impl SideChainFeatures {}
-
-impl ConsensusEncoding for SideChainFeatures {
-    fn consensus_encode<W: Write>(&self, _writer: &mut W) -> Result<(), Error> {
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for SideChainFeatures {}
-
-impl ConsensusDecoding for SideChainFeatures {
-    fn consensus_decode<R: Read>(_reader: &mut R) -> Result<Self, Error> {
-        Ok(Self {})
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn consensus_encoding() {
-        let features = SideChainFeatures {};
-        check_consensus_encoding_correctness(features).unwrap();
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActiveValidatorNode {
+    pub shard_key: [u8; 32],
+    pub from_height: u64,
+    pub to_height: u64,
+    pub public_key: PublicKey,
+    pub output_hash: HashOutput,
 }

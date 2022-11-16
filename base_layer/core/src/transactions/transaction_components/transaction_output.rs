@@ -216,6 +216,23 @@ impl TransactionOutput {
         Ok(())
     }
 
+    pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
+        if let Some(validator_node_reg) = self
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.validator_node_registration())
+        {
+            // TODO: figure out what the validator node should sign
+            if !validator_node_reg.is_valid_signature_for(b"") {
+                return Err(TransactionError::InvalidSignatureError(
+                    "Validator node signature is not valid!".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Attempt to rewind the range proof to reveal the mask (blinding factor)
     pub fn recover_mask(
         &self,

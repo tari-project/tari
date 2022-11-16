@@ -32,10 +32,10 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::Transaction};
 
 use crate::transaction_service::{
@@ -110,10 +110,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
         cancelled: bool,
     ) -> Result<(), TransactionStorageError>;
     /// Search all pending transaction for the provided tx_id and if it exists return the public key of the counterparty
-    fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+    fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
         tx_id: TxId,
-    ) -> Result<CommsPublicKey, TransactionStorageError>;
+    ) -> Result<TariAddress, TransactionStorageError>;
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel coinbase transactions at a specific block height
@@ -544,12 +544,12 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
-    pub fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+    pub fn get_pending_transaction_counterparty_address_by_tx_id(
         &mut self,
         tx_id: TxId,
-    ) -> Result<CommsPublicKey, TransactionStorageError> {
-        let pub_key = self.db.get_pending_transaction_counterparty_pub_key_by_tx_id(tx_id)?;
-        Ok(pub_key)
+    ) -> Result<TariAddress, TransactionStorageError> {
+        let address = self.db.get_pending_transaction_counterparty_address_by_tx_id(tx_id)?;
+        Ok(address)
     }
 
     pub fn get_completed_transactions(&self) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
@@ -651,8 +651,8 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         amount: MicroTari,
-        source_public_key: CommsPublicKey,
-        comms_public_key: CommsPublicKey,
+        source_address: TariAddress,
+        comms_address: TariAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -661,8 +661,8 @@ where T: TransactionBackend + 'static
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
-            source_public_key,
-            comms_public_key,
+            source_address,
+            comms_address,
             amount,
             MicroTari::from(0),
             Transaction::new(

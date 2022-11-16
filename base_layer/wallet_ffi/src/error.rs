@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
+use tari_common_types::tari_address::TariAddressError;
 use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::{
@@ -386,6 +387,32 @@ impl From<ByteArrayError> for LibWalletError {
             ByteArrayError::IncorrectLength => Self {
                 code: 601,
                 message: format!("{:?}", b),
+            },
+        }
+    }
+}
+
+/// This implementation maps the internal TariAddressError to a set of LibWalletErrors.
+/// The mapping is explicitly managed here.
+impl From<TariAddressError> for LibWalletError {
+    fn from(e: TariAddressError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", e));
+        match e {
+            TariAddressError::InvalidNetworkOrChecksum => Self {
+                code: 701,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::CannotRecoverPublicKey => Self {
+                code: 702,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidSize => Self {
+                code: 703,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidEmoji => Self {
+                code: 704,
+                message: format!("{:?}", e),
             },
         }
     }

@@ -41,7 +41,7 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::transaction_components::{OutputType, SideChainFeatures},
+        transactions::transaction_components::OutputType,
     };
 
     #[test]
@@ -49,17 +49,13 @@ mod test {
         let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type)));
         let mut input = create_input();
         input.set_maturity(42).unwrap();
-        input.features_mut().unwrap().sidechain_features = Some(Box::new(SideChainFeatures {}));
         input.features_mut().unwrap().output_type = OutputType::Standard;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
-            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
             outputs[5].features.output_type = OutputType::Standard;
             outputs[7].features.maturity = 42;
             outputs[7].features.output_type = OutputType::Standard;
-            outputs[7].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
             outputs[8].features.maturity = 42;
-            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
             outputs[8].features.output_type = OutputType::Coinbase;
         });
         let mut output_set = OutputSet::new(&outputs);

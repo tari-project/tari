@@ -30,8 +30,9 @@ use std::{
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -43,7 +44,6 @@ use tari_core::{
     },
 };
 use tari_service_framework::reply_channel::SenderService;
-use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -75,7 +75,7 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SendTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -88,8 +88,15 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    RegisterValidatorNode {
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
     SendOneSidedTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -97,18 +104,18 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     SendOneSidedToStealthAddressTransaction {
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
-    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, UtxoSelectionCriteria, MicroTari, String),
+    SendShaAtomicSwapTransaction(TariAddress, MicroTari, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
-        source_public_key: CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -137,63 +144,62 @@ pub enum TransactionServiceRequest {
 impl fmt::Display for TransactionServiceRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::GetPendingInboundTransactions => f.write_str("GetPendingInboundTransactions"),
-            Self::GetPendingOutboundTransactions => f.write_str("GetPendingOutboundTransactions"),
-            Self::GetCompletedTransactions => f.write_str("GetCompletedTransactions"),
-            Self::GetCancelledPendingInboundTransactions => f.write_str("GetCancelledPendingInboundTransactions"),
-            Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
-            Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
-            Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
+            Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
+            Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
+            Self::GetCompletedTransactions => write!(f, "GetCompletedTransactions"),
+            Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
+            Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
+            Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
+            Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
             Self::SendTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
-            } => f.write_str(&format!(
-                "SendTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
-            )),
-            Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
+            } => write!(f, "SendTransaction (to {}, {}, {})", destination, amount, message),
+            Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
+            Self::RegisterValidatorNode {
+                validator_node_public_key,
+                message,
+                ..
+            } => write!(f, "Registering VN ({}, {})", validator_node_public_key, message),
             Self::SendOneSidedTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
-            } => f.write_str(&format!(
+            } => write!(
+                f,
                 "SendOneSidedTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
-            )),
+                destination, amount, message
+            ),
             Self::SendOneSidedToStealthAddressTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 message,
                 ..
-            } => f.write_str(&format!(
+            } => write!(
+                f,
                 "SendOneSidedToStealthAddressTransaction (to {}, {}, {})",
-                dest_pubkey.to_hex(),
-                amount,
-                message
-            )),
+                destination, amount, message
+            ),
             Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
-                f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
+                write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg)
             },
-            Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
+            Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
             Self::ImportUtxoWithStatus {
                 amount,
-                source_public_key,
+                source_address,
                 message,
                 maturity,
                 import_status,
                 tx_id,
                 current_height,
                 mined_timestamp,
-            } => f.write_str(&format!(
+            } => write!(
+                f,
                 "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?} and {:?})",
-                source_public_key,
+                source_address,
                 amount,
                 message,
                 maturity.unwrap_or(0),
@@ -201,22 +207,22 @@ impl fmt::Display for TransactionServiceRequest {
                 tx_id,
                 current_height,
                 mined_timestamp
-            )),
-            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
-            Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
-            Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
-            Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
-            Self::RemoveEncryption => f.write_str("RemoveEncryption"),
+            ),
+            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
+            Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
+            Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
+            Self::ApplyEncryption(_) => write!(f, "ApplyEncryption"),
+            Self::RemoveEncryption => write!(f, "RemoveEncryption"),
             Self::GenerateCoinbaseTransaction(_, _, bh) => {
-                f.write_str(&format!("GenerateCoinbaseTransaction (Blockheight {})", bh))
+                write!(f, "GenerateCoinbaseTransaction (Blockheight {})", bh)
             },
-            Self::RestartTransactionProtocols => f.write_str("RestartTransactionProtocols"),
-            Self::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
-            Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
-            Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
-            Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
-            Self::ValidateTransactions => f.write_str("ValidateTransactions"),
-            Self::ReValidateTransactions => f.write_str("ReValidateTransactions"),
+            Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
+            Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
+            Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
+            Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
+            Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
+            Self::ValidateTransactions => write!(f, "ValidateTransactions"),
+            Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -431,7 +437,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -441,7 +447,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -455,9 +461,33 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn register_validator_node(
+        &mut self,
+        validator_node_public_key: PublicKey,
+        validator_node_signature: Signature,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RegisterValidatorNode {
+                validator_node_public_key,
+                validator_node_signature,
+                selection_criteria,
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn send_one_sided_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -467,7 +497,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -506,7 +536,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -516,7 +546,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 output_features: Box::new(output_features),
@@ -650,7 +680,7 @@ impl TransactionServiceHandle {
     pub async fn import_utxo_with_status(
         &mut self,
         amount: MicroTari,
-        source_public_key: CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -662,7 +692,7 @@ impl TransactionServiceHandle {
             .handle
             .call(TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
-                source_public_key,
+                source_address,
                 message,
                 maturity,
                 import_status,
@@ -821,7 +851,7 @@ impl TransactionServiceHandle {
 
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
-        dest_pubkey: CommsPublicKey,
+        destination: TariAddress,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
@@ -830,7 +860,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
-                dest_pubkey,
+                destination,
                 amount,
                 selection_criteria,
                 fee_per_gram,

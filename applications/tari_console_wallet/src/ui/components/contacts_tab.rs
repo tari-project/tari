@@ -27,7 +27,7 @@ pub struct ContactsTab {
     edit_contact_mode: ContactInputMode,
     show_edit_contact: bool,
     alias_field: String,
-    public_key_field: String,
+    address_field: String,
     error_message: Option<String>,
     contacts_list_state: WindowedListState,
     confirmation_dialog: Option<ConfirmationDialogType>,
@@ -39,7 +39,7 @@ impl ContactsTab {
             edit_contact_mode: ContactInputMode::None,
             show_edit_contact: false,
             alias_field: String::new(),
-            public_key_field: String::new(),
+            address_field: String::new(),
             error_message: None,
             contacts_list_state: WindowedListState::new(),
             confirmation_dialog: None,
@@ -93,7 +93,7 @@ impl ContactsTab {
         let mut column4_items = Vec::new();
         for c in windowed_view.iter() {
             column0_items.push(ListItem::new(Span::raw(c.alias.clone())));
-            column1_items.push(ListItem::new(Span::raw(c.public_key.clone())));
+            column1_items.push(ListItem::new(Span::raw(c.address.clone())));
             column2_items.push(ListItem::new(Span::raw(display_compressed_string(
                 c.emoji_id.clone(),
                 3,
@@ -108,7 +108,7 @@ impl ContactsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Alias"), Some(25), column0_items)
             .add_column(None, Some(1), Vec::new())
-            .add_column(Some("Public Key"), Some(64), column1_items)
+            .add_column(Some("Tari Address"), Some(64), column1_items)
             .add_column(None, Some(1), Vec::new())
             .add_column(Some("Emoji ID"), Some(14), column2_items)
             .add_column(None, Some(1), Vec::new())
@@ -143,7 +143,7 @@ impl ContactsTab {
             Span::raw(" field, "),
             Span::styled("K", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
-            Span::styled("Public Key/Emoji ID", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("Emoji ID", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" field, "),
             Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to save Contact."),
@@ -159,13 +159,13 @@ impl ContactsTab {
             .block(Block::default().borders(Borders::ALL).title("A(l)ias:"));
         f.render_widget(alias_input, vert_chunks[1]);
 
-        let pubkey_input = Paragraph::new(self.public_key_field.as_ref())
+        let tari_address_input = Paragraph::new(self.address_field.as_ref())
             .style(match self.edit_contact_mode {
                 ContactInputMode::PubkeyEmojiId => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("Public (K)ey / Emoji Id:"));
-        f.render_widget(pubkey_input, vert_chunks[2]);
+            .block(Block::default().borders(Borders::ALL).title("Emoji Id:"));
+        f.render_widget(tari_address_input, vert_chunks[2]);
 
         match self.edit_contact_mode {
             ContactInputMode::None => (),
@@ -177,7 +177,7 @@ impl ContactsTab {
             ),
             ContactInputMode::PubkeyEmojiId => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[2].x + self.public_key_field.width() as u16 + 1,
+                vert_chunks[2].x + self.address_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
                 vert_chunks[2].y + 1,
             ),
@@ -200,7 +200,7 @@ impl ContactsTab {
                                 .and_then(|i| app_state.get_contact(i))
                                 .cloned()
                             {
-                                if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
+                                if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.address)) {
                                     self.error_message =
                                         Some("Could not delete selected contact\nPress Enter to continue.".to_string());
                                 }
@@ -237,18 +237,19 @@ impl ContactsTab {
                         self.show_edit_contact = false;
 
                         if let Err(_e) = Handle::current()
-                            .block_on(app_state.upsert_contact(self.alias_field.clone(), self.public_key_field.clone()))
+                            .block_on(app_state.upsert_contact(self.alias_field.clone(), self.address_field.clone()))
                         {
-                            self.error_message =
-                                Some("Invalid Public key or Emoji ID provided\n Press Enter to continue.".to_string());
+                            self.error_message = Some(
+                                "Invalid Tari address or Emoji ID provided\n Press Enter to continue.".to_string(),
+                            );
                         }
 
                         self.alias_field = "".to_string();
-                        self.public_key_field = "".to_string();
+                        self.address_field = "".to_string();
                         return KeyHandled::Handled;
                     },
                     c => {
-                        self.public_key_field.push(c);
+                        self.address_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
@@ -329,7 +330,7 @@ impl<B: Backend> Component<B> for ContactsTab {
                     .selected()
                     .and_then(|i| app_state.get_contact(i))
                 {
-                    self.public_key_field = c.public_key.clone();
+                    self.address_field = c.address.clone();
                     self.alias_field = c.alias.clone();
                     self.show_edit_contact = true;
                     self.edit_contact_mode = ContactInputMode::Alias;
@@ -338,7 +339,7 @@ impl<B: Backend> Component<B> for ContactsTab {
             _ => {
                 self.show_edit_contact = false;
                 self.edit_contact_mode = ContactInputMode::Alias;
-                self.public_key_field = "".to_string();
+                self.address_field = "".to_string();
             },
         }
     }
@@ -371,7 +372,7 @@ impl<B: Backend> Component<B> for ContactsTab {
                 let _ = self.alias_field.pop();
             },
             ContactInputMode::PubkeyEmojiId => {
-                let _ = self.public_key_field.pop();
+                let _ = self.address_field.pop();
             },
             ContactInputMode::None => {},
         }

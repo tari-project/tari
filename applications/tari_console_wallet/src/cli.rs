@@ -30,6 +30,7 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
 use tari_utilities::{
@@ -41,12 +42,9 @@ use tari_utilities::{
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 #[allow(clippy::struct_excessive_bools)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    /// Enable tracing
-    #[clap(long, aliases = &["tracing", "enable-tracing"])]
-    pub tracing_enabled: bool,
     /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
     /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
     /// possible.
@@ -134,6 +132,7 @@ pub enum CliCommands {
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
+    RegisterValidatorNode(RegisterValidatorNodeArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -144,7 +143,7 @@ pub struct DiscoverPeerArgs {
 #[derive(Debug, Args, Clone)]
 pub struct SendTariArgs {
     pub amount: MicroTari,
-    pub destination: UniPublicKey,
+    pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub message: String,
 }
@@ -158,7 +157,7 @@ pub struct BurnTariArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct MakeItRainArgs {
-    pub destination: UniPublicKey,
+    pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
     pub start_amount: MicroTari,
     #[clap(short, long, alias = "tps", default_value_t = 25)]
@@ -268,4 +267,13 @@ pub struct ClaimShaAtomicSwapRefundArgs {
 pub struct HashPasswordArgs {
     /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
     pub short: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RegisterValidatorNodeArgs {
+    pub validator_node_public_key: UniPublicKey,
+    pub validator_node_public_nonce: UniPublicKey,
+    pub validator_node_signature: Vec<u8>,
+    #[clap(short, long, default_value = "Registering VN")]
+    pub message: String,
 }

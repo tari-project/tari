@@ -36,7 +36,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
-    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,
@@ -1544,7 +1544,6 @@ fn test_orphan_cleanup_on_reorg() {
 fn test_orphan_cleanup_delete_all_orphans() {
     let path = create_temporary_data_path();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -1558,7 +1557,8 @@ fn test_orphan_cleanup_delete_all_orphans() {
     };
     // Test cleanup during runtime
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(network).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
@@ -1611,13 +1611,14 @@ fn test_orphan_cleanup_delete_all_orphans() {
 
     // Test orphans are present on open
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
             validators.clone(),
             config,
-            DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
+            DifficultyCalculator::new(consensus_manager, Default::default()),
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 5);
@@ -1625,7 +1626,8 @@ fn test_orphan_cleanup_delete_all_orphans() {
 
     // Test orphans cleanup on open
     {
-        let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), consensus_manager.clone()).unwrap();
         config.cleanup_orphans_at_startup = true;
         let store = BlockchainDatabase::new(
             db,

@@ -26,7 +26,8 @@ use std::{
 };
 
 use chrono::{DateTime, Local, NaiveDateTime};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -39,7 +40,7 @@ use crate::contacts_service::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
-    public_key: CommsPublicKey,
+    address: TariAddress,
     node_id: NodeId,
     latency: Option<u32>,
     last_seen: Option<NaiveDateTime>,
@@ -49,7 +50,7 @@ pub struct ContactsLivenessData {
 
 impl ContactsLivenessData {
     pub fn new(
-        public_key: CommsPublicKey,
+        address: TariAddress,
         node_id: NodeId,
         latency: Option<u32>,
         last_seen: Option<NaiveDateTime>,
@@ -57,7 +58,7 @@ impl ContactsLivenessData {
         online_status: ContactOnlineStatus,
     ) -> Self {
         Self {
-            public_key,
+            address,
             node_id,
             latency,
             last_seen,
@@ -66,8 +67,8 @@ impl ContactsLivenessData {
         }
     }
 
-    pub fn public_key(&self) -> &CommsPublicKey {
-        &self.public_key
+    pub fn address(&self) -> &TariAddress {
+        &self.address
     }
 
     pub fn node_id(&self) -> &NodeId {
@@ -101,7 +102,7 @@ impl Display for ContactsLivenessData {
             f,
             "Liveness event '{}' for contact {} ({}) {}",
             self.message_type,
-            self.public_key,
+            self.address,
             self.node_id,
             if let Some(time) = self.last_seen {
                 let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
@@ -124,9 +125,9 @@ pub enum ContactsLivenessEvent {
 
 #[derive(Debug)]
 pub enum ContactsServiceRequest {
-    GetContact(CommsPublicKey),
+    GetContact(TariAddress),
     UpsertContact(Contact),
-    RemoveContact(CommsPublicKey),
+    RemoveContact(TariAddress),
     GetContacts,
     GetContactOnlineStatus(Contact),
 }
@@ -161,10 +162,10 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_contact(&mut self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceError> {
+    pub async fn get_contact(&mut self, address: TariAddress) -> Result<Contact, ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetContact(pub_key))
+            .call(ContactsServiceRequest::GetContact(address))
             .await??
         {
             ContactsServiceResponse::Contact(c) => Ok(c),
@@ -194,10 +195,10 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn remove_contact(&mut self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceError> {
+    pub async fn remove_contact(&mut self, address: TariAddress) -> Result<Contact, ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::RemoveContact(pub_key))
+            .call(ContactsServiceRequest::RemoveContact(address))
             .await??
         {
             ContactsServiceResponse::ContactRemoved(c) => Ok(c),

@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::configuration::Network;
 use tari_comms::peer_manager::Peer;
-use tari_wallet::{WalletConfig, WalletSqlite};
+use tari_wallet::{util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -71,15 +70,14 @@ impl<B: Backend> App<B> {
     pub fn new(
         title: String,
         wallet: WalletSqlite,
-        network: Network,
         wallet_config: WalletConfig,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Self {
+        let wallet_id = WalletIdentity::new(wallet.comms.node_identity(), wallet.network.as_network());
         let app_state = AppState::new(
-            wallet.comms.node_identity().as_ref(),
-            network,
+            &wallet_id,
             wallet,
             base_node_selected.clone(),
             base_node_config,

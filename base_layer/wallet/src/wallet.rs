@@ -25,6 +25,7 @@ use std::{cmp, marker::PhantomData, sync::Arc};
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
@@ -93,6 +94,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
+    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
@@ -166,6 +168,7 @@ where
             config.buffer_size,
             config.buffer_rate_limit
         );
+        let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
@@ -186,7 +189,7 @@ where
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
-                node_identity.clone(),
+                wallet_identity.clone(),
                 factories.clone(),
                 wallet_database.clone(),
             ))
@@ -212,7 +215,7 @@ where
             .add_initializer(UtxoScannerServiceInitializer::new(
                 wallet_database.clone(),
                 factories.clone(),
-                node_identity.clone(),
+                wallet_identity,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -404,7 +407,7 @@ where
         spending_key: &PrivateKey,
         script: TariScript,
         input_data: ExecutionStack,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         features: OutputFeatures,
         message: String,
         metadata_signature: ComSignature,
@@ -434,7 +437,7 @@ where
             .transaction_service
             .import_utxo_with_status(
                 amount,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(features.maturity),
                 ImportStatus::Imported,
@@ -470,14 +473,14 @@ where
     pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
                 unblinded_output.value,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(dead_code, unused)]
+
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 
 use log::*;
@@ -128,7 +130,7 @@ pub async fn change_password(
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
 
-    if passphrase != confirmed {
+    if passphrase.reveal() != confirmed.reveal() {
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
@@ -374,7 +376,7 @@ pub async fn init_wallet(
                 let password = prompt_password("Create wallet password: ")?;
                 let confirmed = prompt_password("Confirm wallet password: ")?;
 
-                if password != confirmed {
+                if password.reveal() != confirmed.reveal() {
                     return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
                 }
 
