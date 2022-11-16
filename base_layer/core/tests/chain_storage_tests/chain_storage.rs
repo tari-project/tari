@@ -321,6 +321,7 @@ fn test_rewind_past_horizon_height() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_handle_tip_reorg_with_zero_conf() {
     // GB --> A1 --> A2 --> A3(Low PoW)      [Main Chain]
     //          \--> B2 --> B3 -- B4 --> B5(Highest PoW)  [Forked Chain]
@@ -472,6 +473,7 @@ fn test_handle_tip_reorg_with_zero_conf() {
     assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 5);
 }
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_handle_tip_reorg() {
     // GB --> A1 --> A2(Low PoW)      [Main Chain]
     //          \--> B2(Highest PoW)  [Forked Chain]
