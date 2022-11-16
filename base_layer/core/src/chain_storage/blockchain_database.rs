@@ -1111,6 +1111,20 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
+    /// This method will compare all chain tips the node currently knows about. This includes
+    /// all tips in the orphan pool and the main active chain. It will swap the main active
+    /// chain to the highest pow chain
+    /// This is typically used when an attempted sync failed to sync to the expected height and
+    /// we are not sure if the new chain is higher than the old one.
+    pub fn swap_to_highest_pow_chain(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        swap_to_highest_pow_chain(
+            &mut *db,
+            &*self.validators.block,
+            self.consensus_manager.chain_strength_comparer(),
+        )
+    }
+
     pub fn fetch_horizon_data(&self) -> Result<HorizonData, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_horizon_data()?.unwrap_or_default())
@@ -2053,31 +2067,59 @@ fn reorganize_chain<T: BlockchainBackend>(
 
     Ok(removed_blocks)
 }
-// fn hydrate_block<T: BlockchainBackend>(
-//     backend: &mut T,
-//     block: Arc<ChainBlock>,
-// ) -> Result<Arc<ChainBlock>, ChainStorageError> {
-//     if !block.block().body.has_compact_inputs() {
-//         return Ok(block);
-//     }
-//
-//     for input in block.block().body.inputs() {
-//         let output = backend.fetch_mmr_leaf(MmrTree::Utxo, input.mmr_index())?;
-//         let output = output.ok_or_else(|| ChainStorageError::ValueNotFound {
-//             entity: "Output".to_string(),
-//             field: "mmr_index".to_string(),
-//             value: input.mmr_index().to_string(),
-//         })?;
-//         let output = TransactionOutput::try_from(output)?;
-//         let input = TransactionInput::new_with_commitment(input.features(), output.commitment());
-//         block.block_mut().body_mut().add_input(input);
-//     }
-//     backend.fetch_unspent_output_hash_by_commitment()
-//     let block = hydrate_block_from_db(backend, block_hash, block.header().clone())?;
-//     txn.delete_orphan(block_hash);
-//     backend.write(txn)?;
-//     Ok(block)
-// }
+
+fn swap_to_highest_pow_chain<T: BlockchainBackend>(
+    db: &mut T,
+    block_validator: &dyn PostOrphanBodyValidation<T>,
+    chain_strength_comparer: &dyn ChainStrengthComparer,
+) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    // lets clear out all remaining headers that done have a matching block
+    // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
+    // height it will only trim the extra headers with no blocks
+    rewind_to_height(db, metadata.height_of_longest_chain())?;
+    let all_orphan_tips = db.fetch_all_orphan_chain_tips()?;
+    if all_orphan_tips.is_empty() {
+        // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
+        // return ok
+        return Ok(());
+    }
+    // Check the accumulated difficulty of the best fork chain compared to the main chain.
+    let best_fork_header = find_strongest_orphan_tip(all_orphan_tips, chain_strength_comparer).ok_or_else(|| {
+        // This should never happen because a block is always added to the orphan pool before
+        // checking, but just in case
+        warn!(
+            target: LOG_TARGET,
+            "Unable to find strongest orphan tip`. This should never happen.",
+        );
+        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+    })?;
+    let tip_header = db.fetch_tip_header()?;
+    match chain_strength_comparer.compare(&best_fork_header, &tip_header) {
+        Ordering::Greater => {
+            debug!(
+                target: LOG_TARGET,
+                "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip (#{} ({})).",
+                best_fork_header.accumulated_data().total_accumulated_difficulty,
+                best_fork_header.accumulated_data().hash.to_hex(),
+                tip_header.height(),
+                tip_header.hash().to_hex()
+            );
+        },
+        Ordering::Less | Ordering::Equal => {
+            return Ok(());
+        },
+    }
+
+    let reorg_chain = get_orphan_link_main_chain(db, best_fork_header.hash())?;
+    let fork_hash = reorg_chain
+        .front()
+        .expect("The new orphan block should be in the queue")
+        .header()
+        .prev_hash;
+    reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
+    Ok(())
+}
 
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,

@@ -2298,6 +2298,11 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(Some(chain_header))
     }
 
+    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, |tip| tip)
+    }
+
     fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
         trace!(
             target: LOG_TARGET,
