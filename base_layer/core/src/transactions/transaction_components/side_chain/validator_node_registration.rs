@@ -24,12 +24,17 @@ use std::io::{Error, Read, Write};
 
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
+};
 use tari_crypto::keys::PublicKey as PublicKeyT;
+use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     transactions::TransactionHashDomain,
+    U256,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
@@ -62,13 +67,39 @@ impl ValidatorNodeRegistration {
             .into()
     }
 
-    pub fn derive_shard_key(&self, block_hash: &FixedHash) -> [u8; 32] {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
-            // <pk, sig>
-            .chain(self)
-            .chain(block_hash)
-            .finalize()
+    pub fn derive_shard_key(
+        &self,
+        prev_shard_key: Option<[u8; 32]>,
+        epoch: VnEpoch,
+        interval: VnEpoch,
+        block_hash: &FixedHash,
+    ) -> [u8; 32] {
+        match prev_shard_key {
+            Some(prev) => {
+                if does_require_new_shard_key(&self.public_key, epoch, interval) {
+                    generate_shard_key(&self.public_key, &**block_hash)
+                } else {
+                    prev
+                }
+            },
+            None => generate_shard_key(&self.public_key, &**block_hash),
+        }
     }
+}
+
+fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: VnEpoch) -> bool {
+    let pk = U256::from_big_endian(public_key.as_bytes());
+    let epoch = U256::from(epoch.as_u64());
+    let interval = U256::from(interval.as_u64());
+    pk + epoch % interval == U256::zero()
+}
+
+fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
+    DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
+        .chain(public_key)
+        .chain(entropy)
+        .finalize()
+        .into()
 }
 
 impl ConsensusEncoding for ValidatorNodeRegistration {

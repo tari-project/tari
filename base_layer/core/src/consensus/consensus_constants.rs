@@ -27,6 +27,7 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
+use tari_common_types::epoch::VnEpoch;
 use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -94,8 +95,13 @@ pub struct ConsensusConstants {
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
-    /// How long does it take to timeout validator node registration
-    validator_node_timeout: u64,
+    /// Epoch duration in blocks
+    vn_epoch_length: u64,
+    /// The number of Epochs that a validator node registration is valid
+    vn_validity_period: VnEpoch,
+    vn_registration_min_deposit_amount: MicroTari,
+    vn_registration_lock_height: u64,
+    vn_registration_shuffle_interval: VnEpoch,
 }
 
 // todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
@@ -290,8 +296,27 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
-    pub fn validator_node_timeout(&self) -> u64 {
-        self.validator_node_timeout
+    pub fn validator_node_validity_period(&self) -> VnEpoch {
+        self.vn_validity_period
+    }
+
+    pub fn validator_node_registration_shuffle_interval(&self) -> VnEpoch {
+        self.vn_registration_shuffle_interval
+    }
+
+    /// Returns the current epoch from the given height
+    pub fn block_height_to_current_epoch(&self, height: u64) -> VnEpoch {
+        VnEpoch(height / self.vn_epoch_length)
+    }
+
+    pub fn epoch_length(&self) -> u64 {
+        self.vn_epoch_length
+    }
+
+    /// Returns the next epoch up from the given height
+    pub fn block_height_to_next_epoch(&self, height: u64) -> VnEpoch {
+        let rem = height % self.vn_epoch_length;
+        VnEpoch((height + rem) / self.vn_epoch_length)
     }
 
     pub fn localnet() -> Vec<Self> {
@@ -331,7 +356,11 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
-            validator_node_timeout: 100,
+            vn_epoch_length: 60,
+            vn_validity_period: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
         }]
     }
 
@@ -372,7 +401,11 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
-            validator_node_timeout: 0,
+            vn_epoch_length: 60,
+            vn_validity_period: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
         }]
     }
 
@@ -417,7 +450,11 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
-            validator_node_timeout: 100,
+            vn_epoch_length: 60,
+            vn_validity_period: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
         }]
     }
 
@@ -468,7 +505,11 @@ impl ConsensusConstants {
                 output_version_range: output_version_range.clone(),
                 kernel_version_range: kernel_version_range.clone(),
                 permitted_output_types: Self::current_permitted_output_types(),
-                validator_node_timeout: 0,
+                vn_epoch_length: 60,
+                vn_validity_period: VnEpoch(100),
+                vn_registration_min_deposit_amount: MicroTari(1),
+                vn_registration_lock_height: 0,
+                vn_registration_shuffle_interval: VnEpoch(100),
             },
             ConsensusConstants {
                 effective_from_height: 23000,
@@ -492,7 +533,11 @@ impl ConsensusConstants {
                 output_version_range,
                 kernel_version_range,
                 permitted_output_types: Self::current_permitted_output_types(),
-                validator_node_timeout: 0,
+                vn_epoch_length: 60,
+                vn_validity_period: VnEpoch(100),
+                vn_registration_min_deposit_amount: MicroTari(1),
+                vn_registration_lock_height: 0,
+                vn_registration_shuffle_interval: VnEpoch(100),
             },
         ]
     }
@@ -540,7 +585,11 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
-            validator_node_timeout: 50,
+            vn_epoch_length: 60,
+            vn_validity_period: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
         };
 
         vec![consensus_constants_1]
@@ -584,7 +633,11 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
-            validator_node_timeout: 0,
+            vn_epoch_length: 60,
+            vn_validity_period: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
         }]
     }
 

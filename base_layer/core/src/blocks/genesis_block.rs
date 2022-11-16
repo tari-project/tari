@@ -358,7 +358,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 mod test {
 
     use croaring::Bitmap;
-    use tari_common_types::types::Commitment;
+    use tari_common_types::{epoch::VnEpoch, types::Commitment};
 
     use super::*;
     use crate::{
@@ -434,7 +434,12 @@ mod test {
                     .as_ref()
                     .and_then(|f| f.validator_node_registration())
                     .unwrap();
-                vn_mmr.push(reg.derive_shard_key(block.hash()).to_vec()).unwrap();
+                vn_mmr
+                    .push(
+                        reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash())
+                            .to_vec(),
+                    )
+                    .unwrap();
             }
         }
 

@@ -182,6 +182,10 @@ impl TempDatabase {
         self.delete_on_drop = false;
         self
     }
+
+    pub fn db(&self) -> &LMDBDatabase {
+        self.db.as_ref().unwrap()
+    }
 }
 
 impl Default for TempDatabase {
