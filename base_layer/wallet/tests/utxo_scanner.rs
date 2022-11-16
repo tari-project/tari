@@ -1008,8 +1008,8 @@ async fn test_birthday_timestamp_over_chain() {
 
     let TestBlockData {
         block_headers,
-        unblinded_outputs: _,
         utxos_by_block,
+        ..
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
     test_interface
