@@ -34,11 +34,11 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
-    blocks::BlockHeader,
+    blocks::{genesis_block, BlockHeader},
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
@@ -288,7 +288,8 @@ async fn test_utxo_scanner_recovery() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 14u16);
     test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -371,7 +372,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 14);
     test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     test_interface
@@ -535,7 +537,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 14);
     test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -704,7 +707,8 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     }
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 14);
     test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -806,7 +810,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     .await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 14u16);
     test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -987,4 +992,63 @@ async fn test_utxo_scanner_one_sided_payments() {
             assert_eq!(message, "new one-sided message".to_string());
         }
     }
+}
+
+#[tokio::test]
+async fn test_birthday_timestamp_over_chain() {
+    let test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+
+    let cipher_seed = CipherSeed::new();
+    // get birthday duration, in seconds, from unix epoch
+    let birthday_epoch_time = get_birthday_from_unix_epoch_in_seconds(cipher_seed.birthday(), 0u16);
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
+
+    const NUM_BLOCKS: u64 = 10;
+    const BIRTHDAY_OFFSET: u64 = 5;
+
+    let TestBlockData {
+        block_headers,
+        utxos_by_block,
+        ..
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+
+    test_interface
+        .rpc_service_state
+        .set_utxos_by_block(utxos_by_block.clone());
+    test_interface.rpc_service_state.set_blocks(block_headers.clone());
+
+    let chain_metadata = ChainMetadata {
+        height_of_longest_chain: Some(NUM_BLOCKS - 1),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        accumulated_difficulty: Vec::new(),
+        pruned_height: 0,
+        timestamp: Some(0),
+    };
+    test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
+        metadata: Some(chain_metadata),
+        is_synced: true,
+    });
+
+    let genesis_block_timestamp = genesis_block::get_esmeralda_genesis_block()
+        .header()
+        .timestamp()
+        .as_u64();
+
+    // birthday duration from unix epoch should be at least the genesis block timestamp
+    assert!(birthday_epoch_time >= genesis_block_timestamp);
+    let before_birthday_block_timestamp = block_headers
+        .get(&(NUM_BLOCKS - BIRTHDAY_OFFSET - 1))
+        .unwrap()
+        .timestamp()
+        .as_u64();
+
+    let after_birthday_block_timestamp = block_headers
+        .get(&(NUM_BLOCKS - BIRTHDAY_OFFSET))
+        .unwrap()
+        .timestamp()
+        .as_u64();
+
+    assert!(
+        birthday_epoch_time >= before_birthday_block_timestamp && birthday_epoch_time <= after_birthday_block_timestamp
+    );
 }
