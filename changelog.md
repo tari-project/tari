@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.40.1](https://github.com/tari-project/tari/compare/v0.40.0...v0.40.1) (2022-11-17)
+
+
+### Bug Fixes
+
+* set wallet start scan height to birthday and not 0 (see issue [#4807](https://github.com/tari-project/tari/issues/4807)) ([#4911](https://github.com/tari-project/tari/issues/4911)) ([797f91a](https://github.com/tari-project/tari/commit/797f91a91578e851b9eefe939294f919c7fec978))
+
 ## [0.40.0](https://github.com/tari-project/tari/compare/v0.39.0...v0.40.0) (2022-11-16)
 
 
