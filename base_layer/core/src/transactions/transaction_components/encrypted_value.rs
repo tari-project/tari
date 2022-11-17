@@ -124,7 +124,9 @@ fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Hidden<Key> 
         .chain(commitment.as_bytes())
         .finalize();
 
-    Hidden::hide(*Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH]))
+    const AEAD_KEY_LEN: usize = std::mem::size_of::<Key>();
+
+    Hidden::hide(*Key::from_slice(&output.as_ref()[..AEAD_KEY_LEN]))
 }
 
 impl ConsensusEncoding for EncryptedValue {
