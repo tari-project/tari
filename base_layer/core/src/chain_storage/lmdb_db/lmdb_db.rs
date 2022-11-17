@@ -2300,7 +2300,32 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, |tip| tip)
+        let tips: Vec<HashOutput> = lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, Some)?;
+        let mut result = Vec::new();
+        for hash in tips {
+            let orphan: Block =
+                lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "Orphan",
+                    field: "hash",
+                    value: hash.to_hex(),
+                })?;
+
+            let accumulated_data = lmdb_get(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "Orphan accumulated data",
+                    field: "hash",
+                    value: hash.to_hex(),
+                })?;
+            let height = orphan.header.height;
+            let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
+                ChainStorageError::DataInconsistencyDetected {
+                    function: "fetch_orphan_chain_tip_by_hash",
+                    details: format!("Accumulated data mismatch at height #{}", height),
+                }
+            })?;
+            result.push(chain_header);
+        }
+        Ok(result)
     }
 
     fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {

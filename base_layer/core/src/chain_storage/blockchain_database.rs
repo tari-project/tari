@@ -1702,6 +1702,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
+#[allow(clippy::too_many_lines)]
 fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
@@ -1770,7 +1771,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
-        txn.delete_block(*block.hash());
+        let block_hash = *block.hash();
+        txn.delete_block(block_hash);
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
@@ -1795,6 +1797,15 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             expected_block_hash,
             chain_header.timestamp(),
         );
+        if h == 0 {
+            // insert the new orphan chain tip
+            debug!(
+                target: LOG_TARGET,
+                "Inserting new orphan chain tip: {}",
+                block_hash.to_hex()
+            );
+            txn.insert_orphan_chain_tip(block_hash);
+        }
         // Update metadata
         debug!(
             target: LOG_TARGET,
@@ -2054,15 +2065,6 @@ fn reorganize_chain<T: BlockchainBackend>(
             restore_reorged_chain(backend, fork_hash, removed_blocks)?;
             return Err(e);
         }
-    }
-
-    if let Some(block) = removed_blocks.first() {
-        // insert the new orphan chain tip
-        let mut txn = DbTransaction::new();
-        let hash = *block.hash();
-        debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", hash.to_hex());
-        txn.insert_orphan_chain_tip(hash);
-        backend.write(txn)?;
     }
 
     Ok(removed_blocks)
