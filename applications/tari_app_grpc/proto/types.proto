@@ -122,7 +122,7 @@ message ConsensusConstants {
     /// Maximum byte size of TariScript
     uint64 max_script_byte_size = 18;
     /// How long does it take to timeout validator node registration
-    uint64 validator_node_timeout = 19;
+    uint64 validator_node_validity_period = 19;
     /// The height at which these constants become effective
     uint64 effective_from_height = 20;
     /// Current version of the blockchain
@@ -141,4 +141,6 @@ message ConsensusConstants {
     Range kernel_version_range = 28;
     /// An allowlist of output types
     repeated OutputType permitted_output_types = 29;
+    /// The length of an epoch
+    uint64 epoch_length = 30;
 }

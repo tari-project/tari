@@ -42,8 +42,8 @@ use tari_utilities::hex::to_hex;
 use crate::chain_storage::{
     error::ChainStorageError,
     lmdb_db::{
+        cursors::KeyPrefixCursor,
         helpers::{deserialize, serialize},
-        key_prefix_cursor::KeyPrefixCursor,
     },
     OrNotFound,
 };
@@ -444,53 +444,4 @@ pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, Ch
         num_deleted += 1;
     }
     Ok(num_deleted)
-}
-
-/// Used for migrations, you probably dont want to use this as it loops though the entire database.
-#[allow(dead_code)]
-pub(super) fn lmdb_map_inplace<F, V, R>(
-    txn: &WriteTransaction<'_>,
-    db: &Database,
-    f: F,
-) -> Result<(), ChainStorageError>
-where
-    F: Fn(V) -> Option<R>,
-    V: DeserializeOwned,
-    R: Serialize,
-{
-    let mut access = txn.access();
-    let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
-        ChainStorageError::AccessError(e.to_string())
-    })?;
-    let iter = CursorIter::new(
-        MaybeOwned::Borrowed(&mut cursor),
-        &access,
-        |c, a| c.first(a),
-        Cursor::next::<[u8], [u8]>,
-    )?;
-    let items = iter
-        .map(|r| r.map(|(k, v)| (k.to_vec(), v.to_vec())))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    for (key, val) in items {
-        // let (key, val) = row?;
-        let val = deserialize::<V>(&val)?;
-        if let Some(ret) = f(val) {
-            let ret_bytes = serialize(&ret)?;
-            access.put(db, &key, &ret_bytes, put::Flags::empty()).map_err(|e| {
-                if let lmdb_zero::Error::Code(code) = &e {
-                    if *code == lmdb_zero::error::MAP_FULL {
-                        return ChainStorageError::DbResizeRequired;
-                    }
-                }
-                error!(
-                    target: LOG_TARGET,
-                    "Could not replace value in lmdb transaction: {:?}", e
-                );
-                ChainStorageError::AccessError(e.to_string())
-            })?;
-        }
-    }
-    Ok(())
 }

@@ -427,6 +427,7 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_validator_node_registration_utxo(constants, output)?;
     }
     Ok(())
 }
@@ -821,6 +822,34 @@ pub fn validate_versions(
         validate_kernel_version(consensus_constants, kernel)?;
     }
 
+    Ok(())
+}
+
+pub fn check_validator_node_registration_utxo(
+    consensus_constants: &ConsensusConstants,
+    utxo: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
+        }
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(),
+                actual: utxo.features.maturity,
+            });
+        }
+
+        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+        //                 keys this becomes difficult. Fix this once we have decided on a solution.
+        if !reg.is_valid_signature_for(&[]) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+    }
     Ok(())
 }
 

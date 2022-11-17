@@ -69,7 +69,7 @@ impl CommandContext {
             .await?
             .ok_or_else(|| anyhow!("No last header"))?;
         let last_block_time = DateTime::<Utc>::from_utc(
-            NaiveDateTime::from_timestamp(last_header.header().timestamp.as_u64() as i64, 0),
+            NaiveDateTime::from_timestamp_opt(last_header.header().timestamp.as_u64() as i64, 0).unwrap_or_default(),
             Utc,
         );
         status_line.add_field(

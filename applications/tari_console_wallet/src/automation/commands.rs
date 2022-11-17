@@ -193,6 +193,7 @@ pub async fn claim_htlc_refund(
 }
 
 pub async fn register_validator_node(
+    amount: MicroTari,
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
@@ -202,6 +203,7 @@ pub async fn register_validator_node(
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
+            amount,
             validator_node_public_key,
             validator_node_signature,
             selection_criteria,
@@ -971,6 +973,7 @@ pub async fn command_runner(
             },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
+                    args.amount,
                     transaction_service.clone(),
                     args.validator_node_public_key.into(),
                     Signature::new(

@@ -219,7 +219,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     //
     // use croaring::Bitmap;
     // use std::convert::TryFrom;
-    // use crate::{KernelMmr, MutableOutputMmr, WitnessMmr};
+    // use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr, WitnessMmr};
 
     // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
@@ -244,7 +244,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // }
     // }
 
-    // let vn_mmr = ValidatorNodeMmr::new(Vec::new());
+    // let vn_mmr = calculate_validator_node_mr(&[]).unwrap();
 
     // block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     // block.header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
@@ -358,17 +358,17 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 mod test {
 
     use croaring::Bitmap;
-    use tari_common_types::types::Commitment;
+    use tari_common_types::{epoch::VnEpoch, types::Commitment};
 
     use super::*;
     use crate::{
+        chain_storage::calculate_validator_node_mr,
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{transaction_components::transaction_output::batch_verify_range_proofs, CryptoFactories},
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
         MutableOutputMmr,
-        ValidatorNodeMmr,
         WitnessMmr,
     };
 
@@ -423,7 +423,7 @@ mod test {
 
         let mut witness_mmr = WitnessMmr::new(Vec::new());
         let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-        let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
+        let mut vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
             witness_mmr.push(o.witness_hash().to_vec()).unwrap();
             output_mmr.push(o.hash().to_vec()).unwrap();
@@ -434,14 +434,20 @@ mod test {
                     .as_ref()
                     .and_then(|f| f.validator_node_registration())
                     .unwrap();
-                vn_mmr.push(reg.derive_shard_key(block.hash()).to_vec()).unwrap();
+                vn_nodes.push((
+                    reg.public_key().clone(),
+                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+                ));
             }
         }
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(witness_mmr.get_merkle_root().unwrap(), block.header().witness_mr,);
         assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
-        assert_eq!(vn_mmr.get_merkle_root().unwrap(), block.header().validator_node_mr);
+        assert_eq!(
+            calculate_validator_node_mr(&vn_nodes).unwrap(),
+            block.header().validator_node_mr,
+        );
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
         // is correct)

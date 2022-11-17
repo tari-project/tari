@@ -26,9 +26,11 @@
 use std::{iter, path::Path, sync::Arc};
 
 pub use block_spec::{BlockSpec, BlockSpecs};
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
+use tari_common_types::types::PublicKey;
 use tari_comms::PeerManager;
+use tari_crypto::keys::PublicKey as PublicKeyT;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
@@ -146,4 +148,14 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         .build()
         .unwrap();
     ChainHeader::try_construct(header, accumulated_data).unwrap()
+}
+
+pub fn new_public_key() -> PublicKey {
+    PublicKey::random_keypair(&mut OsRng).1
+}
+
+pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {
+    use digest::Digest;
+    use tari_crypto::hash::blake2::Blake256;
+    Blake256::new().chain(preimage.as_ref()).finalize().into()
 }

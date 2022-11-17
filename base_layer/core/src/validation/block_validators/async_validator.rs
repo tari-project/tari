@@ -413,6 +413,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         output.verify_metadata_signature()?;
                         output.verify_validator_node_signature()?;
                         helpers::check_not_duplicate_txo(&*db, output)?;
+                        helpers::check_validator_node_registration_utxo(&constants, output)?;
                         commitment_sum = &commitment_sum + &output.commitment;
                     }
                     if !bypass_range_proof_verification {

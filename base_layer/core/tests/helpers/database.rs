@@ -30,8 +30,6 @@ use tari_core::{
 
 use crate::helpers::block_builders::create_coinbase;
 
-// use tari_test_utils::paths::create_temporary_data_path;
-
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 #[allow(dead_code)]

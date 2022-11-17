@@ -29,7 +29,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::{
+    types::{PublicKey, Signature},
+    validator_node_signature::ValidatorNodeSignature,
+};
 
 use super::OutputFeaturesVersion;
 use crate::{
@@ -118,12 +121,20 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
-            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(ValidatorNodeRegistration {
-                public_key: validator_node_public_key,
-                signature: validator_node_signature,
-            })),
+            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
+                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+                    validator_node_public_key,
+                    validator_node_signature,
+                )),
+            )),
             ..Default::default()
         }
+    }
+
+    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.validator_node_registration())
     }
 
     pub fn is_coinbase(&self) -> bool {
