@@ -364,7 +364,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
-            vn_epoch_length: 60,
+            vn_epoch_length: 10,
             vn_validity_period: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
@@ -458,7 +458,7 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
-            vn_epoch_length: 60,
+            vn_epoch_length: 10,
             vn_validity_period: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,

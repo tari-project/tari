@@ -141,4 +141,6 @@ message ConsensusConstants {
     Range kernel_version_range = 28;
     /// An allowlist of output types
     repeated OutputType permitted_output_types = 29;
+    /// The length of an epoch
+    uint64 epoch_length = 30;
 }

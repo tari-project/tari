@@ -125,6 +125,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             output_version_range: Some(output_version_range),
             permitted_output_types,
             validator_node_validity_period: cc.validator_node_validity_period().as_u64(),
+            epoch_length: cc.epoch_length(),
         }
     }
 }
