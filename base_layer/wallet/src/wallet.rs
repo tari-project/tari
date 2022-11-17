@@ -22,6 +22,7 @@
 
 use std::{cmp, marker::PhantomData, sync::Arc};
 
+use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
@@ -47,7 +48,12 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, tari_utilities::hex::Hex};
+use tari_crypto::{
+    hash::blake2::Blake256,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -506,6 +512,28 @@ where
         );
 
         Ok(tx_id)
+    }
+
+    pub fn sign_message(
+        &mut self,
+        secret: RistrettoSecretKey,
+        nonce: RistrettoSecretKey,
+        message: &str,
+    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
+        let challenge = Blake256::digest(message.as_bytes());
+        RistrettoSchnorr::sign(secret, nonce, &challenge)
+    }
+
+    pub fn verify_message_signature(
+        &mut self,
+        public_key: RistrettoPublicKey,
+        public_nonce: RistrettoPublicKey,
+        signature: RistrettoSecretKey,
+        message: String,
+    ) -> bool {
+        let signature = RistrettoSchnorr::new(public_nonce, signature);
+        let challenge = Blake256::digest(message.as_bytes());
+        signature.verify_challenge(&public_key, challenge.clone().as_slice())
     }
 
     /// Appraise the expected outputs and a fee

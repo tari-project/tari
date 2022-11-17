@@ -5129,6 +5129,171 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
     }
 }
 
+/// Signs a message using the public key of the TariWallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `msg` - The message pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// public nonce, seperated by a pipe character. Empty if an error occured.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_sign_message(
+    wallet: *mut TariWallet,
+    msg: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+
+    if msg.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+
+    let nonce = TariPrivateKey::random(&mut OsRng);
+    let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
+    let message = CStr::from_ptr(msg)
+        .to_str()
+        .expect("CString should not fail here.")
+        .to_owned();
+
+    let signature = (*wallet).wallet.sign_message(secret, nonce, &message);
+
+    match signature {
+        Ok(s) => {
+            let hex_sig = s.get_signature().to_hex();
+            let hex_nonce = s.get_public_nonce().to_hex();
+            let hex_return = format!("{}|{}", hex_sig, hex_nonce);
+            result = CString::new(hex_return).expect("CString should not fail here.");
+        },
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
+    result.into_raw()
+}
+
+/// Verifies the signature of the message signed by a TariWallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `public_key` - The pointer to the TariPublicKey of the wallet which originally signed the message
+/// `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
+/// signature and public nonce seperated by a pipe character.
+/// `msg` - The pointer to the msg the signature will be checked against.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `bool` - Returns if the signature is valid or not, will be false if an error occurs.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_verify_message_signature(
+    wallet: *mut TariWallet,
+    public_key: *mut TariPublicKey,
+    hex_sig_nonce: *const c_char,
+    msg: *const c_char,
+    error_out: *mut c_int,
+) -> bool {
+    let mut error = 0;
+    let mut result = false;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    if public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    if hex_sig_nonce.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("signature".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    if msg.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+
+    let message = match CStr::from_ptr(msg).to_str() {
+        Ok(v) => v.to_owned(),
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("msg".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return false;
+        },
+    };
+    let hex = match CStr::from_ptr(hex_sig_nonce).to_str() {
+        Ok(v) => v.to_owned(),
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("hex_sig_nonce".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return false;
+        },
+    };
+    let hex_keys: Vec<&str> = hex.split('|').collect();
+    if hex_keys.len() != 2 {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+
+    if let Some(key1) = hex_keys.get(0) {
+        if let Some(key2) = hex_keys.get(1) {
+            let secret = TariPrivateKey::from_hex(key1);
+            match secret {
+                Ok(p) => {
+                    let public_nonce = TariPublicKey::from_hex(key2);
+                    match public_nonce {
+                        Ok(pn) => {
+                            result = (*wallet)
+                                .wallet
+                                .verify_message_signature((*public_key).clone(), pn, p, message)
+                        },
+                        Err(e) => {
+                            error = LibWalletError::from(e).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                        },
+                    }
+                },
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                },
+            }
+        } else {
+            error = LibWalletError::from(InterfaceError::InvalidArgument("hex_sig_nonce".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        }
+    } else {
+        error = LibWalletError::from(InterfaceError::InvalidArgument("hex_sig_nonce".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    result
+}
+
 /// Adds a base node peer to the TariWallet
 ///
 /// ## Arguments
