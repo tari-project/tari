@@ -1291,7 +1291,7 @@ impl LMDBDatabase {
                 .and_then(|f| f.validator_node_registration())
             {
                 self.validator_node_store(txn)
-                    .delete(header.height, &vn_reg.public_key, input.commitment()?)?;
+                    .delete(header.height, vn_reg.public_key(), input.commitment()?)?;
             }
 
             if !output_mmr.delete(index) {
@@ -1412,7 +1412,7 @@ impl LMDBDatabase {
         let prev_shard_key = store.get_shard_key(
             (current_epoch.as_u64() - constants.validator_node_validity_period().as_u64()) * constants.epoch_length(),
             current_epoch.as_u64() * constants.epoch_length(),
-            &vn_reg.public_key,
+            vn_reg.public_key(),
         )?;
         let shard_key = vn_reg.derive_shard_key(
             prev_shard_key,
@@ -1426,7 +1426,7 @@ impl LMDBDatabase {
             shard_key,
             start_epoch: next_epoch,
             end_epoch: next_epoch + constants.validator_node_validity_period(),
-            public_key: vn_reg.public_key.clone(),
+            public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
         };
 

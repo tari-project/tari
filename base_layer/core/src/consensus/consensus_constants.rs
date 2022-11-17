@@ -366,7 +366,7 @@ impl ConsensusConstants {
             permitted_output_types: OutputType::all(),
             vn_epoch_length: 60,
             vn_validity_period: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
         }]
@@ -411,7 +411,7 @@ impl ConsensusConstants {
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
             vn_validity_period: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
         }]
@@ -460,7 +460,7 @@ impl ConsensusConstants {
             permitted_output_types: OutputType::all(),
             vn_epoch_length: 60,
             vn_validity_period: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
         }]
@@ -515,7 +515,7 @@ impl ConsensusConstants {
                 permitted_output_types: Self::current_permitted_output_types(),
                 vn_epoch_length: 60,
                 vn_validity_period: VnEpoch(100),
-                vn_registration_min_deposit_amount: MicroTari(1),
+                vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
             },
@@ -543,7 +543,7 @@ impl ConsensusConstants {
                 permitted_output_types: Self::current_permitted_output_types(),
                 vn_epoch_length: 60,
                 vn_validity_period: VnEpoch(100),
-                vn_registration_min_deposit_amount: MicroTari(1),
+                vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
             },
@@ -595,7 +595,7 @@ impl ConsensusConstants {
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
             vn_validity_period: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
         };
@@ -643,7 +643,7 @@ impl ConsensusConstants {
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
             vn_validity_period: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(1),
+            vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
         }]

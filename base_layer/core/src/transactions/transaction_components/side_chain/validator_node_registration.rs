@@ -22,13 +22,12 @@
 
 use std::io::{Error, Read, Write};
 
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PublicKey, Signature},
+    validator_node_signature::ValidatorNodeSignature,
 };
-use tari_crypto::keys::PublicKey as PublicKeyT;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -39,32 +38,16 @@ use crate::{
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ValidatorNodeRegistration {
-    pub public_key: PublicKey,
-    pub signature: Signature,
+    signature: ValidatorNodeSignature,
 }
 
 impl ValidatorNodeRegistration {
+    pub fn new(signature: ValidatorNodeSignature) -> Self {
+        Self { signature }
+    }
+
     pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
-        let challenge = Self::construct_challenge(&self.public_key, self.signature.get_public_nonce(), msg);
-        self.signature.verify_challenge(&self.public_key, &*challenge)
-    }
-
-    pub fn new_signed(private_key: &PrivateKey, msg: &[u8]) -> Self {
-        let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-        let public_key = PublicKey::from_secret_key(private_key);
-        let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
-        let signature = Signature::sign(private_key.clone(), secret_nonce, &*challenge)
-            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
-        Self { public_key, signature }
-    }
-
-    pub fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> FixedHash {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_registration")
-            .chain(public_key)
-            .chain(public_nonce)
-            .chain(&msg)
-            .finalize()
-            .into()
+        self.signature.is_valid_signature_for(msg)
     }
 
     pub fn derive_shard_key(
@@ -76,14 +59,22 @@ impl ValidatorNodeRegistration {
     ) -> [u8; 32] {
         match prev_shard_key {
             Some(prev) => {
-                if does_require_new_shard_key(&self.public_key, epoch, interval) {
-                    generate_shard_key(&self.public_key, &**block_hash)
+                if does_require_new_shard_key(self.public_key(), epoch, interval) {
+                    generate_shard_key(self.public_key(), &**block_hash)
                 } else {
                     prev
                 }
             },
-            None => generate_shard_key(&self.public_key, &**block_hash),
+            None => generate_shard_key(self.public_key(), &**block_hash),
         }
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        self.signature.public_key()
+    }
+
+    pub fn signature(&self) -> &Signature {
+        self.signature.signature()
     }
 }
 
@@ -103,23 +94,26 @@ fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
 
 impl ConsensusEncoding for ValidatorNodeRegistration {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.public_key.consensus_encode(writer)?;
-        self.signature.consensus_encode(writer)?;
+        self.signature.public_key().consensus_encode(writer)?;
+        self.signature.signature().consensus_encode(writer)?;
         Ok(())
     }
 }
 
 impl ConsensusEncodingSized for ValidatorNodeRegistration {
     fn consensus_encode_exact_size(&self) -> usize {
-        self.public_key.consensus_encode_exact_size() + self.signature.consensus_encode_exact_size()
+        self.signature.public_key().consensus_encode_exact_size() +
+            self.signature.signature().consensus_encode_exact_size()
     }
 }
 
 impl ConsensusDecoding for ValidatorNodeRegistration {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
-            public_key: ConsensusDecoding::consensus_decode(reader)?,
-            signature: ConsensusDecoding::consensus_decode(reader)?,
+            signature: ValidatorNodeSignature::new(
+                PublicKey::consensus_decode(reader)?,
+                Signature::consensus_decode(reader)?,
+            ),
         })
     }
 }
@@ -127,6 +121,7 @@ impl ConsensusDecoding for ValidatorNodeRegistration {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
 
     use super::*;
@@ -134,7 +129,7 @@ mod test {
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
-        ValidatorNodeRegistration::new_signed(&sk, b"valid")
+        ValidatorNodeRegistration::new(ValidatorNodeSignature::sign(&sk, b"valid"))
     }
 
     #[test]
@@ -160,7 +155,10 @@ mod test {
         #[test]
         fn it_returns_false_for_invalid_signature() {
             let mut reg = create_instance();
-            reg.public_key = create_instance().public_key;
+            reg = ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+                reg.public_key().clone(),
+                Signature::default(),
+            ));
             assert!(!reg.is_valid_signature_for(b"valid"));
         }
     }

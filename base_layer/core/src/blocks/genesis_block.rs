@@ -435,7 +435,7 @@ mod test {
                     .and_then(|f| f.validator_node_registration())
                     .unwrap();
                 vn_nodes.push((
-                    reg.public_key.clone(),
+                    reg.public_key().clone(),
                     reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
                 ));
             }
