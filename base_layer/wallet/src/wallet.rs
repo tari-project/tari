@@ -521,7 +521,7 @@ where
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
         let challenge = Blake256::digest(message.as_bytes());
-        RistrettoSchnorr::sign(secret, nonce, &challenge)
+        RistrettoSchnorr::sign_raw(&secret, nonce, &challenge)
     }
 
     pub fn verify_message_signature(

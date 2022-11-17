@@ -495,7 +495,7 @@ impl SenderTransactionProtocol {
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
         let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
         let sender_signature =
-            Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
+            Signature::sign_raw(&sender_offset_private_key, private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
         // Create aggregated metadata signature
         let (r_pub, u, v) = output.metadata_signature.complete_signature_tuple();
@@ -591,7 +591,7 @@ impl SenderTransactionProtocol {
 
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
-                let s = Signature::sign(k, r, &e).map_err(TPE::SigningError)?;
+                let s = Signature::sign_raw(&k, r, &e).map_err(TPE::SigningError)?;
                 info.signatures.push(s);
                 Ok(())
             },

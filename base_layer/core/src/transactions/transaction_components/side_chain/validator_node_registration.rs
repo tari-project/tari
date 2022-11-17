@@ -48,7 +48,7 @@ impl ValidatorNodeRegistration {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
         let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
-        let signature = Signature::sign(private_key.clone(), secret_nonce, &*challenge)
+        let signature = Signature::sign_raw(&private_key, secret_nonce, &*challenge)
             .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }

@@ -986,7 +986,7 @@ async fn consensus_validation_large_tx() {
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, &excess, &tx_meta);
     let k = offset_blinding_factor;
     let r = nonce;
-    let s = Signature::sign(k, r, &e).unwrap();
+    let s = Signature::sign_raw(&k, r, &e).unwrap();
 
     let kernel = KernelBuilder::new()
         .with_fee(fee)

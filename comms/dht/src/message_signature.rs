@@ -59,7 +59,7 @@ impl MessageSignature {
         let (nonce_s, nonce_pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let signer_public_key = CommsPublicKey::from_secret_key(&signer_secret_key);
         let challenge = construct_message_signature_hash(&signer_public_key, &nonce_pk, message);
-        let signature = Signature::sign(signer_secret_key, nonce_s, &challenge)
+        let signature = Signature::sign_raw(&signer_secret_key, nonce_s, &challenge)
             .expect("challenge is [u8;32] but SchnorrSignature::sign failed");
 
         Self {
@@ -181,7 +181,7 @@ mod test {
 
         // Change <R, s> to <R', s>. Note: We need signer_k because the Signature interface does not provide a way to
         // change just the public nonce, an attacker does not need the secret key.
-        mac.signature = Signature::sign(signer_k, nonce_k, &msg).unwrap();
+        mac.signature = Signature::sign_raw(&signer_k, nonce_k, &msg).unwrap();
         assert!(!mac.verify(MSG));
     }
 }
