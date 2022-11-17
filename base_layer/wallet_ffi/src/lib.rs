@@ -6419,7 +6419,6 @@ pub unsafe extern "C" fn wallet_get_tari_address(
     Box::into_raw(Box::new(address))
 }
 
-
 /// Cancel a Pending Transaction
 ///
 /// ## Arguments
