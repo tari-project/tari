@@ -7659,10 +7659,7 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
-    use tari_core::{
-        covenant,
-        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
-    };
+    use tari_core::{covenant, transactions::test_helpers::create_test_input};
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
@@ -8987,11 +8984,6 @@ mod test {
                 seed_words_destroy(mnemonic_wordlist_ffi);
             }
         }
-    }
-
-    fn get_next_memory_address() -> Multiaddr {
-        let port = MemoryTransport::acquire_next_memsocket_port();
-        format!("/memory/{}", port).parse().unwrap()
     }
 
     #[test]
