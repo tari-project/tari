@@ -1320,7 +1320,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                self.insert_validator_node(txn, &header, &output.commitment, &vn_reg)?;
+                self.insert_validator_node(txn, header, &output.commitment, vn_reg)?;
             }
             if let Some(template_reg) = output
                 .features

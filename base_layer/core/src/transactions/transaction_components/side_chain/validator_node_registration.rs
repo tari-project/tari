@@ -99,7 +99,6 @@ fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
         .chain(public_key)
         .chain(entropy)
         .finalize()
-        .into()
 }
 
 impl ConsensusEncoding for ValidatorNodeRegistration {

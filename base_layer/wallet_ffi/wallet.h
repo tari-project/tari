@@ -1976,7 +1976,8 @@ unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInb
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- *  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ *  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory
+ * leak
  */
 TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendingInboundTransaction *transaction,
                                                                        int *error_out);

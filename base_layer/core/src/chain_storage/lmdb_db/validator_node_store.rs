@@ -140,6 +140,8 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let mut cursor = self.db_read_cursor()?;
 
         let mut nodes = Vec::new();
+        // Public key does not mutate once compressed and will always produce the same hash
+        #[allow(clippy::mutable_key_type)]
         let mut dedup_map = HashMap::new();
         match cursor.seek_range::<ValidatorNodeStoreKey>(&start_height.to_be_bytes())? {
             Some((key, vn)) => {
@@ -188,7 +190,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         #[allow(unused_assignments)]
         let mut shard_key = None;
         // Find the first entry at or above start_height
-        match cursor.seek_range::<ShardIdIndexKey>(&key.as_bytes())? {
+        match cursor.seek_range::<ShardIdIndexKey>(key.as_bytes())? {
             Some((key, s)) => {
                 if key[0..32] != *public_key.as_bytes() {
                     return Ok(None);
@@ -291,7 +293,7 @@ mod tests {
             let p1 = new_public_key();
             let entry = ValidatorNodeEntry {
                 shard_key: hash(p1.as_bytes()),
-                public_key: p1.clone(),
+                public_key: p1,
                 commitment: Commitment::from_public_key(&new_public_key()),
                 ..Default::default()
             };
@@ -312,7 +314,7 @@ mod tests {
             let nodes = insert_n_vns(&store, 1, 3);
             // Node 0 and 1 re-register at height 4
 
-            let s0 = hash(nodes[0].1.clone());
+            let s0 = hash(nodes[0].1);
             store
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
@@ -322,7 +324,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let s1 = hash(nodes[1].1.clone());
+            let s1 = hash(nodes[1].1);
             // The commitment is used last in the key and so changes the order they appear in the LMDB btree.
             // We insert them in reverse order to demonstrate that insert order does not necessarily match the vn set
             // order.
@@ -366,7 +368,7 @@ mod tests {
             let txn = db.write_transaction();
             let store = create_store(&db, &txn);
             let nodes = insert_n_vns(&store, 1, 3);
-            let new_shard_key = hash(nodes[0].1.clone());
+            let new_shard_key = hash(nodes[0].1);
             store
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
