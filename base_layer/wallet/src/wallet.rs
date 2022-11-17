@@ -52,6 +52,7 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
+    SeedWords,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
