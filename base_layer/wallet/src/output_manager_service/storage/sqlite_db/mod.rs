@@ -493,13 +493,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         );
         let hash = hash.to_vec();
         let mined_in_block = mined_in_block.to_vec();
+        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or(
+            OutputManagerStorageError::ConversionError {
+                reason: format!("Could not create timestamp mined_timestamp: {}", mined_timestamp),
+            },
+        )?;
         diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((
                 outputs::mined_height.eq(mined_height as i64),
                 outputs::mined_in_block.eq(mined_in_block),
                 outputs::mined_mmr_position.eq(mmr_position as i64),
                 outputs::status.eq(status),
-                outputs::mined_timestamp.eq(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
+                outputs::mined_timestamp.eq(timestamp),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))

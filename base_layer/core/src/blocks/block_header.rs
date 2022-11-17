@@ -238,7 +238,8 @@ impl BlockHeader {
     }
 
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
-        let dt = NaiveDateTime::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0);
+        let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
+            .unwrap_or(NaiveDateTime::MAX);
         DateTime::from_utc(dt, Utc)
     }
 
