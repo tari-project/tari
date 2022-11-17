@@ -124,9 +124,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max_randomx_seed_height: cc.max_randomx_seed_height(),
             output_version_range: Some(output_version_range),
             permitted_output_types,
-
-            // TODO(vnreg)
-            validator_node_timeout: cc.validator_node_validity_period().as_u64(),
+            validator_node_validity_period: cc.validator_node_validity_period().as_u64(),
         }
     }
 }
