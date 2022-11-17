@@ -169,11 +169,6 @@ fn convert_result<K: FromKeyBytes + Clone, V: DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
-    use lmdb_zero::{db, WriteTransaction};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use tari_test_utils::paths::create_temporary_data_path;
 
     use crate::chain_storage::{
         lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert},

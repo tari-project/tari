@@ -23,7 +23,7 @@
 use std::{collections::HashMap, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use tari_common_types::types::{HashOutput, PublicKey};
+use tari_common_types::types::{Commitment, PublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -64,7 +64,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         let key = ValidatorNodeStoreKey::try_from_parts(&[
             height.to_be_bytes().as_slice(),
             validator.public_key.as_bytes(),
-            validator.output_hash.as_slice(),
+            validator.commitment.as_bytes(),
         ])
         .expect("insert: Composite key length is incorrect");
         lmdb_insert(self.txn, &self.db_validator_nodes, &key, &validator, "Validator node")?;
@@ -72,7 +72,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         let key = ShardIdIndexKey::try_from_parts(&[
             validator.public_key.as_bytes(),
             height.to_be_bytes().as_slice(),
-            validator.output_hash.as_slice(),
+            validator.commitment.as_bytes(),
         ])
         .expect("insert: Composite key length is incorrect");
         lmdb_insert(
@@ -89,12 +89,12 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         &self,
         height: u64,
         public_key: &PublicKey,
-        output_hash: HashOutput,
+        commitment: &Commitment,
     ) -> Result<(), ChainStorageError> {
         let key = ValidatorNodeStoreKey::try_from_parts(&[
             height.to_be_bytes().as_slice(),
             public_key.as_bytes(),
-            output_hash.as_slice(),
+            commitment.as_bytes(),
         ])
         .expect("delete: Composite key length is incorrect");
         lmdb_delete(self.txn, &self.db_validator_nodes, &key, "validator_nodes")?;
@@ -102,7 +102,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         let key = ShardIdIndexKey::try_from_parts(&[
             public_key.as_bytes(),
             height.to_be_bytes().as_slice(),
-            output_hash.as_slice(),
+            commitment.as_bytes(),
         ])
         .expect("delete: Composite key length is incorrect");
         lmdb_delete(
@@ -259,6 +259,7 @@ mod tests {
                 .insert(start_height + i as u64, &ValidatorNodeEntry {
                     public_key: public_key.clone(),
                     shard_key,
+                    commitment: Commitment::from_public_key(&new_public_key()),
                     ..Default::default()
                 })
                 .unwrap();
@@ -291,6 +292,7 @@ mod tests {
             let entry = ValidatorNodeEntry {
                 shard_key: hash(p1.as_bytes()),
                 public_key: p1.clone(),
+                commitment: Commitment::from_public_key(&new_public_key()),
                 ..Default::default()
             };
             store.insert(1, &entry).unwrap();
@@ -315,24 +317,34 @@ mod tests {
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
                     shard_key: s0,
+                    commitment: Commitment::from_public_key(&new_public_key()),
                     ..Default::default()
                 })
                 .unwrap();
 
             let s1 = hash(nodes[1].1.clone());
-            store
-                .insert(5, &ValidatorNodeEntry {
-                    public_key: nodes[1].0.clone(),
-                    shard_key: s1,
-                    output_hash: [0; 32].into(),
-                    ..Default::default()
-                })
-                .unwrap();
+            // The commitment is used last in the key and so changes the order they appear in the LMDB btree.
+            // We insert them in reverse order to demonstrate that insert order does not necessarily match the vn set
+            // order.
+            let mut ordered_commitments = vec![
+                Commitment::from_public_key(&new_public_key()),
+                Commitment::from_public_key(&new_public_key()),
+            ];
+            ordered_commitments.sort();
             store
                 .insert(5, &ValidatorNodeEntry {
                     public_key: nodes[1].0.clone(),
                     shard_key: hash(s1),
-                    output_hash: [1; 32].into(),
+                    commitment: ordered_commitments[1].clone(),
+                    ..Default::default()
+                })
+                .unwrap();
+            // This insert is counted as before the previous one because the commitment is "less"
+            store
+                .insert(5, &ValidatorNodeEntry {
+                    public_key: nodes[1].0.clone(),
+                    shard_key: s1,
+                    commitment: ordered_commitments[0].clone(),
                     ..Default::default()
                 })
                 .unwrap();
@@ -359,6 +371,8 @@ mod tests {
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
                     shard_key: new_shard_key,
+                    commitment: Commitment::from_public_key(&new_public_key()),
+
                     ..Default::default()
                 })
                 .unwrap();

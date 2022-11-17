@@ -1291,7 +1291,7 @@ impl LMDBDatabase {
                 .and_then(|f| f.validator_node_registration())
             {
                 self.validator_node_store(txn)
-                    .delete(header.height, &vn_reg.public_key, input.output_hash())?;
+                    .delete(header.height, &vn_reg.public_key, input.commitment()?)?;
             }
 
             if !output_mmr.delete(index) {
@@ -1320,7 +1320,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                self.insert_validator_node(txn, &header, output_hash, &vn_reg)?;
+                self.insert_validator_node(txn, &header, &output.commitment, &vn_reg)?;
             }
             if let Some(template_reg) = output
                 .features
@@ -1402,7 +1402,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
-        output_hash: HashOutput,
+        commitment: &Commitment,
         vn_reg: &ValidatorNodeRegistration,
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
@@ -1427,7 +1427,7 @@ impl LMDBDatabase {
             start_epoch: next_epoch,
             end_epoch: next_epoch + constants.validator_node_validity_period(),
             public_key: vn_reg.public_key.clone(),
-            output_hash,
+            commitment: commitment.clone(),
         };
 
         store.insert(header.height, &validator_node)?;
