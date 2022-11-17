@@ -86,7 +86,7 @@ fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: 
 }
 
 fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
-    DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
+    DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_shard_key")
         .chain(public_key)
         .chain(entropy)
         .finalize()
