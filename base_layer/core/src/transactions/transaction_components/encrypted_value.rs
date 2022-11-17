@@ -34,7 +34,7 @@ use chacha20poly1305::{
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError, Hidden};
 use thiserror::Error;
 
 use crate::{
@@ -92,7 +92,7 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         // Included in the public transaction
-        let buffer = ChaCha20Poly1305::new(&aead_key).encrypt(&Nonce::default(), aead_payload)?;
+        let buffer = ChaCha20Poly1305::new(aead_key.reveal()).encrypt(&Nonce::default(), aead_payload)?;
         let mut data: [u8; SIZE] = [0; SIZE];
         data.copy_from_slice(&buffer);
         Ok(EncryptedValue(data))
@@ -110,21 +110,21 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         let mut value_bytes = [0u8; 8];
-        let decrypted_bytes = ChaCha20Poly1305::new(&aead_key).decrypt(&Nonce::default(), aead_payload)?;
+        let decrypted_bytes = ChaCha20Poly1305::new(aead_key.reveal()).decrypt(&Nonce::default(), aead_payload)?;
         value_bytes.clone_from_slice(&decrypted_bytes[..8]);
         Ok(u64::from_le_bytes(value_bytes).into())
     }
 }
 
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
-fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
+fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Hidden<Key> {
     const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
     let output = DomainSeparatedHasher::<Blake256, TransactionKdfDomain>::new_with_label("encrypted_value")
         .chain(shared_secret.as_bytes())
         .chain(commitment.as_bytes())
         .finalize();
 
-    *Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH])
+    Hidden::hide(*Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH]))
 }
 
 impl ConsensusEncoding for EncryptedValue {

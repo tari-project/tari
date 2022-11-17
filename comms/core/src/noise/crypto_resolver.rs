@@ -66,7 +66,7 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
-fn noise_kdf(shared_key: &CommsDHKE) -> [u8; 32] {
+fn noise_kdf(shared_key: &CommsDHKE) -> CommsCoreNoiseKDFType {
     let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
     Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
 }
@@ -116,7 +116,7 @@ impl Dh for CommsDiffieHellman {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
-        copy_slice!(hash, out);
+        copy_slice!(hash.reveal(), out);
         Ok(())
     }
 }

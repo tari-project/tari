@@ -42,7 +42,7 @@ use crate::{
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
     #[derivative(Debug = "ignore")]
-    pub spending_key: Vec<u8>,
+    pub spending_key: Hidden<Vec<u8>>,
     pub value: i64,
     pub output_type: i32,
     pub maturity: i64,
@@ -51,7 +51,7 @@ pub struct NewOutputSql {
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
     #[derivative(Debug = "ignore")]
-    pub script_private_key: Vec<u8>,
+    pub script_private_key: Hidden<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_nonce: Vec<u8>,
