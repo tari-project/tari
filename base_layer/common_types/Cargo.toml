@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.7" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+# TODO: remove this dependency and move Network into tari_common_types
 tari_common = { version = "^0.39", path = "../../common" }
 
 base64 = "0.13.0"

@@ -29,6 +29,7 @@ pub mod tari_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;
+pub mod validator_node_signature;
 pub mod waiting_requests;
 
 #[macro_use]
