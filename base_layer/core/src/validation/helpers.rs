@@ -30,7 +30,6 @@ use tari_crypto::{
     tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
-use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -844,7 +843,10 @@ pub fn check_validator_node_registration_utxo(
             });
         }
 
-        if !reg.is_valid_signature_for(utxo.commitment.as_bytes()) {
+        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+        //                 keys this becomes difficult. Fix this once we have decided on a solution.
+        if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
         }
     }
