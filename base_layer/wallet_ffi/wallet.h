@@ -866,32 +866,6 @@ TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ------------------------------- Commitment Signature ---------------------------------------///
- * Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
- *
- * ## Arguments
- * `public_nonce_bytes` - The public nonce signature component as a ByteVector
- * `u_bytes` - The u signature component as a ByteVector
- * `v_bytes` - The v signature component as a ByteVector
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `TariCommitmentSignature` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
- * null or if there was an error with the contents of bytes
- *
- * # Safety
- * The ```commitment_signature_destroy``` function must be called when finished with a TariCommitmentSignature to
- * prevent a memory leak
- */
-TariCommitmentSignature *commitment_signature_create_from_bytes(const struct ByteVector *public_nonce_bytes,
-                                                                const struct ByteVector *u_bytes,
-                                                                const struct ByteVector *v_bytes,
-                                                                int *error_out);
-
-/**
  * Frees memory for a TariCommitmentSignature
  *
  * ## Arguments
@@ -3055,47 +3029,6 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  */
 TariWalletAddress *wallet_get_tari_address(struct TariWallet *wallet,
                                            int *error_out);
-
-/**
- * Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
- * UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `amount` - The value of the UTXO in MicroTari
- * `spending_key` - The private spending key
- * `source_address` - The tari address of the source of the transaction
- * `features` - Options for an output's structure or use
- * `metadata_signature` - UTXO signature with the script offset private key, k_O
- * `sender_offset_public_key` - Tari script offset pubkey, K_O
- * `script_private_key` - Tari script private key, k_S, is used to create the script signature
- * `covenant` - The covenant that will be executed when spending this output
- * `message` - The message that the transaction will have
- * `encrypted_value` - Encrypted value.
- * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
- * transaction is null
- *
- * # Safety
- * None
- */
-unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
-                                                                 unsigned long long amount,
-                                                                 TariPrivateKey *spending_key,
-                                                                 TariWalletAddress *source_address,
-                                                                 TariOutputFeatures *features,
-                                                                 TariCommitmentSignature *metadata_signature,
-                                                                 TariPublicKey *sender_offset_public_key,
-                                                                 TariPrivateKey *script_private_key,
-                                                                 TariCovenant *covenant,
-                                                                 TariEncryptedValue *encrypted_value,
-                                                                 unsigned long long minimum_value_promise,
-                                                                 const char *message,
-                                                                 int *error_out);
 
 /**
  * Cancel a Pending Transaction
