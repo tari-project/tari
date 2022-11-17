@@ -82,7 +82,7 @@ fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: 
     let pk = U256::from_big_endian(public_key.as_bytes());
     let epoch = U256::from(epoch.as_u64());
     let interval = U256::from(interval.as_u64());
-    pk + epoch % interval == U256::zero()
+    (pk + epoch) % interval == U256::zero()
 }
 
 fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
@@ -125,7 +125,7 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use crate::{consensus::check_consensus_encoding_correctness, test_helpers::new_public_key};
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
@@ -160,6 +160,22 @@ mod test {
                 Signature::default(),
             ));
             assert!(!reg.is_valid_signature_for(b"valid"));
+        }
+    }
+
+    mod does_require_new_shard_key {
+        use super::*;
+
+        #[test]
+        fn it_returns_true_a_set_number_of_times_over_a_range_of_epochs() {
+            const INTERVAL: VnEpoch = VnEpoch(100);
+            const NUM_EPOCHS: u64 = 1000;
+            let pk = new_public_key();
+            let count = (0u64..NUM_EPOCHS)
+                .filter(|e| does_require_new_shard_key(&pk, VnEpoch(*e), INTERVAL))
+                .count() as u64;
+
+            assert_eq!(count, NUM_EPOCHS / INTERVAL.as_u64());
         }
     }
 }

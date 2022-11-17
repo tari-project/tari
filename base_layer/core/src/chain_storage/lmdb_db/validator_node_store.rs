@@ -221,12 +221,14 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::OsRng;
-    use tari_crypto::keys::PublicKey as PublicKeyT;
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::chain_storage::tests::temp_db::TempLmdbDatabase;
+    use crate::{
+        chain_storage::tests::temp_db::TempLmdbDatabase,
+        test_helpers::{make_hash, new_public_key},
+    };
+
     const DBS: &[&str] = &["validator_node_store", "validator_node_index"];
 
     fn create_store<'a, Txn: Deref<Target = ConstTransaction<'a>>>(
@@ -238,16 +240,6 @@ mod tests {
         ValidatorNodeStore::new(txn, store_db, index_db)
     }
 
-    fn new_public_key() -> PublicKey {
-        PublicKey::random_keypair(&mut OsRng).1
-    }
-
-    fn hash<T: AsRef<[u8]>>(preimage: T) -> ShardKey {
-        use digest::Digest;
-        use tari_crypto::hash::blake2::Blake256;
-        Blake256::new().chain(preimage.as_ref()).finalize().into()
-    }
-
     fn insert_n_vns(
         store: &ValidatorNodeStore<'_, WriteTransaction<'_>>,
         start_height: u64,
@@ -256,7 +248,7 @@ mod tests {
         let mut nodes = Vec::new();
         for i in 0..n {
             let public_key = new_public_key();
-            let shard_key = hash(public_key.as_bytes());
+            let shard_key = make_hash(public_key.as_bytes());
             store
                 .insert(start_height + i as u64, &ValidatorNodeEntry {
                     public_key: public_key.clone(),
@@ -292,7 +284,7 @@ mod tests {
             let store = create_store(&db, &txn);
             let p1 = new_public_key();
             let entry = ValidatorNodeEntry {
-                shard_key: hash(p1.as_bytes()),
+                shard_key: make_hash(p1.as_bytes()),
                 public_key: p1,
                 commitment: Commitment::from_public_key(&new_public_key()),
                 ..Default::default()
@@ -314,7 +306,7 @@ mod tests {
             let nodes = insert_n_vns(&store, 1, 3);
             // Node 0 and 1 re-register at height 4
 
-            let s0 = hash(nodes[0].1);
+            let s0 = make_hash(nodes[0].1);
             store
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
@@ -324,7 +316,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let s1 = hash(nodes[1].1);
+            let s1 = make_hash(nodes[1].1);
             // The commitment is used last in the key and so changes the order they appear in the LMDB btree.
             // We insert them in reverse order to demonstrate that insert order does not necessarily match the vn set
             // order.
@@ -336,7 +328,7 @@ mod tests {
             store
                 .insert(5, &ValidatorNodeEntry {
                     public_key: nodes[1].0.clone(),
-                    shard_key: hash(s1),
+                    shard_key: make_hash(s1),
                     commitment: ordered_commitments[1].clone(),
                     ..Default::default()
                 })
@@ -355,7 +347,7 @@ mod tests {
             // s1 and s2 have replaced the previous shard keys, and are now ordered last since they come after node2
             assert_eq!(set[0], nodes[2]);
             assert_eq!(set[1], (nodes[0].0.clone(), s0));
-            assert_eq!(set[2], (nodes[1].0.clone(), hash(s1)));
+            assert_eq!(set[2], (nodes[1].0.clone(), make_hash(s1)));
         }
     }
 
@@ -368,7 +360,7 @@ mod tests {
             let txn = db.write_transaction();
             let store = create_store(&db, &txn);
             let nodes = insert_n_vns(&store, 1, 3);
-            let new_shard_key = hash(nodes[0].1);
+            let new_shard_key = make_hash(nodes[0].1);
             store
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
