@@ -424,13 +424,13 @@ impl ConsensusConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 150,
+            target_time: 15,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
             min_difficulty: 60_000.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 100,
+            target_time: 10,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
