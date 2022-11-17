@@ -75,7 +75,7 @@ impl IdentitySignature {
             updated_at,
         )
         .finalize();
-        let signature = Signature::sign_raw(&secret_key, secret_nonce, challenge.as_ref())
+        let signature = Signature::sign_raw(secret_key, secret_nonce, challenge.as_ref())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,

@@ -1067,7 +1067,7 @@ mod test {
         let r4 = RistrettoSecretKey::random(&mut rng);
         let r5 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice.clone(), r1, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
         let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
         let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
         let s_carol = RistrettoSchnorr::sign_raw(&k_carol, r4, m.as_bytes()).unwrap();

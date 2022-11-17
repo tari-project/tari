@@ -360,12 +360,7 @@ mod test {
     use tari_crypto::{
         hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
-        ristretto::{
-            pedersen::PedersenCommitment,
-            RistrettoPublicKey,
-            RistrettoSchnorr,
-            RistrettoSecretKey,
-        },
+        ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
     use tari_utilities::{
         hex::{from_hex, Hex},
@@ -374,13 +369,12 @@ mod test {
 
     use crate::{op_codes::ScalarValue, ExecutionStack, HashValue, StackItem};
 
-
     #[test]
     fn as_bytes_roundtrip() {
         use crate::StackItem::{Number, PublicKey, Signature};
         let k = RistrettoSecretKey::random(&mut rand::thread_rng());
         let p = RistrettoPublicKey::from_secret_key(&k);
-        let s = RistrettoSchnorr::sign_message(&k,b"hi" ).unwrap();
+        let s = RistrettoSchnorr::sign_message(&k, b"hi").unwrap();
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);
         let bytes = stack.to_bytes();

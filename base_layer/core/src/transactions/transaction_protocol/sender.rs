@@ -494,8 +494,7 @@ impl SenderTransactionProtocol {
         // Create sender signature
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
         let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
-        let sender_signature =
-            Signature::sign_raw(&sender_offset_private_key, private_commitment_nonce.clone(), &e)?;
+        let sender_signature = Signature::sign_raw(sender_offset_private_key, private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
         // Create aggregated metadata signature
         let (r_pub, u, v) = output.metadata_signature.complete_signature_tuple();
