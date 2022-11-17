@@ -38,8 +38,6 @@ bitflags! {
         const COINBASE_KERNEL = 1u8;
         /// Burned output transaction
         const BURN_KERNEL = 2u8;
-        /// Validator node registration transaction
-        const VALIDATOR_NODE_REGISTRATION = 3u8;
     }
 }
 
@@ -57,10 +55,6 @@ impl KernelFeatures {
     /// Does this feature include the burned flag?
     pub fn is_burned(&self) -> bool {
         self.contains(KernelFeatures::BURN_KERNEL)
-    }
-
-    pub fn create_validator_node_registration() -> KernelFeatures {
-        KernelFeatures::VALIDATOR_NODE_REGISTRATION
     }
 }
 
