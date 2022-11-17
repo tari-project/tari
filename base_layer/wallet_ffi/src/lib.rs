@@ -1661,8 +1661,6 @@ pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncry
 /// `output_type` - The encoded value of the output type as a byte
 /// `maturity` - The encoded value maturity as bytes
 /// `metadata` - The metadata componenet as a ByteVector. It cannot be null
-/// `unique_id` - The unique id componenet as a ByteVector. It can be null
-/// `mparent_public_key` - The parent public key component as a ByteVector. It can be null
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2778,9 +2776,9 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
+pub unsafe extern "C" fn completed_transaction_get_destination_tari_address(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut TariWalletAddress {
@@ -2863,7 +2861,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
 /// # Safety
 /// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_source_public_key(
+pub unsafe extern "C" fn completed_transaction_get_source_tari_address(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut TariWalletAddress {
@@ -3200,9 +3198,9 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key(
+pub unsafe extern "C" fn pending_outbound_transaction_get_destination_tari_address(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> *mut TariWalletAddress {
@@ -3434,9 +3432,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-///  The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+///  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
+pub unsafe extern "C" fn pending_inbound_transaction_get_source_tari_address(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> *mut TariWalletAddress {

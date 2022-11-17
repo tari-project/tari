@@ -997,8 +997,6 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
  * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
- * `unique_id` - The unique id componenet as a ByteVector. It can be null
- * `mparent_public_key` - The parent public key component as a ByteVector. It can be null
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -1585,10 +1583,10 @@ unsigned long long completed_transaction_get_transaction_id(TariCompletedTransac
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_destination_public_key(TariCompletedTransaction *transaction,
-                                                                    int *error_out);
+TariWalletAddress *completed_transaction_get_destination_tari_address(TariCompletedTransaction *transaction,
+                                                                      int *error_out);
 
 /**
  * Gets the TariTransactionKernel of a TariCompletedTransaction
@@ -1625,8 +1623,8 @@ TariTransactionKernel *completed_transaction_get_transaction_kernel(TariComplete
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_source_public_key(TariCompletedTransaction *transaction,
-                                                               int *error_out);
+TariWalletAddress *completed_transaction_get_source_tari_address(TariCompletedTransaction *transaction,
+                                                                 int *error_out);
 
 /**
  * Gets the status of a TariCompletedTransaction
@@ -1831,10 +1829,10 @@ unsigned long long pending_outbound_transaction_get_transaction_id(TariPendingOu
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *pending_outbound_transaction_get_destination_public_key(TariPendingOutboundTransaction *transaction,
-                                                                           int *error_out);
+TariWalletAddress *pending_outbound_transaction_get_destination_tari_address(TariPendingOutboundTransaction *transaction,
+                                                                             int *error_out);
 
 /**
  * Gets the amount of a TariPendingOutboundTransaction
@@ -1978,10 +1976,10 @@ unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInb
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- *  The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ *  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *pending_inbound_transaction_get_source_public_key(TariPendingInboundTransaction *transaction,
-                                                                     int *error_out);
+TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendingInboundTransaction *transaction,
+                                                                       int *error_out);
 
 /**
  * Gets the amount of a TariPendingInboundTransaction
