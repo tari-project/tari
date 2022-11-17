@@ -28,7 +28,13 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
+    chain_storage::{
+        calculate_validator_node_mr,
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
+    },
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
@@ -58,7 +64,6 @@ use tari_core::{
     KernelMmr,
     KernelMmrHasherBlake256,
     MutableOutputMmr,
-    ValidatorNodeMmr,
     WitnessMmr,
     WitnessMmrHasherBlake256,
 };
@@ -160,14 +165,14 @@ fn print_new_genesis_block(network: Network) {
     witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     output_mmr.push(utxo.hash().to_vec()).unwrap();
-    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
+    let vn_mr = calculate_validator_node_mr(&[]).unwrap();
 
     header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;
     header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
     header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     header.output_mmr_size += 1;
-    header.validator_node_mr = FixedHash::try_from(vn_mmr.get_merkle_root().unwrap()).unwrap();
+    header.validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
 
     // header.kernel_mr = kernel.hash();
     // header.kernel_mmr_size += 1;

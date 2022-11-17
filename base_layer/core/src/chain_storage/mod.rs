@@ -37,6 +37,7 @@ pub use block_add_result::BlockAddResult;
 mod blockchain_database;
 pub use blockchain_database::{
     calculate_mmr_roots,
+    calculate_validator_node_mr,
     fetch_header,
     fetch_headers,
     fetch_target_difficulty_for_next_block,

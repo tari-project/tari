@@ -428,6 +428,7 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_validator_node_registration_utxo(constants, output)?;
     }
     Ok(())
 }
