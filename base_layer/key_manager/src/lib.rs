@@ -3,6 +3,7 @@
 
 use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
