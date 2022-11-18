@@ -525,14 +525,11 @@ where
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: RistrettoPublicKey,
-        public_nonce: RistrettoPublicKey,
-        signature: RistrettoSecretKey,
-        message: String,
+        public_key: &RistrettoPublicKey,
+        signature: &Signature,
+        message: &str,
     ) -> bool {
-        let signature = RistrettoSchnorr::new(public_nonce, signature);
-        let challenge = Blake256::digest(message.as_bytes());
-        signature.verify_challenge(&public_key, challenge.clone().as_slice())
+        signature.verify_message(&public_key, message)
     }
 
     /// Appraise the expected outputs and a fee
