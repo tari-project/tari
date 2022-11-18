@@ -485,6 +485,30 @@ async fn test_do_not_overwrite_master_key() {
     .unwrap();
 }
 
+#[tokio::test]
+async fn test_sign_message() {
+    let factories = CryptoFactories::default();
+    let dir = tempdir().unwrap();
+
+    let shutdown = Shutdown::new();
+    let mut wallet = create_wallet(
+        dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
+    let message = "Tragedy will find us.";
+    let schnorr = wallet.sign_message(&secret, message).unwrap();
+
+    assert!(wallet.verify_message_signature(&public_key, &schnorr, message));
+}
+
 #[test]
 fn test_many_iterations_store_and_forward_send_tx() {
     for _n in 1..=10 {
