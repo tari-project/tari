@@ -33,7 +33,7 @@ tari_service_framework = { version = "^0.40", path = "../service_framework" }
 tari_shutdown = { version = "^0.40", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.40", path = "../../infrastructure/storage" }
 tari_test_utils = { version = "^0.40", path = "../../infrastructure/test_utils" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
 
 async-trait = "0.1.50"
 bincode = "1.1.4"
