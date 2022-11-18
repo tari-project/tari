@@ -866,32 +866,6 @@ TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ------------------------------- Commitment Signature ---------------------------------------///
- * Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
- *
- * ## Arguments
- * `public_nonce_bytes` - The public nonce signature component as a ByteVector
- * `u_bytes` - The u signature component as a ByteVector
- * `v_bytes` - The v signature component as a ByteVector
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `TariCommitmentSignature` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
- * null or if there was an error with the contents of bytes
- *
- * # Safety
- * The ```commitment_signature_destroy``` function must be called when finished with a TariCommitmentSignature to
- * prevent a memory leak
- */
-TariCommitmentSignature *commitment_signature_create_from_bytes(const struct ByteVector *public_nonce_bytes,
-                                                                const struct ByteVector *u_bytes,
-                                                                const struct ByteVector *v_bytes,
-                                                                int *error_out);
-
-/**
  * Frees memory for a TariCommitmentSignature
  *
  * ## Arguments
@@ -997,8 +971,6 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
  * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
- * `unique_id` - The unique id componenet as a ByteVector. It can be null
- * `mparent_public_key` - The parent public key component as a ByteVector. It can be null
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -1585,10 +1557,10 @@ unsigned long long completed_transaction_get_transaction_id(TariCompletedTransac
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_destination_public_key(TariCompletedTransaction *transaction,
-                                                                    int *error_out);
+TariWalletAddress *completed_transaction_get_destination_tari_address(TariCompletedTransaction *transaction,
+                                                                      int *error_out);
 
 /**
  * Gets the TariTransactionKernel of a TariCompletedTransaction
@@ -1625,8 +1597,8 @@ TariTransactionKernel *completed_transaction_get_transaction_kernel(TariComplete
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_source_public_key(TariCompletedTransaction *transaction,
-                                                               int *error_out);
+TariWalletAddress *completed_transaction_get_source_tari_address(TariCompletedTransaction *transaction,
+                                                                 int *error_out);
 
 /**
  * Gets the status of a TariCompletedTransaction
@@ -1831,10 +1803,10 @@ unsigned long long pending_outbound_transaction_get_transaction_id(TariPendingOu
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *pending_outbound_transaction_get_destination_public_key(TariPendingOutboundTransaction *transaction,
-                                                                           int *error_out);
+TariWalletAddress *pending_outbound_transaction_get_destination_tari_address(TariPendingOutboundTransaction *transaction,
+                                                                             int *error_out);
 
 /**
  * Gets the amount of a TariPendingOutboundTransaction
@@ -1978,10 +1950,11 @@ unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInb
  * ptr::null_mut() if transaction is null
  *
  * # Safety
- *  The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ *  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory
+ * leak
  */
-TariWalletAddress *pending_inbound_transaction_get_source_public_key(TariPendingInboundTransaction *transaction,
-                                                                     int *error_out);
+TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendingInboundTransaction *transaction,
+                                                                       int *error_out);
 
 /**
  * Gets the amount of a TariPendingInboundTransaction
@@ -2579,6 +2552,48 @@ struct TariCoinPreview *wallet_preview_coin_split(struct TariWallet *wallet,
                                                   int32_t *error_ptr);
 
 /**
+ * Signs a message using the public key of the TariWallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer.
+ * `msg` - The message pointer.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+ * public nonce, seperated by a pipe character. Empty if an error occured.
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
+ */
+char *wallet_sign_message(struct TariWallet *wallet,
+                          const char *msg,
+                          int *error_out);
+
+/**
+ * Verifies the signature of the message signed by a TariWallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer.
+ * `public_key` - The pointer to the TariPublicKey of the wallet which originally signed the message
+ * `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
+ * signature and public nonce seperated by a pipe character.
+ * `msg` - The pointer to the msg the signature will be checked against.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `bool` - Returns if the signature is valid or not, will be false if an error occurs.
+ *
+ * # Safety
+ * None
+ */
+bool wallet_verify_message_signature(struct TariWallet *wallet,
+                                     TariPublicKey *public_key,
+                                     const char *hex_sig_nonce,
+                                     const char *msg,
+                                     int *error_out);
+
+/**
  * Adds a base node peer to the TariWallet
  *
  * ## Arguments
@@ -3014,47 +3029,6 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  */
 TariWalletAddress *wallet_get_tari_address(struct TariWallet *wallet,
                                            int *error_out);
-
-/**
- * Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
- * UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `amount` - The value of the UTXO in MicroTari
- * `spending_key` - The private spending key
- * `source_address` - The tari address of the source of the transaction
- * `features` - Options for an output's structure or use
- * `metadata_signature` - UTXO signature with the script offset private key, k_O
- * `sender_offset_public_key` - Tari script offset pubkey, K_O
- * `script_private_key` - Tari script private key, k_S, is used to create the script signature
- * `covenant` - The covenant that will be executed when spending this output
- * `message` - The message that the transaction will have
- * `encrypted_value` - Encrypted value.
- * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
- * transaction is null
- *
- * # Safety
- * None
- */
-unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
-                                                                 unsigned long long amount,
-                                                                 TariPrivateKey *spending_key,
-                                                                 TariWalletAddress *source_address,
-                                                                 TariOutputFeatures *features,
-                                                                 TariCommitmentSignature *metadata_signature,
-                                                                 TariPublicKey *sender_offset_public_key,
-                                                                 TariPrivateKey *script_private_key,
-                                                                 TariCovenant *covenant,
-                                                                 TariEncryptedValue *encrypted_value,
-                                                                 unsigned long long minimum_value_promise,
-                                                                 const char *message,
-                                                                 int *error_out);
 
 /**
  * Cancel a Pending Transaction
