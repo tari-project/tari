@@ -15,7 +15,7 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.7" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.1" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 tari_base_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = {path="../../clients/rust/wallet_grpc_client" }

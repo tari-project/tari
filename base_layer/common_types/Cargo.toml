@@ -7,7 +7,7 @@ version = "0.40.1"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.7" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.1" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
 tari_common = { version = "^0.40", path = "../../common" }
 
