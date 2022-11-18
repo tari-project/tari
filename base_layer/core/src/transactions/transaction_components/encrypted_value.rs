@@ -43,6 +43,7 @@ use crate::{
 };
 
 const SIZE: usize = 24;
+hidden_type!(AEADKey, SafeArray < u8, std::mem::size_of::<Key>()); // TODO : rename this
 
 /// value: u64 + tag: [u8; 16]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]

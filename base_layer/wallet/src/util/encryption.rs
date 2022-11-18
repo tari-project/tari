@@ -52,7 +52,7 @@ pub fn decrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     ciphertext: Vec<u8>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Hidden<Vec<u8>>, String> {
     // We need at least a nonce and tag, or there's no point in attempting decryption
     if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
         return Err(AeadError.to_string());
@@ -70,7 +70,7 @@ pub fn decrypt_bytes_integral_nonce(
     // Attempt authentication and decryption
     let plaintext = cipher.decrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
-    Ok(plaintext)
+    Ok(Hidden::new(plaintext))
 }
 
 // Encrypt data (with domain binding and authentication) using XChaCha20-Poly1305
@@ -96,6 +96,8 @@ pub fn encrypt_bytes_integral_nonce(
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);
+
+    plaintext.zeroize();
 
     Ok(ciphertext_integral_nonce)
 }

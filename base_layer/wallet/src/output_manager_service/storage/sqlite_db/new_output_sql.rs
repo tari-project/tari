@@ -41,7 +41,6 @@ use crate::{
 #[table_name = "outputs"]
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
-    #[derivative(Debug = "ignore")]
     pub spending_key: Hidden<Vec<u8>>,
     pub value: i64,
     pub output_type: i32,
@@ -50,7 +49,6 @@ pub struct NewOutputSql {
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
-    #[derivative(Debug = "ignore")]
     pub script_private_key: Hidden<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
