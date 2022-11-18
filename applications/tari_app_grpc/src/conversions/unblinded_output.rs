@@ -93,6 +93,10 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
 
+        // TODO: refactor this
+        output.spending_key.zeroize();
+        output.script_private_key.zeroize();
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,
             MicroTari::from(output.value),

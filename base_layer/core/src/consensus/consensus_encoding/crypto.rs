@@ -75,6 +75,8 @@ impl ConsensusDecoding for PrivateKey {
         let mut buf = [0u8; 32];
         reader.read_exact(&mut buf)?;
         let sk = PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+        // zeroes out the contents of buf, again. So no data is leaked in memory
+        buf = [0u8; 32];
         Ok(sk)
     }
 }

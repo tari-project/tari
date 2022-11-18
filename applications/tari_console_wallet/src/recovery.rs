@@ -27,7 +27,7 @@ use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
@@ -52,7 +52,12 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
         println!();
         println!("Type or paste all of your seed words on one line, only separated by spaces.");
         let input = rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?;
-        let seed_words: Vec<String> = input.split_whitespace().map(str::to_string).collect();
+        let seed_words: SeedWords = SeedWords::new(
+            input
+                .split_whitespace()
+                .map(|s| Hidden::hide(str::to_string(e)))
+                .collect::<Vec<Hidden<String>>>(),
+        );
 
         match CipherSeed::from_mnemonic(&seed_words, None) {
             Ok(seed) => break Ok(seed),
