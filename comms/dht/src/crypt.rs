@@ -78,11 +78,11 @@ fn get_message_padding_length(message_length: usize) -> usize {
 /// Pads a message to a multiple of MESSAGE_BASE_LENGTH excluding the additional prefix space.
 /// This function returns the number of additional padding bytes appended to the message.
 fn pad_message_to_base_length_multiple(
-    message: &mut BytesMut,
+    message: &mut Hidden<BytesMut>,
     additional_prefix_space: usize,
 ) -> Result<usize, DhtEncryptError> {
     // We require a 32-bit length representation, and also don't want to overflow after including this encoding
-    if message.len() > u32::MAX as usize {
+    if message.reveal().len() > u32::MAX as usize {
         return Err(DhtEncryptError::PaddingError("Message is too long".to_string()));
     }
     let padding_length =
@@ -184,8 +184,8 @@ pub fn decrypt_with_chacha20_poly1305(
 
 /// Encrypt the plain text using the ChaCha20 stream cipher. The message is assumed to have a 32-bit length prepended
 /// onto it.
-pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut BytesMut) -> Result<(), DhtEncryptError> {
-    if plain_text.len() < size_of::<Nonce>() {
+pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut Hidden<BytesMut>) -> Result<(), DhtEncryptError> {
+    if plain_text.reveal().len() < size_of::<Nonce>() {
         return Err(DhtEncryptError::PaddingError(
             "Message is not long enough to include a nonce".to_string(),
         ));
@@ -194,7 +194,7 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut BytesMut) -> Result<(), 
     let mut nonce = [0u8; size_of::<Nonce>()];
     OsRng.fill_bytes(&mut nonce);
     let nonce = Nonce::from(nonce);
-    plain_text[..size_of::<Nonce>()].copy_from_slice(&nonce[..]);
+    plain_text.reveal_mut()[..size_of::<Nonce>()].copy_from_slice(&nonce[..]);
 
     // pad plain_text to avoid message length leaks
     // Excludes the nonce in the padded message length - this is mostly for backwards compatibility

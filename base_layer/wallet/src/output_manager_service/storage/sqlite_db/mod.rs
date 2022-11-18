@@ -1308,7 +1308,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
 pub struct KnownOneSidedPaymentScriptSql {
     pub script_hash: Vec<u8>,
     #[derivative(Debug = "ignore")]
-    pub private_key: Vec<u8>,
+    pub private_key: Hidden<Vec<u8>>,
     pub script: Vec<u8>,
     pub input: Vec<u8>,
     pub script_lock_height: i64,
@@ -1318,7 +1318,7 @@ pub struct KnownOneSidedPaymentScriptSql {
 #[derive(AsChangeset)]
 #[table_name = "known_one_sided_payment_scripts"]
 pub struct UpdateKnownOneSidedPaymentScript {
-    private_key: Option<Vec<u8>>,
+    private_key: Option<Hidden<Vec<u8>>>,
     script: Option<Vec<u8>>,
     input: Option<Vec<u8>>,
 }
@@ -1459,7 +1459,11 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.private_key = encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
+        self.private_key = Hidden::hide(encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("private_key"),
+            self.private_key.clone(),
+        )?);
         Ok(())
     }
 

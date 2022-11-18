@@ -77,7 +77,7 @@ pub fn decrypt_bytes_integral_nonce(
 pub fn encrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
-    plaintext: Vec<u8>,
+    plaintext: Hidden<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
     // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];

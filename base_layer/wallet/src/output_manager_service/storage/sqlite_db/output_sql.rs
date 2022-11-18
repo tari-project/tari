@@ -72,8 +72,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
     pub commitment: Option<Vec<u8>>,
-    #[derivative(Debug = "ignore")]
-    pub spending_key: Vec<u8>,
+    pub spending_key: Hidden<Vec<u8>>,
     pub value: i64,
     pub output_type: i32,
     pub maturity: i64,
@@ -81,8 +80,7 @@ pub struct OutputSql {
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
-    #[derivative(Debug = "ignore")]
-    pub script_private_key: Vec<u8>,
+    pub script_private_key: Hidden<Vec<u8>>,
     pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_nonce: Vec<u8>,
@@ -773,14 +771,17 @@ impl Encryptable<XChaCha20Poly1305> for OutputSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = Hidden::hide(encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("spending_key"),
+            self.spending_key.clone(),
+        )?);
 
-        self.script_private_key = encrypt_bytes_integral_nonce(
+        self.script_private_key = Hidden::hide(encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
             self.script_private_key.clone(),
-        )?;
+        )?);
 
         Ok(())
     }

@@ -1503,9 +1503,9 @@ pub unsafe extern "C" fn encrypted_value_create_from_bytes(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let decoded_encrypted_value_bytes = (*encrypted_value_bytes).0.clone();
+    let decoded_encrypted_value_bytes = Hidden::hide((*encrypted_value_bytes).0.clone());
 
-    match TariEncryptedValue::from_bytes(&decoded_encrypted_value_bytes) {
+    match TariEncryptedValue::from_bytes(decoded_encrypted_value_bytes.reveal()) {
         Ok(encrypted_value) => Box::into_raw(Box::new(encrypted_value)),
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating an encrypted_value: {:?}", e);

@@ -1537,7 +1537,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         self.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            self.receiver_protocol.as_bytes().to_vec(),
+            Hidden::hide(self.receiver_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -1551,7 +1551,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
             from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
+        self.receiver_protocol = from_utf8(decrypted_protocol.reveal().as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
@@ -1802,7 +1802,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
             from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
+        self.sender_protocol = from_utf8(decrypted_protocol.reveal().as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
@@ -2194,7 +2194,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         self.transaction_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            self.transaction_protocol.as_bytes().to_vec(),
+            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -2208,7 +2208,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
             from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
+        self.transaction_protocol = from_utf8(decrypted_protocol.reveal().as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 

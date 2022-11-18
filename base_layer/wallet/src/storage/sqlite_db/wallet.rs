@@ -846,7 +846,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
             from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.value = from_utf8(decrypted_value.as_slice())
+        self.value = from_utf8(decrypted_value.reveal().as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
