@@ -13,7 +13,7 @@ native_bitmap = ["croaring"]
 benches = ["criterion"]
 
 [dependencies]
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.1" }
 tari_common = {path = "../../common"}
 thiserror = "1.0.26"

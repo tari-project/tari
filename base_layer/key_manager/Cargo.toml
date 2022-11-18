@@ -14,7 +14,7 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 tari_common_types = { version = "^0.40", path = "../../base_layer/common_types", optional = true }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.1" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
 
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.9.1"
