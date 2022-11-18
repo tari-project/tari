@@ -74,7 +74,7 @@ impl SingleReceiverTransactionProtocol {
             &(&sender_info.public_excess + &public_spending_key),
             &tx_meta,
         );
-        let signature = Signature::sign(spending_key, nonce, &e).map_err(TPE::SigningError)?;
+        let signature = Signature::sign_raw(&spending_key, nonce, &e).map_err(TPE::SigningError)?;
         let data = RD {
             tx_id: sender_info.tx_id,
             output,
