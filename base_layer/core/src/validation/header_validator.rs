@@ -6,17 +6,11 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::BlockHeader,
-    chain_storage::{fetch_headers, BlockchainBackend},
-    consensus::{ConsensusConstants, ConsensusManager},
+    chain_storage::BlockchainBackend,
+    consensus::ConsensusManager,
     proof_of_work::AchievedTargetDifficulty,
     validation::{
-        helpers::{
-            check_blockchain_version,
-            check_header_timestamp_greater_than_median,
-            check_not_bad_block,
-            check_pow_data,
-            check_timestamp_ftl,
-        },
+        helpers::{check_blockchain_version, check_not_bad_block, check_pow_data, check_timestamp_ftl},
         DifficultyCalculator,
         HeaderValidation,
         ValidationError,
