@@ -516,12 +516,11 @@ where
 
     pub fn sign_message(
         &mut self,
-        secret: RistrettoSecretKey,
-        nonce: RistrettoSecretKey,
+        secret: &RistrettoSecretKey,
+     
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
-        let challenge = Blake256::digest(message.as_bytes());
-        RistrettoSchnorr::sign_raw(&secret, nonce, &challenge)
+        RistrettoSchnorr::sign_message(secret, message.as_bytes())
     }
 
     pub fn verify_message_signature(
