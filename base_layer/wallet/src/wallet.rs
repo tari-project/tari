@@ -22,13 +22,12 @@
 
 use std::{cmp, marker::PhantomData, sync::Arc};
 
-use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -517,7 +516,6 @@ where
     pub fn sign_message(
         &mut self,
         secret: &RistrettoSecretKey,
-     
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
         RistrettoSchnorr::sign_message(secret, message.as_bytes())
@@ -529,7 +527,7 @@ where
         signature: &Signature,
         message: &str,
     ) -> bool {
-        signature.verify_message(&public_key, message)
+        signature.verify_message(public_key, message)
     }
 
     /// Appraise the expected outputs and a fee

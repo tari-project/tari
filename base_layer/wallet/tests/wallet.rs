@@ -503,12 +503,10 @@ async fn test_sign_message() {
     .unwrap();
 
     let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
-    let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
     let message = "Tragedy will find us.";
-    let schnorr = wallet.sign_message(secret, nonce, message).unwrap();
-    let signature = schnorr.get_signature().clone();
+    let schnorr = wallet.sign_message(&secret, message).unwrap();
 
-    assert!(wallet.verify_message_signature(public_key, public_nonce, signature, message.into()));
+    assert!(wallet.verify_message_signature(&public_key, &schnorr, message));
 }
 
 #[test]

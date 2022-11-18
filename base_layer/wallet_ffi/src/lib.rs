@@ -90,7 +90,7 @@ use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{Commitment, PublicKey},
+    types::{Commitment, PublicKey, Signature},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -5077,14 +5077,13 @@ pub unsafe extern "C" fn wallet_sign_message(
         return result.into_raw();
     }
 
-    let nonce = TariPrivateKey::random(&mut OsRng);
     let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
     let message = CStr::from_ptr(msg)
         .to_str()
         .expect("CString should not fail here.")
         .to_owned();
 
-    let signature = (*wallet).wallet.sign_message(secret, nonce, &message);
+    let signature = (*wallet).wallet.sign_message(&secret, &message);
 
     match signature {
         Ok(s) => {
@@ -5180,9 +5179,8 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
                     let public_nonce = TariPublicKey::from_hex(key2);
                     match public_nonce {
                         Ok(pn) => {
-                            result = (*wallet)
-                                .wallet
-                                .verify_message_signature((*public_key).clone(), pn, p, message)
+                            let sig = Signature::new(pn, p);
+                            result = (*wallet).wallet.verify_message_signature(&*public_key, &sig, &message)
                         },
                         Err(e) => {
                             error = LibWalletError::from(e).code;
