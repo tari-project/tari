@@ -12,7 +12,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { version = "^0.40", path = "../../base_layer/common_types" }
 tari_comms = { version = "^0.40", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.40", path = "../../comms/dht" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
 tari_key_manager = { version = "^0.40", path = "../key_manager" }
 tari_p2p = { version = "^0.40", path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
@@ -20,7 +20,7 @@ tari_service_framework = { version = "^0.40", path = "../service_framework" }
 tari_shutdown = { version = "^0.40", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.40", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = { git = "https://github.com/AaronFeickert/tari_utilities.git", branch = "clandestine" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.1.3"

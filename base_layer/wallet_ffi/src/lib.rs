@@ -106,9 +106,9 @@ use tari_core::transactions::{
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::ByteArray,
+    tari_utilities::{ByteArray, Hidden},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     transport::MemoryTransportConfig,
@@ -215,7 +215,7 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 pub struct EmojiSet(Vec<ByteVector>);
 
 #[derive(Debug, PartialEq)]
-pub struct TariSeedWords(Vec<String>);
+pub struct TariSeedWords(SeedWords);
 
 #[derive(Debug, PartialEq)]
 pub struct TariPublicKeys(Vec<TariPublicKey>);
@@ -1662,7 +1662,8 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
-    Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+    let seed_words = SeedWords::new(vec![]);
+    Box::into_raw(Box::new(TariSeedWords(seed_words)))
 }
 
 /// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
@@ -1689,7 +1690,7 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
-    let mut mnemonic_word_list_vec = Vec::new();
+    let mut mnemonic_word_list_vec = SeedWords::new(vec![]);
     if language.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("mnemonic wordlist".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1730,7 +1731,13 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
             target: LOG_TARGET,
             "Retrieved mnemonic wordlist for'{}'", language_string
         );
-        mnemonic_word_list_vec = mnemonic_word_list.to_vec().iter().map(|s| s.to_string()).collect();
+        mnemonic_word_list_vec = SeedWords::new(
+            mnemonic_word_list
+                .to_vec()
+                .into_iter()
+                .map(|s| Hidden::hide(s.to_string()))
+                .collect(),
+        );
     }
 
     Box::into_raw(Box::new(TariSeedWords(mnemonic_word_list_vec)))
@@ -1794,7 +1801,13 @@ pub unsafe extern "C" fn seed_words_get_at(
             error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         } else {
-            match CString::new((*seed_words).0[position as usize].clone()) {
+            match CString::new(
+                (*seed_words)
+                    .0
+                    .get_word(position as usize)
+                    .expect("Seed Words position is in bounds")
+                    .as_str(),
+            ) {
                 Ok(v) => {
                     word = v;
                 },
@@ -1889,15 +1902,13 @@ pub unsafe extern "C" fn seed_words_push_word(
     }
 
     // Try push to a temporary copy first to prevent existing object becoming invalid
-    let mut temp = (*seed_words).0.clone();
-
-    if let Ok(language) = MnemonicLanguage::detect_language(&temp) {
-        temp.push(word_string.clone());
+    if let Ok(language) = MnemonicLanguage::detect_language(&(*seed_words).0) {
+        (*seed_words).0.push(word_string.clone());
         // Check words in temp are still consistent for a language, note that detected language can change
         // depending on word added
-        if MnemonicLanguage::detect_language(&temp).is_ok() {
-            if temp.len() >= 24 {
-                if let Err(e) = CipherSeed::from_mnemonic(&temp, None) {
+        if MnemonicLanguage::detect_language(&(*seed_words).0).is_ok() {
+            if (*seed_words).0.len() >= 24 {
+                if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
                     log::error!(
                         target: LOG_TARGET,
                         "Problem building valid private seed from seed phrase: {:?}",
