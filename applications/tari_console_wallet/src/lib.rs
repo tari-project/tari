@@ -214,6 +214,7 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
 fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if cli.seed_words.is_some() {
+            // TODO: fix leaks
             let seed_words: SeedWords = SeedWords::new(
                 cli.seed_words
                     .clone()

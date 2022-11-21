@@ -53,6 +53,7 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
         println!();
         println!("Type or paste all of your seed words on one line, only separated by spaces.");
         let input = rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+        // TODO: fix leaks
         let seed_words: SeedWords =
             SeedWords::new(input.split_whitespace().map(|s| Hidden::hide(s.to_string())).collect());
 
