@@ -1731,13 +1731,8 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
             target: LOG_TARGET,
             "Retrieved mnemonic wordlist for'{}'", language_string
         );
-        mnemonic_word_list_vec = SeedWords::new(
-            mnemonic_word_list
-                .to_vec()
-                .into_iter()
-                .map(|s| Hidden::hide(s.to_string()))
-                .collect(),
-        );
+        mnemonic_word_list_vec =
+            SeedWords::new(mnemonic_word_list.iter().map(|s| Hidden::hide(s.to_string())).collect());
     }
 
     Box::into_raw(Box::new(TariSeedWords(mnemonic_word_list_vec)))
@@ -1800,22 +1795,17 @@ pub unsafe extern "C" fn seed_words_get_at(
         if position > len as u32 {
             error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
+        } else if let Ok(v) = CString::new(
+            (*seed_words)
+                .0
+                .get_word(position as usize)
+                .expect("Seed Words position is in bounds")
+                .as_str(),
+        ) {
+            word = v;
         } else {
-            match CString::new(
-                (*seed_words)
-                    .0
-                    .get_word(position as usize)
-                    .expect("Seed Words position is in bounds")
-                    .as_str(),
-            ) {
-                Ok(v) => {
-                    word = v;
-                },
-                _ => {
-                    error = LibWalletError::from(InterfaceError::PointerError("seed_words".to_string())).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                },
-            }
+            error = LibWalletError::from(InterfaceError::PointerError("seed_words".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
         }
     }
     CString::into_raw(word)
