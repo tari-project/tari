@@ -139,9 +139,9 @@ mod tests {
             "olá".to_string(),
         ];
 
-        for index in 0..5_usize {
-            // Notice we should not dereference the word, in practice. But these are unit tests
-            assert_eq!(*seed_words.get_word(index).unwrap(), vec_words[index]);
+        for (index, word) in vec_words.iter().enumerate().take(5_usize) {
+            // should not derefence, in practice. We do it here, for testing purposes
+            assert_eq!(*seed_words.get_word(index).unwrap(), *word);
         }
     }
 
@@ -173,7 +173,7 @@ mod tests {
 
         seed_words.push("ciao".to_string());
         assert_eq!(seed_words.len(), 6_usize);
-        assert_eq!(*seed_words.get_word(5).unwrap(), "ciao")
+        assert_eq!(seed_words.get_word(5).unwrap(), "ciao")
     }
 
     #[test]
@@ -187,8 +187,7 @@ mod tests {
         ]);
 
         let joined = seed_words.join(", ");
-        // should not dereference, in practice. We do it here for testing purposes
-        assert_eq!(*joined.reveal(), "hi, niao, hola, bonjour, olá");
+        assert_eq!(joined.reveal(), "hi, niao, hola, bonjour, olá");
     }
 
     #[test]

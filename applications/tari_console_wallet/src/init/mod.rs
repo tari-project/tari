@@ -549,7 +549,7 @@ fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     println!("WRITE THEM DOWN OR COPY THEM NOW. THIS IS YOUR ONLY CHANCE TO DO SO.");
     println!();
     println!("=========================");
-    println!("{}", seed_words.join(" "));
+    println!("{}", seed_words.join(" ").reveal());
     println!("=========================");
     println!("\x07"); // beep!
 

@@ -1893,7 +1893,6 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     // Try push to a temporary copy first to prevent existing object becoming invalid
     if let Ok(language) = MnemonicLanguage::detect_language(&(*seed_words).0) {
-        (*seed_words).0.push(word_string.clone());
         // Check words in temp are still consistent for a language, note that detected language can change
         // depending on word added
         if MnemonicLanguage::detect_language(&(*seed_words).0).is_ok() {
