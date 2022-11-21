@@ -216,13 +216,13 @@ fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSe
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if cli.seed_words.is_some() {
             // need to zeroize first, to clean up memory of cli.seed_words clone
-            let vec_words = Zeroizing::new(cli.seed_words.clone());
+            // let vec_words = Zeroizing::new(cli.seed_words.unwrap());
             let seed_words: SeedWords = SeedWords::new(
-                vec_words
+                cli.seed_words
                     .as_ref()
                     .unwrap()
                     .split_whitespace()
-                    .map(|v| Hidden::hide(v.to_string()))
+                    .map(|s| Hidden::hide(s.to_string()))
                     .collect(),
             );
             get_seed_from_seed_words(seed_words)?
