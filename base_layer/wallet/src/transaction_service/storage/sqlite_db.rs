@@ -2098,13 +2098,19 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
+        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or_else(|| {
+            TransactionStorageError::UnexpectedResult(format!(
+                "Could not create timestamp mined_timestamp: {}",
+                mined_timestamp
+            ))
+        })?;
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 confirmations: Some(Some(num_confirmations as i64)),
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
-                mined_timestamp: Some(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
+                mined_timestamp: Some(timestamp),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
                 ..Default::default()

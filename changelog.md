@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.40.2](https://github.com/tari-project/tari/compare/v0.40.1...v0.40.2) (2022-11-18)
+
+
+### Features
+
+* upgrade tari_crypto sign api ([#4932](https://github.com/tari-project/tari/issues/4932)) ([e2b7ad1](https://github.com/tari-project/tari/commit/e2b7ad186e8ce311576549e25e3ae10770ba0c6b))
+
+
+### Bug Fixes
+
+* **dht:** use limited ban period for invalid peer ([#4933](https://github.com/tari-project/tari/issues/4933)) ([04a3a8f](https://github.com/tari-project/tari/commit/04a3a8fbb8932b06293abb1fe59c597f1bf3a2a3))
+
+### [0.40.1](https://github.com/tari-project/tari/compare/v0.40.0...v0.40.1) (2022-11-17)
+
+
+### Bug Fixes
+
+* set wallet start scan height to birthday and not 0 (see issue [#4807](https://github.com/tari-project/tari/issues/4807)) ([#4911](https://github.com/tari-project/tari/issues/4911)) ([797f91a](https://github.com/tari-project/tari/commit/797f91a91578e851b9eefe939294f919c7fec978))
+
+## [0.40.0](https://github.com/tari-project/tari/compare/v0.39.0...v0.40.0) (2022-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* add tari address for wallet to use (#4881)
+
+### Features
+
+* add tari address for wallet to use ([#4881](https://github.com/tari-project/tari/issues/4881)) ([26aacc7](https://github.com/tari-project/tari/commit/26aacc7411866e920d5aa0fa62f5b8ae9e143946))
+
+
+### Bug Fixes
+
+* **comms:** spawn liveness check after address is final ([#4919](https://github.com/tari-project/tari/issues/4919)) ([f558a11](https://github.com/tari-project/tari/commit/f558a11222a322bac93b8a51b7240442f4a9e9c9))
+* remove fs2 dependency from tari_common ([#4921](https://github.com/tari-project/tari/issues/4921)) ([dca7b06](https://github.com/tari-project/tari/commit/dca7b0614c6c27a13417e6108207e9605557551e))
+* updates for SafePassword API change ([#4927](https://github.com/tari-project/tari/issues/4927)) ([92d73e4](https://github.com/tari-project/tari/commit/92d73e458319a0bd3d897ebc795e52f0597392b7))
+
 ## [0.39.0](https://github.com/tari-project/tari/compare/v0.38.8...v0.39.0) (2022-11-14)
 
 

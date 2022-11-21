@@ -138,7 +138,7 @@ impl CommandContext {
                 normalized_solve_time,
                 pow_algo,
                 chrono::DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(header.header().timestamp.as_u64() as i64, 0),
+                    NaiveDateTime::from_timestamp_opt(header.header().timestamp.as_u64() as i64, 0).unwrap_or_default(),
                     Utc
                 ),
                 target_diff.get(pow_algo).len(),

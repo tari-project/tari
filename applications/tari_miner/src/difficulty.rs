@@ -91,9 +91,15 @@ pub mod test {
     #[allow(clippy::cast_sign_loss)]
     pub fn get_header() -> (grpc_header, BlockHeader) {
         let mut header = BlockHeader::new(0);
-        header.timestamp =
-            (DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).timestamp() as u64)
-                .into();
+        header.timestamp = (DateTime::<Utc>::from_utc(
+            NaiveDate::from_ymd_opt(2000, 1, 1)
+                .unwrap()
+                .and_hms_opt(1, 1, 1)
+                .unwrap(),
+            Utc,
+        )
+        .timestamp() as u64)
+            .into();
         header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3;
         (header.clone().into(), header)
     }

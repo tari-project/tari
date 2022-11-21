@@ -49,6 +49,7 @@ use tari_core::{
         transaction_components::{TransactionOutput, UnblindedOutput},
     },
 };
+use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -470,7 +471,8 @@ where
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
             let current_height = response.height;
             let current_header_hash = response.header_hash;
-            let mined_timestamp = NaiveDateTime::from_timestamp(response.mined_timestamp as i64, 0);
+            let mined_timestamp =
+                NaiveDateTime::from_timestamp_opt(response.mined_timestamp as i64, 0).unwrap_or(NaiveDateTime::MIN);
             let outputs = response
                 .outputs
                 .into_iter()
@@ -697,9 +699,10 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
-        // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
-        // issues
-        let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
+        // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
+        // wallet birthday. The latter avoids any possible issues with reorgs.
+        let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
             Err(e) => {
