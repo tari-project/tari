@@ -56,7 +56,6 @@ use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
-use zeroize::Zeroizing;
 
 pub use crate::config::ApplicationConfig;
 use crate::init::wallet_mode;
@@ -216,7 +215,6 @@ fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSe
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if cli.seed_words.is_some() {
             // need to zeroize first, to clean up memory of cli.seed_words clone
-            // let vec_words = Zeroizing::new(cli.seed_words.unwrap());
             let seed_words: SeedWords = SeedWords::new(
                 cli.seed_words
                     .as_ref()
