@@ -33,7 +33,7 @@ pub use error::NoiseError;
 
 mod socket;
 pub use socket::NoiseSocket;
+use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
+use zeroize::Zeroize;
 
-use tari_utilities::hidden_type;
-
-hidden_type!(CommsCoreNoiseKDFType, SafeArray<u8; 32>)
+hidden_type!(CommsNoiseKDF, SafeArray<u8, 32>);

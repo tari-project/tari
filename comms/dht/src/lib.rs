@@ -112,6 +112,7 @@ mod rpc;
 mod schema;
 
 mod version;
+use tari_utilities::hidden_type;
 pub use version::DhtProtocolVersion;
 
 pub mod broadcast_strategy;
@@ -141,4 +142,13 @@ pub fn comms_dht_hash_domain_key_signature() -> DomainSeparatedHasher<CommsChall
 
 pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
     DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("message_signature")
+}
+
+use tari_comms::BytesMut;
+use tari_utilities::Hidden;
+use zeroize::{DefaultIsZeroes, Zeroize};
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct HiddenBytesMut {
+    inner: BytesMut,
 }

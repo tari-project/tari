@@ -57,6 +57,7 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
+    SeedWords,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -694,7 +695,7 @@ where
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<SeedWords, WalletError> {
         let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),

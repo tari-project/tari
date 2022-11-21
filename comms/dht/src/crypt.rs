@@ -41,7 +41,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
     BufMut,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hidden};
 use zeroize::Zeroize;
 
 use crate::{
@@ -55,11 +55,11 @@ use crate::{
 
 #[derive(Debug, Clone, Zeroize)]
 #[zeroize(drop)]
-pub struct CipherKey(Hidden<chacha20::Key>);
+pub struct CipherKey(chacha20::Key);
 
 #[derive(Debug, Clone, Zeroize)]
 #[zeroize(drop)]
-pub struct AuthenticatedCipherKey(Hidden<chacha20poly1305::Key>);
+pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
 

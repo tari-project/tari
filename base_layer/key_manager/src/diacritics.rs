@@ -1,13 +1,13 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use tari_utilities::Hidden;
+
 /// Remove diacritic marks, points and accents on lowercase characters
-pub fn remove_diacritics(word: &str) -> String {
+pub fn remove_diacritics(word: &str) -> Hidden<String> {
     // Replace diacritics accents
-    let clean_string: String =
-        word.to_lowercase()
-            .as_str()
-            .chars()
+    let clean_string: Hidden<String> = Hidden::hide(
+        word.chars()
             .map(|x| match x {
                 'a' | '\u{24D0}' | '\u{FF41}' | '\u{1E9A}' | '\u{00E0}' | '\u{00E1}' | '\u{00E2}' | '\u{1EA7}' |
                 '\u{1EA5}' | '\u{1EAB}' | '\u{1EA9}' | '\u{00E3}' | '\u{0101}' | '\u{0103}' | '\u{1EB1}' |
@@ -77,9 +77,10 @@ pub fn remove_diacritics(word: &str) -> String {
                 '\u{1E95}' | '\u{01B6}' | '\u{0225}' | '\u{0240}' | '\u{2C6C}' | '\u{A763}' => 'z',
                 _ => x,
             })
-            .collect();
+            .collect(),
+    );
     // Remove any remaining non-ascii characters
-    clean_string.replace(|c: char| !c.is_ascii(), "")
+    Hidden::hide(clean_string.reveal().replace(|c: char| !c.is_ascii(), ""))
 }
 
 #[cfg(test)]
@@ -89,17 +90,17 @@ mod test {
     #[test]
     fn test_temp() {
         // Words with Diacretics
-        assert_eq!(remove_diacritics("ábaco"), "abaco".to_string());
-        assert_eq!(remove_diacritics("cúpula"), "cupula".to_string());
-        assert_eq!(remove_diacritics("legión"), "legion".to_string());
-        assert_eq!(remove_diacritics("sureño"), "sureno".to_string());
-        assert_eq!(remove_diacritics("chimère"), "chimere".to_string());
-        assert_eq!(remove_diacritics("élève"), "eleve".to_string());
+        assert_eq!(remove_diacritics("ábaco").reveal(), "abaco");
+        assert_eq!(remove_diacritics("cúpula").reveal(), "cupula");
+        assert_eq!(remove_diacritics("legión").reveal(), "legion");
+        assert_eq!(remove_diacritics("sureño").reveal(), "sureno");
+        assert_eq!(remove_diacritics("chimère").reveal(), "chimere");
+        assert_eq!(remove_diacritics("élève").reveal(), "eleve");
 
         // Words without Diacretics
-        assert_eq!(remove_diacritics("observe"), "observe".to_string());
-        assert_eq!(remove_diacritics("response"), "response".to_string());
-        assert_eq!(remove_diacritics("bizzarro"), "bizzarro".to_string());
-        assert_eq!(remove_diacritics("materasso"), "materasso".to_string());
+        assert_eq!(remove_diacritics("observe").reveal(), "observe");
+        assert_eq!(remove_diacritics("response").reveal(), "response");
+        assert_eq!(remove_diacritics("bizzarro").reveal(), "bizzarro");
+        assert_eq!(remove_diacritics("materasso").reveal(), "materasso");
     }
 }

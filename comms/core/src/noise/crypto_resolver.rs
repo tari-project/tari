@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
+use digest::{generic_array::GenericArray, FixedOutput};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -33,7 +33,9 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_utilities::safe_array::SafeArray;
 
+use super::CommsNoiseKDF;
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -66,9 +68,14 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
-fn noise_kdf(shared_key: &CommsDHKE) -> CommsCoreNoiseKDFType {
-    let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
-    Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
+fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKDF {
+    let mut hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
+    hasher.update(shared_key.as_bytes());
+
+    let mut noise_kdf = CommsNoiseKDF::from(SafeArray::default());
+
+    hasher.finalize_into_reset(GenericArray::from_mut_slice(noise_kdf.reveal_mut()));
+    noise_kdf
 }
 
 #[derive(Default)]
@@ -162,6 +169,6 @@ mod test {
         let mut out = [0; 32];
         dh.dh(public_key2.as_bytes(), &mut out).unwrap();
 
-        assert_eq!(out, expected_shared);
+        assert_eq!(out, expected_shared.data.reveal().as_ref());
     }
 }
