@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use borsh::BorshSerialize;
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -29,12 +30,7 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::{
-        consensus_constants::PowAlgorithmConstants,
-        ConsensusConstantsBuilder,
-        ConsensusEncoding,
-        ConsensusManager,
-    },
+    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
@@ -166,7 +162,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
         coinbase_tx: mblock.miner_tx,
     };
     let mut serialized = Vec::new();
-    monero_data.consensus_encode(&mut serialized).unwrap();
+    BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::Monero;
     tblock.header.pow.pow_data = serialized;
 }

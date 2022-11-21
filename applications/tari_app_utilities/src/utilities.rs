@@ -48,7 +48,7 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::from_emoji_string(&key.trim().replace('|', ""))
         .map(|emoji_id| emoji_id.to_public_key())
-        .or_else(|_| CommsPublicKey::from_hex(key))
+        .or_else(|_| serde::__private::Err(CommsPublicKey::from_hex(key)))
         .ok()
 }
 

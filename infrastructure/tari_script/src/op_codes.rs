@@ -17,9 +17,10 @@
 
 use std::{fmt, ops::Deref};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarInt;
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use tari_utilities::{hex::Hex, ByteArrayError};
 
 use super::ScriptError;
 
@@ -126,7 +127,7 @@ const OP_IF_THEN: u8 = 0x61;
 const OP_ELSE: u8 = 0x62;
 const OP_END_IF: u8 = 0x63;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum Opcode {
     // Block Height Checks
     /// Pops the top of the stack as `height`. Compare the current block height to `height`. Fails with

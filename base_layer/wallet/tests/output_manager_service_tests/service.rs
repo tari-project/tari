@@ -34,7 +34,7 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::ConsensusEncodingSized,
+    borsh::SerializedSize,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
@@ -103,9 +103,8 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
-    )
+    TransactionWeight::latest()
+        .round_up_metadata_size(OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size())
 }
 
 struct TestOmsService<U> {

@@ -13,11 +13,13 @@ edition = "2018"
 tari_comms = { version = "^0.40", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.40", path = "../../comms/dht" }
 tari_common = { version = "^0.40", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
+# tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
+tari_crypto = { git = "https://github.com/cifko/tari-crypto.git", branch ="custom-test3", features = ["borsh"]  }
 tari_service_framework = { version = "^0.40", path = "../service_framework" }
 tari_shutdown = { version = "^0.40", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.40", path = "../../infrastructure/storage" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
+# tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
+tari_utilities = { git = "https://github.com/cifko/tari_utilities.git", branch = "add-borsh", features = ["borsh"]  }
 
 anyhow = "1.0.53"
 bytes = "0.5"

@@ -17,6 +17,7 @@
 
 use std::convert::TryFrom;
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -57,7 +58,7 @@ pub const TYPE_PUBKEY: u8 = 4;
 pub const TYPE_SIG: u8 = 5;
 pub const TYPE_SCALAR: u8 = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum StackItem {
     Number(i64),
     Hash(HashValue),
@@ -177,7 +178,7 @@ stack_item_from!(RistrettoPublicKey => PublicKey);
 stack_item_from!(RistrettoSchnorr => Signature);
 stack_item_from!(ScalarValue => Scalar);
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ExecutionStack {
     items: Vec<StackItem>,
 }

@@ -27,13 +27,13 @@ use std::{
     sync::Arc,
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
-    covenants::Covenant,
     proto,
     transactions::{
         aggregated_body::AggregateBody,
@@ -133,6 +133,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+            let mut buffer_input_covenant = input.covenant.as_bytes();
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
                     u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -143,7 +144,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
-                Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?,
+                BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
                 EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
                 input.minimum_value_promise.into(),
             ))
@@ -174,6 +175,14 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 ..Default::default()
             })
         } else {
+            let mut covenant = Vec::new();
+            BorshSerialize::serialize(
+                &input
+                    .covenant()
+                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?,
+                &mut covenant,
+            )
+            .unwrap();
             Ok(Self {
                 features: Some(
                     input
@@ -202,10 +211,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .to_vec(),
                 // Output hash is only used in compact form
                 output_hash: Vec::new(),
-                covenant: input
-                    .covenant()
-                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
-                    .to_bytes(),
+                covenant,
                 version: input.version as u32,
                 encrypted_value: input
                     .encrypted_value()
@@ -248,7 +254,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
+        let mut buffer = output.covenant.as_bytes();
+        let covenant = BorshDeserialize::deserialize(&mut buffer).unwrap();
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
@@ -273,6 +280,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
 impl From<TransactionOutput> for proto::types::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
+        let mut covenant = Vec::new();
+        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
         Self {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
@@ -280,7 +289,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
-            covenant: output.covenant.to_bytes(),
+            covenant,
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),

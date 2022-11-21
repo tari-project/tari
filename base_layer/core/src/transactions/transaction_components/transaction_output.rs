@@ -26,10 +26,9 @@
 use std::{
     cmp::{min, Ordering},
     fmt::{Display, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -56,7 +55,8 @@ use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
+    borsh::SerializedSize,
+    consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -71,7 +71,7 @@ pub const LOG_TARGET: &str = "c::transactions::transaction_output";
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub version: TransactionOutputVersion,
     /// Options for an output's structure or use
@@ -439,9 +439,7 @@ impl TransactionOutput {
     }
 
     pub fn get_metadata_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() +
-            self.script.consensus_encode_exact_size() +
-            self.covenant.consensus_encode_exact_size()
+        self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
 }
 
@@ -495,51 +493,6 @@ impl PartialOrd for TransactionOutput {
 impl Ord for TransactionOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.commitment.cmp(&other.commitment)
-    }
-}
-
-impl ConsensusEncoding for TransactionOutput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.version.consensus_encode(writer)?;
-        self.features.consensus_encode(writer)?;
-        self.commitment.consensus_encode(writer)?;
-        self.proof.consensus_encode(writer)?;
-        self.script.consensus_encode(writer)?;
-        self.sender_offset_public_key.consensus_encode(writer)?;
-        self.metadata_signature.consensus_encode(writer)?;
-        self.covenant.consensus_encode(writer)?;
-        self.encrypted_value.consensus_encode(writer)?;
-        self.minimum_value_promise.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-impl ConsensusEncodingSized for TransactionOutput {}
-
-impl ConsensusDecoding for TransactionOutput {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let version = TransactionOutputVersion::consensus_decode(reader)?;
-        let features = OutputFeatures::consensus_decode(reader)?;
-        let commitment = Commitment::consensus_decode(reader)?;
-        let proof = RangeProof::consensus_decode(reader)?;
-        let script = TariScript::consensus_decode(reader)?;
-        let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
-        let metadata_signature = ComAndPubSignature::consensus_decode(reader)?;
-        let covenant = Covenant::consensus_decode(reader)?;
-        let encrypted_value = EncryptedValue::consensus_decode(reader)?;
-        let minimum_value_promise = MicroTari::consensus_decode(reader)?;
-        let output = TransactionOutput::new(
-            version,
-            features,
-            commitment,
-            proof,
-            script,
-            sender_offset_public_key,
-            metadata_signature,
-            covenant,
-            encrypted_value,
-            minimum_value_promise,
-        );
-        Ok(output)
     }
 }
 
@@ -612,14 +565,11 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 #[cfg(test)]
 mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::{
-        consensus::check_consensus_encoding_correctness,
-        transactions::{
-            tari_amount::MicroTari,
-            test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::transaction_output::power_of_two_chunk_sizes,
-            CryptoFactories,
-        },
+    use crate::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{TestParams, UtxoTestParams},
+        transaction_components::transaction_output::power_of_two_chunk_sizes,
+        CryptoFactories,
     };
 
     #[test]
@@ -729,14 +679,5 @@ mod test {
         output.minimum_value_promise = minimum_value_promise;
 
         output
-    }
-
-    #[test]
-    fn consensus_encoding() {
-        let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
-
-        let output = create_valid_output(&test_params, &factories, 123.into(), MicroTari::zero());
-        check_consensus_encoding_correctness(output).unwrap();
     }
 }

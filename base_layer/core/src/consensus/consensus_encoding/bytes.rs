@@ -20,36 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    convert::TryFrom,
-    io,
-    io::{Error, Read, Write},
-    ops::Deref,
-};
+use std::{cmp, convert::TryFrom, ops::Deref};
 
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-impl ConsensusEncoding for Vec<u8> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        let len = self.len();
-        writer.write_varint(len)?;
-        writer.write_all(self)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for Vec<u8> {
-    fn consensus_encode_exact_size(&self) -> usize {
-        let len = self.len();
-        len.required_space() + len
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    Deserialize,
+    Serialize,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct MaxSizeBytes<const MAX: usize> {
     inner: Vec<u8>,
 }
@@ -94,33 +83,6 @@ impl<const MAX: usize> TryFrom<Vec<u8>> for MaxSizeBytes<MAX> {
     }
 }
 
-impl<const SZ: usize> ConsensusEncoding for MaxSizeBytes<SZ> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.inner.consensus_encode(writer)
-    }
-}
-
-impl<const SZ: usize> ConsensusEncodingSized for MaxSizeBytes<SZ> {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.inner.consensus_encode_exact_size()
-    }
-}
-
-impl<const MAX: usize> ConsensusDecoding for MaxSizeBytes<MAX> {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let len = reader.read_varint()?;
-        if len > MAX {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Vec size ({}) exceeded maximum ({})", len, MAX),
-            ));
-        }
-        let mut bytes = vec![0u8; len];
-        reader.read_exact(&mut bytes)?;
-        Ok(Self { inner: bytes })
-    }
-}
-
 impl<const MAX: usize> AsRef<[u8]> for MaxSizeBytes<MAX> {
     fn as_ref(&self) -> &[u8] {
         &self.inner
@@ -132,72 +94,5 @@ impl<const MAX: usize> Deref for MaxSizeBytes<MAX> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
-    }
-}
-
-impl ConsensusEncoding for &[u8] {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        let len = self.len();
-        writer.write_varint(len)?;
-        writer.write_all(self)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for &[u8] {
-    fn consensus_encode_exact_size(&self) -> usize {
-        let len = self.len();
-        len.required_space() + len
-    }
-}
-
-impl<const N: usize> ConsensusEncoding for [u8; N] {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        // For fixed length types we dont need a length byte
-        writer.write_all(&self[..])?;
-        Ok(())
-    }
-}
-
-impl<const N: usize> ConsensusEncodingSized for [u8; N] {
-    fn consensus_encode_exact_size(&self) -> usize {
-        N
-    }
-}
-
-impl<const N: usize> ConsensusDecoding for [u8; N] {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; N];
-        reader.read_exact(&mut buf)?;
-        Ok(buf)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use rand::{rngs::OsRng, RngCore};
-
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let mut subject = [0u8; 1024];
-        OsRng.fill_bytes(&mut subject);
-        check_consensus_encoding_correctness(subject).unwrap();
-
-        // &[u8] consensus encoding
-        let mut buf = Vec::new();
-        let slice = subject.as_slice();
-        slice.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), slice.consensus_encode_exact_size());
-        let mut reader = buf.as_slice();
-        let decoded: MaxSizeBytes<1024> = ConsensusDecoding::consensus_decode(&mut reader).unwrap();
-        assert_eq!(&*decoded, slice);
-        assert!(reader.is_empty());
-
-        // Get vec encoding with length byte
-        let subject = MaxSizeBytes::<1024>::from_bytes_checked(&subject).unwrap();
-        check_consensus_encoding_correctness(subject).unwrap();
     }
 }

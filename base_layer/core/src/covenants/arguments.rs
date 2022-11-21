@@ -22,20 +22,25 @@
 
 use std::{
     fmt::{Display, Formatter},
-    io,
+    io::{self},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::{
+    hex::{to_hex, Hex},
+    ByteArray,
+};
 
+use super::decoder::CovenantDecodeError;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
+    consensus::MaxSizeBytes,
     covenants::{
         byte_codes,
         covenant::Covenant,
-        decoder::{CovenantDecodeError, CovenantReadExt},
+        decoder::CovenantReadExt,
         encoder::CovenentWriteExt,
         error::CovenantError,
         fields::{OutputField, OutputFields},
@@ -65,21 +70,26 @@ impl CovenantArg {
         byte_codes::is_valid_arg_code(code)
     }
 
-    pub fn read_from<R: io::Read>(reader: &mut R, code: u8) -> Result<Self, CovenantDecodeError> {
+    pub fn read_from(reader: &mut &[u8], code: u8) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
         match code {
             ARG_HASH => {
-                let mut hash = [0u8; 32];
-                reader.read_exact(&mut hash)?;
+                // let mut hash = [0u8; 32];
+                let hash: [u8; 32] = BorshDeserialize::deserialize(reader)?;
                 Ok(CovenantArg::Hash(hash.into()))
             },
             ARG_PUBLIC_KEY => {
-                let pk = PublicKey::consensus_decode(reader)?;
+                let pk = PublicKey::deserialize(reader)?;
                 Ok(CovenantArg::PublicKey(pk))
             },
-            ARG_COMMITMENT => Ok(CovenantArg::Commitment(Commitment::consensus_decode(reader)?)),
+            ARG_COMMITMENT => {
+                println!("here {:?}", reader);
+                let x = Commitment::deserialize(reader);
+                println!("x {:?}", x);
+                Ok(CovenantArg::Commitment(x?))
+            },
             ARG_TARI_SCRIPT => {
-                let script = TariScript::consensus_decode(reader)?;
+                let script = TariScript::deserialize(reader)?;
                 Ok(CovenantArg::TariScript(script))
             },
             ARG_COVENANT => {
@@ -87,15 +97,15 @@ impl CovenantArg {
                 // Do not use consensus_decoding here because the compiler infinitely recurses to resolve the R generic,
                 // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe
                 // TODO: Impose a limit on depth of covenants within covenants
-                let covenant = Covenant::from_bytes(&buf)?;
+                let covenant = Covenant::from_bytes(&mut buf.as_bytes())?;
                 Ok(CovenantArg::Covenant(covenant))
             },
             ARG_OUTPUT_TYPE => {
-                let output_type = OutputType::consensus_decode(reader)?;
+                let output_type = OutputType::deserialize(reader)?;
                 Ok(CovenantArg::OutputType(output_type))
             },
             ARG_UINT => {
-                let v = u64::consensus_decode(reader)?;
+                let v = u64::deserialize(reader)?;
                 Ok(CovenantArg::Uint(v))
             },
             ARG_OUTPUT_FIELD => {
@@ -113,7 +123,7 @@ impl CovenantArg {
                 Ok(CovenantArg::OutputFields(fields))
             },
             ARG_BYTES => {
-                let buf = MaxSizeBytes::<MAX_BYTES_ARG_SIZE>::consensus_decode(reader)?;
+                let buf = MaxSizeBytes::<MAX_BYTES_ARG_SIZE>::deserialize(reader)?;
                 Ok(CovenantArg::Bytes(buf.into()))
             },
 
@@ -133,15 +143,15 @@ impl CovenantArg {
             },
             PublicKey(pk) => {
                 writer.write_u8_fixed(ARG_PUBLIC_KEY)?;
-                pk.consensus_encode(writer)?;
+                pk.serialize(writer)?;
             },
             Commitment(commitment) => {
                 writer.write_u8_fixed(ARG_COMMITMENT)?;
-                commitment.consensus_encode(writer)?;
+                commitment.serialize(writer)?;
             },
             TariScript(script) => {
                 writer.write_u8_fixed(ARG_TARI_SCRIPT)?;
-                script.consensus_encode(writer)?;
+                script.serialize(writer)?;
             },
             Covenant(covenant) => {
                 writer.write_u8_fixed(ARG_COVENANT)?;
@@ -151,11 +161,11 @@ impl CovenantArg {
             },
             OutputType(output_type) => {
                 writer.write_u8_fixed(ARG_OUTPUT_TYPE)?;
-                output_type.consensus_encode(writer)?;
+                output_type.serialize(writer)?;
             },
             Uint(int) => {
                 writer.write_u8_fixed(ARG_UINT)?;
-                int.consensus_encode(writer)?;
+                int.serialize(writer)?;
             },
             OutputField(field) => {
                 writer.write_u8_fixed(ARG_OUTPUT_FIELD)?;
@@ -167,7 +177,7 @@ impl CovenantArg {
             },
             Bytes(bytes) => {
                 writer.write_u8_fixed(ARG_BYTES)?;
-                bytes.consensus_encode(writer)?;
+                bytes.serialize(writer)?;
             },
         }
 
@@ -295,28 +305,35 @@ mod test {
 
         #[test]
         fn test() {
-            test_case(CovenantArg::Uint(2048), &[ARG_UINT, 0x80, 0x10][..]);
+            test_case(CovenantArg::Uint(2048), &[ARG_UINT, 0, 8, 0, 0, 0, 0, 0, 0][..]);
             test_case(
                 CovenantArg::Covenant(covenant!(identity())),
                 &[ARG_COVENANT, 0x01, 0x20][..],
             );
             test_case(
                 CovenantArg::Bytes(vec![0x01, 0x02, 0xaa]),
-                &[ARG_BYTES, 0x03, 0x01, 0x02, 0xaa][..],
+                &[ARG_BYTES, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0xaa][..],
             );
             test_case(
                 CovenantArg::Commitment(Commitment::default()),
-                &from_hex("030000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                &from_hex("03200000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(
                 CovenantArg::PublicKey(PublicKey::default()),
-                &from_hex("020000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                &from_hex("02200000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(
                 CovenantArg::Hash(FixedHash::zero()),
                 &from_hex("010000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
-            test_case(CovenantArg::TariScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);
+            test_case(CovenantArg::TariScript(script!(Nop)), &[
+                ARG_TARI_SCRIPT,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x04,
+            ]);
             test_case(CovenantArg::OutputField(OutputField::Covenant), &[
                 ARG_OUTPUT_FIELD,
                 FIELD_COVENANT,

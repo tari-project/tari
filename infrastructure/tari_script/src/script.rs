@@ -18,6 +18,7 @@
 // pending updates to Dalek/Digest
 use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, ops::Deref};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
 use sha2::Sha256;
 use sha3::Sha3_256;
@@ -54,7 +55,7 @@ macro_rules! script {
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TariScript {
     script: Vec<Opcode>,
 }

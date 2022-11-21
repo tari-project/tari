@@ -32,12 +32,9 @@ mod error;
 use core::ptr;
 use std::{convert::TryFrom, ffi::CString, slice};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
-use tari_core::{
-    blocks::BlockHeader,
-    consensus::{ConsensusDecoding, ToConsensusBytes},
-    proof_of_work::sha3x_difficulty,
-};
+use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
 use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::error::{InterfaceError, MiningHelperError};
@@ -222,7 +219,7 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
         return;
     }
     let mut bytes = (*header).0.as_slice();
-    let mut block_header = match BlockHeader::consensus_decode(&mut bytes) {
+    let mut block_header: BlockHeader = match BorshDeserialize::deserialize(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
@@ -231,7 +228,9 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
         },
     };
     block_header.nonce = nonce;
-    (*header).0 = block_header.to_consensus_bytes();
+    let mut buffer = Vec::new();
+    BorshSerialize::serialize(&block_header, &mut buffer).unwrap();
+    (*header).0 = buffer;
 }
 
 /// Returns the difficulty of a share
@@ -255,7 +254,7 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
         return 1;
     }
     let mut bytes = (*header).0.as_slice();
-    let block_header = match BlockHeader::consensus_decode(&mut bytes) {
+    let block_header = match BorshDeserialize::deserialize(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
@@ -302,7 +301,7 @@ pub unsafe extern "C" fn share_validate(
         return 2;
     }
     let mut bytes = (*header).0.as_slice();
-    let block_header = match BlockHeader::consensus_decode(&mut bytes) {
+    let block_header = match BlockHeader::deserialize(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
@@ -340,6 +339,7 @@ mod tests {
     use tari_common::configuration::Network;
     use tari_core::{
         blocks::{genesis_block::get_genesis_block, Block},
+        borsh::ToBytes,
         proof_of_work::Difficulty,
     };
 
@@ -376,7 +376,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.to_consensus_bytes();
+            let header_bytes = block.header.serialize_to_vec();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -405,7 +405,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.to_consensus_bytes();
+            let header_bytes = block.header.serialize_to_vec();
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
@@ -422,13 +422,13 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.to_consensus_bytes();
+            let header_bytes = block.header.serialize_to_vec();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, 1234, error_ptr);
             assert_eq!(error, 0);
-            let header = BlockHeader::consensus_decode(&mut (*byte_vec).0.as_slice()).unwrap();
+            let header: BlockHeader = BorshDeserialize::deserialize(&mut (*byte_vec).0.as_slice()).unwrap();
             assert_eq!(header.nonce, 1234);
             byte_vector_destroy(byte_vec);
         }
@@ -445,7 +445,7 @@ mod tests {
             let hash_hex_broken_ptr: *const c_char = CString::into_raw(hash_hex_broken) as *const c_char;
             let mut template_difficulty = 30000;
             let mut share_difficulty = 24000;
-            let header_bytes = block.header.to_consensus_bytes();
+            let header_bytes = block.header.serialize_to_vec();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -460,7 +460,7 @@ mod tests {
                 error_ptr,
             );
             assert_eq!(result, 2);
-            let header = BlockHeader::consensus_decode(&mut (*byte_vec).0.as_slice()).unwrap();
+            let header: BlockHeader = BorshDeserialize::deserialize(&mut (*byte_vec).0.as_slice()).unwrap();
             let hash = header.hash().to_hex();
             let hash_hex = CString::new(hash.clone()).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;

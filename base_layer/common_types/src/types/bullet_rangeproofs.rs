@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -35,7 +36,7 @@ use tari_utilities::{hex::*, ByteArray, ByteArrayError};
 use super::BulletRangeProofHasherBlake256;
 use crate::types::FixedHash;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
 pub struct BulletRangeProof(pub Vec<u8>);
 impl BulletRangeProof {
     /// Implement the hashing function for RangeProof for use in the MMR
@@ -83,7 +84,7 @@ impl Serialize for BulletRangeProof {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {
-            self.to_hex().serialize(serializer)
+            serializer.serialize_str(self.to_hex().as_str())
         } else {
             serializer.serialize_bytes(self.as_bytes())
         }
@@ -109,8 +110,8 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
         }
 
         if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            BulletRangeProof::from_hex(&s).map_err(de::Error::custom)
+            let s: String = Deserialize::deserialize(deserializer)?;
+            BulletRangeProof::from_hex(&s.as_str()).map_err(de::Error::custom)
         } else {
             deserializer.deserialize_bytes(RangeProofVisitor)
         }

@@ -25,6 +25,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
@@ -44,11 +45,11 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::ChainStorageError,
-    consensus::{emission::Emission, ConsensusDecoding, ConsensusEncoding, ConsensusManager, NetworkConsensus},
+    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
+    transactions::transaction_components::Transaction,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
@@ -594,9 +595,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();
-        let _ = header.consensus_encode(&mut header_bytes)?;
+        BorshSerialize::serialize(&header, &mut header_bytes).unwrap();
         let mut block_body_bytes = Vec::new();
-        let _ = block_body.consensus_encode(&mut block_body_bytes)?;
+        BorshSerialize::serialize(&block_body, &mut block_body_bytes).unwrap();
         let response = tari_rpc::GetNewBlockBlobResult {
             block_hash,
             header: header_bytes,
@@ -647,9 +648,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut header_bytes = request.header_blob.as_slice();
         let mut body_bytes = request.body_blob.as_slice();
         debug!(target: LOG_TARGET, "doing header");
-        let header = BlockHeader::consensus_decode(&mut header_bytes).map_err(|e| Status::internal(e.to_string()))?;
+
+        let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| Status::internal(e.to_string()))?;
         debug!(target: LOG_TARGET, "doing body");
-        let body = AggregateBody::consensus_decode(&mut body_bytes).map_err(|e| Status::internal(e.to_string()))?;
+        let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| Status::internal(e.to_string()))?;
         // let body = request.body_blob.try_into().unwrap();
 
         let block = Block::new(header, body);

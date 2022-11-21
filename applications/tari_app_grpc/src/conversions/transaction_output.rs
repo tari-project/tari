@@ -22,13 +22,11 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
 };
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
@@ -57,7 +55,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Metadata signature not provided".to_string())?
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
-        let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
+        let mut covenant = output.covenant.as_bytes();
+        let covenant = BorshDeserialize::deserialize(&mut covenant).map_err(|err| err.to_string())?;
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
         Ok(Self::new(
@@ -80,6 +79,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
 impl From<TransactionOutput> for grpc::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         let hash = output.hash().to_vec();
+        let mut covenant = Vec::new();
+        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
         grpc::TransactionOutput {
             hash,
             features: Some(output.features.into()),
@@ -94,7 +95,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
                 u_x: Vec::from(output.metadata_signature.u_x().as_bytes()),
                 u_y: Vec::from(output.metadata_signature.u_y().as_bytes()),
             }),
-            covenant: output.covenant.to_bytes(),
+            covenant,
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),

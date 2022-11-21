@@ -22,10 +22,10 @@
 //
 use std::{self, convert::TryFrom, sync::mpsc, thread, time::SystemTime};
 
+use borsh::BorshDeserialize;
 use futures::stream::StreamExt;
 use log::*;
 use tari_app_grpc::tari_rpc::BlockHeader;
-use tari_core::consensus::ConsensusDecoding;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -201,7 +201,8 @@ impl Controller {
             self.current_job_id = job_id;
             self.current_blob = blob.clone();
             self.current_difficulty_target = diff;
-            let tari_header = tari_core::blocks::BlockHeader::consensus_decode(&mut blob.as_slice())
+            let mut buffer = blob.as_slice();
+            let tari_header: tari_core::blocks::BlockHeader = BorshDeserialize::deserialize(&mut buffer)
                 .map_err(|_| Error::General("Byte Blob is not a valid header".to_string()))?;
             self.current_header = Some(tari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
             Ok(true)

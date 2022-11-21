@@ -41,7 +41,7 @@ impl<'a, R: io::Read> CovenantTokenDecoder<'a, R> {
     }
 }
 
-impl<R: io::Read> Iterator for CovenantTokenDecoder<'_, R> {
+impl Iterator for CovenantTokenDecoder<'_, &[u8]> {
     type Item = Result<CovenantToken, CovenantDecodeError>;
 
     fn next(&mut self) -> Option<Self::Item> {

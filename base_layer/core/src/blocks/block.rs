@@ -26,10 +26,9 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
@@ -38,7 +37,7 @@ use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
@@ -77,7 +76,7 @@ pub enum BlockValidationError {
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -266,29 +265,6 @@ impl BlockBuilder {
     }
 }
 
-impl ConsensusEncoding for Block {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.header.consensus_encode(writer)?;
-        self.body.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for Block {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.header.consensus_encode_exact_size() + self.body.consensus_encode_exact_size()
-    }
-}
-
-impl ConsensusDecoding for Block {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let header = BlockHeader::consensus_decode(reader)?;
-        let body = AggregateBody::consensus_decode(reader)?;
-        let block = Block::new(header, body);
-        Ok(block)
-    }
-}
-
 //---------------------------------- NewBlock --------------------------------------------//
 pub struct NewBlock {
     /// The block header.
@@ -329,18 +305,5 @@ impl From<&Block> for NewBlock {
                 .map(|kernel| kernel.excess_sig.get_signature().clone())
                 .collect(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tari_common::configuration::Network;
-
-    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
-
-    #[test]
-    fn block_header_encode_decode() {
-        let block = get_genesis_block(Network::LocalNet).block().clone();
-        check_consensus_encoding_correctness(block).unwrap();
     }
 }

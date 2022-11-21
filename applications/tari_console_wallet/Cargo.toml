@@ -7,7 +7,8 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
+# tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
+tari_crypto = { git = "https://github.com/cifko/tari-crypto.git", branch ="custom-test3", features = ["borsh"]  }
 tari_common = { path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_comms = { path = "../../comms/core" }
@@ -18,7 +19,8 @@ tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
+# tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
+tari_utilities = { git = "https://github.com/cifko/tari_utilities.git", branch = "add-borsh", features = ["borsh"]  }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 #console-subscriber = "0.1.3"

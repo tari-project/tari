@@ -34,7 +34,8 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized},
+    borsh::SerializedSize,
+    consensus::ConsensusConstants,
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -892,9 +893,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                OutputFeatures::default().consensus_encode_exact_size() +
-                    script![Nop].consensus_encode_exact_size() +
-                    Covenant::new().consensus_encode_exact_size(),
+                OutputFeatures::default().get_serialized_size() +
+                    script![Nop].get_serialized_size() +
+                    Covenant::new().get_serialized_size(),
             );
 
         let utxo_selection = match self
@@ -915,10 +916,11 @@ where
                 );
                 let fee_calc = self.get_fee_calc();
                 let output_features_estimate = OutputFeatures::default();
+
                 let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-                    output_features_estimate.consensus_encode_exact_size() +
-                        Covenant::new().consensus_encode_exact_size() +
-                        script![Nop].consensus_encode_exact_size(),
+                    output_features_estimate.get_serialized_size() +
+                        script![Nop].get_serialized_size() +
+                        Covenant::new().get_serialized_size(),
                 );
                 let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_metadata_size);
                 return Ok(Fee::normalize(fee));
@@ -962,9 +964,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                recipient_output_features.consensus_encode_exact_size() +
-                    recipient_script.consensus_encode_exact_size() +
-                    recipient_covenant.consensus_encode_exact_size(),
+                recipient_output_features.get_serialized_size() +
+                    recipient_script.get_serialized_size() +
+                    recipient_covenant.get_serialized_size(),
             );
 
         let input_selection = self
@@ -1135,9 +1137,9 @@ where
         let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
                 weighting.round_up_metadata_size({
-                    output.features().consensus_encode_exact_size() +
-                        output.covenant().consensus_encode_exact_size() +
-                        output.script().unwrap_or(&nop_script).consensus_encode_exact_size()
+                    output.features().get_serialized_size() +
+                        output.covenant().get_serialized_size() +
+                        output.script().unwrap_or(&nop_script).get_serialized_size()
                 })
         });
 
@@ -1244,14 +1246,13 @@ where
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
+
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() +
-                    script.consensus_encode_exact_size() +
-                    covenant.consensus_encode_exact_size(),
+                output_features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size(),
             );
 
         let input_selection = self
@@ -1462,9 +1463,9 @@ where
         // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
         let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-            output_features_estimate.consensus_encode_exact_size() +
-                Covenant::new().consensus_encode_exact_size() +
-                script![Nop].consensus_encode_exact_size(),
+            output_features_estimate.get_serialized_size() +
+                Covenant::new().get_serialized_size() +
+                script![Nop].get_serialized_size(),
         );
 
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
@@ -1553,7 +1554,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+                script!(Nop).get_serialized_size() + OutputFeatures::default().get_serialized_size(),
             )
     }
 

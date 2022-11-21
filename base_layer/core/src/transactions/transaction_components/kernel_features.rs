@@ -20,19 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io,
-    io::{Error, Read, Write},
-};
-
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 bitflags! {
     /// Options for a kernel's structure or use.
     /// TODO:  expand to accommodate Tari DAN transaction types, such as namespace and validator node registrations
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
@@ -67,38 +61,5 @@ impl KernelFeatures {
 impl Default for KernelFeatures {
     fn default() -> Self {
         KernelFeatures::empty()
-    }
-}
-
-impl ConsensusEncoding for KernelFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        writer.write_all(&[self.bits][..])?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for KernelFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        1
-    }
-}
-
-impl ConsensusDecoding for KernelFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; 1];
-        reader.read_exact(&mut buf)?;
-        Ok(KernelFeatures { bits: buf[0] })
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn test_consensus_encoding() {
-        check_consensus_encoding_correctness(KernelFeatures::create_coinbase()).unwrap();
     }
 }
