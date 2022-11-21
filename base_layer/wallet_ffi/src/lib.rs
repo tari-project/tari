@@ -8952,11 +8952,13 @@ mod test {
                 // Compare from Rust's perspective
                 assert_eq!(
                     (*mnemonic_wordlist_ffi).0,
-                    mnemonic_wordlist
-                        .to_vec()
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>()
+                    SeedWords::new(
+                        mnemonic_wordlist
+                            .to_vec()
+                            .iter()
+                            .map(|s| Hidden::hide(s.to_string()))
+                            .collect::<Vec<Hidden<String>>>()
+                    )
                 );
                 // Compare from C's perspective
                 let count = seed_words_get_length(mnemonic_wordlist_ffi, error_ptr);

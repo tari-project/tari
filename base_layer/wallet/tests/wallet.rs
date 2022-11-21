@@ -47,7 +47,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
@@ -62,7 +62,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::SafePassword;
+use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -795,16 +795,17 @@ async fn test_recovery_birthday() {
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
     // println!("{:?}", mnemonic_seq);
 
-    let seed_words: Vec<String> = [
+    let vec_words: Vec<Hidden<String>> = [
         "octubre", "rinon", "ameno", "rigido", "verbo", "dosis", "ocaso", "fallo", "tez", "ladron", "entrar", "pedal",
         "fortuna", "ahogo", "llanto", "mascara", "intuir", "buey", "cubrir", "anillo", "cajon", "entrar", "clase",
         "latir",
     ]
     .iter()
-    .map(|w| w.to_string())
+    .map(|w| Hidden::hide(w.to_string()))
     .collect();
+    let seed_words = SeedWords::new(vec_words);
 
-    let recovery_seed = CipherSeed::from_mnemonic(seed_words.as_slice(), None).unwrap();
+    let recovery_seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
     let birthday = recovery_seed.birthday();
 
     let wallet = create_wallet(
