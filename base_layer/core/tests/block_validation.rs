@@ -612,20 +612,6 @@ OutputFeatures::default()),
         )
         .is_err());
 
-    // lets break the median rules
-    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
-    // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
-    new_block.header.timestamp = genesis.header().timestamp.checked_sub(100.into()).unwrap();
-    find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
-    assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
-        .is_err());
-
     // lets break difficulty
     let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.nonce = OsRng.next_u64();
