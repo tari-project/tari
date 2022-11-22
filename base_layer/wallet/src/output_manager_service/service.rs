@@ -825,15 +825,15 @@ where
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
                 single_round_sender_data.sender_offset_public_key.clone(),
-                // Note: The commitment signature at this time is only partially built
-                TransactionOutput::create_partial_metadata_signature(
+                // Note: The signature at this time is only partially built
+                TransactionOutput::create_receiver_partial_metadata_signature(
                     TransactionOutputVersion::get_current_version(),
                     single_round_sender_data.amount,
                     &spending_key,
                     &single_round_sender_data.script,
                     &features,
                     &single_round_sender_data.sender_offset_public_key,
-                    &single_round_sender_data.public_commitment_nonce,
+                    &single_round_sender_data.ephemeral_public_nonce,
                     &single_round_sender_data.covenant,
                     &encrypted_value,
                     minimum_value_promise,
@@ -1186,12 +1186,12 @@ where
         for mut unblinded_output in outputs {
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            unblinded_output.with_sender_offset_public_key(sender_offset_public_key);
+            let ephemeral_private_key = PrivateKey::random(&mut OsRng);
+            let ephemeral_pub_key = PublicKey::from_secret_key(&ephemeral_private_key);
 
-            let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
-            let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
-
-            unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
-            unblinded_output.sign_as_sender(&sender_offset_private_key)?;
+            unblinded_output.sign_as_receiver(ephemeral_pub_key)?;
+            unblinded_output.sign_as_sender(&sender_offset_private_key, &ephemeral_private_key)?;
 
             let ub = unblinded_output.try_build()?;
             builder
@@ -1292,7 +1292,7 @@ where
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
         let minimum_amount_promise = MicroTari::zero();
-        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
             &spending_key.clone(),
@@ -1782,7 +1782,7 @@ where
             )?;
 
             let minimum_amount_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            let commitment_signature = TransactionOutput::create_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 amount_per_split,
                 &spending_key,
@@ -2001,7 +2001,7 @@ where
                 amount_per_split,
             )?;
             let minimum_value_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            let commitment_signature = TransactionOutput::create_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 amount_per_split,
                 &spending_key,
@@ -2208,7 +2208,7 @@ where
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
         let minimum_value_promise = MicroTari::zero();
-        let commitment_signature = TransactionOutput::create_final_metadata_signature(
+        let commitment_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             aftertax_amount,
             &spending_key,

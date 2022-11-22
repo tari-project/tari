@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
-    ComSignature,
+    ComAndPubSignature,
     Commitment,
     CommitmentFactory,
     FixedHash,
@@ -85,7 +85,7 @@ pub struct TransactionOutput {
     /// Tari script offset pubkey, K_O
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
-    pub metadata_signature: ComSignature,
+    pub metadata_signature: ComAndPubSignature,
     /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
@@ -107,7 +107,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
         minimum_value_promise: MicroTari,
@@ -132,7 +132,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
         minimum_value_promise: MicroTari,
@@ -198,16 +198,19 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            self.metadata_signature.public_nonce(),
+            self.metadata_signature.ephemeral_commitment(),
+            self.metadata_signature.ephemeral_pubkey(),
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
             self.minimum_value_promise,
         );
         if !self.metadata_signature.verify_challenge(
-            &(&self.commitment + &self.sender_offset_public_key),
+            &self.commitment,
+            &self.sender_offset_public_key,
             &challenge,
             &CommitmentFactory::default(),
+            &mut OsRng,
         ) {
             return Err(TransactionError::InvalidSignatureError(
                 "Metadata signature not valid!".to_string(),
@@ -269,39 +272,22 @@ impl TransactionOutput {
         matches!(self.features.output_type, OutputType::Burn)
     }
 
-    /// Convenience function that returns the challenge for the metadata commitment signature
-    pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> [u8; 32] {
-        let nonce_commitment = match partial_commitment_nonce {
-            None => self.metadata_signature.public_nonce().clone(),
-            Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
-        };
-        TransactionOutput::build_metadata_signature_challenge(
-            self.version,
-            &self.script,
-            &self.features,
-            &self.sender_offset_public_key,
-            &nonce_commitment,
-            &self.commitment,
-            &self.covenant,
-            &self.encrypted_value,
-            self.minimum_value_promise,
-        )
-    }
-
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
         version: TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
-        public_commitment_nonce: &Commitment,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
         commitment: &Commitment,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
-            .chain(public_commitment_nonce)
+            .chain(ephemeral_pubkey)
+            .chain(ephemeral_commitment)
             .chain(script)
             .chain(features)
             .chain(sender_offset_public_key)
@@ -314,28 +300,22 @@ impl TransactionOutput {
         }
     }
 
-    // Create commitment signature for the metadata
-
-    fn create_metadata_signature(
+    // Create partial commitment signature for the metadata for the receiver
+    pub fn create_receiver_partial_metadata_signature(
         version: TransactionOutputVersion,
         value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
-        partial_commitment_nonce: Option<&PublicKey>,
-        sender_offset_private_key: Option<&PrivateKey>,
+        ephemeral_pubkey: &PublicKey,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
-    ) -> Result<ComSignature, TransactionError> {
+    ) -> Result<ComAndPubSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
         let nonce_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
-        let nonce_commitment = match partial_commitment_nonce {
-            None => nonce_commitment,
-            Some(partial_nonce) => &nonce_commitment + partial_nonce,
-        };
         let pk_value = PrivateKey::from(value.as_u64());
         let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
         let e = TransactionOutput::build_metadata_signature_challenge(
@@ -344,55 +324,70 @@ impl TransactionOutput {
             output_features,
             sender_offset_public_key,
             &nonce_commitment,
+            ephemeral_pubkey,
             &commitment,
             covenant,
             encrypted_value,
             minimum_value_promise,
         );
-        let secret_x = match sender_offset_private_key {
-            None => spending_key.clone(),
-            Some(key) => spending_key + key,
-        };
-        Ok(ComSignature::sign(
+        Ok(ComAndPubSignature::sign(
             &pk_value,
-            &secret_x,
+            &spending_key,
+            &PrivateKey::default(),
             &nonce_a,
             &nonce_b,
+            &PrivateKey::default(),
             &e,
             &CommitmentFactory::default(),
         )?)
     }
 
-    /// Create partial commitment signature for the metadata, usually done by the receiver
-    pub fn create_partial_metadata_signature(
+    // Create partial commitment signature for the metadata for the sender
+    pub fn create_sender_partial_metadata_signature(
         version: TransactionOutputVersion,
-        value: MicroTari,
-        spending_key: &BlindingFactor,
+        commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
         script: &TariScript,
         output_features: &OutputFeatures,
-        sender_offset_public_key: &PublicKey,
-        partial_commitment_nonce: &PublicKey,
+        sender_offset_private_key: &PrivateKey,
+        ephemeral_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
-    ) -> Result<ComSignature, TransactionError> {
-        TransactionOutput::create_metadata_signature(
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let random_key = PrivateKey::random(&mut OsRng);
+        let nonce = match ephemeral_private_key {
+            Some(v) => v,
+            None => &random_key,
+        };
+        let public_nonce = PublicKey::from_secret_key(nonce);
+        let e = TransactionOutput::build_metadata_signature_challenge(
             version,
-            value,
-            spending_key,
             script,
             output_features,
-            sender_offset_public_key,
-            Some(partial_commitment_nonce),
-            None,
+            &sender_offset_public_key,
+            &ephemeral_commitment,
+            &public_nonce,
+            &commitment,
             covenant,
             encrypted_value,
             minimum_value_promise,
-        )
+        );
+        Ok(ComAndPubSignature::sign(
+            &PrivateKey::default(),
+            &PrivateKey::default(),
+            &sender_offset_private_key,
+            &PrivateKey::default(),
+            &PrivateKey::default(),
+            nonce,
+            &e,
+            &CommitmentFactory::default(),
+        )?)
     }
 
-    /// Create final commitment signature for the metadata, signing with both keys
-    pub fn create_final_metadata_signature(
+    // Create complete commitment signature if you are both the sender and receiver
+    pub fn create_metadata_signature(
         version: TransactionOutputVersion,
         value: MicroTari,
         spending_key: &BlindingFactor,
@@ -402,21 +397,37 @@ impl TransactionOutput {
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
-    ) -> Result<ComSignature, TransactionError> {
-        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
-        TransactionOutput::create_metadata_signature(
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let nonce_a = PrivateKey::random(&mut OsRng);
+        let nonce_b = PrivateKey::random(&mut OsRng);
+        let nonce_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
+        let nonce_x = PrivateKey::random(&mut OsRng);
+        let public_nonce_x = PublicKey::from_secret_key(&nonce_x);
+        let pk_value = PrivateKey::from(value.as_u64());
+        let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let e = TransactionOutput::build_metadata_signature_challenge(
             version,
-            value,
-            spending_key,
             script,
             output_features,
             &sender_offset_public_key,
-            None,
-            Some(sender_offset_private_key),
+            &nonce_commitment,
+            &public_nonce_x,
+            &commitment,
             covenant,
             encrypted_value,
             minimum_value_promise,
-        )
+        );
+        Ok(ComAndPubSignature::sign(
+            &pk_value,
+            &spending_key,
+            &sender_offset_private_key,
+            &nonce_a,
+            &nonce_b,
+            &nonce_x,
+            &e,
+            &CommitmentFactory::default(),
+        )?)
     }
 
     pub fn witness_hash(&self) -> FixedHash {
@@ -442,7 +453,7 @@ impl Default for TransactionOutput {
             RangeProof::default(),
             TariScript::default(),
             PublicKey::default(),
-            ComSignature::default(),
+            ComAndPubSignature::default(),
             Covenant::default(),
             EncryptedValue::default(),
             MicroTari::zero(),
@@ -460,14 +471,16 @@ impl Display for TransactionOutput {
         };
         write!(
             fmt,
-            "{} [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}), Proof: {}",
+            "{} [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}, {}, {}), Proof: {}",
             self.commitment.to_hex(),
             self.features,
             self.script,
             self.sender_offset_public_key.to_hex(),
-            self.metadata_signature.u().to_hex(),
-            self.metadata_signature.v().to_hex(),
-            self.metadata_signature.public_nonce().to_hex(),
+            self.metadata_signature.u_a().to_hex(),
+            self.metadata_signature.u_x().to_hex(),
+            self.metadata_signature.u_y().to_hex(),
+            self.metadata_signature.ephemeral_commitment().to_hex(),
+            self.metadata_signature.ephemeral_pubkey().to_hex(),
             proof
         )
     }
@@ -510,7 +523,7 @@ impl ConsensusDecoding for TransactionOutput {
         let proof = RangeProof::consensus_decode(reader)?;
         let script = TariScript::consensus_decode(reader)?;
         let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
-        let metadata_signature = ComSignature::consensus_decode(reader)?;
+        let metadata_signature = ComAndPubSignature::consensus_decode(reader)?;
         let covenant = Covenant::consensus_decode(reader)?;
         let encrypted_value = EncryptedValue::consensus_decode(reader)?;
         let minimum_value_promise = MicroTari::consensus_decode(reader)?;

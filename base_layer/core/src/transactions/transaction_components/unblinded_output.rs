@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
     BulletRangeProof,
-    ComSignature,
+    ComAndPubSignature,
     CommitmentFactory,
     FixedHash,
     PrivateKey,
@@ -87,7 +87,7 @@ pub struct UnblindedOutput {
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
-    pub metadata_signature: ComSignature,
+    pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_value: EncryptedValue,
     pub minimum_value_promise: MicroTari,
@@ -106,7 +106,7 @@ impl UnblindedOutput {
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
@@ -137,7 +137,7 @@ impl UnblindedOutput {
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
@@ -163,23 +163,28 @@ impl UnblindedOutput {
     /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        let script_nonce_a = PrivateKey::random(&mut OsRng);
-        let script_nonce_b = PrivateKey::random(&mut OsRng);
-        let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
+        let r_a = PrivateKey::random(&mut OsRng);
+        let r_x = PrivateKey::random(&mut OsRng);
+        let r_y = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = factory.commit(&r_x, &r_a);
+        let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
 
         let challenge = TransactionInput::build_script_challenge(
             TransactionInputVersion::get_current_version(),
-            &nonce_commitment,
+            &ephemeral_commitment,
+            &ephemeral_pubkey,
             &self.script,
             &self.input_data,
             &PublicKey::from_secret_key(&self.script_private_key),
             &commitment,
         );
-        let script_signature = ComSignature::sign(
+        let script_signature = ComAndPubSignature::sign(
             &self.value.into(),
-            &(&self.script_private_key + &self.spending_key),
-            &script_nonce_a,
-            &script_nonce_b,
+            &self.spending_key,
+            &self.script_private_key,
+            &r_a,
+            &r_x,
+            &r_y,
             &challenge,
             factory,
         )

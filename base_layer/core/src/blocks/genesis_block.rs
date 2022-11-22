@@ -25,7 +25,7 @@ use std::sync::Arc;
 use chrono::DateTime;
 use tari_common::configuration::Network;
 use tari_common_types::types::{BulletRangeProof, Commitment, FixedHash, PrivateKey, PublicKey, Signature};
-use tari_crypto::{signatures::CommitmentSignature, tari_utilities::hex::*};
+use tari_crypto::{signatures::CommitmentAndPublicKeySignature, tari_utilities::hex::*};
 use tari_script::script;
 
 use crate::{
@@ -114,9 +114,11 @@ fn get_igor_genesis_block_raw() -> Block {
         PublicKey::from_hex("00f3a682fd38a79da6666301a727953ab55b880cd49b3c1bb24b2671756bce6a").unwrap(),
         PrivateKey::from_hex("7dbba37445fadf0fa0a64fc0b52afa652fb487b92429634298d83d794b38d905").unwrap(),
     );
-    let coinbase_meta_sig = CommitmentSignature::new(
+    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
         Commitment::from_hex("ac07390c975c96d3ebe6bc591571f31edd5426f89e0c5b8a8552d2bcdc335b43").unwrap(),
+        PublicKey::from_hex("00f3a682fd38a79da6666301a727953ab55b880cd49b3c1bb24b2671756bce6a").unwrap(),
         PrivateKey::from_hex("1a5c8bf91d85ac3a9bb616caae072f95f1a8629cbfec712a5f3cdb94981da502").unwrap(),
+        PrivateKey::from_hex("40976c932da8f0ee0adce6861fb3860639af6e38e280be0108bd80127ff78607").unwrap(),
         PrivateKey::from_hex("40976c932da8f0ee0adce6861fb3860639af6e38e280be0108bd80127ff78607").unwrap(),
     );
     let mut body = AggregateBody::new(
@@ -284,10 +286,12 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         PublicKey::from_hex("70e343b603ec1e0422b02e68d1051675e48b1d7aa26a46d79c0fa104762e1161").unwrap(),
         PrivateKey::from_hex("8d9ea6626b108ff5479c6378f605a9ffa9e3908ca2e374797d45957a26e9810b").unwrap(),
     );
-    let coinbase_meta_sig = CommitmentSignature::new(
+    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
         Commitment::from_hex("2432288b75a39e102de18a4556533bd340e0e6fd682d7d405fd5c9d834eb0f65").unwrap(),
+        PublicKey::from_hex("70e343b603ec1e0422b02e68d1051675e48b1d7aa26a46d79c0fa104762e1161").unwrap(),
         PrivateKey::from_hex("3dbc5debc8cd2d983bc09322488bc0cd60531e198f2925b2d0175ff0ef0efa0f").unwrap(),
         PrivateKey::from_hex("12cb8b669a8d16d78f2760529b651adc8213c41364c861cc0a2e218a0ce3db0a").unwrap(),
+        PrivateKey::from_hex("40976c932da8f0ee0adce6861fb3860639af6e38e280be0108bd80127ff78607").unwrap(),
     );
     let coinbase = TransactionOutput::new(
         TransactionOutputVersion::get_current_version(),

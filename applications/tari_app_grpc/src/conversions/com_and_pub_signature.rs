@@ -22,22 +22,23 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{ComSignature, Commitment, PrivateKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl TryFrom<grpc::ComSignature> for ComSignature {
+impl TryFrom<grpc::ComAndPubSignature> for ComAndPubSignature {
     type Error = String;
 
-    fn try_from(sig: grpc::ComSignature) -> Result<Self, Self::Error> {
-        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)
-            .map_err(|_| "Could not get public nonce commitment".to_string())?;
-        let signature_u =
-            PrivateKey::from_bytes(&sig.signature_u).map_err(|_| "Could not get partial signature u".to_string())?;
-        let signature_v =
-            PrivateKey::from_bytes(&sig.signature_v).map_err(|_| "Could not get partial signature v".to_string())?;
+    fn try_from(sig: grpc::ComAndPubSignature) -> Result<Self, Self::Error> {
+        let ephemeral_commitment = Commitment::from_bytes(&sig.ephemeral_commitment)
+            .map_err(|_| "Could not get ephemeral commitment".to_string())?;
+        let ephemeral_pubkey = PublicKey::from_bytes(&sig.ephemeral_pubkey)
+            .map_err(|_| "Could not get ephemeral public key".to_string())?;
+        let u_a = PrivateKey::from_bytes(&sig.u_a).map_err(|_| "Could not get partial signature u_a".to_string())?;
+        let u_x = PrivateKey::from_bytes(&sig.u_x).map_err(|_| "Could not get partial signature u_x".to_string())?;
+        let u_y = PrivateKey::from_bytes(&sig.u_y).map_err(|_| "Could not get partial signature u_y".to_string())?;
 
-        Ok(Self::new(public_nonce, signature_u, signature_v))
+        Ok(Self::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y))
     }
 }

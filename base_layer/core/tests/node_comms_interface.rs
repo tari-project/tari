@@ -289,7 +289,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         MicroTari::zero(),
     );
-    let metadata_signature = TransactionOutput::create_final_metadata_signature(
+    let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         amount,
         &key,

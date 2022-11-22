@@ -27,7 +27,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, Commitment, PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -415,7 +415,7 @@ where
         source_address: TariAddress,
         features: OutputFeatures,
         message: String,
-        metadata_signature: ComSignature,
+        metadata_signature: ComAndPubSignature,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,

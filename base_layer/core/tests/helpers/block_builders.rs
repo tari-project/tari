@@ -197,10 +197,12 @@ fn print_new_genesis_block(network: Network) {
     );
     println!();
     println!(
-        "Coinbase metasig: public_nonce {} signature_u {} signature_v {}",
-        block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
-        block.body.outputs()[0].metadata_signature.u().to_hex(),
-        block.body.outputs()[0].metadata_signature.v().to_hex(),
+        "Coinbase metasig: ephemeral_commitment {} ephemeral_public_key {} signature_u_x {} signature_u_a {} signature_u_y {}",
+        block.body.outputs()[0].metadata_signature.ephemeral_commitment().to_hex(),
+        block.body.outputs()[0].metadata_signature.ephemeral_pubkey().to_hex(),
+        block.body.outputs()[0].metadata_signature.u_x().to_hex(),
+        block.body.outputs()[0].metadata_signature.u_a().to_hex(),
+        block.body.outputs()[0].metadata_signature.u_y().to_hex(),
     );
     println!();
     println!("Genesis coinbase maturity: {}", lock_height);

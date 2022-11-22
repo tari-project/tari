@@ -36,28 +36,35 @@ struct Balance;
 struct ByteVector;
 
 /**
- * # Commitment Signatures
+ * # Commitment and public key (CAPK) signatures
  *
- * Find out more about Commitment signatures [here](https://eprint.iacr.org/2020/061.pdf) and
- * [here](https://documents.uow.edu.au/~wsusilo/ZCMS_IJNS08.pdf).
+ * Given a commitment `commitment = a*H + x*G` and group element `pubkey = y*G`, a CAPK signature is based on
+ * a representation proof of both openings: `(a, x)` and `y`. It additionally binds to arbitrary message data `m`
+ * via the challenge to produce a signature construction.
  *
- * In short, a Commitment Signature is made up of the tuple _(R, u, v)_, where _R_ is a random Pedersen commitment (of
- * two secret nonces) and _u_ and _v_ are the two publicly known private signature keys. It demonstrates ownership of
- * a specific commitment.
+ * It is used in Tari protocols as part of transaction authorization.
  *
- * The Commitment Signature signes a challenge with the value commitment's value and blinding factor. The two nonces
- * should be completely random and never reused - that responsibility lies with the calling function.
- *   C = a*H + x*G          ... (Pedersen commitment to the value 'a' using blinding factor 'x')
- *   R = k_2*H + k_1*G      ... (a public (Pedersen) commitment nonce created with the two random nonces)
- *   u = k_1 + e.x          ... (the first publicly known private key of the signature signing with 'x')
- *   v = k_2 + e.a          ... (the second publicly known private key of the signature signing with 'a')
- *   signature = (R, u, v)  ... (the final signature tuple)
+ * The construction works as follows:
+ * - Sample scalar nonces `r_a, r_x, r_y` uniformly at random.
+ * - Compute ephemeral values `ephemeral_commitment = r_a*H + r_x*G` and `ephemeral_pubkey = r_y*G`.
+ * - Use strong Fiat-Shamir to produce a challenge `e`. If `e == 0` (this is unlikely), abort and start over.
+ * - Compute the responses `u_a = r_a + e*a` and `u_x = r_x + e*x` and `u_y = r_y + e*y`.
  *
- * Verification of the Commitment Signature (R, u, v) entails the following:
- *   S = v*H + u*G          ... (Pedersen commitment of the publicly known private signature keys)
- *   S =? R + e.C           ... (final verification)
+ * The signature is the tuple `(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y)`.
+ *
+ * To verify:
+ * - The verifier computes the challenge `e` and rejects the signature if `e == 0` (this is unlikely).
+ * - Verification succeeds if and only if the following equations hold: `u_a*H + u*x*G == ephemeral_commitment +
+ *   e*commitment` `u_y*G == ephemeral_pubkey + e*pubkey`
+ *
+ * We note that it is possible to make verification slightly more efficient. To do so, the verifier selects a nonzero
+ * scalar weight `w` uniformly at random (not through Fiat-Shamir!) and accepts the signature if and only if the
+ * following equation holds:
+ *     `u_a*H + (u_x + w*u_y)*G - ephemeral_commitment - w*ephemeral_pubkey - e*commitment - (w*e)*pubkey == 0`
+ * The use of efficient multiscalar multiplication algorithms may also be useful for efficiency.
+ * The use of precomputation tables for `G` and `H` may also be useful for efficiency.
  */
-struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey;
+struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
 
 struct CompletedTransaction;
 
@@ -209,14 +216,14 @@ typedef PrivateKey TariPrivateKey;
 typedef struct TariAddress TariWalletAddress;
 
 /**
- * # A Commitment signature implementation on Ristretto
+ * # A commitment and public key (CAPK) signature implementation on Ristretto
  *
- * `RistrettoComSig` utilises the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek1)
- * implementation of `ristretto255` to provide Commitment Signature functionality utlizing Schnorr signatures.
+ * `RistrettoComAndPubSig` utilises the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek1)
+ * implementation of `ristretto255` to provide CAPK signature functionality.
  *
  * ## Examples
  *
- * You can create a `RistrettoComSig` from it's component parts:
+ * You can create a `RistrettoComAndPubSig` from its component parts:
  *
  * ```edition2018
  * # use tari_crypto::ristretto::*;
@@ -225,13 +232,18 @@ typedef struct TariAddress TariWalletAddress;
  * # use tari_utilities::ByteArray;
  * # use tari_utilities::hex::Hex;
  *
- * let r_pub = HomomorphicCommitment::from_hex(
+ * let ephemeral_commitment = HomomorphicCommitment::from_hex(
  *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
  * )
  * .unwrap();
- * let u = RistrettoSecretKey::from_bytes(b"10000000000000000000000010000000").unwrap();
- * let v = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
- * let sig = RistrettoComSig::new(r_pub, u, v);
+ * let ephemeral_pubkey = RistrettoPublicKey::from_hex(
+ *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
+ * )
+ * .unwrap();
+ * let u_a = RistrettoSecretKey::from_bytes(b"10000000000000000000000010000000").unwrap();
+ * let u_x = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
+ * let u_y = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
+ * let sig = RistrettoComAndPubSig::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y);
  * ```
  *
  * or you can create a signature for a commitment by signing a message with knowledge of the commitment and then
@@ -250,63 +262,29 @@ typedef struct TariAddress TariWalletAddress;
  * let mut rng = rand::thread_rng();
  * let a_val = RistrettoSecretKey::random(&mut rng);
  * let x_val = RistrettoSecretKey::random(&mut rng);
+ * let y_val = RistrettoSecretKey::random(&mut rng);
  * let a_nonce = RistrettoSecretKey::random(&mut rng);
  * let x_nonce = RistrettoSecretKey::random(&mut rng);
- * let e = Blake256::digest(b"Maskerade");
+ * let y_nonce = RistrettoSecretKey::random(&mut rng);
+ * let e = Blake256::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
  * let factory = PedersenCommitmentFactory::default();
  * let commitment = factory.commit(&x_val, &a_val);
- * // println!("commitment: {:?}", commitment.to_hex());
- * let sig = RistrettoComSig::sign(&a_val, &x_val, &a_nonce, &x_nonce, &e, &factory).unwrap();
- * // println!("sig: R {:?} u {:?} v {:?}", sig.public_nonce().to_hex(), sig.u().to_hex(), sig.v().to_hex());
- * assert!(sig.verify_challenge(&commitment, &e, &factory));
- * ```
- *
- * # Verifying signatures
- *
- * Given a signature, (R,u,v), a commitment C and a Challenge, e, you can verify that the signature is valid by
- * calling the `verify_challenge` method:
- *
- * ```edition2018
- * # use tari_crypto::ristretto::*;
- * # use tari_crypto::keys::*;
- * # use tari_crypto::commitment::HomomorphicCommitment;
- * # use tari_crypto::ristretto::pedersen::*;
- * # use tari_crypto::hash::blake2::Blake256;
- * # use tari_utilities::hex::*;
- * # use tari_utilities::ByteArray;
- * # use digest::Digest;
- * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
- *
- * let commitment = HomomorphicCommitment::from_hex(
- *     "167c6df11bf8106e89328c297e57423dc2a9be53df1ee63f6e50b4610104ab4a",
+ * let pubkey = RistrettoPublicKey::from_secret_key(&y_val);
+ * let sig = RistrettoComAndPubSig::sign(
+ *     &a_val, &x_val, &y_val, &a_nonce, &x_nonce, &y_nonce, &e, &factory,
  * )
  * .unwrap();
- * let r_nonce = HomomorphicCommitment::from_hex(
- *     "4033e00996e61df2ea1abd1494b751b946663e21a20e2729c6592712beb15356",
- * )
- * .unwrap();
- * let u = RistrettoSecretKey::from_hex(
- *     "f44bbc3374b172f77ffa8b904ddf0ad9f879b3e6183f9e440c57e7f01e851300",
- * )
- * .unwrap();
- * let v = RistrettoSecretKey::from_hex(
- *     "fd54afb2d8008c8a3af10272b24161247b2b7ae11687813fe9fb03e34dd7f009",
- * )
- * .unwrap();
- * let sig = RistrettoComSig::new(r_nonce, u, v);
- * let e = Blake256::digest(b"Maskerade");
- * let factory = PedersenCommitmentFactory::default();
- * assert!(sig.verify_challenge(&commitment, &e, &factory));
+ * assert!(sig.verify_challenge(&commitment, &pubkey, &e, &factory, &mut rng));
  * ```
  */
-typedef struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey RistrettoComSig;
+typedef struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey RistrettoComAndPubSig;
 
 /**
  * Define the explicit Commitment Signature implementation for the Tari base layer.
  */
-typedef RistrettoComSig ComSignature;
+typedef RistrettoComAndPubSig ComAndPubSignature;
 
-typedef ComSignature TariCommitmentSignature;
+typedef ComAndPubSignature TariCommitmentSignature;
 
 typedef struct Covenant TariCovenant;
 
