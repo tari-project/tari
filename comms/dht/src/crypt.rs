@@ -41,7 +41,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
     BufMut,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hidden};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
 use zeroize::Zeroize;
 
 use crate::{
@@ -51,6 +51,7 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     error::DhtEncryptError,
     version::DhtProtocolVersion,
+    HiddenBytesMut,
 };
 
 #[derive(Debug, Clone, Zeroize)]
@@ -78,19 +79,21 @@ fn get_message_padding_length(message_length: usize) -> usize {
 /// Pads a message to a multiple of MESSAGE_BASE_LENGTH excluding the additional prefix space.
 /// This function returns the number of additional padding bytes appended to the message.
 fn pad_message_to_base_length_multiple(
-    message: &mut Hidden<BytesMut>,
+    message: &mut HiddenBytesMut,
     additional_prefix_space: usize,
 ) -> Result<usize, DhtEncryptError> {
+    let message_len = message.reveal().len();
+
     // We require a 32-bit length representation, and also don't want to overflow after including this encoding
-    if message.reveal().len() > u32::MAX as usize {
+    if message_len > u32::MAX as usize {
         return Err(DhtEncryptError::PaddingError("Message is too long".to_string()));
     }
     let padding_length =
-        get_message_padding_length(message.len().checked_sub(additional_prefix_space).ok_or_else(|| {
+        get_message_padding_length(message_len.checked_sub(additional_prefix_space).ok_or_else(|| {
             DhtEncryptError::PaddingError("Message length shorter than the additional_prefix_space".to_string())
         })?);
 
-    message.resize(message.len() + padding_length, 0);
+    message.reveal_mut().resize(message_len + padding_length, 0);
 
     Ok(padding_length)
 }
@@ -184,7 +187,7 @@ pub fn decrypt_with_chacha20_poly1305(
 
 /// Encrypt the plain text using the ChaCha20 stream cipher. The message is assumed to have a 32-bit length prepended
 /// onto it.
-pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut Hidden<BytesMut>) -> Result<(), DhtEncryptError> {
+pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut HiddenBytesMut) -> Result<(), DhtEncryptError> {
     if plain_text.reveal().len() < size_of::<Nonce>() {
         return Err(DhtEncryptError::PaddingError(
             "Message is not long enough to include a nonce".to_string(),
@@ -202,7 +205,7 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &mut Hidden<BytesMut>) -> Res
 
     let mut cipher = ChaCha20::new(&cipher_key.0, &nonce);
 
-    cipher.apply_keystream(&mut plain_text[size_of::<Nonce>()..]);
+    cipher.apply_keystream(&mut plain_text.reveal_mut()[size_of::<Nonce>()..]);
     Ok(())
 }
 

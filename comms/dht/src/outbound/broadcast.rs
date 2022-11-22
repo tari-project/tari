@@ -62,6 +62,7 @@ use crate::{
     proto::envelope::DhtMessageType,
     version::DhtProtocolVersion,
     DhtConfig,
+    HiddenBytesMut,
 };
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
@@ -239,7 +240,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn handle_send_message(
         &mut self,
         params: FinalSendMessageParams,
-        body: BytesMut,
+        body: HiddenBytesMut,
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         trace!(target: LOG_TARGET, "Send params: {:?}", params);
@@ -406,7 +407,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         extra_flags: DhtMessageFlags,
         force_origin: bool,
         is_broadcast: bool,
-        body: BytesMut,
+        body: HiddenBytesMut,
         expires: Option<DateTime<Utc>>,
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
@@ -486,7 +487,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         message_type: DhtMessageType,
         flags: DhtMessageFlags,
         expires: Option<EpochTime>,
-        mut body: BytesMut,
+        mut body: HiddenBytesMut,
     ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {
@@ -499,7 +500,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
                 // Encrypt the message with the body with key message above
                 crypt::encrypt(&key_message, &mut body)?;
-                let encrypted_body = body.freeze();
+                let encrypted_body = body.reveal_mut().freeze();
 
                 // Produce domain separated signature signature
                 let mac_signature = crypt::create_message_domain_separated_hash_parts(
@@ -548,9 +549,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         &binding_message_representation,
                     )
                     .to_proto();
-                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze()))
+                    Ok((
+                        None,
+                        Some(signature.to_encoded_bytes().into()),
+                        body.reveal_mut().freeze(),
+                    ))
                 } else {
-                    Ok((None, None, body.freeze()))
+                    Ok((None, None, body.reveal_mut().freeze()))
                 }
             },
         }

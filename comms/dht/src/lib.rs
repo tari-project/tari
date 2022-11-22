@@ -112,7 +112,6 @@ mod rpc;
 mod schema;
 
 mod version;
-use tari_utilities::hidden_type;
 pub use version::DhtProtocolVersion;
 
 pub mod broadcast_strategy;
@@ -123,8 +122,9 @@ pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
 
-use tari_comms::types::CommsChallenge;
+use tari_comms::{types::CommsChallenge, BytesMut};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use zeroize::Zeroize;
 
 hash_domain!(DHTCommsHashDomain, "comms.dht");
 
@@ -144,11 +144,29 @@ pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsC
     DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("message_signature")
 }
 
-use tari_comms::BytesMut;
-use tari_utilities::Hidden;
-use zeroize::{DefaultIsZeroes, Zeroize};
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct HiddenBytesMut {
     inner: BytesMut,
+}
+
+impl HiddenBytesMut {
+    pub fn reveal(&self) -> &BytesMut {
+        &self.inner
+    }
+
+    pub fn reveal_mut(&self) -> &mut BytesMut {
+        &mut self.inner
+    }
+}
+
+impl Zeroize for HiddenBytesMut {
+    fn zeroize(&mut self) {
+        self.inner.iter().map(|_| 0u8).collect::<BytesMut>();
+    }
+}
+
+impl Drop for HiddenBytesMut {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
