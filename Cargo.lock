@@ -4825,8 +4825,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.16.1"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.16.1#fa042e498be144d8d2af7b96efe805c5af0b2d4f"
+version = "0.16.2"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.16.2#e4be3b0429bda2bda7efd872a27356baa278633d"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",
@@ -5132,15 +5132,17 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.4.7"
-source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.7#890a67140f56d9948ba64e8b0be981589875e75c"
+version = "0.4.9"
+source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.9#492468581fd10d555e743095a9aebe34b84023ce"
 dependencies = [
  "base58-monero 0.3.2",
  "base64 0.13.1",
  "bincode",
+ "generic-array",
  "newtype-ops",
  "serde",
  "serde_json",
+ "subtle",
  "thiserror",
  "zeroize",
 ]
