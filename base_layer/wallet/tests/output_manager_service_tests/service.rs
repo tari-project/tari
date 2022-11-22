@@ -52,10 +52,11 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
+use tari_utilities::Hidden;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -180,18 +181,14 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
     // println!("{:?}", mnemonic_seq);
 
-    let cipher_seed = CipherSeed::from_mnemonic(
-        &[
-            "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion",
-            "myself", "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park",
-            "midnight", "quantum", "bright", "carbon",
-        ]
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>(),
-        None,
-    )
-    .unwrap();
+    let words = [
+        "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion", "myself",
+        "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park", "midnight", "quantum",
+        "bright", "carbon",
+    ];
+    let seed_words = SeedWords::new(words.iter().map(|s| Hidden::hide(s.to_string())).collect::<Vec<_>>());
+
+    let cipher_seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
     let key_manager = KeyManagerHandle::new(cipher_seed.clone(), KeyManagerDatabase::new(ks_backend));
 
     let output_manager_service = OutputManagerService::new(
