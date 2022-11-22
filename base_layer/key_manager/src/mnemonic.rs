@@ -243,14 +243,14 @@ pub fn to_bytes_with_language(
     let mut rest_bits: u8 = 0;
 
     for curr_ind in 0..mnemonic_seq.len() {
-        let index = Hidden::hide(find_mnemonic_index_from_word(
+        let index = find_mnemonic_index_from_word(
             mnemonic_seq
                 .get_word(curr_ind)
                 .map_err(|_| MnemonicError::IndexOutOfBounds)?,
             *language,
-        )? as u64);
+        )? as u64;
         // Add 11 bits to the front
-        rest += index.reveal() << rest_bits;
+        rest += index << rest_bits;
         rest_bits += 11;
         while rest_bits >= 8 {
             // Get last 8 bits and shift it
