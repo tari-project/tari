@@ -55,9 +55,6 @@ pub struct BaseNodeStateMachineConfig {
     /// The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
     /// propagation by delaying lagging)
     pub blocks_behind_before_considered_lagging: u64,
-    /// Bypass range proof verification to speed up validation
-    // TODO: This is a potential conflict with 'BaseNodeConfig::bypass_range_proof_verification'
-    pub bypass_range_proof_verification: bool,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -66,7 +63,6 @@ impl Default for BaseNodeStateMachineConfig {
         Self {
             blockchain_sync_config: Default::default(),
             blocks_behind_before_considered_lagging: 0,
-            bypass_range_proof_verification: false,
         }
     }
 }
