@@ -167,19 +167,18 @@ fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Resu
 }
 
 /// Finds and returns the word for a specific index in a mnemonic word list defined by the specified language
-fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Result<String, MnemonicError> {
+fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Result<Hidden<String>, MnemonicError> {
     if index < MNEMONIC_ENGLISH_WORDS.len() {
         Ok(match language {
             // Select word according to specified language
-            MnemonicLanguage::ChineseSimplified => MNEMONIC_CHINESE_SIMPLIFIED_WORDS[index],
-            MnemonicLanguage::English => MNEMONIC_ENGLISH_WORDS[index],
-            MnemonicLanguage::French => MNEMONIC_FRENCH_WORDS[index],
-            MnemonicLanguage::Italian => MNEMONIC_ITALIAN_WORDS[index],
-            MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS[index],
-            MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS[index],
-            MnemonicLanguage::Spanish => MNEMONIC_SPANISH_WORDS[index],
-        }
-        .to_string())
+            MnemonicLanguage::ChineseSimplified => Hidden::hide(MNEMONIC_CHINESE_SIMPLIFIED_WORDS[index].to_string()),
+            MnemonicLanguage::English => Hidden::hide(MNEMONIC_ENGLISH_WORDS[index].to_string()),
+            MnemonicLanguage::French => Hidden::hide(MNEMONIC_FRENCH_WORDS[index].to_string()),
+            MnemonicLanguage::Italian => Hidden::hide(MNEMONIC_ITALIAN_WORDS[index].to_string()),
+            MnemonicLanguage::Japanese => Hidden::hide(MNEMONIC_JAPANESE_WORDS[index].to_string()),
+            MnemonicLanguage::Korean => Hidden::hide(MNEMONIC_KOREAN_WORDS[index].to_string()),
+            MnemonicLanguage::Spanish => Hidden::hide(MNEMONIC_SPANISH_WORDS[index].to_string()),
+        })
     } else {
         Err(MnemonicError::IndexOutOfBounds)
     }
@@ -205,7 +204,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
         let stop_index = start_index + group_bit_count;
         let sub_v = &bits[start_index..stop_index];
         let word_index = checked_bits_to_uint(sub_v).ok_or(MnemonicError::BitsToIntConversion)?;
-        let mnemonic_word = Hidden::hide(find_mnemonic_word_from_index(word_index, language)?);
+        let mnemonic_word = find_mnemonic_word_from_index(word_index, language)?;
         mnemonic_sequence.push(mnemonic_word);
     }
 
@@ -214,7 +213,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is detected
-pub fn to_bytes(mnemonic_seq: &SeedWords) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes(mnemonic_seq: &SeedWords) -> Result<Hidden<Vec<u8>>, MnemonicError> {
     let language = MnemonicLanguage::detect_language(mnemonic_seq)?;
     to_bytes_with_language(mnemonic_seq, &language)
 }
@@ -234,32 +233,35 @@ pub fn to_bytes(mnemonic_seq: &SeedWords) -> Result<Vec<u8>, MnemonicError> {
 /// 1) the first output 'a' is last 8 bits from input 'A', we have leftover 3 bits from 'A'
 /// 2) We add 5 bits from 'B' to generate 'b', the leftover is 6 bits from 'B'
 /// 3) We add 2 bits from 'C to generate 'c', now we have 8 bits needed to generate 'd' and we have 1 bit leftover.
-pub fn to_bytes_with_language(mnemonic_seq: &SeedWords, language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes_with_language(
+    mnemonic_seq: &SeedWords,
+    language: &MnemonicLanguage,
+) -> Result<Hidden<Vec<u8>>, MnemonicError> {
     const MASK: u64 = (1u64 << 8) - 1;
-    let mut bytes = Vec::new();
+    let mut bytes = Hidden::hide(Vec::new());
     let mut rest = 0u64;
     let mut rest_bits: u8 = 0;
 
     for curr_ind in 0..mnemonic_seq.len() {
-        let index = find_mnemonic_index_from_word(
+        let index = Hidden::hide(find_mnemonic_index_from_word(
             mnemonic_seq
                 .get_word(curr_ind)
                 .map_err(|_| MnemonicError::IndexOutOfBounds)?,
             *language,
-        )? as u64;
+        )? as u64);
         // Add 11 bits to the front
-        rest += index << rest_bits;
+        rest += index.reveal() << rest_bits;
         rest_bits += 11;
         while rest_bits >= 8 {
             // Get last 8 bits and shift it
-            bytes.push((rest & MASK) as u8);
+            bytes.reveal_mut().push((rest & MASK) as u8);
             rest >>= 8;
             rest_bits -= 8;
         }
     }
     // If we have any leftover, we write it.
     if rest > 0 {
-        bytes.push((rest & MASK) as u8);
+        bytes.reveal_mut().push((rest & MASK) as u8);
     }
     Ok(bytes)
 }
@@ -413,7 +415,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::ChineseSimplified).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::ChineseSimplified).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using English Simplified
         let desired_index = 1717;
@@ -421,7 +423,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::English).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::English).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using French Simplified
         let desired_index = 824;
@@ -429,7 +431,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::French).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::French).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using Italian Simplified
         let desired_index = 1123;
@@ -437,7 +439,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Italian).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Italian).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using Japanese Simplified
         let desired_index = 1856;
@@ -445,7 +447,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Japanese).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Japanese).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using Korean Simplified
         let desired_index = 345;
@@ -453,7 +455,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Korean).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Korean).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
 
         // Encoding and Decoding using Spanish Simplified
         let desired_index = 345;
@@ -461,7 +463,7 @@ mod test {
         let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Spanish).expect("");
         assert_eq!(desired_index, index);
         let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Spanish).expect("");
-        assert_eq!(desired_word, word);
+        assert_eq!(&desired_word, word.reveal());
     }
 
     #[test]
@@ -471,7 +473,7 @@ mod test {
         let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).expect("");
         let mismatched_bytes = secretkey_bytes
             .iter()
-            .zip(mnemonic_bytes.iter())
+            .zip(mnemonic_bytes.reveal().iter())
             .filter(|&(a, b)| a != b)
             .count();
         assert_eq!(mismatched_bytes, 0);
@@ -487,7 +489,7 @@ mod test {
             OsRng.fill_bytes(&mut secretkey_bytes);
             let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).unwrap();
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
-            assert_eq!(secretkey_bytes, mnemonic_bytes, "failed len = {}", len);
+            assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {}", len);
         }
     }
 }

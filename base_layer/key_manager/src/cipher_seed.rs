@@ -34,7 +34,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::{hidden::Hidden, SafePassword};
+use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
@@ -183,7 +183,7 @@ impl CipherSeed {
             self.entropy.as_ref(),
             CIPHER_SEED_VERSION,
             self.salt.as_ref(),
-            mac_key.reveal(),
+            &mac_key,
         )?;
 
         // Assemble the secret data to be encrypted: birthday, entropy, MAC
@@ -195,7 +195,7 @@ impl CipherSeed {
         secret_data.extend(&mac);
 
         // Encrypt the secret data
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.reveal(), self.salt.as_ref())?;
+        Self::apply_stream_cipher(&mut secret_data, &encryption_key, self.salt.as_ref())?;
 
         // Assemble the final seed: version, main salt, secret data, checksum
         let mut encrypted_seed =
@@ -264,7 +264,7 @@ impl CipherSeed {
 
         // Decrypt the secret data: birthday, entropy, MAC
         let mut secret_data = Zeroizing::new(encrypted_seed.split_off(1));
-        Self::apply_stream_cipher(&mut secret_data, encryption_key.reveal(), salt.as_ref())?;
+        Self::apply_stream_cipher(&mut secret_data, &encryption_key, salt.as_ref())?;
 
         // Parse secret data
         let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
@@ -279,13 +279,7 @@ impl CipherSeed {
         let birthday = u16::from_le_bytes(birthday_bytes);
 
         // Generate the MAC
-        let expected_mac = Self::generate_mac(
-            &birthday_bytes,
-            entropy.as_ref(),
-            version,
-            salt.as_ref(),
-            mac_key.reveal(),
-        )?;
+        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.as_ref(), version, salt.as_ref(), &mac_key)?;
 
         // Verify the MAC in constant time to avoid leaking data
         if mac.ct_eq(&expected_mac).unwrap_u8() == 0 {
@@ -301,7 +295,11 @@ impl CipherSeed {
     }
 
     /// Encrypt or decrypt data using ChaCha20
-    fn apply_stream_cipher(data: &mut [u8], encryption_key: &[u8], salt: &[u8]) -> Result<(), KeyManagerError> {
+    fn apply_stream_cipher(
+        data: &mut [u8],
+        encryption_key: &CipherSeedEncryptionKey,
+        salt: &[u8],
+    ) -> Result<(), KeyManagerError> {
         // The ChaCha20 nonce is derived from the main salt
         let encryption_nonce = mac_domain_hasher::<Blake256>(LABEL_CHACHA20_ENCODING)
             .chain(salt)
@@ -309,7 +307,10 @@ impl CipherSeed {
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
         // Encrypt/decrypt the data
-        let mut cipher = ChaCha20::new(Key::from_slice(encryption_key), Nonce::from_slice(encryption_nonce));
+        let mut cipher = ChaCha20::new(
+            Key::from_slice(encryption_key.reveal()),
+            Nonce::from_slice(encryption_nonce),
+        );
         cipher.apply_keystream(data);
 
         Ok(())
@@ -331,7 +332,7 @@ impl CipherSeed {
         entropy: &[u8],
         cipher_seed_version: u8,
         salt: &[u8],
-        mac_key: &[u8],
+        mac_key: &CipherSeedMacKey,
     ) -> Result<Vec<u8>, KeyManagerError> {
         // Check all lengths are valid
         if birthday.len() != CIPHER_SEED_BIRTHDAY_BYTES {
@@ -349,7 +350,7 @@ impl CipherSeed {
             .chain(entropy)
             .chain(&[cipher_seed_version])
             .chain(salt)
-            .chain(mac_key)
+            .chain(mac_key.reveal())
             .finalize()
             .as_ref()[..CIPHER_SEED_MAC_BYTES]
             .to_vec())
@@ -382,12 +383,12 @@ impl CipherSeed {
             .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 password hash".to_string()))?;
 
         // Split off the keys
-        let mut encryption_key = CipherSeedEncryptionKey::from([0u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
+        let mut encryption_key = CipherSeedEncryptionKey::from(SafeArray::default());
         encryption_key
             .reveal_mut()
             .copy_from_slice(&main_key.reveal()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
 
-        let mut mac_key = CipherSeedMacKey::from([0u8; CIPHER_SEED_MAC_KEY_BYTES]);
+        let mut mac_key = CipherSeedMacKey::from(SafeArray::default());
         mac_key
             .reveal_mut()
             .copy_from_slice(&main_key.reveal()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..]);
@@ -410,7 +411,7 @@ impl Mnemonic<CipherSeed> for CipherSeed {
         passphrase: Option<SafePassword>,
     ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes(mnemonic_seq)?;
-        CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+        CipherSeed::from_enciphered_bytes(bytes.reveal(), passphrase)
     }
 
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
@@ -420,7 +421,7 @@ impl Mnemonic<CipherSeed> for CipherSeed {
         passphrase: Option<SafePassword>,
     ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes_with_language(mnemonic_seq, &language)?;
-        CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+        CipherSeed::from_enciphered_bytes(bytes.reveal(), passphrase)
     }
 
     /// Generates a mnemonic sequence of words from the provided secret key

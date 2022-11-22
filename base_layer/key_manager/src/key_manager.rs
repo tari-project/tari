@@ -37,7 +37,7 @@ use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct DerivedKey<K>
-where K: SecretKey + Zeroize
+where K: SecretKey
 {
     #[derivative(Debug = "ignore")]
     #[serde(skip_serializing)]
@@ -59,7 +59,7 @@ pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> 
 
 impl<K, D> KeyManager<K, D>
 where
-    K: SecretKey + Zeroize,
+    K: SecretKey,
     D: Digest + LengthExtensionAttackResistant,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
@@ -125,7 +125,7 @@ where
 
 impl<K, D> Default for KeyManager<K, D>
 where
-    K: SecretKey + Zeroize,
+    K: SecretKey,
     D: Digest + LengthExtensionAttackResistant,
 {
     fn default() -> Self {

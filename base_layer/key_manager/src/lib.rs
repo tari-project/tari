@@ -7,7 +7,7 @@ use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
-use tari_utilities::{hidden::Hidden, hidden_type};
+use tari_utilities::{hidden::Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::Zeroize;
 
 use crate::{
@@ -39,8 +39,8 @@ pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
     DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(label)
 }
 
-hidden_type!(CipherSeedEncryptionKey, [u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
-hidden_type!(CipherSeedMacKey, [u8; CIPHER_SEED_MAC_KEY_BYTES]);
+hidden_type!(CipherSeedEncryptionKey, SafeArray<u8, CIPHER_SEED_ENCRYPTION_KEY_BYTES>);
+hidden_type!(CipherSeedMacKey, SafeArray< u8, CIPHER_SEED_MAC_KEY_BYTES>);
 
 /// Computes the birthday duration, in seconds, from the unix epoch. Currently, birthday is stored
 /// on the wallet as days since 2022-01-01, mainly to preserve space regarding u16 type. That said,
