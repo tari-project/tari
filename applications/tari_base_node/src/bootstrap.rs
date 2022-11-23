@@ -155,7 +155,7 @@ where B: BlockchainBackend + 'static
                 base_node_config.state_machine.clone(),
                 self.rules,
                 self.factories,
-                self.randomx_factory.clone(),
+                self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
             ))
             .build()
