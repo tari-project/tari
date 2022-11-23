@@ -27,7 +27,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -47,11 +47,17 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, tari_utilities::hex::Hex};
+use tari_crypto::{
+    hash::blake2::Blake256,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
+    SeedWords,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -508,6 +514,23 @@ where
         Ok(tx_id)
     }
 
+    pub fn sign_message(
+        &mut self,
+        secret: &RistrettoSecretKey,
+        message: &str,
+    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
+        RistrettoSchnorr::sign_message(secret, message.as_bytes())
+    }
+
+    pub fn verify_message_signature(
+        &mut self,
+        public_key: &RistrettoPublicKey,
+        signature: &Signature,
+        message: &str,
+    ) -> bool {
+        signature.verify_message(public_key, message)
+    }
+
     /// Appraise the expected outputs and a fee
     pub async fn preview_coin_split_with_commitments_no_amount(
         &mut self,
@@ -672,7 +695,7 @@ where
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<SeedWords, WalletError> {
         let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),

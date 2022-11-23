@@ -222,9 +222,13 @@ impl Discovering {
                 );
                 self.context
                     .connectivity
-                    .ban_peer(
+                    .ban_peer_until(
                         sync_peer.clone(),
-                        format!("Network discovery peer sent invalid peer '{}'", new_peer_node_id),
+                        self.context.config.ban_duration,
+                        format!(
+                            "Network discovery peer sent invalid peer '{}'. {}",
+                            new_peer_node_id, err
+                        ),
                     )
                     .await?;
                 Err(err.into())

@@ -264,7 +264,7 @@ mod test {
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let excess = &msg.public_excess + &PublicKey::from_secret_key(&p.spend_key);
         let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&r_sum, &excess, &m);
-        let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
+        let s = Signature::sign_raw(&p.spend_key, p.nonce, &e).unwrap();
         assert_eq!(data.partial_signature, s);
     }
 

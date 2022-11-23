@@ -30,10 +30,11 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,
 };
+use zeroize::Zeroize;
 
 use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
 
-#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct DerivedKey<K>
 where K: SecretKey
@@ -44,7 +45,7 @@ where K: SecretKey
     pub key_index: u64,
 }
 
-#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> {
     #[derivative(Debug = "ignore")]

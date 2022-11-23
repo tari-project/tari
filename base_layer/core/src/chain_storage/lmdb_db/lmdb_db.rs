@@ -1017,9 +1017,17 @@ impl LMDBDatabase {
         for row in inputs {
             // If input spends an output in this block, don't add it to the utxo set
             let output_hash = row.input.output_hash();
+
+            lmdb_delete(
+                txn,
+                &self.deleted_txo_mmr_position_to_height_index,
+                &row.mmr_position,
+                "deleted_txo_mmr_position_to_height_index",
+            )?;
             if output_rows.iter().any(|r| r.hash == output_hash) {
                 continue;
             }
+
             let mut input = row.input.clone();
 
             let utxo_mined_info = self.fetch_output_in_txn(txn, output_hash.as_slice())?.ok_or_else(|| {
@@ -1058,12 +1066,6 @@ impl LMDBDatabase {
                 input.commitment()?.as_bytes(),
                 &input.output_hash(),
                 "utxo_commitment_index",
-            )?;
-            lmdb_delete(
-                txn,
-                &self.deleted_txo_mmr_position_to_height_index,
-                &row.mmr_position,
-                "deleted_txo_mmr_position_to_height_index",
             )?;
         }
         Ok(())

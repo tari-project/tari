@@ -34,7 +34,7 @@ use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
@@ -50,7 +50,7 @@ use crate::{
     },
     validation::{
         block_validators::abort_on_drop::AbortOnDropJoinHandle,
-        helpers,
+        helpers::{self, check_header_timestamp_greater_than_median},
         BlockSyncBodyValidation,
         ValidationError,
     },
@@ -83,6 +83,32 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             concurrency,
             bypass_range_proof_verification,
         }
+    }
+
+    pub async fn check_median_timestamp(
+        &self,
+        constants: &ConsensusConstants,
+        block_header: &BlockHeader,
+    ) -> Result<(), ValidationError> {
+        if block_header.height == 0 {
+            return Ok(()); // Its the genesis block, so we dont have to check median
+        }
+
+        let height = block_header.height - 1;
+        let min_height = block_header
+            .height
+            .saturating_sub(constants.get_median_timestamp_count() as u64);
+        let timestamps = self
+            .db
+            .fetch_headers(min_height..=height)
+            .await?
+            .iter()
+            .map(|h| h.timestamp)
+            .collect::<Vec<_>>();
+
+        check_header_timestamp_greater_than_median(block_header, &timestamps)?;
+
+        Ok(())
     }
 
     async fn check_mmr_roots(&self, block: Block) -> Result<Block, ValidationError> {
@@ -490,6 +516,7 @@ impl<B: BlockchainBackend + 'static> BlockSyncBodyValidation for BlockValidator<
         );
 
         let constants = self.rules.consensus_constants(block.header.height);
+        self.check_median_timestamp(constants, &block.header).await?;
         helpers::check_block_weight(&block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
         let block = self.validate_block_body(block).await?;
