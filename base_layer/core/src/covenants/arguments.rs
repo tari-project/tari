@@ -332,7 +332,11 @@ mod test {
                 0x00,
                 0x00,
                 0x00,
-                0x04,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x73,
             ]);
             test_case(CovenantArg::OutputField(OutputField::Covenant), &[
                 ARG_OUTPUT_FIELD,

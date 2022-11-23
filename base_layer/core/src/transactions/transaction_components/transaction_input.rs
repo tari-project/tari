@@ -28,8 +28,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use rand::rngs::OsRng;
 use borsh::{BorshDeserialize, BorshSerialize};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::Hex};
@@ -463,6 +463,7 @@ impl Ord for TransactionInput {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
     OutputHash(HashOutput),

@@ -14,10 +14,8 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_app_grpc = { path = "../tari_app_grpc" }
-# tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.2" }
-tari_crypto = { git = "https://github.com/cifko/tari-crypto.git", branch ="custom-test3", features = ["borsh"]  }
-# tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.9" }
-tari_utilities = { git = "https://github.com/cifko/tari_utilities.git", branch = "add-borsh", features = ["borsh"]  }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.3" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 
 borsh = "0.9.3"
 crossterm = { version = "0.25.0" }

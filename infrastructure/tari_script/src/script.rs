@@ -16,7 +16,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // pending updates to Dalek/Digest
-use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, ops::Deref};
+use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::Deref};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
@@ -55,9 +55,25 @@ macro_rules! script {
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
 
-#[derive(Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
     script: Vec<Opcode>,
+}
+
+impl BorshSerialize for TariScript {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_all(self.to_bytes().as_bytes())?;
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for TariScript {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let script =
+            TariScript::from_bytes(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        *buf = &buf[script.to_bytes().len()..];
+        Ok(script)
+    }
 }
 
 impl TariScript {
@@ -121,10 +137,12 @@ impl TariScript {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.script.iter().fold(Vec::new(), |mut bytes, op| {
-            op.to_bytes(&mut bytes);
-            bytes
-        })
+        self.script
+            .iter()
+            .fold((self.size() as u64).to_le_bytes().to_vec(), |mut bytes, op| {
+                op.to_bytes(&mut bytes);
+                bytes
+            })
     }
 
     pub fn as_slice(&self) -> &[Opcode] {

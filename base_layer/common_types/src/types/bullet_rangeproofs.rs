@@ -111,7 +111,7 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
 
         if deserializer.is_human_readable() {
             let s: String = Deserialize::deserialize(deserializer)?;
-            BulletRangeProof::from_hex(&s.as_str()).map_err(de::Error::custom)
+            BulletRangeProof::from_hex(s.as_str()).map_err(de::Error::custom)
         } else {
             deserializer.deserialize_bytes(RangeProofVisitor)
         }

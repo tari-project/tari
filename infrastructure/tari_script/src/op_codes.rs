@@ -17,7 +17,6 @@
 
 use std::{fmt, ops::Deref};
 
-use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarInt;
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 use tari_utilities::{hex::Hex, ByteArrayError};
@@ -127,7 +126,7 @@ const OP_IF_THEN: u8 = 0x61;
 const OP_ELSE: u8 = 0x62;
 const OP_END_IF: u8 = 0x63;
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Opcode {
     // Block Height Checks
     /// Pops the top of the stack as `height`. Compare the current block height to `height`. Fails with
@@ -327,10 +326,11 @@ impl Opcode {
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Vec<Opcode>, ScriptError> {
+        let size = u64::from_le_bytes(bytes[..8].try_into().map_err(|_| ScriptError::InvalidInput)?);
         let mut script = Vec::new();
-        let mut bytes_copy = bytes;
+        let mut bytes_copy = &bytes[8..];
 
-        while !bytes_copy.is_empty() {
+        for _ in 0..size {
             let (opcode, bytes_left) = Opcode::read_next(bytes_copy)?;
             script.push(opcode);
             bytes_copy = bytes_left;

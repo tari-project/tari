@@ -234,7 +234,7 @@ impl TestParams {
         let output_features = OutputFeatures { ..Default::default() };
         self.fee()
             .weighting()
-            .round_up_metadata_size(&script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
+            .round_up_metadata_size(script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
             num_outputs
     }
 

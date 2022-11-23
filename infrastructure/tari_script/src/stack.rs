@@ -15,7 +15,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
@@ -58,7 +58,7 @@ pub const TYPE_PUBKEY: u8 = 4;
 pub const TYPE_SIG: u8 = 5;
 pub const TYPE_SCALAR: u8 = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackItem {
     Number(i64),
     Hash(HashValue),
@@ -178,9 +178,24 @@ stack_item_from!(RistrettoPublicKey => PublicKey);
 stack_item_from!(RistrettoSchnorr => Signature);
 stack_item_from!(ScalarValue => Scalar);
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExecutionStack {
     items: Vec<StackItem>,
+}
+
+impl BorshSerialize for ExecutionStack {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_all(self.to_bytes().as_bytes())?;
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for ExecutionStack {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let stack = Self::from_bytes(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        *buf = &buf[stack.to_bytes().len()..];
+        Ok(stack)
+    }
 }
 
 impl ExecutionStack {

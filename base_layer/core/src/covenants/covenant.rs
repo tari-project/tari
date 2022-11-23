@@ -139,7 +139,6 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::{
         covenant,
         covenants::test::{create_input, create_outputs},
