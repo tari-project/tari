@@ -65,7 +65,7 @@ jobs:
         working-directory: libwallets
         run: |
           ls -alhtR
-          find . -name "*.sha256sums" -print | xargs cat >> libwallets.txt.sha256sums-verify
+          find . -name "*.sha256sums" -type f -print | xargs cat >> libwallets.txt.sha256sums-verify
           cat libwallets.txt.sha256sums-verify
           sha256sum -c libwallets.txt.sha256sums-verify
 
@@ -90,10 +90,23 @@ jobs:
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v3
+        with:
+          path: libwallets
+
+#      - name: Setup changelog
+#        shell: bash
+#        working-directory: libwallets
+#        run: |
+#          find . -name changelog.md -type f -exec cp -vf {} "$GITHUB_WORKSPACE/" \;
+
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "libwallet*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+          #bodyFile: "changelog.md"
           prerelease: true
           draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true
