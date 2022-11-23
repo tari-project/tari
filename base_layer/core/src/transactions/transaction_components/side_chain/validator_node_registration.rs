@@ -141,7 +141,7 @@ mod test {
         use super::*;
 
         #[test]
-        fn it_returns_true_for_invalid_signature() {
+        fn it_returns_true_for_valid_signature() {
             let reg = create_instance();
             assert!(reg.is_valid_signature_for(b"valid"));
         }

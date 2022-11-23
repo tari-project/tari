@@ -4601,6 +4601,7 @@ dependencies = [
  "base64 0.13.1",
  "digest 0.9.0",
  "lazy_static",
+ "newtype-ops",
  "rand 0.7.3",
  "serde",
  "tari_common",
