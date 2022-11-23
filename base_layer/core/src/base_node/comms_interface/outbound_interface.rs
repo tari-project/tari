@@ -70,6 +70,7 @@ impl OutboundNodeCommsInterface {
                     hash,
                     // We always request compact inputs from peer
                     compact: true,
+                    orphans: true,
                 },
                 node_id,
             ))

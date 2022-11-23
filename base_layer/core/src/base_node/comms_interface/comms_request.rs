@@ -46,19 +46,38 @@ pub enum NodeCommsRequest {
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
+    FetchMatchingBlocks {
+        range: RangeInclusive<u64>,
+        compact: bool,
+    },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
-    GetBlockByHash { hash: HashOutput, compact: bool },
+    GetBlockByHash {
+        hash: HashOutput,
+        compact: bool,
+        orphans: bool,
+    },
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
-    FetchValidatorNodesKeys { height: u64 },
-    GetShardKey { height: u64, public_key: PublicKey },
-    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
-    FetchUnspentUtxosInBlock { block_hash: BlockHash },
+    FetchMempoolTransactionsByExcessSigs {
+        excess_sigs: Vec<PrivateKey>,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+    },
+    GetShardKey {
+        height: u64,
+        public_key: PublicKey,
+    },
+    FetchTemplateRegistrations {
+        start_height: u64,
+        end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

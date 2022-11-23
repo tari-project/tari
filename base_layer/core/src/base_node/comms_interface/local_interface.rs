@@ -258,7 +258,11 @@ impl LocalNodeCommsInterface {
     ) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::GetBlockByHash { hash, compact: false })
+            .call(NodeCommsRequest::GetBlockByHash {
+                hash,
+                compact: false,
+                orphans: false,
+            })
             .await??
         {
             NodeCommsResponse::HistoricalBlock(block) => Ok(*block),

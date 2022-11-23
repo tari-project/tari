@@ -30,6 +30,7 @@ message BlockHeights {
 message GetBlockByHashRequest {
     bytes hash = 1;
     bool compact = 2;
+    bool orphans = 3;
 }
 
 message Signatures {

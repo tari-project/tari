@@ -244,18 +244,32 @@ where B: BlockchainBackend + 'static
                 let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
             },
-            NodeCommsRequest::GetBlockByHash { hash, compact } => {
+            NodeCommsRequest::GetBlockByHash { hash, compact, orphans } => {
                 let block_hex = hash.to_hex();
                 debug!(
                     target: LOG_TARGET,
                     "A peer has requested a block with hash {} (compact = {})", block_hex, compact
                 );
 
+                let err = |e: ChainStorageError| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not provide requested block {} to peer because: {}",
+                        block_hex,
+                        e.to_string()
+                    );
+
+                    None
+                };
+
                 let maybe_block = match self.blockchain_db.fetch_block_by_hash(hash, compact).await {
                     Ok(Some(block)) => Some(block.try_into_block()?),
                     Ok(None) => {
-                        if let Ok(block) = self.blockchain_db.fetch_orphan(hash).await {
-                            Some(block)
+                        if orphans {
+                            match self.blockchain_db.fetch_orphan(hash).await {
+                                Ok(block) => Some(block),
+                                Err(e) => err(e),
+                            }
                         } else {
                             warn!(
                                 target: LOG_TARGET,
@@ -265,16 +279,7 @@ where B: BlockchainBackend + 'static
                             None
                         }
                     },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            block_hex,
-                            e.to_string()
-                        );
-
-                        None
-                    },
+                    Err(e) => err(e),
                 };
 
                 Ok(NodeCommsResponse::Block(Box::new(maybe_block)))

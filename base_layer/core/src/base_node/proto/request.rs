@@ -40,6 +40,7 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
             GetBlockByHash(req) => NodeCommsRequest::GetBlockByHash {
                 hash: req.hash.try_into().map_err(|_| "Malformed hash".to_string())?,
                 compact: req.compact,
+                orphans: req.orphans,
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
@@ -61,10 +62,11 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
         use NodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockByHash};
         match request {
-            GetBlockByHash { hash, compact } => {
+            GetBlockByHash { hash, compact, orphans } => {
                 Ok(ProtoNodeCommsRequest::GetBlockByHash(proto::GetBlockByHashRequest {
                     hash: hash.to_vec(),
                     compact,
+                    orphans,
                 }))
             },
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
