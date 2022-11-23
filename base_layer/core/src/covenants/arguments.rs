@@ -22,7 +22,7 @@
 
 use std::{
     fmt::{Display, Formatter},
-    io::{self},
+    io,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
