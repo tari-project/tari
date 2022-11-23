@@ -269,9 +269,36 @@ where B: BlockchainBackend + 'static
                 let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
             },
-            NodeCommsRequest::GetBlockByHash(hash) => {
-                let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
-                Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
+            NodeCommsRequest::GetBlockByHash { hash, compact } => {
+                let block_hex = hash.to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "A peer has requested a block with hash {} (compact = {})", block_hex, compact
+                );
+
+                let maybe_block = match self.blockchain_db.fetch_block_by_hash(hash, compact).await {
+                    Ok(Some(block)) => Some(block),
+                    Ok(None) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because not stored", block_hex,
+                        );
+
+                        None
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            block_hex,
+                            e.to_string()
+                        );
+
+                        None
+                    },
+                };
+
+                Ok(NodeCommsResponse::HistoricalBlock(Box::new(maybe_block)))
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;

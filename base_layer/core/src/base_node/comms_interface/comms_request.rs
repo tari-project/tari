@@ -57,7 +57,10 @@ pub enum NodeCommsRequest {
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
-    GetBlockByHash(HashOutput),
+    GetBlockByHash {
+        hash: HashOutput,
+        compact: bool,
+    },
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
@@ -106,7 +109,7 @@ impl Display for NodeCommsRequest {
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
-            GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
+            GetBlockByHash { hash, .. } => write!(f, "GetBlockByHash({})", hash.to_hex()),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
             GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
             FetchKernelByExcessSig(s) => write!(
