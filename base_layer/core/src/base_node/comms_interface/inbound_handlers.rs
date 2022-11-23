@@ -277,14 +277,18 @@ where B: BlockchainBackend + 'static
                 );
 
                 let maybe_block = match self.blockchain_db.fetch_block_by_hash(hash, compact).await {
-                    Ok(Some(block)) => Some(block),
+                    Ok(Some(block)) => Some(block.try_into_block()?),
                     Ok(None) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", block_hex,
-                        );
+                        if let Ok(block) = self.blockchain_db.fetch_orphan(hash).await {
+                            Some(block)
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not provide requested block {} to peer because not stored", block_hex,
+                            );
 
-                        None
+                            None
+                        }
                     },
                     Err(e) => {
                         warn!(
@@ -298,7 +302,7 @@ where B: BlockchainBackend + 'static
                     },
                 };
 
-                Ok(NodeCommsResponse::HistoricalBlock(Box::new(maybe_block)))
+                Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
