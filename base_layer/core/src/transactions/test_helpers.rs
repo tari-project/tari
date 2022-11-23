@@ -87,8 +87,8 @@ pub struct TestParams {
     pub sender_offset_private_key: PrivateKey,
     pub sender_sig_private_nonce: PrivateKey,
     pub sender_sig_public_nonce: PublicKey,
-    pub sender_private_commitment_nonce: PrivateKey,
-    pub sender_public_commitment_nonce: PublicKey,
+    pub ephemeral_private_nonce: PrivateKey,
+    pub sender_ephemeral_public_nonce: PublicKey,
     pub commitment_factory: CommitmentFactory,
     pub transaction_weight: TransactionWeight,
     pub rewind_data: RewindData,
@@ -145,8 +145,8 @@ impl TestParams {
             sender_offset_private_key,
             sender_sig_private_nonce: sender_sig_pvt_nonce.clone(),
             sender_sig_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
-            sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
-            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            ephemeral_private_nonce: sender_sig_pvt_nonce.clone(),
+            sender_ephemeral_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v1(),
             rewind_data: RewindData {
@@ -179,7 +179,7 @@ impl TestParams {
             EncryptedValue::default()
         };
 
-        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
             &self.spend_key,
@@ -688,7 +688,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     }
     for mut utxo in schema.to_outputs {
         let test_params = TestParams::new();
-        utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
+        utxo.metadata_signature = TransactionOutput::create_metadata_signature(
             output_version,
             utxo.value,
             &utxo.spending_key,
@@ -720,7 +720,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     let minimum_value_promise = MicroTari::zero();
 
-    let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
+    let change_metadata_sig = TransactionOutput::create_metadata_signature(
         output_version,
         change,
         &test_params_change_and_txn.change_spend_key,
@@ -791,7 +791,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+    let metadata_sig = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
         &keys.k,

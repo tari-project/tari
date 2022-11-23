@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -2083,7 +2083,7 @@ async fn scan_for_recovery_test() {
             inputs!(PublicKey::from_secret_key(&script_key)),
             script_key,
             PublicKey::default(),
-            ComSignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::new(),
             encrypted_value,

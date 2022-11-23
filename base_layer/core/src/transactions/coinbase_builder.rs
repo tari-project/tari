@@ -230,7 +230,7 @@ impl CoinbaseBuilder {
 
         let minimum_value_promise = MicroTari::zero();
 
-        let metadata_sig = TransactionOutput::create_final_metadata_signature(
+        let metadata_sig = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
             &spending_key,

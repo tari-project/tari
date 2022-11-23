@@ -269,8 +269,8 @@ fn test_coverage_chain_storage() {
     )
     .unwrap();
     assert_eq!(store.fetch_all_reorgs().unwrap(), vec![]);
-    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 3);
-    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 4002);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 2);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 2);
 
     let mut txn = DbTransaction::new();
     txn.insert_bad_block(*block0.hash(), 0);
@@ -1891,7 +1891,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
 }
 
 mod malleability {
-    use tari_common_types::types::{ComSignature, RangeProof};
+    use tari_common_types::types::{ComAndPubSignature, RangeProof};
     use tari_core::{
         blocks::Block,
         covenant,
@@ -1957,7 +1957,7 @@ mod malleability {
         fn test_script_signature() {
             check_input_malleability(|block: &mut Block| {
                 let input = &mut block.body.inputs_mut()[0];
-                input.script_signature = ComSignature::default();
+                input.script_signature = ComAndPubSignature::default();
             });
         }
     }
@@ -2031,7 +2031,7 @@ mod malleability {
         fn test_metadata_signature() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
-                output.metadata_signature = ComSignature::default();
+                output.metadata_signature = ComAndPubSignature::default();
             });
         }
 
