@@ -60,14 +60,14 @@ impl OutboundNodeCommsInterface {
     /// Fetch the Blocks corresponding to the provided block hashes from a specific base node.
     pub async fn request_blocks_by_hashes_from_peer(
         &mut self,
-        block_hashes: Vec<BlockHash>,
+        hash: BlockHash,
         node_id: Option<NodeId>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
             .call((
-                NodeCommsRequest::FetchBlocksByHash {
-                    block_hashes,
+                NodeCommsRequest::GetBlockByHash {
+                    hash,
                     // We always request compact inputs from peer
                     compact: true,
                 },

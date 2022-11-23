@@ -35,18 +35,11 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
-        use ProtoNodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
+        use ProtoNodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockByHash};
         let request = match self {
-            FetchBlocksByHash(req) => {
-                let block_hashes = req
-                    .block_hashes
-                    .into_iter()
-                    .map(|hash| hash.try_into().map_err(|_| "Malformed hash".to_string()))
-                    .collect::<Result<_, _>>()?;
-                NodeCommsRequest::FetchBlocksByHash {
-                    block_hashes,
-                    compact: req.compact,
-                }
+            GetBlockByHash(req) => NodeCommsRequest::GetBlockByHash {
+                hash: req.hash.try_into().map_err(|_| "Malformed hash".to_string())?,
+                compact: req.compact,
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
@@ -66,14 +59,14 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
-        use NodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
+        use NodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockByHash};
         match request {
-            FetchBlocksByHash { block_hashes, compact } => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(
-                proto::FetchBlocksByHashRequest {
-                    block_hashes: block_hashes.into_iter().map(|hash| hash.to_vec()).collect(),
+            GetBlockByHash { hash, compact } => {
+                Ok(ProtoNodeCommsRequest::GetBlockByHash(proto::GetBlockByHashRequest {
+                    hash: hash.to_vec(),
                     compact,
-                },
-            )),
+                }))
+            },
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
                 ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
                     excess_sigs: excess_sigs.into_iter().map(|sig| sig.to_vec()).collect(),

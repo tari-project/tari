@@ -169,31 +169,6 @@ where B: BlockchainBackend + 'static
                 let blocks = self.blockchain_db.fetch_blocks(range, compact).await?;
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksByHash { block_hashes, compact } => {
-                let mut blocks = Vec::with_capacity(block_hashes.len());
-                for block_hash in block_hashes {
-                    let block_hex = block_hash.to_hex();
-                    debug!(
-                        target: LOG_TARGET,
-                        "A peer has requested a block with hash {} (compact = {})", block_hex, compact
-                    );
-
-                    match self.blockchain_db.fetch_block_by_hash(block_hash, compact).await {
-                        Ok(Some(block)) => blocks.push(block),
-                        Ok(None) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", block_hex,
-                        ),
-                        Err(e) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            block_hex,
-                            e.to_string()
-                        ),
-                    }
-                }
-                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
             NodeCommsRequest::FetchBlocksByKernelExcessSigs(excess_sigs) => {
                 if excess_sigs.len() > MAX_REQUEST_BY_KERNEL_EXCESS_SIGS {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -629,7 +604,7 @@ where B: BlockchainBackend + 'static
     ) -> Result<Block, CommsInterfaceError> {
         let mut historical_block = self
             .outbound_nci
-            .request_blocks_by_hashes_from_peer(vec![block_hash], Some(source_peer.clone()))
+            .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
             .await?;
 
         return match historical_block.pop() {

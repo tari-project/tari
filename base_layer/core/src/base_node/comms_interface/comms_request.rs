@@ -46,41 +46,19 @@ pub enum NodeCommsRequest {
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks {
-        range: RangeInclusive<u64>,
-        compact: bool,
-    },
-    FetchBlocksByHash {
-        block_hashes: Vec<HashOutput>,
-        compact: bool,
-    },
+    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
-    GetBlockByHash {
-        hash: HashOutput,
-        compact: bool,
-    },
+    GetBlockByHash { hash: HashOutput, compact: bool },
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs {
-        excess_sigs: Vec<PrivateKey>,
-    },
-    FetchValidatorNodesKeys {
-        height: u64,
-    },
-    GetShardKey {
-        height: u64,
-        public_key: PublicKey,
-    },
-    FetchTemplateRegistrations {
-        start_height: u64,
-        end_height: u64,
-    },
-    FetchUnspentUtxosInBlock {
-        block_hash: BlockHash,
-    },
+    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
+    FetchValidatorNodesKeys { height: u64 },
+    GetShardKey { height: u64, public_key: PublicKey },
+    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
+    FetchUnspentUtxosInBlock { block_hash: BlockHash },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,9 +80,6 @@ impl Display for NodeCommsRequest {
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingBlocks { range, compact } => {
                 write!(f, "FetchMatchingBlocks ({:?}, {})", range, compact)
-            },
-            FetchBlocksByHash { block_hashes, compact } => {
-                write!(f, "FetchBlocksByHash (n={}, {})", block_hashes.len(), compact)
             },
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
