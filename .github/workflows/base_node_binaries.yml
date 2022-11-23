@@ -16,11 +16,16 @@ name: Build Matrix of Binaries
         required: true
         default: "development-tag"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   TBN_FILENAME: "tari_suite"
   TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
   toolchain: nightly-2022-05-01
   matrix-json-file: ".github/workflows/base_node_binaries.json"
+  CARGO_HTTP_MULTIPLEXING: false
 
 jobs:
   matrix-prep:
@@ -85,9 +90,8 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "VBRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+          echo "VBRANCH=$(echo ${{ env.GITHUB_REF_NAME }})" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "CARGO_HTTP_MULTIPLEXING=false" >> $GITHUB_ENV
 
       - name: Default Destination Folder
         run: |
@@ -426,10 +430,15 @@ jobs:
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v3
+
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "tari_*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+          #bodyFile: changelog.md
           prerelease: true
           draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true
