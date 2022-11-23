@@ -95,11 +95,7 @@ impl NewOutputSql {
                 .metadata_signature
                 .ephemeral_commitment()
                 .to_vec(),
-            metadata_signature_ephemeral_pubkey: output
-                .unblinded_output
-                .metadata_signature
-                .ephemeral_pubkey()
-                .to_vec(),
+            metadata_signature_ephemeral_pubkey: output.unblinded_output.metadata_signature.ephemeral_pubkey().to_vec(),
             metadata_signature_u_a: output.unblinded_output.metadata_signature.u_a().to_vec(),
             metadata_signature_u_x: output.unblinded_output.metadata_signature.u_x().to_vec(),
             metadata_signature_u_y: output.unblinded_output.metadata_signature.u_y().to_vec(),

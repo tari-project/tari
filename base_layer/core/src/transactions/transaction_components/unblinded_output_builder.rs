@@ -242,15 +242,18 @@ mod test {
     #[test]
     fn test_try_build() {
         let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
+        assert!(uob.sign_as_receiver(PublicKey::default(),).is_err());
         assert!(uob
-            .sign_as_receiver(PublicKey::default(), )
+            .sign_as_sender(&PrivateKey::default(), &PrivateKey::default())
             .is_err());
-        assert!(uob.sign_as_sender(&PrivateKey::default(),&PrivateKey::default()).is_err());
         let mut uob = uob.with_script(TariScript::new(vec![]));
         assert!(uob.clone().try_build().is_err());
-        assert!(uob.sign_as_receiver(PublicKey::default(), ).is_ok());
+        uob.with_sender_offset_public_key(PublicKey::default());
+        assert!(uob.sign_as_receiver(PublicKey::default()).is_ok());
         assert!(uob.clone().try_build().is_err());
-        assert!(uob.sign_as_sender(&PrivateKey::default(),&PrivateKey::default()).is_ok());
+        assert!(uob
+            .sign_as_sender(&PrivateKey::default(), &PrivateKey::default())
+            .is_ok());
         let uob = uob.with_input_data(ExecutionStack::new(vec![]));
         let uob = uob.with_script_private_key(RistrettoSecretKey::default());
         let uob = uob.with_features(OutputFeatures::default());

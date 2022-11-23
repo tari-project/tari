@@ -974,7 +974,7 @@ mod test {
             &encrypted_value,
             minimum_value_promise,
         )
-            .unwrap();
+        .unwrap();
         output.metadata_signature = &partial_metadata_signature + &partial_sender_metadata_signature;
         assert!(output.verify_metadata_signature().is_ok());
     }

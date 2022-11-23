@@ -268,8 +268,8 @@ fn test_coverage_chain_storage() {
     )
     .unwrap();
     assert_eq!(store.fetch_all_reorgs().unwrap(), vec![]);
-    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 3);
-    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 4002);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 2);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 2);
 
     let mut txn = DbTransaction::new();
     txn.insert_bad_block(*block0.hash(), 0);
