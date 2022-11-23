@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(dead_code, unused)]
+
 use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_crypto::tari_utilities::Hidden;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
@@ -35,6 +38,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::sync::broadcast;
+use zeroize::Zeroizing;
 
 use crate::wallet_modes::PeerConfig;
 
@@ -49,8 +53,9 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
         println!("Recovery Mode");
         println!();
         println!("Type or paste all of your seed words on one line, only separated by spaces.");
-        let input = rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?;
-        let seed_words: Vec<String> = input.split_whitespace().map(str::to_string).collect();
+        let input = Zeroizing::new(rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?);
+        let seed_words: SeedWords =
+            SeedWords::new(input.split_whitespace().map(|s| Hidden::hide(s.to_string())).collect());
 
         match CipherSeed::from_mnemonic(&seed_words, None) {
             Ok(seed) => break Ok(seed),
@@ -64,7 +69,7 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
 }
 
 /// Return seed matching the seed words.
-pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, ExitError> {
+pub fn get_seed_from_seed_words(seed_words: SeedWords) -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Return seed derived from the provided seed words");
     match CipherSeed::from_mnemonic(&seed_words, None) {
         Ok(seed) => Ok(seed),

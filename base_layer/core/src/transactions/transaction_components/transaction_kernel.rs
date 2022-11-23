@@ -276,8 +276,8 @@ mod tests {
             MicroTari::from(100),
             123,
             test_params.commit_value(321.into()),
-            Signature::sign(
-                test_params.spend_key.clone(),
+            Signature::sign_raw(
+                &test_params.spend_key,
                 test_params.nonce.clone(),
                 test_params.nonce.as_bytes(),
             )

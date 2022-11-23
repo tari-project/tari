@@ -28,15 +28,12 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 #[allow(clippy::struct_excessive_bools)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
     /// Create a default configuration file if it doesn't exist
     #[clap(long)]
     pub init: bool,
-    /// Enable tracing
-    #[clap(long, aliases = &["tracing", "enable-tracing"])]
-    pub tracing_enabled: bool,
     /// This will rebuild the db, adding block for block in
     // TODO: Should be a command rather
     #[clap(long, alias = "rebuild_db")]

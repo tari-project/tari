@@ -106,7 +106,7 @@ impl TransactionsTab {
                 .to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_public_key),
+                    app_state.get_alias(&t.destination_address),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -118,7 +118,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_public_key),
+                    app_state.get_alias(&t.source_address),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -200,7 +200,7 @@ impl TransactionsTab {
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_public_key),
+                    app_state.get_alias(&t.destination_address),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -212,7 +212,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_public_key),
+                    app_state.get_alias(&t.source_address),
                     Style::default().fg(text_color),
                 )));
                 let color = match (t.cancelled.is_some(), chain_height) {
@@ -328,16 +328,13 @@ impl TransactionsTab {
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{}", tx.source_public_key), Style::default().fg(Color::White))
+                    Span::styled(format!("{}", tx.source_address), Style::default().fg(Color::White))
                 };
             let destination_public_key =
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
-                    Span::styled(
-                        format!("{}", tx.destination_public_key),
-                        Style::default().fg(Color::White),
-                    )
+                    Span::styled(format!("{}", tx.destination_address), Style::default().fg(Color::White))
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = tx.amount.to_string();

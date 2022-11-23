@@ -55,8 +55,22 @@ pub type WalletSqlite = Wallet<
 >;
 
 hash_domain!(
-    WalletSecretKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.secret_keys",
+    WalletOutputRewindKeysDomain,
+    "com.tari.tari_project.base_layer.wallet.output_rewind_keys",
     1
 );
-type WalletSecretKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletSecretKeysDomain>;
+type WalletOutputRewindKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysDomain>;
+
+hash_domain!(
+    WalletOutputEncryptionKeysDomain,
+    "com.tari.tari_project.base_layer.wallet.output_encryption_keys",
+    1
+);
+type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputEncryptionKeysDomain>;
+
+hash_domain!(
+    WalletOutputSpendingKeysDomain,
+    "com.tari.tari_project.base_layer.wallet.output_spending_keys",
+    1
+);
+type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputSpendingKeysDomain>;

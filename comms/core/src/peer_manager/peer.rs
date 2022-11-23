@@ -157,7 +157,7 @@ impl Peer {
     pub fn offline_since(&self) -> Option<Duration> {
         self.offline_at
             .map(|offline_at| Utc::now().naive_utc() - offline_at)
-            .map(|since| Duration::from_millis(u64::try_from(since.num_milliseconds()).unwrap()))
+            .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
@@ -436,6 +436,8 @@ mod test {
         assert!(peer.offline_since().is_none());
         peer.set_offline(true);
         assert!(peer.offline_since().is_some());
+        peer.offline_at = Some(Utc::now().naive_utc() + chrono::Duration::seconds(10));
+        assert_eq!(peer.offline_since().unwrap(), Duration::from_secs(0));
     }
 
     #[test]

@@ -275,7 +275,6 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
-
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
@@ -362,6 +361,37 @@ where B: BlockchainBackend + 'static
                         transactions,
                         not_found,
                     },
+                ))
+            },
+            NodeCommsRequest::FetchValidatorNodesKeys { height } => {
+                let active_validator_nodes = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+                Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
+                    active_validator_nodes,
+                ))
+            },
+            NodeCommsRequest::GetShardKey { height, public_key } => {
+                let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
+                Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
+            },
+            NodeCommsRequest::FetchTemplateRegistrations {
+                start_height,
+                end_height,
+            } => {
+                let template_registrations = self
+                    .blockchain_db
+                    .fetch_template_registrations(start_height..=end_height)
+                    .await?;
+                Ok(NodeCommsResponse::FetchTemplateRegistrationsResponse(
+                    template_registrations,
+                ))
+            },
+            NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
+                let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
+                Ok(NodeCommsResponse::TransactionOutputs(
+                    utxos
+                        .into_iter()
+                        .filter_map(|utxo| utxo.into_unpruned_output())
+                        .collect(),
                 ))
             },
         }
@@ -774,11 +804,11 @@ where B: BlockchainBackend + 'static
         fn update_target_difficulty(block: &ChainBlock) {
             match block.header().pow_algo() {
                 PowAlgorithm::Sha3 => {
-                    metrics::target_difficulty_sha(block.height())
+                    metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
                 PowAlgorithm::Monero => {
-                    metrics::target_difficulty_monero(block.height())
+                    metrics::target_difficulty_monero()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

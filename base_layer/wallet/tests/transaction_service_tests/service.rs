@@ -38,6 +38,7 @@ use prost::Message;
 use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
@@ -139,6 +140,7 @@ use tari_wallet::{
         },
         TransactionServiceInitializer,
     },
+    util::wallet_identity::WalletIdentity,
 };
 use tempfile::tempdir;
 use tokio::{
@@ -170,7 +172,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let (publisher, subscription_factory) = pubsub_connector(100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(
-        node_identity,
+        node_identity.clone(),
         peers,
         publisher,
         database_path.as_ref().to_str().unwrap().to_owned(),
@@ -187,6 +189,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), None);
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), None);
     let kms_backend = KeyManagerSqliteDatabase::new(db_connection, None).unwrap();
+    let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
     let cipher = CipherSeed::new();
     let handles = StackBuilder::new(shutdown_signal)
@@ -199,7 +202,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             OutputManagerServiceConfig::default(),
             oms_backend,
             factories.clone(),
-            Network::Weatherwax.into(),
+            Network::LocalNet.into(),
             comms.node_identity(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
@@ -212,7 +215,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             },
             subscription_factory,
             ts_backend,
-            comms.node_identity(),
+            wallet_identity,
             factories,
             db.clone(),
         ))
@@ -286,21 +289,21 @@ async fn setup_transaction_service_no_comms(
     let server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = server.as_protocol_name();
 
-    let base_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
-    let mut mock_rpc_server = MockRpcServer::new(server, base_node_identity.clone());
+    let mut mock_rpc_server = MockRpcServer::new(server, node_identity.clone());
 
     mock_rpc_server.serve();
 
     let mut wallet_connectivity_service_mock = create_wallet_connectivity_mock();
 
     let mut rpc_server_connection = mock_rpc_server
-        .create_connection(base_node_identity.to_peer(), protocol_name.into())
+        .create_connection(node_identity.to_peer(), protocol_name.into())
         .await;
 
     wallet_connectivity_service_mock
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut rpc_server_connection).await);
-    wallet_connectivity_service_mock.set_base_node(base_node_identity.to_peer());
+    wallet_connectivity_service_mock.set_base_node(node_identity.to_peer());
     wallet_connectivity_service_mock.base_node_changed().await;
 
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
@@ -332,7 +335,7 @@ async fn setup_transaction_service_no_comms(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         wallet_connectivity_service_mock.clone(),
-        base_node_identity.clone(),
+        node_identity.clone(),
         key_manager,
     )
     .await
@@ -354,7 +357,7 @@ async fn setup_transaction_service_no_comms(
         max_tx_query_batch_size: 2,
         ..Default::default()
     });
-
+    let wallet_identity = WalletIdentity::new(node_identity.clone(), Network::LocalNet);
     let ts_service = TransactionService::new(
         test_config,
         ts_db,
@@ -369,7 +372,7 @@ async fn setup_transaction_service_no_comms(
         outbound_message_requester,
         wallet_connectivity_service_mock.clone(),
         event_publisher,
-        base_node_identity.clone(),
+        wallet_identity,
         factories,
         shutdown.to_signal(),
         base_node_service_handle,
@@ -387,7 +390,7 @@ async fn setup_transaction_service_no_comms(
         transaction_cancelled_message_channel,
         _shutdown: shutdown,
         _mock_rpc_server: mock_rpc_server,
-        base_node_identity,
+        base_node_identity: node_identity,
         base_node_rpc_mock_state,
         wallet_connectivity_service_mock,
         _rpc_server_connection: rpc_server_connection,
@@ -516,10 +519,10 @@ async fn manage_single_transaction() {
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
-
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     assert!(alice_ts
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -533,7 +536,7 @@ async fn manage_single_transaction() {
     let message = "TAKE MAH MONEYS!".to_string();
     alice_ts
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -636,9 +639,10 @@ async fn single_transaction_to_self() {
     alice_oms.add_rewindable_output(uo1, None, None).await.unwrap();
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = 10000.into();
+    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts
         .send_transaction(
-            alice_node_identity.public_key().clone(),
+            alice_address,
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -718,9 +722,10 @@ async fn send_one_sided_transaction_to_other() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -842,9 +847,10 @@ async fn recover_one_sided_transaction() {
     let message = "".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -935,9 +941,10 @@ async fn test_htlc_send_and_claim() {
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
+    let bob_address = TariAddress::new(bob_pubkey.clone(), Network::LocalNet);
     let (tx_id, pre_image, output) = alice_ts_clone
         .send_sha_atomic_swap_transaction(
-            bob_pubkey,
+            bob_address,
             value,
             UtxoSelectionCriteria::default(),
             20.into(),
@@ -1045,9 +1052,10 @@ async fn send_one_sided_transaction_to_self() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
     let mut alice_ts_clone = alice_ts;
+    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
     match alice_ts_clone
         .send_one_sided_transaction(
-            alice_node_identity.public_key().clone(),
+            alice_address,
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1183,9 +1191,10 @@ async fn manage_multiple_transactions() {
     let value_b_to_a_1 = MicroTari::from(11000);
     let value_a_to_c_1 = MicroTari::from(14000);
     log::trace!("Sending A to B 1");
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id_a_to_b_1 = alice_ts
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             value_a_to_b_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1196,9 +1205,10 @@ async fn manage_multiple_transactions() {
         .unwrap();
     log::trace!("A to B 1 TxID: {}", tx_id_a_to_b_1);
     log::trace!("Sending A to C 1");
+    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id_a_to_c_1 = alice_ts
         .send_transaction(
-            carol_node_identity.public_key().clone(),
+            carol_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1211,9 +1221,10 @@ async fn manage_multiple_transactions() {
     assert_eq!(alice_completed_tx.len(), 0);
     log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
 
+    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
     bob_ts
         .send_transaction(
-            alice_node_identity.public_key().clone(),
+            alice_address,
             value_b_to_a_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1224,7 +1235,7 @@ async fn manage_multiple_transactions() {
         .unwrap();
     alice_ts
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             value_a_to_b_2,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1348,10 +1359,11 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .await
         .unwrap();
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             MicroTari::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1732,10 +1744,10 @@ async fn discovery_async_return_test() {
     let initial_balance = alice_oms.get_balance().await.unwrap();
 
     let value_a_to_c_1 = MicroTari::from(14000);
-
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1770,9 +1782,10 @@ async fn discovery_async_return_test() {
     assert_eq!(found_txid, tx_id);
     assert!(!is_direct_send);
 
+    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id2 = alice_ts
         .send_transaction(
-            carol_node_identity.public_key().clone(),
+            carol_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -1848,10 +1861,18 @@ async fn test_power_mode_updates() {
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
     );
+    let source_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
+    let destination_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let completed_tx1 = CompletedTransaction {
         tx_id: 1u64.into(),
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_address,
+        destination_address,
         amount: 5000 * uT,
         fee: MicroTari::from(100),
         transaction: tx.clone(),
@@ -1870,10 +1891,18 @@ async fn test_power_mode_updates() {
         mined_timestamp: None,
     };
 
+    let source_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
+    let destination_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let completed_tx2 = CompletedTransaction {
         tx_id: 2u64.into(),
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_address,
+        destination_address,
         amount: 6000 * uT,
         fee: MicroTari::from(200),
         transaction: tx.clone(),
@@ -2038,11 +2067,11 @@ async fn test_transaction_cancellation() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2360,11 +2389,11 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2546,10 +2575,11 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let amount_sent = 20000 * uT;
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let _tx_id2 = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2679,10 +2709,11 @@ async fn test_tx_direct_send_behaviour() {
         })
         .await;
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2726,7 +2757,7 @@ async fn test_tx_direct_send_behaviour() {
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2775,7 +2806,7 @@ async fn test_tx_direct_send_behaviour() {
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2824,7 +2855,7 @@ async fn test_tx_direct_send_behaviour() {
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -2942,9 +2973,10 @@ async fn test_restarting_transaction_protocols() {
     };
     let tx = bob_stp.get_transaction().unwrap().clone();
 
+    let bob_address = TariAddress::new(bob_identity.public_key().clone(), Network::LocalNet);
     let inbound_tx = InboundTransaction {
         tx_id,
-        source_public_key: bob_identity.public_key().clone(),
+        source_address: bob_address,
         amount: msg.amount,
         receiver_protocol,
         status: TransactionStatus::Pending,
@@ -2963,9 +2995,10 @@ async fn test_restarting_transaction_protocols() {
         )))
         .unwrap();
 
+    let alice_address = TariAddress::new(alice_identity.public_key().clone(), Network::LocalNet);
     let outbound_tx = OutboundTransaction {
         tx_id,
-        destination_public_key: alice_identity.public_key().clone(),
+        destination_address: alice_address,
         amount: msg.amount,
         fee,
         sender_protocol: bob_pre_finalize,
@@ -4045,10 +4078,11 @@ async fn test_transaction_resending() {
 
     let amount_sent = 100000 * uT;
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -4261,9 +4295,13 @@ async fn test_resend_on_startup() {
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
     let tx_id = stp.get_tx_id().unwrap();
+    let address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let mut outbound_tx = OutboundTransaction {
         tx_id,
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        destination_address: address,
         amount,
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
@@ -4387,10 +4425,13 @@ async fn test_resend_on_startup() {
         PrivateKey::random(&mut OsRng),
         &factories,
     );
-
+    let address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let mut inbound_tx = InboundTransaction {
         tx_id,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_address: address,
         amount,
         receiver_protocol: rtp,
         status: TransactionStatus::Pending,
@@ -4532,11 +4573,11 @@ async fn test_replying_to_cancelled_tx() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -4656,10 +4697,11 @@ async fn test_transaction_timeout_cancellation() {
 
     let amount_sent = 10000 * uT;
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -4740,9 +4782,13 @@ async fn test_transaction_timeout_cancellation() {
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
     let tx_id = stp.get_tx_id().unwrap();
+    let address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let outbound_tx = OutboundTransaction {
         tx_id,
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        destination_address: address,
         amount,
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
@@ -4910,11 +4956,12 @@ async fn transaction_service_tx_broadcast() {
 
     let amount_sent1 = 100000 * uT;
 
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     // Send Tx1
     let tx_id1 = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address.clone(),
             amount_sent1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -4975,7 +5022,7 @@ async fn transaction_service_tx_broadcast() {
     let tx_id2 = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
-            bob_node_identity.public_key().clone(),
+            bob_address,
             amount_sent2,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -5240,11 +5287,18 @@ async fn broadcast_all_completed_transactions_on_startup() {
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
     );
-
+    let source_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
+    let destination_address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     let completed_tx1 = CompletedTransaction {
         tx_id: 1u64.into(),
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_address,
+        destination_address,
         amount: 5000 * uT,
         fee: MicroTari::from(20),
         transaction: tx.clone(),
@@ -5356,12 +5410,15 @@ async fn test_update_faux_tx_on_oms_validation() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
-
+    let alice_address = TariAddress::new(
+        alice_ts_interface.base_node_identity.public_key().clone(),
+        Network::LocalNet,
+    );
     let tx_id_1 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
             MicroTari::from(10000),
-            alice_ts_interface.base_node_identity.public_key().clone(),
+            alice_address.clone(),
             "blah".to_string(),
             None,
             ImportStatus::Imported,
@@ -5375,7 +5432,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .transaction_service_handle
         .import_utxo_with_status(
             MicroTari::from(20000),
-            alice_ts_interface.base_node_identity.public_key().clone(),
+            alice_address.clone(),
             "one-sided 1".to_string(),
             None,
             ImportStatus::FauxUnconfirmed,
@@ -5390,7 +5447,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .transaction_service_handle
         .import_utxo_with_status(
             MicroTari::from(30000),
-            alice_ts_interface.base_node_identity.public_key().clone(),
+            alice_address,
             "one-sided 2".to_string(),
             None,
             ImportStatus::FauxConfirmed,

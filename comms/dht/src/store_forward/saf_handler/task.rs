@@ -33,7 +33,7 @@ use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline::PipelineError,
-    types::CommsPublicKey,
+    types::{CommsDHKE, CommsPublicKey},
     BytesMut,
 };
 use tari_utilities::ByteArray;
@@ -557,7 +557,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Attempting to decrypt message signature ({} byte(s))",
                 header.message_signature.len()
             );
-            let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
+            let shared_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
             let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
             let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.message_signature)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;

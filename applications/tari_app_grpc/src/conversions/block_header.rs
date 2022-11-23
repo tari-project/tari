@@ -53,6 +53,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 pow_algo: pow_algo.as_u64(),
                 pow_data: h.pow.pow_data,
             }),
+            validator_node_mr: h.validator_node_mr.to_vec(),
         }
     }
 }
@@ -91,6 +92,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             total_script_offset,
             nonce: header.nonce,
             pow,
+            validator_node_mr: FixedHash::try_from(header.validator_node_mr).map_err(|err| err.to_string())?,
         })
     }
 }

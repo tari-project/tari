@@ -36,7 +36,7 @@ use log::*;
 use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::{mpsc, watch},
+    sync::mpsc,
     time,
 };
 use tokio_stream::StreamExt;
@@ -53,7 +53,7 @@ use super::{
 use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
-        liveness::{LivenessCheck, LivenessSession, LivenessStatus},
+        liveness::LivenessSession,
         metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
@@ -83,7 +83,7 @@ pub struct PeerListener<TTransport> {
     node_identity: Arc<NodeIdentity>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
-    on_listening: OneshotTrigger<Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError>>,
+    on_listening: OneshotTrigger<Result<Multiaddr, ConnectionManagerError>>,
 }
 
 impl<TTransport> PeerListener<TTransport>
@@ -121,10 +121,7 @@ where
     /// in binding the listener socket
     // This returns an impl Future and is not async because we want to exclude &self from the future so that it has a
     // 'static lifetime as well as to flatten the oneshot result for ergonomics
-    pub fn on_listening(
-        &self,
-    ) -> impl Future<Output = Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError>> + 'static
-    {
+    pub fn on_listening(&self) -> impl Future<Output = Result<Multiaddr, ConnectionManagerError>> + 'static {
         let signal = self.on_listening.to_signal();
         signal.map(|r| r.ok_or(ConnectionManagerError::ListenerOneshotCancelled)?)
     }
@@ -135,7 +132,7 @@ where
         self
     }
 
-    pub async fn listen(self) -> Result<(Multiaddr, watch::Receiver<LivenessStatus>), ConnectionManagerError> {
+    pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
         let on_listening = self.on_listening();
         runtime::current().spawn(self.run());
         on_listening.await
@@ -148,9 +145,7 @@ where
             Ok((mut inbound, address)) => {
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
 
-                let liveness_watch = self.spawn_liveness_check();
-
-                self.on_listening.broadcast(Ok((address, liveness_watch)));
+                self.on_listening.broadcast(Ok(address));
 
                 loop {
                     tokio::select! {
@@ -232,21 +227,6 @@ where
             future::select(liveness.run(), shutdown_signal).await;
             permit.fetch_add(1, Ordering::SeqCst);
         });
-    }
-
-    fn spawn_liveness_check(&self) -> watch::Receiver<LivenessStatus> {
-        match self.config.liveness_self_check_interval {
-            Some(interval) => LivenessCheck::spawn(
-                self.transport.clone(),
-                self.node_identity.public_address(),
-                interval,
-                self.shutdown_signal.clone(),
-            ),
-            None => {
-                let (_, rx) = watch::channel(LivenessStatus::Disabled);
-                rx
-            },
-        }
     }
 
     async fn spawn_listen_task(&self, mut socket: TTransport::Output, peer_addr: Multiaddr) {

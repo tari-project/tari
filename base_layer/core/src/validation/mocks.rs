@@ -31,7 +31,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction_components::Transaction,
     validation::{
         error::ValidationError,
@@ -116,7 +116,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
         _: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            let achieved = sha3_difficulty(header);
+            let achieved = sha3x_difficulty(header);
 
             let achieved_target =
                 AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved - Difficulty::from(1), achieved)

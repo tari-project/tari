@@ -307,6 +307,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -363,6 +364,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -415,6 +417,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -466,6 +469,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = Hash::null();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -521,6 +525,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
@@ -572,6 +577,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let monero_data = MoneroPowData {
             header: Default::default(),
@@ -614,6 +620,7 @@ mod test {
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();

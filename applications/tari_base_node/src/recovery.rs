@@ -55,7 +55,7 @@ use tari_core::{
     },
 };
 
-use crate::config::{BaseNodeConfig, DatabaseType};
+use crate::{BaseNodeConfig, DatabaseType};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
@@ -74,22 +74,23 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
 
 pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
+    let rules = ConsensusManager::builder(node_config.network).build();
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone()).map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening db: {}", e);
-                anyhow!("Could not open DB: {}", e)
-            })?;
+            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
+                .map_err(|e| {
+                    error!(target: LOG_TARGET, "Error opening db: {}", e);
+                    anyhow!("Could not open DB: {}", e)
+                })?;
             let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone()).map_err(|e| {
+            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone(), rules.clone()).map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
             (temp, backend, temp_path)
         },
     };
-    let rules = ConsensusManager::builder(node_config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let validators = Validators::new(

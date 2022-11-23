@@ -207,7 +207,7 @@ impl CoinbaseBuilder {
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
         let challenge =
             TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, excess.as_public_key(), &metadata);
-        let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
+        let sig = Signature::sign_raw(&spending_key, nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
         let hasher =
@@ -554,7 +554,7 @@ mod test {
             &KernelFeatures::empty(),
             &None,
         );
-        coinbase_kernel2.excess_sig = Signature::sign(output.spending_key, p2.nonce, &challenge).unwrap();
+        coinbase_kernel2.excess_sig = Signature::sign_raw(&output.spending_key, p2.nonce, &challenge).unwrap();
 
         tx.body.add_output(coinbase2);
         tx.body.add_kernel(coinbase_kernel2);

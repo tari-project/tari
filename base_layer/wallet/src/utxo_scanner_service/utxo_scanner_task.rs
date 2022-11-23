@@ -29,6 +29,7 @@ use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
@@ -48,6 +49,7 @@ use tari_core::{
         transaction_components::{TransactionOutput, UnblindedOutput},
     },
 };
+use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -469,7 +471,8 @@ where
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
             let current_height = response.height;
             let current_header_hash = response.header_hash;
-            let mined_timestamp = NaiveDateTime::from_timestamp(response.mined_timestamp as i64, 0);
+            let mined_timestamp =
+                NaiveDateTime::from_timestamp_opt(response.mined_timestamp as i64, 0).unwrap_or(NaiveDateTime::MIN);
             let outputs = response
                 .outputs
                 .into_iter()
@@ -579,22 +582,19 @@ where
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
-        let default_key = CommsPublicKey::default();
-        let self_key = self.resources.node_identity.public_key().clone();
-
         for (uo, message, import_status, tx_id) in utxos {
-            let source_public_key = if uo.features.is_coinbase() {
+            let source_address = if uo.features.is_coinbase() {
                 // its a coinbase, so we know we mined it and it comes from us.
-                &self_key
+                self.resources.wallet_identity.address.clone()
             } else {
                 // Because we do not know the source public key we are making it the default key of zeroes to make it
                 // clear this value is a placeholder.
-                &default_key
+                TariAddress::default()
             };
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),
-                    source_public_key,
+                    source_address,
                     message,
                     import_status,
                     tx_id,
@@ -652,7 +652,7 @@ where
     pub async fn import_unblinded_utxo_to_transaction_service(
         &mut self,
         unblinded_output: UnblindedOutput,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         message: String,
         import_status: ImportStatus,
         tx_id: TxId,
@@ -664,7 +664,7 @@ where
             .transaction_service
             .import_utxo_with_status(
                 unblinded_output.value,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(unblinded_output.features.maturity),
                 import_status.clone(),
@@ -699,9 +699,10 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
-        // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
-        // issues
-        let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
+        // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
+        // wallet birthday. The latter avoids any possible issues with reorgs.
+        let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
             Err(e) => {

@@ -22,12 +22,12 @@
 
 use std::{cmp, marker::PhantomData, sync::Arc};
 
-use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -57,6 +57,7 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
+    SeedWords,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -99,6 +100,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
+    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
@@ -172,6 +174,7 @@ where
             config.buffer_size,
             config.buffer_rate_limit
         );
+        let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
@@ -192,7 +195,7 @@ where
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
-                node_identity.clone(),
+                wallet_identity.clone(),
                 factories.clone(),
                 wallet_database.clone(),
             ))
@@ -218,7 +221,7 @@ where
             .add_initializer(UtxoScannerServiceInitializer::new(
                 wallet_database.clone(),
                 factories.clone(),
-                node_identity.clone(),
+                wallet_identity,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -410,7 +413,7 @@ where
         spending_key: &PrivateKey,
         script: TariScript,
         input_data: ExecutionStack,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         features: OutputFeatures,
         message: String,
         metadata_signature: ComSignature,
@@ -440,7 +443,7 @@ where
             .transaction_service
             .import_utxo_with_status(
                 amount,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(features.maturity),
                 ImportStatus::Imported,
@@ -476,14 +479,14 @@ where
     pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
-        source_public_key: &CommsPublicKey,
+        source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
                 unblinded_output.value,
-                source_public_key.clone(),
+                source_address,
                 message,
                 Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,
@@ -513,24 +516,19 @@ where
 
     pub fn sign_message(
         &mut self,
-        secret: RistrettoSecretKey,
-        nonce: RistrettoSecretKey,
+        secret: &RistrettoSecretKey,
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
-        let challenge = Blake256::digest(message.as_bytes());
-        RistrettoSchnorr::sign(secret, nonce, &challenge)
+        RistrettoSchnorr::sign_message(secret, message.as_bytes())
     }
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: RistrettoPublicKey,
-        public_nonce: RistrettoPublicKey,
-        signature: RistrettoSecretKey,
-        message: String,
+        public_key: &RistrettoPublicKey,
+        signature: &Signature,
+        message: &str,
     ) -> bool {
-        let signature = RistrettoSchnorr::new(public_nonce, signature);
-        let challenge = Blake256::digest(message.as_bytes());
-        signature.verify_challenge(&public_key, challenge.clone().as_slice())
+        signature.verify_message(public_key, message)
     }
 
     /// Appraise the expected outputs and a fee
@@ -697,7 +695,7 @@ where
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string())?.is_some())
     }
 
-    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+    pub fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<SeedWords, WalletError> {
         let master_seed = self.db.get_master_seed()?.ok_or_else(|| {
             WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
                 "Cipher Seed not found".to_string(),

@@ -28,7 +28,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc, oneshot, watch},
+    sync::{broadcast, mpsc, oneshot},
     task,
     time,
 };
@@ -43,7 +43,7 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
-    connection_manager::{liveness::LivenessStatus, metrics, ConnectionDirection, ConnectionId},
+    connection_manager::{metrics, ConnectionDirection, ConnectionId},
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
@@ -149,7 +149,6 @@ impl Default for ConnectionManagerConfig {
 pub struct ListenerInfo {
     bind_address: Multiaddr,
     aux_bind_address: Option<Multiaddr>,
-    liveness_watch: watch::Receiver<LivenessStatus>,
 }
 
 impl ListenerInfo {
@@ -162,17 +161,6 @@ impl ListenerInfo {
     /// The auxiliary TCP address that was bound on if enabled.
     pub fn auxiliary_bind_address(&self) -> Option<&Multiaddr> {
         self.aux_bind_address.as_ref()
-    }
-
-    /// Returns the current liveness status
-    pub fn liveness_status(&self) -> LivenessStatus {
-        *self.liveness_watch.borrow()
-    }
-
-    /// Waits for liveness status to change from the last time the value was checked.
-    pub async fn liveness_status_changed(&mut self) -> Option<LivenessStatus> {
-        self.liveness_watch.changed().await.ok()?;
-        Some(*self.liveness_watch.borrow())
     }
 }
 
@@ -346,17 +334,16 @@ where
         listener.set_supported_protocols(self.protocols.get_supported_protocols());
 
         let mut listener_info = match listener.listen().await {
-            Ok((bind_address, liveness_watch)) => ListenerInfo {
+            Ok(bind_address) => ListenerInfo {
                 bind_address,
                 aux_bind_address: None,
-                liveness_watch,
             },
             Err(err) => return Err(err),
         };
 
         if let Some(mut listener) = self.aux_listener.take() {
             listener.set_supported_protocols(self.protocols.get_supported_protocols());
-            let (addr, _) = listener.listen().await?;
+            let addr = listener.listen().await?;
             debug!(target: LOG_TARGET, "Aux TCP listener bound to address {}", addr);
             listener_info.aux_bind_address = Some(addr);
         }

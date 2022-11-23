@@ -20,16 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem::size_of};
+use std::{convert::TryFrom, mem::size_of, str::FromStr};
 
-use argon2::{
-    password_hash::{Salt, SaltString},
-    Argon2,
-    Params,
-    PasswordHasher,
-    Version,
-};
-use arrayvec::ArrayVec;
+use argon2;
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
     ChaCha20,
@@ -39,45 +32,59 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::ByteArray;
-use zeroize::Zeroize;
+use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
     mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
+    CipherSeedEncryptionKey,
+    CipherSeedMacKey,
+    SeedWords,
     LABEL_ARGON_ENCODING,
     LABEL_CHACHA20_ENCODING,
     LABEL_MAC_GENERATION,
 };
 
-const CIPHER_SEED_VERSION: u8 = 0u8;
-// seconds elapsed from unix epoch until '2022-01-01' == 60 * 60 * 24 * 365 * 52
-pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1639872000;
-pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";
-const ARGON2_SALT_BYTES: usize = 16;
+// The version should be incremented for any breaking change to the format
+// History:
+// 0: initial version
+// 1: fixed incorrect key derivation and birthday genesis
+const CIPHER_SEED_VERSION: u8 = 1u8;
+
+pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds since 2022-01-01 00:00:00 UTC
+pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED"; // the default passphrase if none is supplied
+
+// Fixed sizes (all in bytes)
 pub const CIPHER_SEED_BIRTHDAY_BYTES: usize = 2;
 pub const CIPHER_SEED_ENTROPY_BYTES: usize = 16;
-pub const CIPHER_SEED_SALT_BYTES: usize = 5;
+pub const CIPHER_SEED_MAIN_SALT_BYTES: usize = 5;
+pub const ARGON2_SALT_BYTES: usize = 16;
 pub const CIPHER_SEED_MAC_BYTES: usize = 5;
+pub const CIPHER_SEED_ENCRYPTION_KEY_BYTES: usize = 32;
+pub const CIPHER_SEED_MAC_KEY_BYTES: usize = 32;
+pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
 
-/// This is an implementation of a Cipher Seed based on the `aezeed` encoding scheme (https://github.com/lightningnetwork/lnd/tree/master/aezeed)
+/// This is an implementation of a Cipher Seed based on the `aezeed` encoding scheme:
+/// https://github.com/lightningnetwork/lnd/tree/master/aezeed
 /// The goal of the scheme is produce a wallet seed that is versioned, contains the birthday of the wallet,
 /// starting entropy of the wallet to seed key generation, can be enciphered with a passphrase and has a checksum.
 /// The `aezeed` scheme uses a new AEZ AEAD scheme which allows for enciphering arbitrary length texts and choosing
 /// custom MAC sizes. AEZ is unfortunately not available in the RustCrypto implementations yet so we use a similar
 /// AEAD scheme using the primitives available in RustCrypto.
-/// Our scheme must be able to be represented with the 24 word seed phrase using the BIP-39 word lists. The world
+/// Our scheme must be able to be represented with the 24 word seed phrase using the BIP-39 word lists. The word
 /// lists contain 2048 words which are 11 bits of information giving us a total of 33 bytes to work with for the
 /// final encoding.
 /// In our scheme we will have the following data:
 /// version     1 byte
-/// birthday    2 bytes     Days since Unix Epoch
+/// birthday    2 bytes     Days since fixed genesis point
 /// entropy     16 bytes
 /// MAC         5 bytes     Hash(birthday||entropy||version||salt||passphrase)
 /// salt        5 bytes
-/// checksum    4 bytes
+/// checksum    4 bytes     CRC32
 ///
 /// In its enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
 /// encrypted.
@@ -85,8 +92,8 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// It is important to note that we don't generate the MAC directly from the provided low entropy passphrase.
 /// Instead, the intent is to use a password-based key derivation function to generate a derived key of higher
 /// effective entropy through the use of a carefully-designed function like Argon2 that's built for this purpose.
-/// The corresponding derived key has output of length 64-bytes, and we use the first and last 32-bytes for MAC and
-/// ChaCha20 encryption, respectively. In such way, we follow the motto of not reusing the same derived keys more
+/// The corresponding derived key has output of length 64-bytes, and we use the first and last 32-bytes for
+/// the MAC and ChaCha20 encryption. In such way, we follow the motto of not reusing the same derived keys more
 /// than once. Another key ingredient in our approach is the use of domain separation, via the current hashing API.
 /// See https://github.com/tari-project/tari/issues/4182 for more information.
 ///
@@ -102,9 +109,9 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 ///
 /// The checksum allows us to confirm that a given seed phrase decodes into an intact enciphered CipherSeed.
 /// The MAC allows us to confirm that a given passphrase correctly decrypts the CipherSeed and that the version and
-/// salt are not tampered with. If no passphrase is provided a default string will be used
+/// salt are not tampered with. If no passphrase is provided a default string will be used.
 ///
-/// The Birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we
+/// The birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
@@ -113,12 +120,16 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
-    entropy: [u8; CIPHER_SEED_ENTROPY_BYTES],
-    salt: [u8; CIPHER_SEED_SALT_BYTES],
+    entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
+    salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]>,
 }
+
+// This is a separate type to make the linter happy
+type DerivedCipherSeedKeys = Result<(CipherSeedEncryptionKey, CipherSeedMacKey), KeyManagerError>;
 
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
+    /// Generate a new seed
     pub fn new() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
@@ -133,6 +144,7 @@ impl CipherSeed {
     }
 
     #[cfg(target_arch = "wasm32")]
+    /// Generate a new seed
     pub fn new() -> Self {
         const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
         let millis = js_sys::Date::now() as u64;
@@ -141,11 +153,12 @@ impl CipherSeed {
         CipherSeed::new_with_birthday(birthday)
     }
 
+    /// Generate a new seed with a given birthday
     fn new_with_birthday(birthday: u16) -> Self {
-        let mut entropy = [0u8; CIPHER_SEED_ENTROPY_BYTES];
-        OsRng.fill_bytes(&mut entropy);
-        let mut salt = [0u8; CIPHER_SEED_SALT_BYTES];
-        OsRng.fill_bytes(&mut salt);
+        let mut entropy = Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]);
+        OsRng.fill_bytes(entropy.as_mut());
+        let mut salt = Box::new([0u8; CIPHER_SEED_MAIN_SALT_BYTES]);
+        OsRng.fill_bytes(salt.as_mut());
 
         Self {
             version: CIPHER_SEED_VERSION,
@@ -155,223 +168,232 @@ impl CipherSeed {
         }
     }
 
-    pub fn encipher(&self, passphrase: Option<String>) -> Result<Vec<u8>, KeyManagerError> {
-        let mut plaintext = self.birthday.to_le_bytes().to_vec();
-        plaintext.append(&mut self.entropy().clone().to_vec());
+    /// Generate an encrypted seed from a passphrase
+    pub fn encipher(&self, passphrase: Option<SafePassword>) -> Result<Vec<u8>, KeyManagerError> {
+        // Derive encryption and MAC keys from passphrase and main salt
+        let passphrase = passphrase.unwrap_or_else(|| {
+            SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
+                .expect("Failed to parse default cipher seed passphrase to SafePassword")
+        });
+        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, self.salt.as_ref())?;
 
-        let passphrase = passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string());
-
-        // generate the current MAC
-        let mut mac = Self::generate_mac(
+        // Generate the MAC
+        let mac = Self::generate_mac(
             &self.birthday.to_le_bytes(),
-            &self.entropy(),
-            &[CIPHER_SEED_VERSION],
-            &self.salt,
-            passphrase.as_str(),
+            self.entropy.as_ref(),
+            CIPHER_SEED_VERSION,
+            self.salt.as_ref(),
+            &mac_key,
         )?;
 
-        plaintext.append(&mut mac);
+        // Assemble the secret data to be encrypted: birthday, entropy, MAC
+        let mut secret_data = Zeroizing::new(Vec::<u8>::with_capacity(
+            CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES,
+        ));
+        secret_data.extend(&self.birthday.to_le_bytes());
+        secret_data.extend(self.entropy.iter());
+        secret_data.extend(&mac);
 
-        // apply cipher stream
-        Self::apply_stream_cipher(&mut plaintext, &passphrase, &self.salt)?;
+        // Encrypt the secret data
+        Self::apply_stream_cipher(&mut secret_data, &encryption_key, self.salt.as_ref())?;
 
-        let mut final_seed = vec![CIPHER_SEED_VERSION];
-        final_seed.append(&mut plaintext.to_vec());
-        final_seed.append(&mut self.salt.to_vec());
+        // Assemble the final seed: version, main salt, secret data, checksum
+        let mut encrypted_seed =
+            Vec::<u8>::with_capacity(1 + CIPHER_SEED_MAIN_SALT_BYTES + secret_data.len() + CIPHER_SEED_CHECKSUM_BYTES);
+        encrypted_seed.push(CIPHER_SEED_VERSION);
+        encrypted_seed.extend(secret_data.iter());
+        encrypted_seed.extend(self.salt.iter());
 
         let mut crc_hasher = CrcHasher::new();
-        crc_hasher.update(final_seed.as_slice());
-        let checksum = crc_hasher.finalize();
-        final_seed.append(&mut checksum.to_le_bytes().to_vec());
-        Ok(final_seed)
+        crc_hasher.update(encrypted_seed.as_slice());
+        let checksum = crc_hasher.finalize().to_le_bytes();
+        encrypted_seed.extend(&checksum);
+
+        Ok(encrypted_seed)
     }
 
-    pub fn from_enciphered_bytes(enciphered_bytes: &[u8], passphrase: Option<String>) -> Result<Self, KeyManagerError> {
-        // 1 byte Version || 2 byte Birthday || 16 byte Entropy || 5 byte MAC || 5 byte salt || 4 byte CRC32
-        if enciphered_bytes.len() != 7 + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_SALT_BYTES + CIPHER_SEED_MAC_BYTES {
+    /// Recover a seed from encrypted data and a passphrase
+    pub fn from_enciphered_bytes(
+        encrypted_seed: &[u8],
+        passphrase: Option<SafePassword>,
+    ) -> Result<Self, KeyManagerError> {
+        // Check the length: version, birthday, entropy, MAC, salt, checksum
+        if encrypted_seed.len() !=
+            1 + CIPHER_SEED_BIRTHDAY_BYTES +
+                CIPHER_SEED_ENTROPY_BYTES +
+                CIPHER_SEED_MAC_BYTES +
+                CIPHER_SEED_MAIN_SALT_BYTES +
+                CIPHER_SEED_CHECKSUM_BYTES
+        {
             return Err(KeyManagerError::InvalidData);
         }
 
-        if enciphered_bytes[0] != CIPHER_SEED_VERSION {
+        // We only support one version right now
+        let version = encrypted_seed[0];
+        if version != CIPHER_SEED_VERSION {
             return Err(KeyManagerError::VersionMismatch);
         }
 
-        let passphrase = passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string());
+        let mut encrypted_seed = encrypted_seed.to_owned();
 
-        let mut body = enciphered_bytes.to_owned();
-        // extract 32 bit checksum
-        let checksum_vec = body.split_off(body.len() - 4);
-
+        // Verify the checksum first, to detect obvious errors
+        let checksum = encrypted_seed.split_off(
+            1 + CIPHER_SEED_BIRTHDAY_BYTES +
+                CIPHER_SEED_ENTROPY_BYTES +
+                CIPHER_SEED_MAC_BYTES +
+                CIPHER_SEED_MAIN_SALT_BYTES,
+        );
         let mut crc_hasher = CrcHasher::new();
-        crc_hasher.update(body.as_slice());
-
-        let calculated_checksum = crc_hasher.finalize();
-
-        let mut checksum_bytes: [u8; 4] = [0u8; 4];
-        checksum_bytes.copy_from_slice(&checksum_vec[..4]);
-        let checksum = u32::from_le_bytes(checksum_bytes);
-
-        if calculated_checksum != checksum {
+        crc_hasher.update(encrypted_seed.as_slice());
+        let expected_checksum = crc_hasher.finalize().to_le_bytes();
+        if checksum != expected_checksum {
             return Err(KeyManagerError::CrcError);
         }
 
-        let salt = body.split_off(body.len() - CIPHER_SEED_SALT_BYTES);
-        let mut enciphered_seed = body.split_off(1);
-        let received_version = body[0];
-
-        // apply cipher stream
-        Self::apply_stream_cipher(&mut enciphered_seed, &passphrase, salt.as_slice())?;
-
-        let decrypted_mac = enciphered_seed.split_off(enciphered_seed.len() - CIPHER_SEED_MAC_BYTES);
-
-        let decrypted_entropy_vec: ArrayVec<_, CIPHER_SEED_ENTROPY_BYTES> =
-            enciphered_seed.split_off(2).into_iter().collect();
-        let decrypted_entropy = decrypted_entropy_vec
-            .into_inner()
+        // Derive encryption and MAC keys from passphrase and main salt
+        let passphrase = passphrase.unwrap_or_else(|| {
+            SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
+                .expect("Failed to parse default cipher seed passphrase to SafePassword")
+        });
+        let salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]> = encrypted_seed
+            .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
+            .into_boxed_slice()
+            .try_into()
             .map_err(|_| KeyManagerError::InvalidData)?;
+        let (encryption_key, mac_key) = Self::derive_keys(&passphrase, salt.as_ref())?;
 
-        let mut birthday_bytes: [u8; CIPHER_SEED_BIRTHDAY_BYTES] = [0u8; CIPHER_SEED_BIRTHDAY_BYTES];
-        birthday_bytes.copy_from_slice(&enciphered_seed);
-        let decrypted_birthday = u16::from_le_bytes(birthday_bytes);
+        // Decrypt the secret data: birthday, entropy, MAC
+        let mut secret_data = Zeroizing::new(encrypted_seed.split_off(1));
+        Self::apply_stream_cipher(&mut secret_data, &encryption_key, salt.as_ref())?;
 
-        // generate the MAC
-        let mac = Self::generate_mac(
-            &decrypted_birthday.to_le_bytes(),
-            &decrypted_entropy,
-            &[CIPHER_SEED_VERSION],
-            salt.as_slice(),
-            passphrase.as_str(),
-        )?;
+        // Parse secret data
+        let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
+        let entropy: Zeroizing<[u8; CIPHER_SEED_ENTROPY_BYTES]> = Zeroizing::new(
+            secret_data
+                .split_off(CIPHER_SEED_BIRTHDAY_BYTES)
+                .try_into()
+                .map_err(|_| KeyManagerError::InvalidData)?,
+        ); // wrapped in case of MAC failure
+        let mut birthday_bytes = [0u8; CIPHER_SEED_BIRTHDAY_BYTES];
+        birthday_bytes.copy_from_slice(&secret_data);
+        let birthday = u16::from_le_bytes(birthday_bytes);
 
-        if decrypted_mac != mac {
+        // Generate the MAC
+        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.as_ref(), version, salt.as_ref(), &mac_key)?;
+
+        // Verify the MAC in constant time to avoid leaking data
+        if mac.ct_eq(&expected_mac).unwrap_u8() == 0 {
             return Err(KeyManagerError::DecryptionFailed);
         }
 
-        let salt_vec: ArrayVec<_, CIPHER_SEED_SALT_BYTES> = salt.into_iter().collect();
-        let salt_bytes = salt_vec.into_inner().map_err(|_| KeyManagerError::InvalidData)?;
-
         Ok(Self {
-            version: received_version,
-            birthday: decrypted_birthday,
-            entropy: decrypted_entropy,
-            salt: salt_bytes,
+            version,
+            birthday,
+            entropy: Box::from(*entropy),
+            salt,
         })
     }
 
-    fn apply_stream_cipher(data: &mut Vec<u8>, passphrase: &str, salt: &[u8]) -> Result<(), KeyManagerError> {
-        // encryption nonce for ChaCha20 encryption, generated as a domain separated hash of the given salt. Following
-        // https://libsodium.gitbook.io/doc/advanced/stream_ciphers/chacha20, as of the IEF variant, the produced encryption
-        // nonce should be 96-bit long
+    /// Encrypt or decrypt data using ChaCha20
+    fn apply_stream_cipher(
+        data: &mut [u8],
+        encryption_key: &CipherSeedEncryptionKey,
+        salt: &[u8],
+    ) -> Result<(), KeyManagerError> {
+        // The ChaCha20 nonce is derived from the main salt
         let encryption_nonce = mac_domain_hasher::<Blake256>(LABEL_CHACHA20_ENCODING)
             .chain(salt)
             .finalize();
-
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
-        let nonce_ga = Nonce::from_slice(encryption_nonce);
-
-        // we take the last 32 bytes of the generated derived encryption key for ChaCha20 cipher, see documentation
-        let derived_encryption_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?;
-
-        let key = Key::from_slice(&derived_encryption_key[32..]);
-        let mut cipher = ChaCha20::new(key, nonce_ga);
-        cipher.apply_keystream(data.as_mut_slice());
+        // Encrypt/decrypt the data
+        let mut cipher = ChaCha20::new(
+            Key::from_slice(encryption_key.reveal()),
+            Nonce::from_slice(encryption_nonce),
+        );
+        cipher.apply_keystream(data);
 
         Ok(())
     }
 
-    pub fn entropy(&self) -> [u8; CIPHER_SEED_ENTROPY_BYTES] {
-        self.entropy
+    /// Get a reference to the seed entropy
+    pub fn entropy(&self) -> &[u8] {
+        self.entropy.as_ref()
     }
 
+    /// Get the seed birthday
     pub fn birthday(&self) -> u16 {
         self.birthday
     }
-}
 
-impl CipherSeed {
+    /// Generate a MAC using Blake2b
     fn generate_mac(
         birthday: &[u8],
         entropy: &[u8],
-        cipher_seed_version: &[u8],
+        cipher_seed_version: u8,
         salt: &[u8],
-        passphrase: &str,
+        mac_key: &CipherSeedMacKey,
     ) -> Result<Vec<u8>, KeyManagerError> {
-        // birthday should be 2 bytes long
+        // Check all lengths are valid
         if birthday.len() != CIPHER_SEED_BIRTHDAY_BYTES {
             return Err(KeyManagerError::InvalidData);
         }
-
-        // entropy should be 16 bytes long
         if entropy.len() != CIPHER_SEED_ENTROPY_BYTES {
             return Err(KeyManagerError::InvalidData);
         }
-
-        // cipher_seed_version should be 1 byte long
-        if cipher_seed_version.len() != 1 {
+        if salt.len() != CIPHER_SEED_MAIN_SALT_BYTES {
             return Err(KeyManagerError::InvalidData);
         }
-
-        // salt should be 5 bytes long
-        if salt.len() != CIPHER_SEED_SALT_BYTES {
-            return Err(KeyManagerError::InvalidData);
-        }
-
-        // we take the first 32 bytes of the generated derived encryption key for MAC generation, see documentation
-        let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?;
 
         Ok(mac_domain_hasher::<Blake256>(LABEL_MAC_GENERATION)
             .chain(birthday)
             .chain(entropy)
-            .chain(cipher_seed_version)
+            .chain(&[cipher_seed_version])
             .chain(salt)
-            .chain(&passphrase_key[32..])
+            .chain(mac_key.reveal())
             .finalize()
             .as_ref()[..CIPHER_SEED_MAC_BYTES]
             .to_vec())
     }
 
-    fn generate_domain_separated_passphrase_hash(passphrase: &str, salt: &[u8]) -> Result<Vec<u8>, KeyManagerError> {
-        let argon2 = Argon2::default();
-
-        // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
-        // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
+    /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
+    fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
+        // The Argon2 salt is derived from the main salt
         let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
             .chain(salt)
             .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
 
-        // produce a base64 salt string
-        let argon2_salt = SaltString::b64_encode(argon2_salt)?;
-
-        // to generate two 32-byte keys, we produce a 64-byte argon2 output, as the default output size
-        // for argon is 32, we have to update its parameters accordingly
-
-        // the following choice of parameters is based on
+        // Run Argon2 with enough output to accommodate both keys, so we only run it once
+        // We use the recommended OWASP parameters for this:
         // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-        let params = Params {
-            m_cost: 37 * 1024,       // m-cost should be 37 Mib = 37 * 1024 Kib
-            t_cost: 1,               // t-cost
-            p_cost: 1,               // p-cost
-            output_size: 64,         // 64 bytes output size,
-            version: Version::V0x13, // version
-        };
+        let params = argon2::Params::new(
+            37 * 1024, // m-cost should be 37 Mib = 37 * 1024 Kib
+            1,         // t-cost
+            1,         // p-cost
+            Some(CIPHER_SEED_ENCRYPTION_KEY_BYTES + CIPHER_SEED_MAC_KEY_BYTES),
+        )
+        .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 parameters".to_string()))?;
 
-        // Argon2id algorithm: https://docs.rs/argon2/0.2.4/argon2/enum.Algorithm.html#variant.Argon2id
-        let algorithm = argon2::Algorithm::Argon2id;
+        // Derive the main key from the password in place
+        let mut main_key = Hidden::hide([0u8; CIPHER_SEED_ENCRYPTION_KEY_BYTES + CIPHER_SEED_MAC_KEY_BYTES]);
+        let hasher = argon2::Argon2::new(argon2::Algorithm::Argon2d, argon2::Version::V0x13, params);
+        hasher
+            .hash_password_into(passphrase.reveal(), argon2_salt, main_key.reveal_mut())
+            .map_err(|_| KeyManagerError::CryptographicError("Problem generating Argon2 password hash".to_string()))?;
 
-        // generate the given derived encryption key
-        let derived_encryption_key = argon2
-            .hash_password(
-                passphrase.as_bytes(),
-                Some(algorithm.ident()),
-                params,
-                Salt::try_from(argon2_salt.as_str())?,
-            )?
-            .hash
-            .ok_or_else(|| KeyManagerError::CryptographicError("Problem generating encryption key hash".to_string()))?;
+        // Split off the keys
+        let mut encryption_key = CipherSeedEncryptionKey::from(SafeArray::default());
+        encryption_key
+            .reveal_mut()
+            .copy_from_slice(&main_key.reveal()[..CIPHER_SEED_ENCRYPTION_KEY_BYTES]);
 
-        Ok(derived_encryption_key.as_bytes().into())
+        let mut mac_key = CipherSeedMacKey::from(SafeArray::default());
+        mac_key
+            .reveal_mut()
+            .copy_from_slice(&main_key.reveal()[CIPHER_SEED_ENCRYPTION_KEY_BYTES..]);
+
+        Ok((encryption_key, mac_key))
     }
 }
 
@@ -384,74 +406,85 @@ impl Default for CipherSeed {
 impl Mnemonic<CipherSeed> for CipherSeed {
     /// Generates a CipherSeed that represent the provided mnemonic sequence of words, the language of the mnemonic
     /// sequence is autodetected
-    fn from_mnemonic(mnemonic_seq: &[String], passphrase: Option<String>) -> Result<CipherSeed, KeyManagerError> {
+    fn from_mnemonic(
+        mnemonic_seq: &SeedWords,
+        passphrase: Option<SafePassword>,
+    ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes(mnemonic_seq)?;
-        CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+        CipherSeed::from_enciphered_bytes(bytes.reveal(), passphrase)
     }
 
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
     fn from_mnemonic_with_language(
-        mnemonic_seq: &[String],
+        mnemonic_seq: &SeedWords,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
+        passphrase: Option<SafePassword>,
     ) -> Result<CipherSeed, KeyManagerError> {
         let bytes = to_bytes_with_language(mnemonic_seq, &language)?;
-        CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+        CipherSeed::from_enciphered_bytes(bytes.reveal(), passphrase)
     }
 
     /// Generates a mnemonic sequence of words from the provided secret key
     fn to_mnemonic(
         &self,
         language: MnemonicLanguage,
-        passphrase: Option<String>,
-    ) -> Result<Vec<String>, KeyManagerError> {
+        passphrase: Option<SafePassword>,
+    ) -> Result<SeedWords, KeyManagerError> {
         Ok(from_bytes(&self.encipher(passphrase)?, language)?)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crc32fast::Hasher as CrcHasher;
+    use std::str::FromStr;
 
+    use crc32fast::Hasher as CrcHasher;
+    use tari_utilities::{Hidden, SafePassword};
+
+    use super::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
     use crate::{
-        cipher_seed::CipherSeed,
+        cipher_seed::{CipherSeed, CIPHER_SEED_VERSION},
         error::KeyManagerError,
+        get_birthday_from_unix_epoch_in_seconds,
         mnemonic::{Mnemonic, MnemonicLanguage},
+        SeedWords,
     };
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
         let seed = CipherSeed::new();
 
-        let mut enciphered_seed = seed.encipher(Some("Passphrase".to_string())).unwrap();
+        let mut enciphered_seed = seed
+            .encipher(Some(SafePassword::from_str("Passphrase").unwrap()))
+            .unwrap();
 
         let deciphered_seed =
-            CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())).unwrap();
+            CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap()))
+                .unwrap();
 
         assert_eq!(seed, deciphered_seed);
 
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("WrongPassphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(
+            &enciphered_seed,
+            Some(SafePassword::from_str("WrongPassphrase").unwrap()),
+        ) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Version should not match"),
         }
 
-        enciphered_seed[0] = 1;
+        enciphered_seed[0] = CIPHER_SEED_VERSION + 1; // this is an unsupported version
 
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Err(KeyManagerError::VersionMismatch) => (),
             _ => panic!("Version should not match"),
         }
 
         // recover correct version
-        enciphered_seed[0] = 0;
+        enciphered_seed[0] = CIPHER_SEED_VERSION;
 
-        // Prevent the 1 our 256 chances that it was already a zero
-        if enciphered_seed[1] == 0 {
-            enciphered_seed[1] = 1;
-        } else {
-            enciphered_seed[1] = 0;
-        }
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())) {
+        // flip some bits
+        enciphered_seed[1] = !enciphered_seed[1];
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Err(KeyManagerError::CrcError) => (),
             _ => panic!("Crc should not match"),
         }
@@ -477,13 +510,13 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
 
         // recover original data
-        enciphered_seed[1] -= 1;
+        enciphered_seed[1] = !enciphered_seed[1];
         enciphered_seed[(n - 4)..].copy_from_slice(&checksum[..]);
 
         // change entropy and repeat test
@@ -504,7 +537,7 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
@@ -530,7 +563,7 @@ mod test {
         enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
 
         // the MAC decryption should fail in this case
-        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some(SafePassword::from_str("passphrase").unwrap())) {
             Err(KeyManagerError::DecryptionFailed) => (),
             _ => panic!("Decryption should fail"),
         }
@@ -561,8 +594,9 @@ mod test {
             "cover", "vote", "federal", "husband", "cave", "alone", "dynamic", "reopen", "visa", "young", "gas",
         ]
         .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
+        .map(|x| Hidden::hide(x.to_string()))
+        .collect::<Vec<Hidden<String>>>();
+        let mnemonic_seq = SeedWords::new(mnemonic_seq);
         // Language not known
         match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(_k) => panic!(),
@@ -579,19 +613,67 @@ mod test {
     fn cipher_seed_to_and_from_mnemonic_with_passphrase() {
         let seed = CipherSeed::new();
         let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .to_mnemonic(
+                MnemonicLanguage::Spanish,
+                Some(SafePassword::from_str("Passphrase").unwrap()),
+            )
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        match CipherSeed::from_mnemonic(&mnemonic_seq, Some("Passphrase".to_string())) {
+        match CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
             Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
 
         let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .to_mnemonic(
+                MnemonicLanguage::Spanish,
+                Some(SafePassword::from_str("Passphrase").unwrap()),
+            )
             .expect("Couldn't convert CipherSeed to Mnemonic");
         assert!(
-            CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_err(),
+            CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("WrongPassphrase").unwrap())).is_err(),
             "Should not be able to derive seed with wrong passphrase"
         );
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_for_zero_duration() {
+        let birthday = 0u16;
+        let to_days = 0u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(birthday_genesis_time_in_seconds, BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_for_large_to_days() {
+        let birthday = 10u16;
+        let to_days = 16u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(birthday_genesis_time_in_seconds, BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+    }
+
+    #[test]
+    fn birthday_from_unix_epoch_works_generally() {
+        let birthday = 100u16;
+        let to_days = 20u16;
+
+        let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
+        assert_eq!(
+            birthday_genesis_time_in_seconds,
+            BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + u64::from(birthday - to_days) * 24 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn birthday_is_computed_correctly_from_new_wallet() {
+        // birthday is at the half of the year 2022, namely 3th July 2022
+        let cipher_seed = CipherSeed::new_with_birthday(183u16);
+        let birthday = cipher_seed.birthday;
+        let birthday_from_unix_epoch = get_birthday_from_unix_epoch_in_seconds(birthday, 0u16);
+
+        // 1656806400 corresponds to the duration, in seconds, from unix epoch
+        // to 3th July 2022 00:00:00
+        assert_eq!(birthday_from_unix_epoch, 1656806400);
     }
 }

@@ -311,8 +311,8 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.source_public_key.to_hex(),
-        tx.destination_public_key.to_hex(),
+        tx.source_address.to_hex(),
+        tx.destination_address.to_hex(),
         status,
         excess,
         public_nonce,
@@ -332,7 +332,7 @@ fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.destination_public_key.to_hex(),
+        tx.destination_address.to_hex(),
         status,
         "outbound".to_string(),
     ]
@@ -348,7 +348,7 @@ fn args_from_inbound(tx: &InboundTransaction, event: &str) -> Vec<String> {
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.source_public_key.to_hex(),
+        tx.source_address.to_hex(),
         status,
         "inbound".to_string(),
     ]

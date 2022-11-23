@@ -27,6 +27,7 @@ use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    tari_address::TariAddress,
     transaction::TransactionStatus,
     types::{FixedHash, PrivateKey, PublicKey},
 };
@@ -46,7 +47,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
@@ -61,7 +62,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::SafePassword;
+use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -210,6 +211,8 @@ async fn test_wallet() {
     let base_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
+    // create wallet creates a local wallet
+    let network = Network::LocalNet;
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
@@ -233,6 +236,7 @@ async fn test_wallet() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
+    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms
@@ -272,7 +276,7 @@ async fn test_wallet() {
     alice_wallet
         .transaction_service
         .send_transaction(
-            bob_identity.public_key().clone(),
+            bob_address.clone(),
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -301,8 +305,9 @@ async fn test_wallet() {
     let mut contacts = Vec::new();
     for i in 0..2 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let address = TariAddress::new(public_key, Network::LocalNet);
 
-        contacts.push(Contact::new(random::string(8), public_key, None, None));
+        contacts.push(Contact::new(random::string(8), address, None, None));
 
         alice_wallet
             .contacts_service
@@ -498,12 +503,10 @@ async fn test_sign_message() {
     .unwrap();
 
     let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
-    let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
     let message = "Tragedy will find us.";
-    let schnorr = wallet.sign_message(secret, nonce, message).unwrap();
-    let signature = schnorr.get_signature().clone();
+    let schnorr = wallet.sign_message(&secret, message).unwrap();
 
-    assert!(wallet.verify_message_signature(public_key, public_nonce, signature, message.into()));
+    assert!(wallet.verify_message_signature(&public_key, &schnorr, message));
 }
 
 #[test]
@@ -522,6 +525,8 @@ async fn test_store_and_forward_send_tx() {
     let alice_db_tempdir = tempdir().unwrap();
     let carol_db_tempdir = tempdir().unwrap();
     let base_node_tempdir = tempdir().unwrap();
+    // create wallet uses local net
+    let network = Network::LocalNet;
 
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
@@ -563,6 +568,7 @@ async fn test_store_and_forward_send_tx() {
     .unwrap();
 
     let carol_identity = carol_wallet.comms.node_identity();
+    let carol_address = TariAddress::new(carol_identity.public_key().clone(), network);
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
 
     alice_wallet
@@ -588,7 +594,7 @@ async fn test_store_and_forward_send_tx() {
     alice_wallet
         .transaction_service
         .send_transaction(
-            carol_identity.public_key().clone(),
+            carol_address.clone(),
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
@@ -646,6 +652,7 @@ async fn test_store_and_forward_send_tx() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_import_utxo() {
+    let network = Network::Weatherwax;
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
     let alice_identity = Arc::new(NodeIdentity::random(
@@ -653,7 +660,7 @@ async fn test_import_utxo() {
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
-    let base_node_identity = Arc::new(NodeIdentity::random(
+    let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
@@ -684,7 +691,7 @@ async fn test_import_utxo() {
     };
     let config = WalletConfig {
         p2p: comms_config,
-        network: Network::Weatherwax,
+        network,
         ..Default::default()
     };
 
@@ -717,14 +724,14 @@ async fn test_import_utxo() {
     let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
-
+    let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     let tx_id = alice_wallet
         .import_external_utxo_as_non_rewindable(
             utxo.value,
             &utxo.spending_key,
             script.clone(),
             input.clone(),
-            base_node_identity.public_key(),
+            node_address,
             utxo.features.clone(),
             "Testing".to_string(),
             utxo.metadata_signature.clone(),
@@ -788,16 +795,17 @@ async fn test_recovery_birthday() {
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
     // println!("{:?}", mnemonic_seq);
 
-    let seed_words: Vec<String> = [
-        "octavo", "joroba", "aplicar", "lamina", "semilla", "tiempo", "codigo", "contar", "maniqui", "guiso",
-        "imponer", "barba", "torpedo", "mejilla", "fijo", "grave", "caer", "libertad", "sol", "sordo", "alacran",
-        "bucle", "diente", "vereda",
+    let vec_words: Vec<Hidden<String>> = [
+        "octubre", "rinon", "ameno", "rigido", "verbo", "dosis", "ocaso", "fallo", "tez", "ladron", "entrar", "pedal",
+        "fortuna", "ahogo", "llanto", "mascara", "intuir", "buey", "cubrir", "anillo", "cajon", "entrar", "clase",
+        "latir",
     ]
     .iter()
-    .map(|w| w.to_string())
+    .map(|w| Hidden::hide(w.to_string()))
     .collect();
+    let seed_words = SeedWords::new(vec_words);
 
-    let recovery_seed = CipherSeed::from_mnemonic(seed_words.as_slice(), None).unwrap();
+    let recovery_seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
     let birthday = recovery_seed.birthday();
 
     let wallet = create_wallet(
@@ -823,7 +831,8 @@ async fn test_contacts_service_liveness() {
     let factories = CryptoFactories::default();
     let alice_db_tempdir = tempdir().unwrap();
     let bob_db_tempdir = tempdir().unwrap();
-
+    // network used by create wallet is local net
+    let network = Network::LocalNet;
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
@@ -835,6 +844,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let alice_identity = alice_wallet.comms.node_identity();
+    let alice_address = TariAddress::new(alice_identity.public_key().clone(), network);
 
     let mut bob_wallet = create_wallet(
         bob_db_tempdir.path(),
@@ -847,6 +857,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
+    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms
@@ -854,7 +865,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(bob_identity.to_peer())
         .await
         .unwrap();
-    let contact_bob = Contact::new(random::string(8), bob_identity.public_key().clone(), None, None);
+    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None);
     alice_wallet.contacts_service.upsert_contact(contact_bob).await.unwrap();
 
     bob_wallet
@@ -863,7 +874,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(alice_identity.to_peer())
         .await
         .unwrap();
-    let contact_alice = Contact::new(random::string(8), alice_identity.public_key().clone(), None, None);
+    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None);
     bob_wallet.contacts_service.upsert_contact(contact_alice).await.unwrap();
 
     alice_wallet
@@ -882,7 +893,7 @@ async fn test_contacts_service_liveness() {
         tokio::select! {
             event = liveness_event_stream_alice.recv() => {
                 if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                    if data.public_key() == bob_identity.public_key(){
+                    if data.address() == &bob_address{
                         assert_eq!(data.node_id(), bob_identity.node_id());
                         match data.message_type()  {
                             ContactMessageType::Ping  => {
@@ -916,7 +927,7 @@ async fn test_contacts_service_liveness() {
         tokio::select! {
             event = liveness_event_stream_bob.recv() => {
                 if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                    if data.public_key() == alice_identity.public_key(){
+                    if data.address() == &alice_address{
                         assert_eq!(data.node_id(), alice_identity.node_id());
                         if data.message_type() == ContactMessageType::Ping {
                             ping_count += 1;

@@ -44,7 +44,7 @@ use crate::{
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
-            SideChainFeatures,
+            SideChainFeature,
             Transaction,
             TransactionInput,
             TransactionInputVersion,
@@ -294,9 +294,10 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_features = features
-            .sidechain_features
-            .map(SideChainFeatures::try_from)
+        let sidechain_feature = features
+            .sidechain_feature
+            .and_then(|features| features.side_chain_feature)
+            .map(SideChainFeature::try_from)
             .transpose()?;
 
         let flags = features
@@ -311,7 +312,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             features.metadata,
-            sidechain_features,
+            sidechain_feature,
         ))
     }
 }
@@ -323,23 +324,8 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             version: features.version as u32,
-            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
+            sidechain_feature: features.sidechain_feature.map(Into::into),
         }
-    }
-}
-
-//---------------------------------- SideChainFeatures --------------------------------------------//
-impl From<SideChainFeatures> for proto::types::SideChainFeatures {
-    fn from(_value: SideChainFeatures) -> Self {
-        Self {}
-    }
-}
-
-impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
-    type Error = String;
-
-    fn try_from(_features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
-        Ok(Self {})
     }
 }
 
