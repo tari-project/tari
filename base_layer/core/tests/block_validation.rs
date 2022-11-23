@@ -232,7 +232,7 @@ fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(320)
+        .with_max_block_transaction_weight(321)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
@@ -642,7 +642,7 @@ async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(320)
+        .with_max_block_transaction_weight(321)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
