@@ -72,6 +72,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub mempool: Mempool,
     pub rules: ConsensusManager,
     pub factories: CryptoFactories,
+    pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,
 }
 
@@ -154,7 +155,7 @@ where B: BlockchainBackend + 'static
                 base_node_config.state_machine.clone(),
                 self.rules,
                 self.factories,
-                RandomXFactory::new(self.app_config.base_node.max_randomx_vms),
+                self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
             ))
             .build()
