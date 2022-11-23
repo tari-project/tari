@@ -51,6 +51,8 @@ pub struct BaseNodeStateMachineInitializer<B> {
     config: BaseNodeStateMachineConfig,
     rules: ConsensusManager,
     factories: CryptoFactories,
+    randomx_factory: RandomXFactory,
+    bypass_range_proof_verification: bool,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -61,12 +63,16 @@ where B: BlockchainBackend + 'static
         config: BaseNodeStateMachineConfig,
         rules: ConsensusManager,
         factories: CryptoFactories,
+        randomx_factory: RandomXFactory,
+        bypass_range_proof_verification: bool,
     ) -> Self {
         Self {
             db,
             config,
             rules,
             factories,
+            randomx_factory,
+            bypass_range_proof_verification,
         }
     }
 }
@@ -91,6 +97,8 @@ where B: BlockchainBackend + 'static
         let rules = self.rules.clone();
         let db = self.db.clone();
         let config = self.config.clone();
+        let randomx_factory = self.randomx_factory.clone();
+        let bypass_range_proof_verification = self.bypass_range_proof_verification;
 
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
@@ -105,10 +113,9 @@ where B: BlockchainBackend + 'static
                 db.clone(),
                 rules.clone(),
                 factories,
-                config.bypass_range_proof_verification,
+                bypass_range_proof_verification,
                 config.blockchain_sync_config.validation_concurrency,
             );
-            let max_randomx_vms = config.max_randomx_vms;
 
             let node = BaseNodeStateMachine::new(
                 db,
@@ -120,7 +127,7 @@ where B: BlockchainBackend + 'static
                 sync_validators,
                 status_event_sender,
                 state_event_publisher,
-                RandomXFactory::new(max_randomx_vms),
+                randomx_factory,
                 rules,
                 handles.get_shutdown_signal(),
             );

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.40.2](https://github.com/tari-project/tari/compare/v0.40.1...v0.40.2) (2022-11-18)
+
+
+### Features
+
+* upgrade tari_crypto sign api ([#4932](https://github.com/tari-project/tari/issues/4932)) ([e2b7ad1](https://github.com/tari-project/tari/commit/e2b7ad186e8ce311576549e25e3ae10770ba0c6b))
+
+
+### Bug Fixes
+
+* **dht:** use limited ban period for invalid peer ([#4933](https://github.com/tari-project/tari/issues/4933)) ([04a3a8f](https://github.com/tari-project/tari/commit/04a3a8fbb8932b06293abb1fe59c597f1bf3a2a3))
+
+### [0.40.1](https://github.com/tari-project/tari/compare/v0.40.0...v0.40.1) (2022-11-17)
+
+
+### Bug Fixes
+
+* set wallet start scan height to birthday and not 0 (see issue [#4807](https://github.com/tari-project/tari/issues/4807)) ([#4911](https://github.com/tari-project/tari/issues/4911)) ([797f91a](https://github.com/tari-project/tari/commit/797f91a91578e851b9eefe939294f919c7fec978))
+
 ## [0.40.0](https://github.com/tari-project/tari/compare/v0.39.0...v0.40.0) (2022-11-16)
 
 

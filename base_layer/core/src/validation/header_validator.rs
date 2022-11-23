@@ -6,17 +6,11 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::BlockHeader,
-    chain_storage::{fetch_headers, BlockchainBackend},
-    consensus::{ConsensusConstants, ConsensusManager},
+    chain_storage::BlockchainBackend,
+    consensus::ConsensusManager,
     proof_of_work::AchievedTargetDifficulty,
     validation::{
-        helpers::{
-            check_blockchain_version,
-            check_header_timestamp_greater_than_median,
-            check_not_bad_block,
-            check_pow_data,
-            check_timestamp_ftl,
-        },
+        helpers::{check_blockchain_version, check_not_bad_block, check_pow_data, check_timestamp_ftl},
         DifficultyCalculator,
         HeaderValidation,
         ValidationError,
@@ -32,31 +26,6 @@ pub struct HeaderValidator {
 impl HeaderValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         Self { rules }
-    }
-
-    /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
-    fn check_median_timestamp<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        constants: &ConsensusConstants,
-        block_header: &BlockHeader,
-    ) -> Result<(), ValidationError> {
-        if block_header.height == 0 {
-            return Ok(()); // Its the genesis block, so we dont have to check median
-        }
-
-        let height = block_header.height - 1;
-        let min_height = block_header
-            .height
-            .saturating_sub(constants.get_median_timestamp_count() as u64);
-        let timestamps = fetch_headers(db, min_height, height)?
-            .iter()
-            .map(|h| h.timestamp)
-            .collect::<Vec<_>>();
-
-        check_header_timestamp_greater_than_median(block_header, &timestamps)?;
-
-        Ok(())
     }
 }
 
@@ -80,12 +49,6 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: FTL timestamp is ok for {} ",
-            header_id
-        );
-        self.check_median_timestamp(backend, constants, header)?;
-        trace!(
-            target: LOG_TARGET,
-            "BlockHeader validation: Median timestamp is ok for {} ",
             header_id
         );
         check_pow_data(header, &self.rules, backend)?;
