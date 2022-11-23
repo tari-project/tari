@@ -950,7 +950,7 @@ mod test {
 
         let mut output = TransactionOutput::new_current_version(
             Default::default(),
-            commitment.clone(),
+            commitment,
             proof,
             script.clone(),
             sender_offset_public_key,

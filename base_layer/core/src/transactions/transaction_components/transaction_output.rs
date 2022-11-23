@@ -332,7 +332,7 @@ impl TransactionOutput {
         );
         Ok(ComAndPubSignature::sign(
             &pk_value,
-            &spending_key,
+            spending_key,
             &PrivateKey::default(),
             &nonce_a,
             &nonce_b,
@@ -355,7 +355,7 @@ impl TransactionOutput {
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         let random_key = PrivateKey::random(&mut OsRng);
         let nonce = match ephemeral_private_key {
             Some(v) => v,
@@ -367,9 +367,9 @@ impl TransactionOutput {
             script,
             output_features,
             &sender_offset_public_key,
-            &ephemeral_commitment,
+            ephemeral_commitment,
             &public_nonce,
-            &commitment,
+            commitment,
             covenant,
             encrypted_value,
             minimum_value_promise,
@@ -377,7 +377,7 @@ impl TransactionOutput {
         Ok(ComAndPubSignature::sign(
             &PrivateKey::default(),
             &PrivateKey::default(),
-            &sender_offset_private_key,
+            sender_offset_private_key,
             &PrivateKey::default(),
             &PrivateKey::default(),
             nonce,
@@ -405,7 +405,7 @@ impl TransactionOutput {
         let public_nonce_x = PublicKey::from_secret_key(&nonce_x);
         let pk_value = PrivateKey::from(value.as_u64());
         let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         let e = TransactionOutput::build_metadata_signature_challenge(
             version,
             script,
@@ -420,8 +420,8 @@ impl TransactionOutput {
         );
         Ok(ComAndPubSignature::sign(
             &pk_value,
-            &spending_key,
-            &sender_offset_private_key,
+            spending_key,
+            sender_offset_private_key,
             &nonce_a,
             &nonce_b,
             &nonce_x,

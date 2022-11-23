@@ -125,11 +125,7 @@ impl UnblindedOutputBuilder {
     ) -> Result<(), TransactionError> {
         let commitment = CommitmentFactory::default().commit_value(&self.spending_key, self.value.as_u64());
         let def_commitment = Commitment::default();
-        let ephemeral_commitment = match self
-            .metadata_signature
-            .as_ref()
-            .and_then(|v| Some(v.ephemeral_commitment()))
-        {
+        let ephemeral_commitment = match self.metadata_signature.as_ref().map(|v| v.ephemeral_commitment()) {
             Some(v) => v,
             None => &def_commitment,
         };

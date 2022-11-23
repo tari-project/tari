@@ -129,7 +129,7 @@ impl SingleReceiverTransactionProtocol {
         let partial_metadata_signature = TransactionOutput::create_receiver_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
-            &spending_key,
+            spending_key,
             &sender_info.script,
             &sender_features,
             &sender_info.sender_offset_public_key,
