@@ -43,6 +43,7 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool,
     mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
 use tari_p2p::{
@@ -153,6 +154,8 @@ where B: BlockchainBackend + 'static
                 base_node_config.state_machine.clone(),
                 self.rules,
                 self.factories,
+                RandomXFactory::new(self.app_config.base_node.max_randomx_vms),
+                self.app_config.base_node.bypass_range_proof_verification,
             ))
             .build()
             .await?;

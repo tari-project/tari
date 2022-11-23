@@ -141,8 +141,6 @@ track_reorgs = true
 # The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
 # propagation by delaying lagging) (default = 0)
 #blocks_behind_before_considered_lagging = 0
-# Bypass range proof verification to speed up validation (default = false)
-#bypass_range_proof_verification = false
 
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
