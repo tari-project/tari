@@ -251,35 +251,43 @@ where B: BlockchainBackend + 'static
                     "A peer has requested a block with hash {} (compact = {})", block_hex, compact
                 );
 
-                let err = |e: ChainStorageError| {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Could not provide requested block {} to peer because: {}",
-                        block_hex,
-                        e.to_string()
-                    );
-
-                    None
-                };
-
-                let maybe_block = match self.blockchain_db.fetch_block_by_hash(hash, compact).await {
-                    Ok(Some(block)) => Some(block.try_into_block()?),
-                    Ok(None) => {
-                        if orphans {
-                            match self.blockchain_db.fetch_orphan(hash).await {
-                                Ok(block) => Some(block),
-                                Err(e) => err(e),
-                            }
-                        } else {
+                let maybe_block = match (
+                    self.blockchain_db
+                        .fetch_block_by_hash(hash, compact)
+                        .await
+                        .unwrap_or_else(|e| {
                             warn!(
                                 target: LOG_TARGET,
-                                "Could not provide requested block {} to peer because not stored", block_hex,
+                                "Could not provide requested block {} to peer because: {}",
+                                block_hex,
+                                e.to_string()
                             );
 
                             None
-                        }
+                        }),
+                    orphans,
+                ) {
+                    (None, true) => self.blockchain_db.fetch_orphan(hash).await.map_or_else(
+                        |e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not provide requested block {} from orphan pool to peer because: {}",
+                                block_hex,
+                                e.to_string()
+                            );
+
+                            None
+                        },
+                        Some,
+                    ),
+                    (None, false) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because not stored", block_hex,
+                        );
+                        None
                     },
-                    Err(e) => err(e),
+                    (Some(block), _) => Some(block.try_into_block()?),
                 };
 
                 Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
