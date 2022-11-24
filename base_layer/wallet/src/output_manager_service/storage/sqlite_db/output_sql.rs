@@ -616,7 +616,8 @@ impl OutputSql {
         cipher: Option<&XChaCha20Poly1305>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         if let Some(cipher) = cipher {
-            self.decrypt(&cipher);
+            self.decrypt(&cipher)
+                .map_err(|e| OutputManagerStorageError::AeadError(e))?;
         }
 
         let features: OutputFeatures =

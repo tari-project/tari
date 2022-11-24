@@ -117,7 +117,6 @@ impl NewOutputSql {
                 .encrypt(cipher)
                 .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
         }
-
         Ok(output)
     }
 
