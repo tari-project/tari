@@ -78,7 +78,7 @@ pub fn decrypt_bytes_integral_nonce(
 pub fn encrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
-    mut plaintext: Hidden<Vec<u8>>,
+    plaintext: Hidden<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
     // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];
@@ -93,9 +93,6 @@ pub fn encrypt_bytes_integral_nonce(
 
     // Attempt authenticated encryption
     let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
-
-    // zeroize plaintext to avoid leaking sensitive data
-    plaintext.zeroize();
 
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
