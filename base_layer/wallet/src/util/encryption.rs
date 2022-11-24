@@ -30,6 +30,7 @@ use chacha20poly1305::{
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_utilities::ByteArray;
+use zeroize::Zeroize;
 
 pub trait Encryptable<C> {
     const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
@@ -77,7 +78,7 @@ pub fn decrypt_bytes_integral_nonce(
 pub fn encrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
-    plaintext: Vec<u8>,
+    mut plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];
@@ -86,12 +87,15 @@ pub fn encrypt_bytes_integral_nonce(
 
     // Bind the domain as additional data
     let payload = Payload {
-        msg: plaintext.as_bytes(),
-        aad: domain.as_bytes(),
+        msg: plaintext.as_slice(),
+        aad: domain.as_slice(),
     };
 
     // Attempt authenticated encryption
     let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
+
+    // zeroize plaintext to avoid leaking sensitive data
+    plaintext.zeroize();
 
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
