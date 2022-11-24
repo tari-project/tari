@@ -326,6 +326,9 @@ impl Opcode {
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Vec<Opcode>, ScriptError> {
+        if bytes.len() < 8 {
+            return Err(ScriptError::InvalidData);
+        }
         let size = u64::from_le_bytes(bytes[..8].try_into().map_err(|_| ScriptError::InvalidInput)?);
         let mut script = Vec::new();
         let mut bytes_copy = &bytes[8..];
@@ -645,16 +648,16 @@ mod test {
 
     #[test]
     fn empty_script() {
-        assert_eq!(Opcode::parse(&[]).unwrap(), Vec::new())
+        assert_eq!(Opcode::parse(&[0u8; 8]).unwrap(), Vec::new())
     }
 
     #[test]
     fn parse() {
-        let script = [0x60u8, 0x71, 0x00];
+        let script = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x71, 0x00];
         let err = Opcode::parse(&script).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidOpcode));
 
-        let script = [0x60u8, 0x71];
+        let script = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60u8, 0x71];
         let opcodes = Opcode::parse(&script).unwrap();
         let code = opcodes.first().unwrap();
         assert_eq!(code, &Opcode::Return);

@@ -98,6 +98,6 @@ pub mod test {
         let mut header = get_header();
         header.nonce = 14;
         println!("{:?}", header);
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(2));
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(6));
     }
 }
