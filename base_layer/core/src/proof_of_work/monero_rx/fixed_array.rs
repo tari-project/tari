@@ -37,8 +37,8 @@ impl BorshSerialize for FixedByteArray {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         self.len.serialize(writer)?;
         let data = self.as_slice();
-        for i in 0..self.len as usize {
-            data[i].serialize(writer)?;
+        for item in data.iter().take(self.len as usize) {
+            item.serialize(writer)?;
         }
         Ok(())
     }
