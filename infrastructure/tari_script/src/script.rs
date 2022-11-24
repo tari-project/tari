@@ -70,7 +70,7 @@ impl BorshSerialize for TariScript {
 impl BorshDeserialize for TariScript {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
         let data = Vec::<u8>::deserialize(buf)?;
-        let script = TariScript::from_bytes(&mut data.as_slice())
+        let script = TariScript::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         Ok(script)
     }

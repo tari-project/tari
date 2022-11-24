@@ -192,7 +192,7 @@ impl BorshSerialize for ExecutionStack {
 impl BorshDeserialize for ExecutionStack {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
         let data = Vec::<u8>::deserialize(buf)?;
-        let stack = Self::from_bytes(&mut data.as_slice())
+        let stack = Self::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         Ok(stack)
     }
