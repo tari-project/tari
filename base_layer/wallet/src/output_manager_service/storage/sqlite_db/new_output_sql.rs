@@ -23,7 +23,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, Hidden};
 
 use crate::{
     output_manager_service::{
@@ -136,13 +136,16 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("spending_key"),
+            Hidden::hide(self.spending_key.clone()),
+        )?;
 
         self.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            self.script_private_key.clone(),
+            Hidden::hide(self.script_private_key.clone()),
         )?;
 
         Ok(())

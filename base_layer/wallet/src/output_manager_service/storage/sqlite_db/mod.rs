@@ -44,6 +44,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::Hidden;
 use tokio::time::Instant;
 use zeroize::Zeroize;
 
@@ -1325,7 +1326,11 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.private_key = encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
+        self.private_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("private_key"),
+            Hidden::hide(self.private_key.clone()),
+        )?;
         Ok(())
     }
 
