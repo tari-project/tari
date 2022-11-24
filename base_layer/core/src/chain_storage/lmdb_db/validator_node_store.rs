@@ -174,7 +174,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         }
 
         let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
-        vn_set.sort_by(|(_, a), (_, b)| a.cmp(&b));
+        vn_set.sort_by(|(_, a), (_, b)| a.cmp(b));
         Ok(vn_set)
     }
 
