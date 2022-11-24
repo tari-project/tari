@@ -2009,8 +2009,6 @@ mod malleability {
                 let output = &mut block.body.outputs_mut()[0];
                 let mut script_bytes = output.script.to_bytes();
                 Opcode::PushZero.to_bytes(&mut script_bytes);
-                // Increase the number of opcodes in the script
-                script_bytes[0] += 1;
                 let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
                 output.script = mod_script;
             });

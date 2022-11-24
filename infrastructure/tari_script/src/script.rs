@@ -62,6 +62,8 @@ pub struct TariScript {
 
 impl BorshSerialize for TariScript {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        BorshSerialize::serialize(&bytes.len(), writer)?;
         writer.write_all(self.to_bytes().as_bytes())?;
         Ok(())
     }
@@ -69,9 +71,10 @@ impl BorshSerialize for TariScript {
 
 impl BorshDeserialize for TariScript {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let script =
-            TariScript::from_bytes(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        *buf = &buf[script.to_bytes().len()..];
+        let size = usize::deserialize(buf)?;
+        let script = TariScript::from_bytes(&buf[..size])
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        *buf = &buf[size..];
         Ok(script)
     }
 }
@@ -137,12 +140,10 @@ impl TariScript {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.script
-            .iter()
-            .fold((self.size() as u64).to_le_bytes().to_vec(), |mut bytes, op| {
-                op.to_bytes(&mut bytes);
-                bytes
-            })
+        self.script.iter().fold(Vec::new(), |mut bytes, op| {
+            op.to_bytes(&mut bytes);
+            bytes
+        })
     }
 
     pub fn as_slice(&self) -> &[Opcode] {
@@ -174,7 +175,7 @@ impl TariScript {
     /// use tari_script::TariScript;
     /// use tari_utilities::hex::Hex;
     ///
-    /// let hex_script = "060000000000000071b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
+    /// let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
     /// let script = TariScript::from_hex(hex_script).unwrap();
     /// let ops = vec![
     ///     "Dup",
@@ -693,7 +694,7 @@ mod test {
         let script = TariScript::default();
         let inputs = ExecutionStack::default();
         assert!(script.execute(&inputs).is_ok());
-        assert_eq!(&script.to_hex(), "01000000000000007b");
+        assert_eq!(&script.to_hex(), "7b");
         assert_eq!(script.as_hash::<Blake256>().unwrap(), DEFAULT_SCRIPT_HASH);
     }
 
@@ -1000,15 +1001,10 @@ mod test {
     #[test]
     fn serialisation() {
         let script = script!(Add Sub Add);
-        assert_eq!(&script.to_bytes(), &[
-            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0x94, 0x93
-        ]);
-        assert_eq!(
-            TariScript::from_bytes(&[0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0x94, 0x93]).unwrap(),
-            script
-        );
-        assert_eq!(script.to_hex(), "0300000000000000939493");
-        assert_eq!(TariScript::from_hex("0300000000000000939493").unwrap(), script);
+        assert_eq!(&script.to_bytes(), &[0x93, 0x94, 0x93]);
+        assert_eq!(TariScript::from_bytes(&[0x93, 0x94, 0x93]).unwrap(), script);
+        assert_eq!(script.to_hex(), "939493");
+        assert_eq!(TariScript::from_hex("939493").unwrap(), script);
     }
 
     #[test]
@@ -1481,7 +1477,7 @@ mod test {
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built
         // into definition of how TariScript is evaluated by a base node or wallet
         let script = script!(Dup HashBlake256 PushHash(pkh) EqualVerify);
-        let hex_script = "040000000000000071b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581";
+        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581";
         // Test serialisation
         assert_eq!(script.to_hex(), hex_script);
         // Test de-serialisation
@@ -1500,7 +1496,7 @@ mod test {
         let hex = "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c313d415e0584ef82b79e3bf9bdebeeef53d13aefdc0cfa64f616acea0229e6ee0f0456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c";
         let inputs = ExecutionStack::from_hex(hex).unwrap();
         let script =
-            TariScript::from_hex("050000000000000071b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708")
+            TariScript::from_hex("71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708")
                 .unwrap();
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
@@ -1515,7 +1511,7 @@ mod test {
 
     #[test]
     fn disassemble() {
-        let hex_script = "060000000000000071b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
+        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
         let script = TariScript::from_hex(hex_script).unwrap();
         let ops = vec![
             "Dup",
