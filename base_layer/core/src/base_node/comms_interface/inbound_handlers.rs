@@ -244,53 +244,9 @@ where B: BlockchainBackend + 'static
                 let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
             },
-            NodeCommsRequest::GetBlockByHash { hash, compact, orphans } => {
-                let block_hex = hash.to_hex();
-                debug!(
-                    target: LOG_TARGET,
-                    "A peer has requested a block with hash {} (compact = {})", block_hex, compact
-                );
-
-                let maybe_block = match (
-                    self.blockchain_db
-                        .fetch_block_by_hash(hash, compact)
-                        .await
-                        .unwrap_or_else(|e| {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Could not provide requested block {} to peer because: {}",
-                                block_hex,
-                                e.to_string()
-                            );
-
-                            None
-                        }),
-                    orphans,
-                ) {
-                    (None, true) => self.blockchain_db.fetch_orphan(hash).await.map_or_else(
-                        |e| {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Could not provide requested block {} from orphan pool to peer because: {}",
-                                block_hex,
-                                e.to_string()
-                            );
-
-                            None
-                        },
-                        Some,
-                    ),
-                    (None, false) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", block_hex,
-                        );
-                        None
-                    },
-                    (Some(block), _) => Some(block.try_into_block()?),
-                };
-
-                Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
+            NodeCommsRequest::GetBlockByHash(hash) => {
+                let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
+                Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
@@ -360,6 +316,43 @@ where B: BlockchainBackend + 'static
                     error: None,
                     block: Some(block),
                 })
+            },
+            NodeCommsRequest::GetBlockFromAllChains(hash) => {
+                let block_hex = hash.to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "A peer has requested a block with hash {}", block_hex
+                );
+
+                let maybe_block = match self
+                    .blockchain_db
+                    .fetch_block_by_hash(hash, true)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            block_hex,
+                            e.to_string()
+                        );
+
+                        None
+                    }) {
+                    None => self.blockchain_db.fetch_orphan(hash).await.map_or_else(
+                        |e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not provide requested block {} to peer because: {}", block_hex, e,
+                            );
+
+                            None
+                        },
+                        Some,
+                    ),
+                    Some(block) => Some(block.try_into_block()?),
+                };
+
+                Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
             },
             NodeCommsRequest::FetchKernelByExcessSig(signature) => {
                 let kernels = match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
@@ -615,16 +608,12 @@ where B: BlockchainBackend + 'static
         source_peer: NodeId,
         block_hash: BlockHash,
     ) -> Result<Block, CommsInterfaceError> {
-        let mut historical_block = self
+        return match self
             .outbound_nci
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
-            .await?;
-
-        return match historical_block.pop() {
-            Some(block) => {
-                let block = block.try_into_block()?;
-                Ok(block)
-            },
+            .await?
+        {
+            Some(block) => Ok(block),
             None => {
                 if let Err(e) = self
                     .connectivity

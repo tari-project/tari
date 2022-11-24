@@ -46,38 +46,20 @@ pub enum NodeCommsRequest {
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks {
-        range: RangeInclusive<u64>,
-        compact: bool,
-    },
+    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
-    GetBlockByHash {
-        hash: HashOutput,
-        compact: bool,
-        orphans: bool,
-    },
+    GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
+    GetBlockFromAllChains(HashOutput),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs {
-        excess_sigs: Vec<PrivateKey>,
-    },
-    FetchValidatorNodesKeys {
-        height: u64,
-    },
-    GetShardKey {
-        height: u64,
-        public_key: PublicKey,
-    },
-    FetchTemplateRegistrations {
-        start_height: u64,
-        end_height: u64,
-    },
-    FetchUnspentUtxosInBlock {
-        block_hash: BlockHash,
-    },
+    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
+    FetchValidatorNodesKeys { height: u64 },
+    GetShardKey { height: u64, public_key: PublicKey },
+    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
+    FetchUnspentUtxosInBlock { block_hash: BlockHash },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,9 +85,10 @@ impl Display for NodeCommsRequest {
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
-            GetBlockByHash { hash, .. } => write!(f, "GetBlockByHash({})", hash.to_hex()),
+            GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
             GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
+            GetBlockFromAllChains(v) => write!(f, "GetBlockFromAllChains({})", v.to_hex()),
             FetchKernelByExcessSig(s) => write!(
                 f,
                 "FetchKernelByExcessSig (signature=({}, {}))",

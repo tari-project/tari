@@ -35,12 +35,10 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
-        use ProtoNodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockByHash};
+        use ProtoNodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockFromAllChains};
         let request = match self {
-            GetBlockByHash(req) => NodeCommsRequest::GetBlockByHash {
-                hash: req.hash.try_into().map_err(|_| "Malformed hash".to_string())?,
-                compact: req.compact,
-                orphans: req.orphans,
+            GetBlockFromAllChains(req) => {
+                NodeCommsRequest::GetBlockFromAllChains(req.hash.try_into().map_err(|_| "Malformed hash".to_string())?)
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
@@ -60,15 +58,11 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
-        use NodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockByHash};
+        use NodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockFromAllChains};
         match request {
-            GetBlockByHash { hash, compact, orphans } => {
-                Ok(ProtoNodeCommsRequest::GetBlockByHash(proto::GetBlockByHashRequest {
-                    hash: hash.to_vec(),
-                    compact,
-                    orphans,
-                }))
-            },
+            GetBlockFromAllChains(hash) => Ok(ProtoNodeCommsRequest::GetBlockFromAllChains(
+                proto::GetBlockFromAllChainsRequest { hash: hash.to_vec() },
+            )),
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
                 ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
                     excess_sigs: excess_sigs.into_iter().map(|sig| sig.to_vec()).collect(),

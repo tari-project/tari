@@ -13,7 +13,7 @@ message BaseNodeServiceRequest {
     uint64 request_key = 1;
     oneof request {
         // Indicates a GetBlockByHash request.
-        GetBlockByHashRequest get_block_by_hash = 8;
+        GetBlockFromAllChainsRequest get_block_from_all_chains = 8;
         ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
     }
 }
@@ -27,10 +27,8 @@ message BlockHeights {
     repeated uint64 heights = 1;
 }
 
-message GetBlockByHashRequest {
+message GetBlockFromAllChainsRequest {
     bytes hash = 1;
-    bool compact = 2;
-    bool orphans = 3;
 }
 
 message Signatures {
