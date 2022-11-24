@@ -927,11 +927,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         conn.transaction::<_, OutputManagerStorageError, _>(|| {
             let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
             db_output.update(
-                // Note: Only the `nonce` and `u` portion needs to be updated at this time as the `v` portion is
+                // Note: Only the `ephemeral_pubkey` and `u_y` portion needs to be updated at this time as the rest was
                 // already correct
                 UpdateOutput {
-                    metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
-                    metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+                    metadata_signature_ephemeral_pubkey: Some(output.metadata_signature.ephemeral_pubkey().to_vec()),
+                    metadata_signature_u_y: Some(output.metadata_signature.u_y().to_vec()),
                     ..Default::default()
                 },
                 &conn,
@@ -1263,8 +1263,11 @@ pub struct UpdateOutput {
     spent_in_tx_id: Option<Option<TxId>>,
     spending_key: Option<Vec<u8>>,
     script_private_key: Option<Vec<u8>>,
-    metadata_signature_nonce: Option<Vec<u8>>,
-    metadata_signature_u_key: Option<Vec<u8>>,
+    metadata_signature_ephemeral_commitment: Option<Vec<u8>>,
+    metadata_signature_ephemeral_pubkey: Option<Vec<u8>>,
+    metadata_signature_u_a: Option<Vec<u8>>,
+    metadata_signature_u_x: Option<Vec<u8>>,
+    metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
@@ -1277,8 +1280,11 @@ pub struct UpdateOutputSql {
     spent_in_tx_id: Option<Option<i64>>,
     spending_key: Option<Vec<u8>>,
     script_private_key: Option<Vec<u8>>,
-    metadata_signature_nonce: Option<Vec<u8>>,
-    metadata_signature_u_key: Option<Vec<u8>>,
+    metadata_signature_ephemeral_commitment: Option<Vec<u8>>,
+    metadata_signature_ephemeral_pubkey: Option<Vec<u8>>,
+    metadata_signature_u_a: Option<Vec<u8>>,
+    metadata_signature_u_x: Option<Vec<u8>>,
+    metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
 }
@@ -1290,8 +1296,11 @@ impl From<UpdateOutput> for UpdateOutputSql {
             status: u.status.map(|t| t as i32),
             spending_key: u.spending_key,
             script_private_key: u.script_private_key,
-            metadata_signature_nonce: u.metadata_signature_nonce,
-            metadata_signature_u_key: u.metadata_signature_u_key,
+            metadata_signature_ephemeral_commitment: u.metadata_signature_ephemeral_commitment,
+            metadata_signature_ephemeral_pubkey: u.metadata_signature_ephemeral_pubkey,
+            metadata_signature_u_a: u.metadata_signature_u_a,
+            metadata_signature_u_x: u.metadata_signature_u_x,
+            metadata_signature_u_y: u.metadata_signature_u_y,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             mined_height: u.mined_height.map(|t| t.map(|h| h as i64)),

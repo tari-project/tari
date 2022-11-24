@@ -229,16 +229,19 @@ impl SenderTransactionInitializer {
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
-            output.metadata_signature.public_nonce(),
+            output.metadata_signature.ephemeral_commitment(),
+            output.metadata_signature.ephemeral_pubkey(),
             &commitment,
             &output.covenant,
             &output.encrypted_value,
             output.minimum_value_promise,
         );
         if !output.metadata_signature.verify_challenge(
-            &(&commitment + &output.sender_offset_public_key),
+            &commitment,
+            &output.sender_offset_public_key,
             &e,
             &commitment_factory,
+            &mut OsRng,
         ) {
             return self.clone().build_err(&*format!(
                 "Metadata signature not valid, cannot add output: {:?}",
@@ -413,7 +416,7 @@ impl SenderTransactionInitializer {
 
                         let minimum_value_promise = MicroTari::zero();
 
-                        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+                        let metadata_signature = TransactionOutput::create_metadata_signature(
                             TransactionOutputVersion::get_current_version(),
                             v,
                             change_key,

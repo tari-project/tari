@@ -26,7 +26,7 @@
 use std::io;
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
+use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
 use tari_script::ScriptError;
 use thiserror::Error;
 
@@ -44,7 +44,7 @@ pub enum TransactionError {
     #[error("A range proof construction or verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
     #[error("An error occurred while performing a commitment signature: {0}")]
-    SigningError(#[from] CommitmentSignatureError),
+    SigningError(#[from] CommitmentAndPublicKeySignatureError),
     #[error("Invalid kernel in body : {0}")]
     InvalidKernel(String),
     #[error("Invalid coinbase in body")]

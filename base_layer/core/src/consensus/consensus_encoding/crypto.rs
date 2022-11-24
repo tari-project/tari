@@ -25,7 +25,7 @@ use std::{
     io::{Error, Read, Write},
 };
 
-use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_utilities::ByteArray;
 
@@ -155,27 +155,37 @@ impl ConsensusDecoding for RangeProof {
 
 //---------------------------------- Commitment Signature --------------------------------------------//
 
-impl ConsensusEncoding for ComSignature {
+impl ConsensusEncoding for ComAndPubSignature {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.u().consensus_encode(writer)?;
-        self.v().consensus_encode(writer)?;
-        self.public_nonce().consensus_encode(writer)?;
+        self.ephemeral_commitment().consensus_encode(writer)?;
+        self.ephemeral_pubkey().consensus_encode(writer)?;
+        self.u_a().consensus_encode(writer)?;
+        self.u_x().consensus_encode(writer)?;
+        self.u_y().consensus_encode(writer)?;
         Ok(())
     }
 }
 
-impl ConsensusEncodingSized for ComSignature {
+impl ConsensusEncodingSized for ComAndPubSignature {
     fn consensus_encode_exact_size(&self) -> usize {
-        PrivateKey::key_length() * 2 + PublicKey::key_length()
+        3 * PrivateKey::key_length() + 2 * PublicKey::key_length()
     }
 }
 
-impl ConsensusDecoding for ComSignature {
+impl ConsensusDecoding for ComAndPubSignature {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let u = PrivateKey::consensus_decode(reader)?;
-        let v = PrivateKey::consensus_decode(reader)?;
-        let nonce = Commitment::consensus_decode(reader)?;
-        Ok(ComSignature::new(nonce, u, v))
+        let ephemeral_commitment = Commitment::consensus_decode(reader)?;
+        let ephemeral_pubkey = PublicKey::consensus_decode(reader)?;
+        let u_a = PrivateKey::consensus_decode(reader)?;
+        let u_x = PrivateKey::consensus_decode(reader)?;
+        let u_y = PrivateKey::consensus_decode(reader)?;
+        Ok(ComAndPubSignature::new(
+            ephemeral_commitment,
+            ephemeral_pubkey,
+            u_a,
+            u_x,
+            u_y,
+        ))
     }
 }
 

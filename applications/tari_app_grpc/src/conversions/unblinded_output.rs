@@ -45,10 +45,12 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             input_data: output.input_data.to_bytes(),
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
-            metadata_signature: Some(grpc::ComSignature {
-                public_nonce_commitment: Vec::from(output.metadata_signature.public_nonce().as_bytes()),
-                signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
-                signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: Vec::from(output.metadata_signature.ephemeral_commitment().as_bytes()),
+                ephemeral_pubkey: Vec::from(output.metadata_signature.ephemeral_pubkey().as_bytes()),
+                u_a: Vec::from(output.metadata_signature.u_a().as_bytes()),
+                u_x: Vec::from(output.metadata_signature.u_x().as_bytes()),
+                u_y: Vec::from(output.metadata_signature.u_y().as_bytes()),
             }),
             script_lock_height: output.script_lock_height,
             covenant: output.covenant.to_bytes(),

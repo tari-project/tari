@@ -157,10 +157,12 @@ impl fmt::Display for OutputManagerRequest {
             },
             UpdateOutputMetadataSignature(v) => write!(
                 f,
-                "UpdateOutputMetadataSignature ({}, {}, {})",
-                v.metadata_signature.public_nonce().to_hex(),
-                v.metadata_signature.u().to_hex(),
-                v.metadata_signature.v().to_hex()
+                "UpdateOutputMetadataSignature ({}, {}, {}, {}, {})",
+                v.metadata_signature.ephemeral_commitment().to_hex(),
+                v.metadata_signature.ephemeral_pubkey().to_hex(),
+                v.metadata_signature.u_x().to_hex(),
+                v.metadata_signature.u_y().to_hex(),
+                v.metadata_signature.u_a().to_hex(),
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
