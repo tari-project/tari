@@ -153,6 +153,14 @@ impl OutputManagerSqliteDatabase {
 }
 
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
+    fn apply_encryption(&self, _cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
+        Ok(())
+    }
+
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
@@ -163,10 +171,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &conn) {
-                Ok(mut o) => {
-                    self.decrypt_if_necessary(&mut o)?;
-                    Some(DbValue::SpentOutput(Box::new(o.to_db_unblinded_output(cipher)?)))
-                },
+                Ok(mut o) => Some(DbValue::SpentOutput(Box::new(o.to_db_unblinded_output(cipher)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -176,10 +181,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &conn) {
-                Ok(mut o) => {
-                    self.decrypt_if_necessary(&mut o)?;
-                    Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(cipher)?)))
-                },
+                Ok(mut o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(cipher)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -190,10 +192,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputHash(hash) => {
                 match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
-                    Ok(mut o) => {
-                        self.decrypt_if_necessary(&mut o)?;
-                        Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(cipher)?)))
-                    },
+                    Ok(mut o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(cipher)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -205,10 +204,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
-                    Ok(mut o) => {
-                        self.decrypt_if_necessary(&mut o)?;
-                        Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(cipher)?)))
-                    },
+                    Ok(mut o) => Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(cipher)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -220,9 +216,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::OutputsByTxIdAndStatus(tx_id, status) => {
                 let mut outputs = OutputSql::find_by_tx_id_and_status(*tx_id, *status, &conn)?;
-                for o in &mut outputs {
-                    self.decrypt_if_necessary(o)?;
-                }
+
                 Some(DbValue::AnyOutputs(
                     outputs
                         .iter()
@@ -232,9 +226,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &conn)?;
-                for o in &mut outputs {
-                    self.decrypt_if_necessary(o)?;
-                }
 
                 Some(DbValue::UnspentOutputs(
                     outputs
@@ -245,9 +236,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::SpentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Spent, &conn)?;
-                for o in &mut outputs {
-                    self.decrypt_if_necessary(o)?;
-                }
 
                 Some(DbValue::SpentOutputs(
                     outputs
@@ -258,9 +246,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::TimeLockedUnspentOutputs(tip) => {
                 let mut outputs = OutputSql::index_time_locked(*tip, &conn)?;
-                for o in &mut outputs {
-                    self.decrypt_if_necessary(o)?;
-                }
 
                 Some(DbValue::UnspentOutputs(
                     outputs
@@ -271,9 +256,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::InvalidOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Invalid, &conn)?;
-                for o in &mut outputs {
-                    self.decrypt_if_necessary(o)?;
-                }
 
                 Some(DbValue::InvalidOutputs(
                     outputs
@@ -284,9 +266,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::KnownOneSidedPaymentScripts => {
                 let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
-                for script in &mut known_one_sided_payment_scripts {
-                    self.decrypt_if_necessary(script)?;
-                }
 
                 Some(DbValue::KnownOneSidedPaymentScripts(
                     known_one_sided_payment_scripts
@@ -402,7 +381,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
                             Ok(mut o) => {
                                 o.delete(&conn)?;
-                                self.decrypt_if_necessary(&mut o)?;
                                 Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(cipher)?))))
                             },
                             Err(e) => match e {
@@ -1111,11 +1089,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(OutputSql::fetch_outputs_by(q, &conn)?
             .into_iter()
             .filter_map(|mut x| {
-                if let Err(e) = self.decrypt_if_necessary(&mut x) {
-                    error!(target: LOG_TARGET, "failed to `decrypt_if_necessary`: {:#?}", e);
-                    return None;
-                }
-
                 x.to_db_unblinded_output(cipher)
                     .map_err(|e| {
                         error!(
