@@ -159,11 +159,12 @@ mod test {
             test::{create_input, create_outputs},
             Covenant,
         },
+        transactions::test_helpers::UtxoTestParams,
     };
 
     #[test]
     fn it_succeeds_when_empty() {
-        let outputs = create_outputs(10, Default::default());
+        let outputs = create_outputs(10, UtxoTestParams::default());
         let input = create_input();
         let covenant = covenant!();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
@@ -172,7 +173,7 @@ mod test {
 
     #[test]
     fn it_executes_the_covenant() {
-        let mut outputs = create_outputs(10, Default::default());
+        let mut outputs = create_outputs(10, UtxoTestParams::default());
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
@@ -189,7 +190,7 @@ mod test {
 
     #[test]
     fn test_borsh_de_serialization() {
-        let mut outputs = create_outputs(10, Default::default());
+        let mut outputs = create_outputs(10, UtxoTestParams::default());
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
