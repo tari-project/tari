@@ -183,7 +183,6 @@ pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::P2pConfig;
-pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 pub type TariEncryptedValue = tari_core::transactions::transaction_components::EncryptedValue;
@@ -1398,23 +1397,6 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
-    }
-}
-
-/// Frees memory for a TariCommitmentSignature
-///
-/// ## Arguments
-/// `com_sig` - The pointer to a TariCommitmentSignature
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitmentSignature) {
-    if !com_sig.is_null() {
-        Box::from_raw(com_sig);
     }
 }
 

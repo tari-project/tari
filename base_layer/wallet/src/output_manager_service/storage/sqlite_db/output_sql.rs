@@ -29,7 +29,7 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -85,9 +85,11 @@ pub struct OutputSql {
     pub script_private_key: Vec<u8>,
     pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
-    pub metadata_signature_nonce: Vec<u8>,
-    pub metadata_signature_u_key: Vec<u8>,
-    pub metadata_signature_v_key: Vec<u8>,
+    pub metadata_signature_ephemeral_commitment: Vec<u8>,
+    pub metadata_signature_ephemeral_pubkey: Vec<u8>,
+    pub metadata_signature_u_a: Vec<u8>,
+    pub metadata_signature_u_x: Vec<u8>,
+    pub metadata_signature_u_y: Vec<u8>,
     pub mined_height: Option<i64>,
     pub mined_in_block: Option<Vec<u8>>,
     pub mined_mmr_position: Option<i64>,
@@ -818,17 +820,26 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     reason: "PrivateKey could not be converted from bytes".to_string(),
                 }
             })?,
-            ComSignature::new(
-                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+            ComAndPubSignature::new(
+                Commitment::from_vec(&o.metadata_signature_ephemeral_commitment).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create Commitment from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "Commitment could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PublicKey::from_vec(&o.metadata_signature_ephemeral_pubkey).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
                     OutputManagerStorageError::ConversionError {
-                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                        reason: "PublicKey could not be converted from bytes".to_string(),
                     }
                 })?,
-                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                PrivateKey::from_vec(&o.metadata_signature_u_a).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -837,7 +848,16 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                         reason: "PrivateKey could not be converted from bytes".to_string(),
                     }
                 })?,
-                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
+                PrivateKey::from_vec(&o.metadata_signature_u_x).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_u_y).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
