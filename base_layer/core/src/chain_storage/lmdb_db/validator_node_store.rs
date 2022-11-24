@@ -173,7 +173,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             i += 1;
         }
 
-        Ok(nodes.into_iter().flatten().collect())
+        let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
+        vn_set.sort_by(|(_, a), (_, b)| a.cmp(&b));
+        Ok(vn_set)
     }
 
     pub fn get_shard_key(
@@ -259,6 +261,7 @@ mod tests {
                 .unwrap();
             nodes.push((public_key, shard_key));
         }
+        nodes.sort_by(|(_, a), (_, b)| a.cmp(b));
         nodes
     }
 
@@ -345,9 +348,8 @@ mod tests {
 
             let set = store.get_vn_set(1, 5).unwrap();
             // s1 and s2 have replaced the previous shard keys, and are now ordered last since they come after node2
-            assert_eq!(set[0], nodes[2]);
-            assert_eq!(set[1], (nodes[0].0.clone(), s0));
-            assert_eq!(set[2], (nodes[1].0.clone(), make_hash(s1)));
+            assert_eq!(set.len(), 3);
+            assert_eq!(set.iter().filter(|s| s.0 == nodes[1].0).count(), 1);
         }
     }
 
