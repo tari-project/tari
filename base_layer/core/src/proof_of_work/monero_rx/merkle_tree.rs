@@ -24,13 +24,10 @@
 //!
 //! See <https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c>
 
-use std::{
-    convert::TryFrom,
-    io,
-    io::{ErrorKind, Write},
-};
+use std::{io, io::Write};
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 use monero::{
     consensus::{Decodable, Encodable},
     Hash,
@@ -134,10 +131,7 @@ pub struct MerkleProof {
 
 impl BorshSerialize for MerkleProof {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        BorshSerialize::serialize(
-            &u32::try_from(self.branch.len()).map_err(|_| ErrorKind::InvalidInput)?,
-            writer,
-        )?;
+        writer.write_varint(self.branch.len())?;
         for hash in &self.branch {
             hash.consensus_encode(writer)?;
         }
@@ -149,8 +143,8 @@ impl BorshSerialize for MerkleProof {
 
 impl BorshDeserialize for MerkleProof {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = u32::deserialize(buf)?;
-        let mut branch = Vec::with_capacity(len as usize);
+        let len = buf.read_varint()?;
+        let mut branch = Vec::with_capacity(len);
         for _ in 0..len {
             branch.push(Hash::consensus_decode(buf).unwrap());
         }

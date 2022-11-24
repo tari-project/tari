@@ -26,6 +26,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 
 use super::decoder::CovenantDecodeError;
 use crate::{
@@ -51,15 +52,22 @@ pub struct Covenant {
 
 impl BorshSerialize for Covenant {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        let mut buf = Vec::new();
-        self.write_to(&mut buf)?;
-        buf.serialize(writer)
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
     }
 }
 
 impl<'a> BorshDeserialize for Covenant {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let data = Vec::<u8>::deserialize(buf)?;
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
         let covenant = Self::from_bytes(&mut data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         Ok(covenant)

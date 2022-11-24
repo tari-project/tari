@@ -18,6 +18,7 @@
 use std::{convert::TryFrom, io};
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -185,13 +186,22 @@ pub struct ExecutionStack {
 
 impl BorshSerialize for ExecutionStack {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.to_bytes().serialize(writer)
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
     }
 }
 
 impl BorshDeserialize for ExecutionStack {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let data = Vec::<u8>::deserialize(buf)?;
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
         let stack = Self::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         Ok(stack)

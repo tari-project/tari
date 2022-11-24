@@ -20,6 +20,7 @@ use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::D
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
+use integer_encoding::{VarIntReader, VarIntWriter};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
@@ -63,13 +64,21 @@ pub struct TariScript {
 impl BorshSerialize for TariScript {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         let bytes = self.to_bytes();
-        bytes.serialize(writer)
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
     }
 }
 
 impl BorshDeserialize for TariScript {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let data = Vec::<u8>::deserialize(buf)?;
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
         let script = TariScript::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         Ok(script)
