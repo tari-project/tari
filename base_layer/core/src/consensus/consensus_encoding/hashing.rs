@@ -127,7 +127,7 @@ mod tests {
         let mut hasher = Blake256::new();
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
-        let expected_hash = hasher.chain(b"\x01\x00\x00\x00\x00\x00\x00\x00\x73").finalize();
+        let expected_hash = hasher.chain(b"\x01\x00\x00\x00\x73").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
             .chain(&test_subject)
             .finalize();
