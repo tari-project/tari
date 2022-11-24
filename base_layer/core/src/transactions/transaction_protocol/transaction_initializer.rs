@@ -362,10 +362,6 @@ impl SenderTransactionInitializer {
         }
 
         let metadata_size_without_change = self.get_total_metadata_size_for_outputs();
-        println!(
-            "{} {} {} {}",
-            fee_per_gram, num_inputs, num_outputs, metadata_size_without_change
-        );
         let fee_without_change =
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
@@ -383,10 +379,6 @@ impl SenderTransactionInitializer {
         // Subtract with a check on going negative
         let total_input_value = total_to_self + total_amount + fee_without_change;
         let change_amount = total_being_spent.checked_sub(total_input_value);
-        println!(
-            "{} {} {} {} {}",
-            total_input_value, total_being_spent, total_to_self, total_amount, fee_without_change
-        );
         match change_amount {
             None => Err(format!(
                 "You are spending ({}) more than you're providing ({}).",

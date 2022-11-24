@@ -137,7 +137,7 @@ impl BorshSerialize for MerkleProof {
             &(u32::try_from(self.branch.len()).map_err(|_| ErrorKind::InvalidInput)?).to_le_bytes(),
             writer,
         )?;
-        for hash in self.branch.iter() {
+        for hash in &self.branch {
             hash.consensus_encode(writer)?;
         }
         BorshSerialize::serialize(&self.depth, writer)?;
