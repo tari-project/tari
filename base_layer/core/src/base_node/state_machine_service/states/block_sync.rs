@@ -116,6 +116,9 @@ impl BlockSync {
                 });
                 log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "Block sync failed: {}", err);
+                if let Err(e) = shared.db.swap_to_highest_pow_chain().await{
+                    error!(target: LOG_TARGET, "Failed to reset chain to highest proof of work: {}", e);
+                }
                 StateEvent::BlockSyncFailed
             },
         }
