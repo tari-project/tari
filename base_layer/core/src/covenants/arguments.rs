@@ -321,14 +321,7 @@ mod test {
                 CovenantArg::Hash(FixedHash::zero()),
                 &from_hex("010000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
-            test_case(CovenantArg::TariScript(script!(Nop)), &[
-                ARG_TARI_SCRIPT,
-                0x01,
-                0x00,
-                0x00,
-                0x00,
-                0x73,
-            ]);
+            test_case(CovenantArg::TariScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);
             test_case(CovenantArg::OutputField(OutputField::Covenant), &[
                 ARG_OUTPUT_FIELD,
                 FIELD_COVENANT,
