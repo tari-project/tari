@@ -63,18 +63,15 @@ pub struct TariScript {
 impl BorshSerialize for TariScript {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         let bytes = self.to_bytes();
-        BorshSerialize::serialize(&bytes.len(), writer)?;
-        writer.write_all(self.to_bytes().as_bytes())?;
-        Ok(())
+        bytes.serialize(writer)
     }
 }
 
 impl BorshDeserialize for TariScript {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let size = usize::deserialize(buf)?;
-        let script = TariScript::from_bytes(&buf[..size])
+        let data = Vec::<u8>::deserialize(buf)?;
+        let script = TariScript::from_bytes(&mut data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        *buf = &buf[size..];
         Ok(script)
     }
 }
@@ -662,6 +659,7 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
     use digest::Digest;
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
@@ -1660,5 +1658,17 @@ mod test {
         let inputs = ExecutionStack::new(vec![Hash(scalar)]);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1));
+    }
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
+        let script = TariScript::from_hex(hex_script).unwrap();
+        let mut buf = Vec::new();
+        script.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(script, TariScript::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

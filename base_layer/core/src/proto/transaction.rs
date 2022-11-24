@@ -255,7 +255,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
         let mut buffer = output.covenant.as_bytes();
-        let covenant = BorshDeserialize::deserialize(&mut buffer).unwrap();
+        let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|e| e.to_string())?;
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 

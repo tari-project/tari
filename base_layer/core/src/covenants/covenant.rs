@@ -51,13 +51,17 @@ pub struct Covenant {
 
 impl BorshSerialize for Covenant {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.write_to(writer)
+        let mut buf = Vec::new();
+        self.write_to(&mut buf)?;
+        buf.serialize(writer)
     }
 }
 
 impl<'a> BorshDeserialize for Covenant {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let covenant = Self::from_bytes(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        let data = Vec::<u8>::deserialize(buf)?;
+        let covenant = Self::from_bytes(&mut data.as_slice())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         Ok(covenant)
     }
 }
@@ -139,9 +143,14 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
+
     use crate::{
         covenant,
-        covenants::test::{create_input, create_outputs},
+        covenants::{
+            test::{create_input, create_outputs},
+            Covenant,
+        },
     };
 
     #[test]
@@ -168,5 +177,26 @@ mod test {
         );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let mut outputs = create_outputs(10, Default::default());
+        outputs[4].features.maturity = 42;
+        outputs[5].features.maturity = 42;
+        outputs[7].features.maturity = 42;
+        let mut input = create_input();
+        input.set_maturity(42).unwrap();
+        let covenant = covenant!(fields_preserved(@fields(
+            @field::features_output_type,
+            @field::features_maturity,
+            @field::features_metadata))
+        );
+        let mut buf = Vec::new();
+        covenant.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(covenant, Covenant::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

@@ -20,12 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    io,
-    io::Write,
-    ops::Deref,
-};
+use std::{convert::TryFrom, io, io::Write, ops::Deref};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -40,20 +35,30 @@ pub struct FixedByteArray {
 
 impl BorshSerialize for FixedByteArray {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        BorshSerialize::serialize(&self.elems.to_vec(), writer)?;
-        BorshSerialize::serialize(&self.len, writer)?;
+        self.len.serialize(writer)?;
+        let data = self.as_slice();
+        for i in 0..self.len as usize {
+            data[i].serialize(writer)?;
+        }
         Ok(())
     }
 }
 
 impl BorshDeserialize for FixedByteArray {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let elems: Vec<u8> = BorshDeserialize::deserialize(buf)?;
-        let len = BorshDeserialize::deserialize(buf)?;
-        Ok(Self {
-            elems: elems.as_bytes().try_into().unwrap(),
-            len,
-        })
+        let len = u8::deserialize(buf)? as usize;
+        if len > MAX_ARR_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("length exceeded maximum of 63-bytes for FixedByteArray: {}", len),
+            ));
+        }
+        let mut bytes = Vec::with_capacity(len);
+        for _ in 0..len {
+            bytes.push(u8::deserialize(buf)?);
+        }
+        // This unwrap should never fail, the len is checked above.
+        Ok(Self::from_bytes(bytes.as_bytes()).unwrap())
     }
 }
 
@@ -147,9 +152,40 @@ mod test {
         FixedByteArray::from_bytes(&[1u8; 64][..]).unwrap_err();
     }
 
+    // #[test]
+    // fn length_check() {
+    //     let mut buf = [0u8; MAX_ARR_SIZE + 1];
+    //     buf[0] = 63;
+    //     let arr = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap();
+    //     assert_eq!(arr.len(), MAX_ARR_SIZE);
+
+    //     buf[0] = 64;
+    //     let _err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
+    // }
+
     #[test]
     fn capacity_overflow_does_not_panic() {
         let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
         let _result = FixedByteArray::deserialize(&mut data.as_slice()).unwrap_err();
+    }
+
+    #[test]
+    fn length_check() {
+        let mut buf = [MAX_ARR_SIZE as u8; MAX_ARR_SIZE + 1];
+        let fixed_byte_array = FixedByteArray::deserialize(&mut buf.as_slice()).unwrap();
+        assert_eq!(fixed_byte_array.len(), MAX_ARR_SIZE);
+        buf[0] += 1;
+        FixedByteArray::deserialize(&mut buf.as_slice()).unwrap_err();
+    }
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let fixed_byte_array = FixedByteArray::from_bytes(&[5, 6, 7]).unwrap();
+        let mut buf = Vec::new();
+        fixed_byte_array.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(fixed_byte_array, FixedByteArray::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

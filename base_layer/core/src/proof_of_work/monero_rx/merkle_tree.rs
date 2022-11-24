@@ -125,6 +125,7 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct MerkleProof {
     branch: Vec<Hash>,
     depth: u16,
@@ -134,7 +135,7 @@ pub struct MerkleProof {
 impl BorshSerialize for MerkleProof {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         BorshSerialize::serialize(
-            &(u32::try_from(self.branch.len()).map_err(|_| ErrorKind::InvalidInput)?).to_le_bytes(),
+            &u32::try_from(self.branch.len()).map_err(|_| ErrorKind::InvalidInput)?,
             writer,
         )?;
         for hash in &self.branch {
@@ -620,6 +621,19 @@ mod test {
 
             assert!(!proof.branch().contains(hash));
             assert!(!proof.branch().contains(&expected_root));
+        }
+
+        #[test]
+        fn test_borsh_de_serialization() {
+            let tx_hashes =
+                &[Hash::from_str("fa58575f7d1d377709f1621fac98c758860ca6dc5f2262be9ce5fd131c370d1a").unwrap()];
+            let proof = create_merkle_proof(&tx_hashes[..], &tx_hashes[0]).unwrap();
+            let mut buf = Vec::new();
+            proof.serialize(&mut buf).unwrap();
+            buf.extend_from_slice(&[1, 2, 3]);
+            let buf = &mut buf.as_slice();
+            assert_eq!(proof, MerkleProof::deserialize(buf).unwrap());
+            assert_eq!(buf, &[1, 2, 3]);
         }
     }
 }

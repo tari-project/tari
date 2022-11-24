@@ -82,12 +82,7 @@ impl CovenantArg {
                 let pk = PublicKey::deserialize(reader)?;
                 Ok(CovenantArg::PublicKey(pk))
             },
-            ARG_COMMITMENT => {
-                println!("here {:?}", reader);
-                let x = Commitment::deserialize(reader);
-                println!("x {:?}", x);
-                Ok(CovenantArg::Commitment(x?))
-            },
+            ARG_COMMITMENT => Ok(CovenantArg::Commitment(Commitment::deserialize(reader)?)),
             ARG_TARI_SCRIPT => {
                 let script = TariScript::deserialize(reader)?;
                 Ok(CovenantArg::TariScript(script))

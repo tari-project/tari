@@ -70,12 +70,15 @@ impl BorshSerialize for MoneroPowData {
 
 impl BorshDeserialize for MoneroPowData {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let header = monero::BlockHeader::consensus_decode(buf).unwrap();
+        let header = monero::BlockHeader::consensus_decode(buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let randomx_key = BorshDeserialize::deserialize(buf)?;
         let transaction_count = BorshDeserialize::deserialize(buf)?;
-        let merkle_root = monero::Hash::consensus_decode(buf).unwrap();
+        let merkle_root = monero::Hash::consensus_decode(buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let coinbase_merkle_proof = BorshDeserialize::deserialize(buf)?;
-        let coinbase_tx = monero::Transaction::consensus_decode(buf).unwrap();
+        let coinbase_tx = monero::Transaction::consensus_decode(buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         Ok(Self {
             header,
             randomx_key,
@@ -116,5 +119,39 @@ impl Display for MoneroPowData {
         writeln!(fmt, "Monero tx count: {}", self.transaction_count)?;
         writeln!(fmt, "Monero tx root: {}", to_hex(self.merkle_root.as_bytes()))?;
         writeln!(fmt, "Monero coinbase tx: {}", self.coinbase_tx)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
+    use monero::{BlockHeader, Hash, Transaction, VarInt};
+    use tari_utilities::ByteArray;
+
+    use super::MoneroPowData;
+    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let monero_pow_data = MoneroPowData {
+            header: BlockHeader {
+                major_version: VarInt(1),
+                minor_version: VarInt(2),
+                timestamp: VarInt(3),
+                prev_id: Hash::new([4; 32]),
+                nonce: 5,
+            },
+            randomx_key: FixedByteArray::from_bytes(&[6, 7, 8]).unwrap(),
+            transaction_count: 9,
+            merkle_root: Hash::new([10; 32]),
+            coinbase_merkle_proof: MerkleProof::default(),
+            coinbase_tx: Transaction::default(),
+        };
+        let mut buf = Vec::new();
+        monero_pow_data.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        MoneroPowData::deserialize(buf).unwrap();
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }
