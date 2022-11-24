@@ -8143,7 +8143,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let covenant_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(vec![0u8])));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);
