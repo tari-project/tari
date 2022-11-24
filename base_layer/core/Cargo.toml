@@ -42,7 +42,7 @@ blake2 = "^0.9.0"
 bytes = "0.5"
 chacha20poly1305 = "0.9.0"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
-criterion = { version = "0.3.5", optional = true  }
+criterion = { version = "0.4.0", optional = true  }
 croaring = { version = "0.5.2", optional = true }
 decimal-rs = "0.1.20"
 derivative = "2.2.0"
