@@ -45,6 +45,7 @@ use tari_core::transactions::transaction_components::{OutputType, TransactionOut
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tokio::time::Instant;
+use zeroize::Zeroize;
 
 use crate::{
     output_manager_service::{
@@ -108,21 +109,22 @@ impl OutputManagerSqliteDatabase {
     }
 
     fn insert(&self, key_value_pair: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let cipher = acquire_read_lock!(self.cipher).as_ref();
+
         match key_value_pair {
             DbKeyValuePair::UnspentOutput(c, o) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None)?;
-                self.encrypt_if_necessary(&mut new_output)?;
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None, None)?;
+                self.encrypt_if_necessary(new_output)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None)?;
-                self.encrypt_if_necessary(&mut new_output)?;
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None, cipher)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::OutputToBeReceived(c, (tx_id, o, coinbase_block_height)) => {
@@ -134,8 +136,8 @@ impl OutputManagerSqliteDatabase {
                     OutputStatus::EncumberedToBeReceived,
                     Some(tx_id),
                     coinbase_block_height,
+                    cipher,
                 )?;
-                self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(conn)?
             },
 
@@ -1256,10 +1258,14 @@ fn update_outputs_with_tx_id_and_status_to_new_status(
 }
 
 /// These are the fields that can be updated for an Output
-#[derive(Default)]
+#[derive(Default, Zeroize)]
+#[zeroize(drop)]
 pub struct UpdateOutput {
+    #[zeroize(skip)]
     status: Option<OutputStatus>,
+    #[zeroize(skip)]
     received_in_tx_id: Option<Option<TxId>>,
+    #[zeroize(skip)]
     spent_in_tx_id: Option<Option<TxId>>,
     spending_key: Option<Vec<u8>>,
     script_private_key: Option<Vec<u8>>,

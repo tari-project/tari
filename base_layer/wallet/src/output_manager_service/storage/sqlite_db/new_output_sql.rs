@@ -73,8 +73,9 @@ impl NewOutputSql {
         status: OutputStatus,
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
+        cipher: Option<&XChaCha20Poly1305>,
     ) -> Result<Self, OutputManagerStorageError> {
-        Ok(Self {
+        let mut output = Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
@@ -101,7 +102,15 @@ impl NewOutputSql {
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
-        })
+        };
+
+        if let Some(cipher) = cipher {
+            output
+                .encrypt(cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+        }
+
+        Ok(output)
     }
 
     /// Write this struct to the database

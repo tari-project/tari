@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use chacha20poly1305::XChaCha20Poly1305;
+use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
@@ -618,6 +618,159 @@ impl OutputSql {
             conn,
         )?;
         Ok(())
+    }
+}
+
+impl OutputSql {
+    pub fn to_db_unblinded_output(
+        mut self,
+        cipher: Option<XChaCha20Poly1305>,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        if let Some(cipher) = cipher {
+            self.decrypt(&cipher);
+        }
+
+        let features: OutputFeatures =
+            serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
+                reason: format!("Could not convert json into OutputFeatures:{}", s),
+            })?;
+
+        let encrypted_value = EncryptedValue::from_bytes(&self.encrypted_value)?;
+        let unblinded_output = UnblindedOutput::new_current_version(
+            MicroTari::from(self.value as u64),
+            PrivateKey::from_vec(&self.spending_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
+            })?,
+            features,
+            TariScript::from_bytes(self.script.as_slice())?,
+            ExecutionStack::from_bytes(self.input_data.as_slice())?,
+            PrivateKey::from_vec(&self.script_private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
+            })?,
+            PublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PublicKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
+            })?,
+            ComSignature::new(
+                Commitment::from_vec(&self.metadata_signature_nonce).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PublicKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PrivateKey::from_vec(&self.metadata_signature_u_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PrivateKey::from_vec(&self.metadata_signature_v_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
+                })?,
+            ),
+            self.script_lock_height as u64,
+            Covenant::from_bytes(&self.covenant).map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "Covenant could not be converted from bytes".to_string(),
+                }
+            })?,
+            encrypted_value,
+            MicroTari::from(self.minimum_value_promise as u64),
+        );
+
+        // we manually zeroize the sensitive data associated with OutputSql, in order to remove potential leaks
+        use zeroize::{Zeroize, Zeroizing};
+        Zeroizing::new(self.spending_key).zeroize();
+        Zeroizing::new(self.script_private_key).zeroize();
+        self.spending_key = self.spending_key.iter().map(|x| 0u8).collect::<Vec<_>>();
+        self.script_private_key = self.script_private_key.iter().map(|x| 0u8).collect::<Vec<_>>();
+
+        let hash = match self.hash {
+            None => {
+                let factories = CryptoFactories::default();
+                unblinded_output.as_transaction_output(&factories)?.hash()
+            },
+            Some(v) => match v.try_into() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Malformed transaction hash: {}", e);
+                    return Err(OutputManagerStorageError::ConversionError {
+                        reason: "Malformed transaction hash".to_string(),
+                    });
+                },
+            },
+        };
+        let commitment = match self.commitment {
+            None => {
+                let factories = CryptoFactories::default();
+                factories
+                    .commitment
+                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
+            },
+            Some(c) => Commitment::from_vec(&c)?,
+        };
+        let spending_priority = (self.spending_priority as u32).into();
+        let mined_in_block = match self.mined_in_block {
+            Some(v) => match v.try_into() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            },
+            None => None,
+        };
+        let marked_deleted_in_block = match self.marked_deleted_in_block {
+            Some(v) => match v.try_into() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            },
+            None => None,
+        };
+        Ok(DbUnblindedOutput {
+            commitment,
+            unblinded_output,
+            hash,
+            status: self.status.try_into()?,
+            mined_height: self.mined_height.map(|mh| mh as u64),
+            mined_in_block,
+            mined_mmr_position: self.mined_mmr_position.map(|mp| mp as u64),
+            mined_timestamp: self.mined_timestamp,
+            marked_deleted_at_height: self.marked_deleted_at_height.map(|d| d as u64),
+            marked_deleted_in_block,
+            spending_priority,
+            source: self.source.try_into()?,
+        })
     }
 }
 
