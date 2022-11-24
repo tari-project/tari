@@ -4901,8 +4901,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.16.3"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.16.3#fb312b7517617187c0d3dda0d32c408ee95cdd15"
+version = "0.16.4"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.16.4#f649c08528f84ed8865aba6fbeb52e969fca14a5"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",
