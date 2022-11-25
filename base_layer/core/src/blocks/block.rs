@@ -121,9 +121,19 @@ impl Block {
         Ok(())
     }
 
+    /// Run through the outputs of the block and check that
+    /// 1. only coinbase outputs may have metadata set,
+    /// 1. coinbase metadata length does not exceed its limit
+    pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
+        self.body
+            .check_output_features(consensus_constants.coinbase_output_features_metadata_max_length())?;
+
+        Ok(())
+    }
+
     /// Checks that all STXO rules (maturity etc) and kernel heights are followed
     pub fn check_spend_rules(&self) -> Result<(), BlockValidationError> {
-        self.body.check_stxo_rules(self.header.height)?;
+        self.body.check_utxo_rules(self.header.height)?;
         if self.body.max_kernel_timelock() > self.header.height {
             return Err(BlockValidationError::MaturityError);
         }

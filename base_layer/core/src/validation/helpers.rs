@@ -300,6 +300,12 @@ pub fn check_coinbase_output(
         .map_err(ValidationError::from)
 }
 
+pub fn check_output_features(block: &Block, rules: &ConsensusManager) -> Result<(), ValidationError> {
+    block
+        .check_output_features(rules.consensus_constants(block.header.height))
+        .map_err(ValidationError::from)
+}
+
 pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
     let mut items = items.into_iter();
     let prev_item = items.next();
