@@ -97,6 +97,8 @@ pub struct ConsensusConstants {
     permitted_output_types: &'static [OutputType],
     /// How long does it take to timeout validator node registration
     validator_node_timeout: u64,
+    /// Coinbase outputs are allowed to have metadata, but it has the following length limit
+    coinbase_output_features_metadata_max_length: usize,
 }
 
 // todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
@@ -207,6 +209,10 @@ impl ConsensusConstants {
             .transaction_weight
             .round_up_metadata_size(output_features.get_serialized_size() + script![Nop].get_serialized_size());
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
+    }
+
+    pub fn coinbase_output_features_metadata_max_length(&self) -> usize {
+        self.coinbase_output_features_metadata_max_length
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -333,6 +339,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: OutputType::all(),
             validator_node_timeout: 100,
+            coinbase_output_features_metadata_max_length: 64,
         }]
     }
 
@@ -374,6 +381,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             validator_node_timeout: 0,
+            coinbase_output_features_metadata_max_length: 64,
         }]
     }
 
@@ -419,6 +427,7 @@ impl ConsensusConstants {
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
             validator_node_timeout: 100,
+            coinbase_output_features_metadata_max_length: 64,
         }]
     }
 
@@ -470,6 +479,7 @@ impl ConsensusConstants {
                 kernel_version_range: kernel_version_range.clone(),
                 permitted_output_types: Self::current_permitted_output_types(),
                 validator_node_timeout: 0,
+                coinbase_output_features_metadata_max_length: 64,
             },
             ConsensusConstants {
                 effective_from_height: 23000,
@@ -494,6 +504,7 @@ impl ConsensusConstants {
                 kernel_version_range,
                 permitted_output_types: Self::current_permitted_output_types(),
                 validator_node_timeout: 0,
+                coinbase_output_features_metadata_max_length: 64,
             },
         ]
     }
@@ -542,6 +553,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             validator_node_timeout: 50,
+            coinbase_output_features_metadata_max_length: 64,
         };
 
         vec![consensus_constants_1]
@@ -586,6 +598,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             validator_node_timeout: 0,
+            coinbase_output_features_metadata_max_length: 64,
         }]
     }
 
