@@ -1,10 +1,11 @@
+use borsh::BorshSerialize;
 //  Copyright 2021. The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
 //  following disclaimer in the documentation and/or other materials provided with the distribution.
@@ -12,13 +13,14 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
 use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
@@ -54,9 +56,11 @@ pub struct NewOutputSql {
     pub script_private_key: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
-    pub metadata_signature_nonce: Vec<u8>,
-    pub metadata_signature_u_key: Vec<u8>,
-    pub metadata_signature_v_key: Vec<u8>,
+    pub metadata_signature_ephemeral_commitment: Vec<u8>,
+    pub metadata_signature_ephemeral_pubkey: Vec<u8>,
+    pub metadata_signature_u_a: Vec<u8>,
+    pub metadata_signature_u_x: Vec<u8>,
+    pub metadata_signature_u_y: Vec<u8>,
     pub received_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub features_json: String,
@@ -74,6 +78,8 @@ impl NewOutputSql {
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
     ) -> Result<Self, OutputManagerStorageError> {
+        let mut covenant = Vec::new();
+        BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant).unwrap();
         Ok(Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
@@ -88,16 +94,22 @@ impl NewOutputSql {
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata.clone()),
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
-            metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
-            metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
-            metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
+            metadata_signature_ephemeral_commitment: output
+                .unblinded_output
+                .metadata_signature
+                .ephemeral_commitment()
+                .to_vec(),
+            metadata_signature_ephemeral_pubkey: output.unblinded_output.metadata_signature.ephemeral_pubkey().to_vec(),
+            metadata_signature_u_a: output.unblinded_output.metadata_signature.u_a().to_vec(),
+            metadata_signature_u_x: output.unblinded_output.metadata_signature.u_x().to_vec(),
+            metadata_signature_u_y: output.unblinded_output.metadata_signature.u_y().to_vec(),
             coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
             features_json: serde_json::to_string(&output.unblinded_output.features).map_err(|s| {
                 OutputManagerStorageError::ConversionError {
                     reason: format!("Could not parse features from JSON:{}", s),
                 }
             })?,
-            covenant: output.unblinded_output.covenant.to_bytes(),
+            covenant,
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
@@ -161,9 +173,11 @@ impl From<OutputSql> for NewOutputSql {
             script_private_key: o.script_private_key,
             metadata: o.metadata,
             sender_offset_public_key: o.sender_offset_public_key,
-            metadata_signature_nonce: o.metadata_signature_nonce,
-            metadata_signature_u_key: o.metadata_signature_u_key,
-            metadata_signature_v_key: o.metadata_signature_v_key,
+            metadata_signature_ephemeral_commitment: o.metadata_signature_ephemeral_commitment,
+            metadata_signature_ephemeral_pubkey: o.metadata_signature_ephemeral_pubkey,
+            metadata_signature_u_a: o.metadata_signature_u_a,
+            metadata_signature_u_x: o.metadata_signature_u_x,
+            metadata_signature_u_y: o.metadata_signature_u_y,
             received_in_tx_id: o.received_in_tx_id,
             coinbase_block_height: o.coinbase_block_height,
             features_json: o.features_json,

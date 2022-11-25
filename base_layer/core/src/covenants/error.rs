@@ -20,14 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::covenants::decoder::CovenantDecodeError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum CovenantError {
     #[error("Reached the end of tokens but another token was expected")]
     UnexpectedEndOfTokens,
-    #[error("Covenant decode error: {0}")]
-    CovenantDecodeError(#[from] CovenantDecodeError),
     #[error("Expected an argument but got a filter")]
     ExpectedArgButGotFilter,
     #[error("Expected a filter but got an argument")]

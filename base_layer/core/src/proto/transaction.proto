@@ -47,7 +47,7 @@ message TransactionInput {
     // The script input data, if any
     bytes input_data = 4;
     // A signature with k_s, signing the script, input data, and mined height
-    ComSignature script_signature = 6;
+    ComAndPubSignature script_signature = 6;
     // The offset pubkey, K_O
     bytes sender_offset_public_key = 7;
     // The hash of the output this input is spending
@@ -77,7 +77,7 @@ message TransactionOutput {
     // Tari script offset pubkey, K_O
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
-    ComSignature metadata_signature = 6;
+    ComAndPubSignature metadata_signature = 6;
     // The serialised covenant
     bytes covenant = 7;
     // Version

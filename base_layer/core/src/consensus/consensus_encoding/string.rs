@@ -20,19 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    fmt::Display,
-    io,
-    io::{Read, Write},
-};
+use std::{convert::TryFrom, fmt::Display};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
-
 /// A string that can only be a up to MAX length long
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
+)]
 pub struct MaxSizeString<const MAX: usize> {
     string: String,
 }
@@ -114,27 +110,6 @@ impl<const MAX: usize> Display for MaxSizeString<MAX> {
     }
 }
 
-impl<const MAX: usize> ConsensusEncoding for MaxSizeString<MAX> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.string.as_bytes().consensus_encode(writer)
-    }
-}
-
-impl<const MAX: usize> ConsensusEncodingSized for MaxSizeString<MAX> {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.string.as_bytes().consensus_encode_exact_size()
-    }
-}
-
-impl<const MAX: usize> ConsensusDecoding for MaxSizeString<MAX> {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let raw_bytes = MaxSizeBytes::<MAX>::consensus_decode(reader)?;
-        let s = String::from_utf8(raw_bytes.into_vec())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
-        Ok(Self { string: s })
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid String length: expected {expected}, got {actual}")]
 pub struct MaxSizeStringLengthError {
@@ -145,7 +120,6 @@ pub struct MaxSizeStringLengthError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
 
     mod from_str_checked {
         use super::*;
@@ -197,19 +171,6 @@ mod tests {
         fn it_returns_none_if_invalid_utf8() {
             let s = MaxSizeString::<10>::from_utf8_bytes_checked(&[255u8; 10]);
             assert_eq!(s, None);
-        }
-    }
-
-    mod consensus_encoding {
-        use super::*;
-
-        #[test]
-        fn it_encodes_and_decodes_correctly() {
-            let s = MaxSizeString::<16>::from_utf8_bytes_checked("💡🧭🛖".as_bytes()).unwrap();
-            check_consensus_encoding_correctness(s).unwrap();
-
-            let s = MaxSizeString::<0>::from_str_checked("").unwrap();
-            check_consensus_encoding_correctness(s).unwrap();
         }
     }
 }

@@ -24,6 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
+    borsh::{FromBytes, ToBytes},
     covenants::Covenant,
     transactions::transaction_components::{EncryptedValue, TransactionInput, TransactionInputVersion},
 };
@@ -65,7 +66,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
-            let covenant = Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?;
+
             let encrypted_value = EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?;
             let minimum_value_promise = input.minimum_value_promise.into();
 
@@ -79,7 +80,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
-                covenant,
+                Covenant::borsh_from_bytes(&mut input.covenant.as_bytes()).map_err(|err| err.to_string())?,
                 encrypted_value,
                 minimum_value_promise,
             ))
@@ -91,10 +92,12 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
     type Error = String;
 
     fn try_from(input: TransactionInput) -> Result<Self, Self::Error> {
-        let script_signature = Some(grpc::ComSignature {
-            public_nonce_commitment: Vec::from(input.script_signature.public_nonce().as_bytes()),
-            signature_u: Vec::from(input.script_signature.u().as_bytes()),
-            signature_v: Vec::from(input.script_signature.v().as_bytes()),
+        let script_signature = Some(grpc::ComAndPubSignature {
+            ephemeral_commitment: Vec::from(input.script_signature.ephemeral_commitment().as_bytes()),
+            ephemeral_pubkey: Vec::from(input.script_signature.ephemeral_pubkey().as_bytes()),
+            u_a: Vec::from(input.script_signature.u_a().as_bytes()),
+            u_x: Vec::from(input.script_signature.u_x().as_bytes()),
+            u_y: Vec::from(input.script_signature.u_y().as_bytes()),
         });
         if input.is_compact() {
             let output_hash = input.output_hash().to_vec();
@@ -130,7 +133,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 covenant: input
                     .covenant()
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
-                    .to_bytes(),
+                    .serialize_to_vec(),
                 version: input.version as u32,
                 encrypted_value: input
                     .encrypted_value()

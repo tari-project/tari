@@ -126,14 +126,14 @@ impl SingleReceiverTransactionProtocol {
 
         let minimum_value_promise = sender_info.minimum_value_promise;
 
-        let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
+        let partial_metadata_signature = TransactionOutput::create_receiver_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
-            &spending_key.clone(),
+            spending_key,
             &sender_info.script,
             &sender_features,
             &sender_info.sender_offset_public_key,
-            &sender_info.public_commitment_nonce,
+            &sender_info.ephemeral_public_nonce,
             &sender_info.covenant,
             &encrypted_value,
             minimum_value_promise,
@@ -211,7 +211,7 @@ mod test {
         let script_offset_secret_key = PrivateKey::random(&mut OsRng);
         let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
         let private_commitment_nonce = PrivateKey::random(&mut OsRng);
-        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
+        let ephemeral_public_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
         let script = TariScript::default();
         let info = SingleRoundSenderData {
             tx_id: 500u64.into(),
@@ -223,7 +223,7 @@ mod test {
             features: of,
             script,
             sender_offset_public_key,
-            public_commitment_nonce,
+            ephemeral_public_nonce,
             covenant: Default::default(),
             minimum_value_promise: MicroTari::zero(),
         };

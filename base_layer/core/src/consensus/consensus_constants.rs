@@ -31,7 +31,8 @@ use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    consensus::{network::NetworkConsensus, ConsensusEncodingSized},
+    borsh::SerializedSize,
+    consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
@@ -202,9 +203,9 @@ impl ConsensusConstants {
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
         let output_features = OutputFeatures { ..Default::default() };
-        let metadata_size = self.transaction_weight.round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
-        );
+        let metadata_size = self
+            .transaction_weight
+            .round_up_metadata_size(output_features.get_serialized_size() + script![Nop].get_serialized_size());
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
 
@@ -533,7 +534,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: (10 * 4000) * T,
+            faucet_value: 0.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,

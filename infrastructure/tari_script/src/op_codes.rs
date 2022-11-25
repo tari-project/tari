@@ -18,8 +18,8 @@
 use std::{fmt, ops::Deref};
 
 use integer_encoding::VarInt;
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use tari_utilities::{hex::Hex, ByteArrayError};
 
 use super::ScriptError;
 
@@ -649,7 +649,7 @@ mod test {
 
     #[test]
     fn parse() {
-        let script = [0x60u8, 0x71, 0x00];
+        let script = [0xFF, 0x71, 0x00];
         let err = Opcode::parse(&script).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidOpcode));
 

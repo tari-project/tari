@@ -28,6 +28,7 @@ use std::{
     str::FromStr,
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use decimal_rs::{Decimal, DecimalConvertError};
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
@@ -46,7 +47,21 @@ use super::format_currency;
 /// let b = MicroTari::from(50);
 /// assert_eq!(a + b, MicroTari::from(550));
 /// ```
-#[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Copy,
+    Default,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct MicroTari(pub u64);
 
 #[derive(Debug, Clone, ThisError, PartialEq, Eq)]

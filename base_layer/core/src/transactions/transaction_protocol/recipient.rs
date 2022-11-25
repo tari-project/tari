@@ -246,7 +246,7 @@ mod test {
             features,
             script,
             sender_offset_public_key: p.sender_offset_public_key,
-            public_commitment_nonce: p.sender_public_commitment_nonce,
+            ephemeral_public_nonce: p.sender_ephemeral_public_nonce,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };
@@ -293,7 +293,7 @@ mod test {
             features,
             script,
             sender_offset_public_key: p.sender_offset_public_key,
-            public_commitment_nonce: p.sender_public_commitment_nonce,
+            ephemeral_public_nonce: p.sender_ephemeral_public_nonce,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };
