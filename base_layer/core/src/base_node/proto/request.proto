@@ -12,7 +12,6 @@ package tari.base_node;
 message BaseNodeServiceRequest {
     uint64 request_key = 1;
     oneof request {
-        // Indicates a GetBlockByHash request.
         GetBlockFromAllChainsRequest get_block_from_all_chains = 8;
         ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
     }

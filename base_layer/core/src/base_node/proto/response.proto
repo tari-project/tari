@@ -13,8 +13,7 @@ package tari.base_node;
 message BaseNodeServiceResponse {
     uint64 request_key = 1;
     oneof response {
-        // Indicates a HistoricalBlocks response.
-        HistoricalBlocks historical_blocks = 6;
+        BlockResponse block_response = 6;
         FetchMempoolTransactionsResponse fetch_mempool_transactions_by_excess_sigs_response = 7;
     }
     bool is_synced = 13;
@@ -22,10 +21,6 @@ message BaseNodeServiceResponse {
 
 message BlockHeaders {
     repeated tari.core.BlockHeader headers = 1;
-}
-
-message HistoricalBlockResponse {
-    tari.core.HistoricalBlock block = 1;
 }
 
 message BlockHeaderResponse {
@@ -42,6 +37,10 @@ message TransactionOutputs {
 
 message HistoricalBlocks {
     repeated tari.core.HistoricalBlock blocks = 1;
+}
+
+message BlockResponse {
+  tari.core.Block block = 1;
 }
 
 message NewBlockResponse {
