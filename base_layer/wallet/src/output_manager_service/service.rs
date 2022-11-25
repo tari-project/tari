@@ -738,6 +738,9 @@ where
             OutputSource::default(),
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
+
+        // Because we added new outputs, let try to trigger a validation for them
+        self.validate_outputs()?;
         Ok(())
     }
 
