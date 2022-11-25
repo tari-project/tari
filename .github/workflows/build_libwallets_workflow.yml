@@ -123,15 +123,21 @@ jobs:
           mkdir -p MobileWallet/TariLib/
           cd base_layer/wallet_ffi
           mv ios.config build.config
+          export TARGET_CLEAN=0
           ./mobile_build.sh || exit 1
+          find "$GITHUB_WORKSPACE" -iname libtari_wallet_ffi.a
           mkdir -p "${{ runner.temp }}/libwallet-ios"
           cd "${{ runner.temp }}/libwallet-ios"
-          cp -v "$GITHUB_WORKSPACE/MobileWallet/TariLib/libtari_wallet_ffi.a" libtari_wallet_ffi.ios.a
+          cp -v "$GITHUB_WORKSPACE/target/x86_64-apple-ios/release/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_x86_64.a
+          cp -v "$GITHUB_WORKSPACE/target/aarch64-apple-ios/release/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_aarch64.a
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
+          cp -v "$GITHUB_WORKSPACE/MobileWallet/TariLib/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_universal.a
           cp -v "$GITHUB_WORKSPACE/changelog.md" .
           cd ..
           shasum -a 256 \
-            "libwallet-ios/libtari_wallet_ffi.ios.a" \
+            "libwallet-ios/libtari_wallet_ffi.ios_x86_64.a" \
+            "libwallet-ios/libtari_wallet_ffi.ios_aarch64.a" \
+            "libwallet-ios/libtari_wallet_ffi.ios_universal.a" \
             "libwallet-ios/libtari_wallet_ffi.h" \
               > "libwallet-ios/libtari_wallet_ffi.ios.sha256sums"
           ls -alht "${{ runner.temp }}/libwallet-ios"

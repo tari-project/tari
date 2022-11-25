@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.41.0](https://github.com/tari-project/tari/compare/v0.40.2...v0.41.0) (2022-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* update commitment signature  (#4943)
+
+### Features
+
+* add default grpc for localnet ([#4937](https://github.com/tari-project/tari/issues/4937)) ([1e2d227](https://github.com/tari-project/tari/commit/1e2d2274626e368011b58e8c15aa3bb6294f4982))
+* **ci:** expose iOS libwallet individually ([#4951](https://github.com/tari-project/tari/issues/4951)) ([e69997c](https://github.com/tari-project/tari/commit/e69997cc27f106e6f89e662218dd72f47ba5a0c8))
+* only coinbase output features may have metadata set, and is of limited size; ref [#4908](https://github.com/tari-project/tari/issues/4908) ([#4960](https://github.com/tari-project/tari/issues/4960)) ([22b1330](https://github.com/tari-project/tari/commit/22b13307991698e284d2186ad06db663aedcb3d9))
+* replace consensus with borsh ([#4920](https://github.com/tari-project/tari/issues/4920)) ([e669443](https://github.com/tari-project/tari/commit/e669443c9a6ca48a03ccd5d0fff2a1a917901ab9))
+* timestamp validation ([#4887](https://github.com/tari-project/tari/issues/4887)) ([4be02b6](https://github.com/tari-project/tari/commit/4be02b66ff2b5eb82f8f061d379d10e7414dc84e))
+* update commitment signature  ([#4943](https://github.com/tari-project/tari/issues/4943)) ([00e98f9](https://github.com/tari-project/tari/commit/00e98f9edede034c9135fcc7a87a01a38bdf01b4))
+
+
+### Bug Fixes
+
+* add hidden types and seed words to key manager ([#4925](https://github.com/tari-project/tari/issues/4925)) ([0bdb568](https://github.com/tari-project/tari/commit/0bdb568fb33643665a151d81db847cf82989a7fe))
+* **ci:** update GHA release process ([#4945](https://github.com/tari-project/tari/issues/4945)) ([2af6c94](https://github.com/tari-project/tari/commit/2af6c94417a7cdaab35b91d03f6fba5dbb45961f))
+* config cleanup ([#4938](https://github.com/tari-project/tari/issues/4938)) ([68f990f](https://github.com/tari-project/tari/commit/68f990fb568293992bb1bad596f9616b1a34610a))
+* deleted_txo_mmr_position_to_height_index  already exists error ([#4924](https://github.com/tari-project/tari/issues/4924)) ([0269f11](https://github.com/tari-project/tari/commit/0269f1105a5210be41a1da50784a2bc7d9f12069))
+* remove unused ffi types and methods ([#4948](https://github.com/tari-project/tari/issues/4948)) ([5703d02](https://github.com/tari-project/tari/commit/5703d02d419b1a5f49f4523707f7f689c01eb1b5))
+* use same instance of randomx factory for statemachine and validation ([#4947](https://github.com/tari-project/tari/issues/4947)) ([9aed188](https://github.com/tari-project/tari/commit/9aed188ccd7b2caffa10e061ba0d0c3253fb0b16))
+
 ### [0.40.2](https://github.com/tari-project/tari/compare/v0.40.1...v0.40.2) (2022-11-18)
 
 
