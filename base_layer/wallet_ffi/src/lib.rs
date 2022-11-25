@@ -8258,11 +8258,16 @@ mod test {
             let output_type = OutputType::Coinbase.as_byte();
             let maturity: c_ulonglong = 20;
 
-            let expected_metadata = vec![1; 1024];
+            let oversized_metadata = vec![1; 65];
+            let expected_metadata = vec![1; 64];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
+
+            // ----------------------------------------------------------------------------
+            // expected_metadata
 
             let output_features =
                 output_features_create_from_bytes(version, c_ushort::from(output_type), maturity, metadata, error_ptr);
+
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
@@ -8271,6 +8276,18 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).metadata, expected_metadata);
+
+            // ----------------------------------------------------------------------------
+            // over-sized metadata
+
+            let output_features = output_features_create_from_bytes(
+                version,
+                c_ushort::from(output_type),
+                maturity,
+                Box::into_raw(Box::new(ByteVector(oversized_metadata.clone()))),
+                error_ptr,
+            );
+            assert_ne!(error, 0);
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
