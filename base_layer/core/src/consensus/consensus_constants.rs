@@ -27,6 +27,7 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
 use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -207,6 +208,10 @@ impl ConsensusConstants {
             .transaction_weight
             .round_up_metadata_size(output_features.get_serialized_size() + script![Nop].get_serialized_size());
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
+    }
+
+    pub fn coinbase_output_features_metadata_max_length(&self) -> usize {
+        FixedHash::byte_size() * 2
     }
 
     /// The amount of PoW algorithms used by the Tari chain.

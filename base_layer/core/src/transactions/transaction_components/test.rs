@@ -294,10 +294,10 @@ fn check_timelocks() {
     tx.body.add_input(input.clone());
     tx.body.add_kernel(kernel.clone());
     assert!(matches!(
-        tx.body.check_stxo_rules(1),
+        tx.body.check_utxo_rules(1),
         Err(TransactionError::InputMaturity)
     ));
-    tx.body.check_stxo_rules(5).unwrap();
+    tx.body.check_utxo_rules(5).unwrap();
 
     assert_eq!(tx.max_input_maturity(), 5);
     assert_eq!(tx.max_kernel_timelock(), 2);

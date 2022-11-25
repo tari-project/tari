@@ -34,6 +34,7 @@ use crate::{
             check_coinbase_output,
             check_kernel_lock_height,
             check_maturity,
+            check_output_features,
             check_permitted_output_types,
             check_sorting_and_duplicates,
             check_total_burned,
@@ -71,6 +72,7 @@ impl OrphanValidation for OrphanBlockValidator {
     /// 1. Is the accounting correct?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         let height = block.header.height;
+
         if height == 0 {
             warn!(target: LOG_TARGET, "Attempt to validate genesis block");
             return Err(ValidationError::ValidatingGenesis);
@@ -91,6 +93,7 @@ impl OrphanValidation for OrphanBlockValidator {
         let constants = self.rules.consensus_constants(height);
         validate_versions(&block.body, constants)?;
         trace!(target: LOG_TARGET, "SV - Block body versions are ok for {} ", &block_id);
+
         check_block_weight(block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
@@ -105,18 +108,26 @@ impl OrphanValidation for OrphanBlockValidator {
             "SV - No duplicate inputs / outputs for {} ",
             &block_id
         );
+
         for output in block.body.outputs() {
             check_permitted_output_types(constants, output)?;
         }
         trace!(target: LOG_TARGET, "SV - Permitted output type ok for {} ", &block_id);
+
         check_total_burned(&block.body)?;
         trace!(target: LOG_TARGET, "SV - Burned outputs ok for {} ", &block_id);
 
         // Check that the inputs are are allowed to be spent
         check_maturity(height, block.body.inputs())?;
+
         check_kernel_lock_height(height, block.body.kernels())?;
-        trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
+
+        trace!(target: LOG_TARGET, "SV - Output features are ok for {} ", &block_id);
+        check_output_features(block, &self.rules)?;
+
+        trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
+
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_accounting_balance(
             block,
@@ -124,11 +135,13 @@ impl OrphanValidation for OrphanBlockValidator {
             self.bypass_range_proof_verification,
             &self.factories,
         )?;
+
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
+
         Ok(())
     }
 }
