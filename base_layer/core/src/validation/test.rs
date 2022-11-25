@@ -186,7 +186,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1).unwrap(),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -239,7 +239,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1).unwrap(),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -342,7 +342,7 @@ fn chain_balance_validation_burned() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1).unwrap(),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -359,7 +359,7 @@ fn chain_balance_validation_burned() {
     let (burned, burned_key, _) = create_utxo(
         100.into(),
         &factories,
-        &OutputFeatures::create_burn_output(),
+        &OutputFeatures::create_burn_output().unwrap(),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -429,7 +429,7 @@ mod transaction_validator {
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
         let validator = TxInternalConsistencyValidator::new(factories, true, db);
-        let features = OutputFeatures::create_coinbase(0);
+        let features = OutputFeatures::create_coinbase(0).unwrap();
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate(&tx).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);

@@ -1607,8 +1607,15 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let decoded_metadata = (*metadata).0.clone();
 
-    let output_features = TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None);
-    Box::into_raw(Box::new(output_features))
+    match TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None) {
+        Ok(output_features) => Box::into_raw(Box::new(output_features)),
+        Err(_) => {
+            error!(target: LOG_TARGET, "failed to initialize output features",);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("output_features".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
 }
 
 /// Frees memory for a TariOutputFeatures

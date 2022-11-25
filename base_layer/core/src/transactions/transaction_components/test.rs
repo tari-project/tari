@@ -214,7 +214,7 @@ fn sender_signature_verification() {
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.features = OutputFeatures::create_coinbase(0);
+    tx_output.features = OutputFeatures::create_coinbase(0).unwrap();
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
@@ -494,7 +494,7 @@ mod output_features {
 
     #[test]
     fn consensus_encode_decode() {
-        let mut features_u64_max = OutputFeatures::create_coinbase(u64::MAX);
+        let mut features_u64_max = OutputFeatures::create_coinbase(u64::MAX).unwrap();
 
         features_u64_max.version = OutputFeaturesVersion::V0;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();

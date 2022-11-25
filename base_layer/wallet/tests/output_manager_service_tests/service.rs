@@ -684,7 +684,7 @@ async fn test_utxo_selection_with_tx_priority() {
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::create_coinbase(1)),
+        Some(OutputFeatures::create_coinbase(1).unwrap()),
     )
     .await;
     oms.add_rewindable_output(uo, Some(SpendingPriority::HtlcSpendAsap), None)

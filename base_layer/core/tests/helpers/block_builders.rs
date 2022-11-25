@@ -84,7 +84,7 @@ pub fn create_coinbase(
 
     let unblinded_output = create_unblinded_output(
         script!(Nop),
-        OutputFeatures::create_coinbase(maturity_height),
+        OutputFeatures::create_coinbase(maturity_height).unwrap(),
         &p,
         value,
     );
@@ -139,7 +139,7 @@ fn print_new_genesis_block(network: Network) {
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        &OutputFeatures::create_coinbase(lock_height),
+        &OutputFeatures::create_coinbase(lock_height).unwrap(),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),

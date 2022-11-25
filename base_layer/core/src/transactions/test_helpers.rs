@@ -306,7 +306,7 @@ pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64) -> Unbli
     let constants = rules.consensus_constants(height);
     test_params.create_unblinded_output(UtxoTestParams {
         value: rules.get_block_reward_at(height),
-        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height()),
+        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height()).unwrap(),
         ..Default::default()
     })
 }

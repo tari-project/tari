@@ -1033,7 +1033,7 @@ mod test {
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
+            &OutputFeatures::create_burn_output().unwrap(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),
@@ -1041,7 +1041,7 @@ mod test {
         let (output2, _, _) = test_helpers::create_utxo(
             101.into(),
             &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
+            &OutputFeatures::create_burn_output().unwrap(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),
@@ -1049,7 +1049,7 @@ mod test {
         let (output3, _, _) = test_helpers::create_utxo(
             102.into(),
             &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
+            &OutputFeatures::create_burn_output().unwrap(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),

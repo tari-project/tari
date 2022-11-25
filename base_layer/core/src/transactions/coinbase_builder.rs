@@ -201,7 +201,12 @@ impl CoinbaseBuilder {
             .factories
             .commitment
             .commit_value(&spending_key, total_reward.as_u64());
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
+
+        let output_features =
+            OutputFeatures::create_coinbase(height + constants.coinbase_lock_height()).map_err(|_| {
+                CoinbaseBuildError::BuildError("Failed to initialize output features for the coinbase".into())
+            })?;
+
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);

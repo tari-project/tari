@@ -38,6 +38,7 @@ use crate::{
         side_chain::SideChainFeature,
         CodeTemplateRegistration,
         OutputType,
+        TransactionError,
         ValidatorNodeRegistration,
     },
 };
@@ -56,20 +57,26 @@ pub struct OutputFeatures {
 }
 
 impl OutputFeatures {
+    const MAX_METADATA_LENGTH: usize = 64;
+
     pub fn new(
         version: OutputFeaturesVersion,
         output_type: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
-    ) -> OutputFeatures {
-        OutputFeatures {
+    ) -> Result<OutputFeatures, TransactionError> {
+        let features = OutputFeatures {
             version,
             output_type,
             maturity,
             metadata,
             sidechain_feature,
-        }
+        };
+
+        features.validate()?;
+
+        Ok(features)
     }
 
     pub fn new_current_version(
@@ -77,7 +84,7 @@ impl OutputFeatures {
         maturity: u64,
         metadata: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
-    ) -> OutputFeatures {
+    ) -> Result<OutputFeatures, TransactionError> {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
             flags,
@@ -87,45 +94,83 @@ impl OutputFeatures {
         )
     }
 
-    pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
-        OutputFeatures {
+    pub fn create_coinbase(maturity_height: u64) -> Result<OutputFeatures, TransactionError> {
+        let features = OutputFeatures {
             output_type: OutputType::Coinbase,
             maturity: maturity_height,
             ..Default::default()
-        }
+        };
+
+        features.validate()?;
+
+        Ok(features)
     }
 
     /// creates output features for a burned output
-    pub fn create_burn_output() -> OutputFeatures {
-        OutputFeatures {
+    pub fn create_burn_output() -> Result<OutputFeatures, TransactionError> {
+        let features = OutputFeatures {
             output_type: OutputType::Burn,
             ..Default::default()
-        }
+        };
+
+        features.validate()?;
+
+        Ok(features)
     }
 
     /// Creates template registration output features
-    pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
-        OutputFeatures {
+    pub fn for_template_registration(
+        template_registration: CodeTemplateRegistration,
+    ) -> Result<OutputFeatures, TransactionError> {
+        let features = OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
             sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
             ..Default::default()
-        }
+        };
+
+        features.validate()?;
+
+        Ok(features)
     }
 
     pub fn for_validator_node_registration(
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
-    ) -> OutputFeatures {
-        OutputFeatures {
+    ) -> Result<OutputFeatures, TransactionError> {
+        let features = OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(ValidatorNodeRegistration {
                 public_key: validator_node_public_key,
                 signature: validator_node_signature,
             })),
             ..Default::default()
-        }
+        };
+
+        features.validate()?;
+
+        Ok(features)
     }
 
+    #[inline]
+    pub fn validate(&self) -> Result<(), TransactionError> {
+        // This field should be optional for coinbases (mining pools and
+        // other merge mined coins can use it), but it should be empty for non-coinbases
+        if self.output_type != OutputType::Coinbase && !self.metadata.is_empty() {
+            return Err(TransactionError::NonCoinbaseHasMetadata);
+        }
+
+        // For coinbases, the maximum length should be 64 bytes (2x hashes), so that arbitrary data cannot be included
+        if self.output_type == OutputType::Coinbase && self.metadata.len() > Self::MAX_METADATA_LENGTH {
+            return Err(TransactionError::InvalidMetadataSize {
+                len: self.metadata.len(),
+                max: Self::MAX_METADATA_LENGTH,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[inline]
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
     }
@@ -167,7 +212,7 @@ impl ConsensusDecoding for OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None)
+        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None).expect("default output features")
     }
 }
 
@@ -249,5 +294,87 @@ mod test {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
         subject.sidechain_feature = None;
         check_consensus_encoding_correctness(subject).unwrap();
+    }
+
+    #[test]
+    fn test_output_features_metadata() {
+        assert_eq!(Ok(()), OutputFeatures::default().validate());
+        assert_eq!(Ok(()), OutputFeatures::create_burn_output().unwrap().validate());
+        assert_eq!(Ok(()), OutputFeatures::create_coinbase(123).unwrap().validate());
+
+        // ----------------------------------------------------------------------------
+        // coinbase
+
+        assert_eq!(
+            Ok(()),
+            OutputFeatures {
+                output_type: OutputType::Coinbase,
+                maturity: 123,
+                metadata: vec![1; 64],
+                ..Default::default()
+            }
+            .validate()
+        );
+
+        assert_eq!(
+            Err(TransactionError::InvalidMetadataSize {
+                len: 65,
+                max: OutputFeatures::MAX_METADATA_LENGTH
+            }),
+            OutputFeatures {
+                output_type: OutputType::Coinbase,
+                maturity: 123,
+                metadata: vec![1; 65],
+                ..Default::default()
+            }
+            .validate()
+        );
+
+        // ----------------------------------------------------------------------------
+        // non-coinbase
+
+        assert_eq!(
+            Err(TransactionError::NonCoinbaseHasMetadata),
+            OutputFeatures {
+                output_type: OutputType::Standard,
+                maturity: 123,
+                metadata: vec![1],
+                ..Default::default()
+            }
+            .validate()
+        );
+
+        assert_eq!(
+            Err(TransactionError::NonCoinbaseHasMetadata),
+            OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                maturity: 123,
+                metadata: vec![1],
+                ..Default::default()
+            }
+            .validate()
+        );
+
+        assert_eq!(
+            Err(TransactionError::NonCoinbaseHasMetadata),
+            OutputFeatures {
+                output_type: OutputType::ValidatorNodeRegistration,
+                maturity: 123,
+                metadata: vec![1],
+                ..Default::default()
+            }
+            .validate()
+        );
+
+        assert_eq!(
+            Err(TransactionError::NonCoinbaseHasMetadata),
+            OutputFeatures {
+                output_type: OutputType::Burn,
+                maturity: 123,
+                metadata: vec![1],
+                ..Default::default()
+            }
+            .validate()
+        );
     }
 }

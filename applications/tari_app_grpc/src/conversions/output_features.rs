@@ -46,7 +46,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .try_into()
             .map_err(|_| "Invalid output type: overflow")?;
 
-        Ok(OutputFeatures::new(
+        OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
@@ -54,7 +54,8 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.metadata,
             sidechain_feature,
-        ))
+        )
+        .map_err(|e| e.to_string())
     }
 }
 

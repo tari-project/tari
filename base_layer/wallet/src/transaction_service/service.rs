@@ -1384,7 +1384,10 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let output_features = OutputFeatures::create_burn_output();
+
+        let output_features =
+            OutputFeatures::create_burn_output().map_err(TransactionServiceError::TransactionError)?;
+
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
@@ -1497,9 +1500,12 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let output_features =
-            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
+            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature)
+                .unwrap();
+
         let tx_meta =
             TransactionMetadata::new_with_features(0.into(), 3, KernelFeatures::create_validator_node_registration());
+
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
             MicroTari::from(1),

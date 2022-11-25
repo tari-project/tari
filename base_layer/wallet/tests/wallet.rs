@@ -718,7 +718,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let temp_features = OutputFeatures::create_coinbase(50);
+    let temp_features = OutputFeatures::create_coinbase(50).unwrap();
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);

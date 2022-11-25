@@ -1077,7 +1077,8 @@ async fn consensus_validation_versions() {
         0,
         Default::default(),
         None,
-    );
+    )
+    .unwrap();
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
