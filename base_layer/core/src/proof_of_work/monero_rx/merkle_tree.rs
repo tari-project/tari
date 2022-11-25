@@ -24,20 +24,16 @@
 //!
 //! See <https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c>
 
-use std::{
-    io,
-    io::{Read, Write},
-};
+use std::{io, io::Write};
 
+use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 use monero::{
     consensus::{Decodable, Encodable},
     Hash,
 };
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding},
-    proof_of_work::monero_rx::error::MergeMineError,
-};
+use crate::proof_of_work::monero_rx::error::MergeMineError;
 
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {
@@ -126,10 +122,40 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct MerkleProof {
     branch: Vec<Hash>,
     depth: u16,
     path_bitmap: u32,
+}
+
+impl BorshSerialize for MerkleProof {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_varint(self.branch.len())?;
+        for hash in &self.branch {
+            hash.consensus_encode(writer)?;
+        }
+        BorshSerialize::serialize(&self.depth, writer)?;
+        BorshSerialize::serialize(&self.path_bitmap, writer)?;
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for MerkleProof {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let len = buf.read_varint()?;
+        let mut branch = Vec::with_capacity(len);
+        for _ in 0..len {
+            branch.push(Hash::consensus_decode(buf).unwrap());
+        }
+        let depth = BorshDeserialize::deserialize(buf)?;
+        let path_bitmap = BorshDeserialize::deserialize(buf)?;
+        Ok(Self {
+            branch,
+            depth,
+            path_bitmap,
+        })
+    }
 }
 
 impl MerkleProof {
@@ -175,30 +201,6 @@ impl Default for MerkleProof {
             depth: 0,
             path_bitmap: 0,
         }
-    }
-}
-
-impl ConsensusDecoding for MerkleProof {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        Ok(Self {
-            branch: Decodable::consensus_decode(reader).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("Could not decode Monero branch {}", e),
-                )
-            })?,
-            depth: ConsensusDecoding::consensus_decode(reader)?,
-            path_bitmap: ConsensusDecoding::consensus_decode(reader)?,
-        })
-    }
-}
-
-impl ConsensusEncoding for MerkleProof {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.branch.consensus_encode(writer)?;
-        ConsensusEncoding::consensus_encode(&self.depth, writer)?;
-        ConsensusEncoding::consensus_encode(&self.path_bitmap, writer)?;
-        Ok(())
     }
 }
 
@@ -613,6 +615,19 @@ mod test {
 
             assert!(!proof.branch().contains(hash));
             assert!(!proof.branch().contains(&expected_root));
+        }
+
+        #[test]
+        fn test_borsh_de_serialization() {
+            let tx_hashes =
+                &[Hash::from_str("fa58575f7d1d377709f1621fac98c758860ca6dc5f2262be9ce5fd131c370d1a").unwrap()];
+            let proof = create_merkle_proof(&tx_hashes[..], &tx_hashes[0]).unwrap();
+            let mut buf = Vec::new();
+            proof.serialize(&mut buf).unwrap();
+            buf.extend_from_slice(&[1, 2, 3]);
+            let buf = &mut buf.as_slice();
+            assert_eq!(proof, MerkleProof::deserialize(buf).unwrap());
+            assert_eq!(buf, &[1, 2, 3]);
         }
     }
 }

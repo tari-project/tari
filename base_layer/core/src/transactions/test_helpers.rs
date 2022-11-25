@@ -34,7 +34,8 @@ use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusManager},
+    borsh::SerializedSize,
+    consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
@@ -231,9 +232,10 @@ impl TestParams {
 
     pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
         let output_features = OutputFeatures { ..Default::default() };
-        self.fee().weighting().round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
-        ) * num_outputs
+        self.fee()
+            .weighting()
+            .round_up_metadata_size(script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
+            num_outputs
     }
 
     pub fn commit_value(&self, value: MicroTari) -> Commitment {
@@ -514,9 +516,9 @@ pub fn create_unblinded_txos(
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_metadata_size = weighting.round_up_metadata_size(
-        output_features.consensus_encode_exact_size() +
-            output_script.consensus_encode_exact_size() +
-            output_covenant.consensus_encode_exact_size(),
+        output_features.get_serialized_size() +
+            output_script.get_serialized_size() +
+            output_covenant.get_serialized_size(),
     ) * output_count;
     let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
     let amount_per_output = (amount - estimated_fee) / output_count as u64;

@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,47 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io::{Error, Read, Write},
-    mem,
-};
+use std::io::Result;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::tari_amount::MicroTari,
-};
+use borsh::{BorshDeserialize, BorshSerialize};
 
-const U64_SIZE: usize = mem::size_of::<u64>();
+use super::byte_counter::ByteCounter;
 
-impl ConsensusEncoding for MicroTari {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        writer.write_all(&self.0.to_le_bytes()[..])?;
-        Ok(())
+pub trait FromBytes<T: BorshDeserialize> {
+    fn borsh_from_bytes(buf: &mut &[u8]) -> Result<T>;
+}
+
+impl<T: BorshDeserialize> FromBytes<T> for T {
+    fn borsh_from_bytes(buf: &mut &[u8]) -> Result<T> {
+        T::deserialize(buf)
     }
 }
 
-impl ConsensusEncodingSized for MicroTari {
-    fn consensus_encode_exact_size(&self) -> usize {
-        U64_SIZE
+pub trait ToBytes {
+    fn serialize_to_vec(&self) -> Vec<u8>;
+}
+
+impl<T: BorshSerialize> ToBytes for T {
+    fn serialize_to_vec(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        self.serialize(&mut buffer).unwrap();
+        buffer
     }
 }
 
-impl ConsensusDecoding for MicroTari {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let mut buf = [0u8; U64_SIZE];
-        reader.read_exact(&mut buf)?;
-        Ok(u64::from_le_bytes(buf).into())
-    }
+pub trait SerializedSize {
+    fn get_serialized_size(&self) -> usize;
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let subject = MicroTari::from(u64::MAX);
-        check_consensus_encoding_correctness(subject).unwrap();
+impl<T: BorshSerialize> SerializedSize for T {
+    fn get_serialized_size(&self) -> usize {
+        let mut counter = ByteCounter::new();
+        self.serialize(&mut counter).unwrap();
+        counter.get()
     }
 }

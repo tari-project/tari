@@ -22,6 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::BorshDeserialize;
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
@@ -31,13 +32,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
-        CryptoFactories,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
+    CryptoFactories,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
 use tari_script::{ExecutionStack, TariScript};
@@ -635,6 +633,15 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             })?;
 
         let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
+        let covenant = BorshDeserialize::deserialize(&mut o.covenant.as_bytes()).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: "Covenant could not be converted from bytes".to_string(),
+            }
+        })?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -715,15 +722,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 })?,
             ),
             o.script_lock_height as u64,
-            Covenant::from_bytes(&o.covenant).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: "Covenant could not be converted from bytes".to_string(),
-                }
-            })?,
+            covenant,
             encrypted_value,
             MicroTari::from(o.minimum_value_promise as u64),
         );

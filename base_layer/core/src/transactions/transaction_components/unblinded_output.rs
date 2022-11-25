@@ -54,7 +54,7 @@ use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
-    consensus::ConsensusEncodingSized,
+    borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -335,9 +335,7 @@ impl UnblindedOutput {
     }
 
     pub fn metadata_byte_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() +
-            self.script.consensus_encode_exact_size() +
-            self.covenant.consensus_encode_exact_size()
+        self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not

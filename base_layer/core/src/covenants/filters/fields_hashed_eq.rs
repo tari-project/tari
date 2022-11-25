@@ -40,12 +40,12 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
+    use borsh::BorshSerialize;
     use tari_common_types::types::Challenge;
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
     use crate::{
-        consensus::ToConsensusBytes,
         covenant,
         covenants::{
             filters::test::setup_filter_test,
@@ -65,7 +65,7 @@ mod test {
         };
         let mut hasher = Challenge::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
-        let hash = hasher.chain(&features.to_consensus_bytes()).finalize();
+        let hash = hasher.chain(&features.try_to_vec().unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {

@@ -20,16 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, iter::FromIterator};
+use std::{
+    io::{self, Write},
+    iter::FromIterator,
+};
 
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 
+use super::decoder::CovenantDecodeError;
 use crate::{
-    common::{byte_counter::ByteCounter, limited_reader::LimitedBytesReader},
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    common::byte_counter::ByteCounter,
     covenants::{
         context::CovenantContext,
-        decoder::{CovenantDecodeError, CovenantTokenDecoder},
+        decoder::CovenantTokenDecoder,
         encoder::CovenantTokenEncoder,
         error::CovenantError,
         filters::Filter,
@@ -46,19 +50,43 @@ pub struct Covenant {
     tokens: Vec<CovenantToken>,
 }
 
+impl BorshSerialize for Covenant {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> BorshDeserialize for Covenant {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
+        let covenant = Self::from_bytes(&mut data.as_slice())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        Ok(covenant)
+    }
+}
+
 impl Covenant {
     pub fn new() -> Self {
         Self { tokens: Vec::new() }
     }
 
-    pub fn from_bytes(mut bytes: &[u8]) -> Result<Self, CovenantDecodeError> {
+    pub fn from_bytes(bytes: &mut &[u8]) -> Result<Self, CovenantDecodeError> {
         if bytes.is_empty() {
             return Ok(Self::new());
         }
         if bytes.len() > MAX_COVENANT_BYTES {
             return Err(CovenantDecodeError::ExceededMaxBytes);
         }
-        CovenantTokenDecoder::new(&mut bytes).collect()
+        CovenantTokenDecoder::new(bytes).collect()
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -113,43 +141,6 @@ impl Covenant {
     }
 }
 
-impl ConsensusEncoding for Covenant {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        let len = self.get_byte_length();
-        writer.write_varint(len)?;
-        self.write_to(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for Covenant {
-    fn consensus_encode_exact_size(&self) -> usize {
-        let len = self.get_byte_length();
-        len.required_space() + len
-    }
-}
-
-impl ConsensusDecoding for Covenant {
-    fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let len = reader.read_varint::<usize>()?;
-        if len == 0 {
-            return Ok(Covenant::new());
-        };
-        // Check the length varint - this may be maliciously misreported
-        if len > MAX_COVENANT_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "covenants: Length varint exceeded maximum",
-            ));
-        }
-        // Ensure that no more than the maximum bytes can be read
-        let mut limited = LimitedBytesReader::new(MAX_COVENANT_BYTES, reader);
-        CovenantTokenDecoder::new(&mut limited)
-            .collect::<Result<_, CovenantDecodeError>>()
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))
-    }
-}
-
 impl FromIterator<CovenantToken> for Covenant {
     fn from_iter<T: IntoIterator<Item = CovenantToken>>(iter: T) -> Self {
         Self {
@@ -160,16 +151,20 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use borsh::{BorshDeserialize, BorshSerialize};
+
     use crate::{
-        consensus::ToConsensusBytes,
         covenant,
-        covenants::test::{create_input, create_outputs},
+        covenants::{
+            test::{create_input, create_outputs},
+            Covenant,
+        },
+        transactions::test_helpers::UtxoTestParams,
     };
 
     #[test]
     fn it_succeeds_when_empty() {
-        let outputs = create_outputs(10, Default::default());
+        let outputs = create_outputs(10, UtxoTestParams::default());
         let input = create_input();
         let covenant = covenant!();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
@@ -178,7 +173,7 @@ mod test {
 
     #[test]
     fn it_executes_the_covenant() {
-        let mut outputs = create_outputs(10, Default::default());
+        let mut outputs = create_outputs(10, UtxoTestParams::default());
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
@@ -193,29 +188,24 @@ mod test {
         assert_eq!(num_matching_outputs, 3);
     }
 
-    mod consensus_encoding {
-        use super::*;
-
-        #[test]
-        fn it_encodes_to_bytes() {
-            let bytes = Covenant::new().to_consensus_bytes();
-            assert_eq!(bytes[0], 0);
-            assert_eq!(bytes.len(), 1);
-        }
-    }
-
-    mod consensus_decoding {
-        use super::*;
-
-        #[test]
-        fn it_is_identity_if_empty_bytes() {
-            let empty_cov = &[0u8];
-            let covenant = Covenant::consensus_decode(&mut &empty_cov[..]).unwrap();
-
-            let outputs = create_outputs(10, Default::default());
-            let input = create_input();
-            let num_selected = covenant.execute(0, &input, &outputs).unwrap();
-            assert_eq!(num_selected, 10);
-        }
+    #[test]
+    fn test_borsh_de_serialization() {
+        let mut outputs = create_outputs(10, UtxoTestParams::default());
+        outputs[4].features.maturity = 42;
+        outputs[5].features.maturity = 42;
+        outputs[7].features.maturity = 42;
+        let mut input = create_input();
+        input.set_maturity(42).unwrap();
+        let covenant = covenant!(fields_preserved(@fields(
+            @field::features_output_type,
+            @field::features_maturity,
+            @field::features_metadata))
+        );
+        let mut buf = Vec::new();
+        covenant.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(covenant, Covenant::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

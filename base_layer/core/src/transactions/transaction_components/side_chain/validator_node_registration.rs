@@ -20,19 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
-
+use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::PublicKey as PublicKeyT;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
-    transactions::TransactionHashDomain,
-};
+use crate::{consensus::DomainSeparatedConsensusHasher, transactions::TransactionHashDomain};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     pub public_key: PublicKey,
     pub signature: Signature,
@@ -71,45 +67,16 @@ impl ValidatorNodeRegistration {
     }
 }
 
-impl ConsensusEncoding for ValidatorNodeRegistration {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.public_key.consensus_encode(writer)?;
-        self.signature.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for ValidatorNodeRegistration {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.public_key.consensus_encode_exact_size() + self.signature.consensus_encode_exact_size()
-    }
-}
-
-impl ConsensusDecoding for ValidatorNodeRegistration {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        Ok(Self {
-            public_key: ConsensusDecoding::consensus_decode(reader)?,
-            signature: ConsensusDecoding::consensus_decode(reader)?,
-        })
-    }
-}
-
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
     use tari_crypto::keys::SecretKey;
 
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
         ValidatorNodeRegistration::new_signed(&sk, b"valid")
-    }
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        check_consensus_encoding_correctness(create_instance()).unwrap();
     }
 
     mod is_valid_signature_for {
