@@ -39,7 +39,8 @@ use tari_crypto::{
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized},
+    borsh::SerializedSize,
+    consensus::ConsensusConstants,
     covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
@@ -324,8 +325,7 @@ impl SenderTransactionInitializer {
             .filter_map(|script| {
                 script.map(|s| {
                     self.fee.weighting().round_up_metadata_size(
-                        self.get_recipient_output_features().consensus_encode_exact_size() +
-                            s.consensus_encode_exact_size(),
+                        self.get_recipient_output_features().get_serialized_size() + s.get_serialized_size(),
                     )
                 })
             })
@@ -370,9 +370,9 @@ impl SenderTransactionInitializer {
         let change_metadata_size = self
             .change_script
             .as_ref()
-            .map(|script| script.consensus_encode_exact_size())
+            .map(|script| script.get_serialized_size())
             .unwrap_or(0) +
-            output_features.consensus_encode_exact_size();
+            output_features.get_serialized_size();
         let change_metadata_size = self.fee().weighting().round_up_metadata_size(change_metadata_size);
 
         let change_fee = self.fee().calculate(fee_per_gram, 0, 0, 1, change_metadata_size);
@@ -994,7 +994,7 @@ mod test {
         let err = builder.build(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(
             err.message,
-            "You are spending (472 µT) more than you're providing (400 µT)."
+            "You are spending (473 µT) more than you're providing (400 µT)."
         );
     }
 

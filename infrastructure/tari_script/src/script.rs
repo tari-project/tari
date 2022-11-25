@@ -16,9 +16,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // pending updates to Dalek/Digest
-use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, ops::Deref};
+use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::Deref};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
+use integer_encoding::{VarIntReader, VarIntWriter};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
@@ -57,6 +59,30 @@ const MAX_MULTISIG_LIMIT: u8 = 32;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
     script: Vec<Opcode>,
+}
+
+impl BorshSerialize for TariScript {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for TariScript {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
+        let script = TariScript::from_bytes(data.as_slice())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        Ok(script)
+    }
 }
 
 impl TariScript {
@@ -642,6 +668,7 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
     use digest::Digest;
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
@@ -1640,5 +1667,17 @@ mod test {
         let inputs = ExecutionStack::new(vec![Hash(scalar)]);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1));
+    }
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
+        let script = TariScript::from_hex(hex_script).unwrap();
+        let mut buf = Vec::new();
+        script.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(script, TariScript::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

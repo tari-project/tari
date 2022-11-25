@@ -22,6 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::BorshDeserialize;
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
@@ -31,13 +32,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
-        CryptoFactories,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
+    CryptoFactories,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
 use tari_script::{ExecutionStack, TariScript};
@@ -617,14 +615,23 @@ impl OutputSql {
         cipher: Option<&XChaCha20Poly1305>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         if let Some(cipher) = cipher {
-            self.decrypt(&cipher)
-                .map_err(|e| OutputManagerStorageError::AeadError(e))?;
+            self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
         }
 
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
+
+        let covenant = BorshDeserialize::deserialize(&mut self.covenant.as_bytes()).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: "Covenant could not be converted from bytes".to_string(),
+            }
+        })?;
 
         let encrypted_value = EncryptedValue::from_bytes(&self.encrypted_value)?;
         let unblinded_output = UnblindedOutput::new_current_version(
@@ -707,15 +714,7 @@ impl OutputSql {
                 })?,
             ),
             self.script_lock_height as u64,
-            Covenant::from_bytes(&self.covenant).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: "Covenant could not be converted from bytes".to_string(),
-                }
-            })?,
+            covenant,
             encrypted_value,
             MicroTari::from(self.minimum_value_promise as u64),
         );

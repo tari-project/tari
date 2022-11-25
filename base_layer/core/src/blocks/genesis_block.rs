@@ -111,15 +111,15 @@ fn get_igor_genesis_block_raw() -> Block {
     // Note: Use print_new_genesis_block_igor in core/tests/helpers/block_builders.rs to generate the required fields
     // below
     let sig = Signature::new(
-        PublicKey::from_hex("7c1108158cc5629d012234a09e46ccea1d55beb8b7da0285de97786b2627455d").unwrap(),
-        PrivateKey::from_hex("a22bb83d1cce3e1a840a853ca5f791f765bedfb3f5cd535228903d3ed4d75108").unwrap(),
+        PublicKey::from_hex("ae28ebfbe2732d90cd8fd6f79edfb600e43422087add5533b2d9ea16005d8163").unwrap(),
+        PrivateKey::from_hex("4d21a5aeaa9fd1bc7b8a0b326881b55b73136ebb0418dc8f00755215eabe380b").unwrap(),
     );
     let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("f2f9365d8f8b6ad4708a79023206fad1441b4b6e4b908b00f8e54959e44de82f").unwrap(),
-        PublicKey::from_hex("323220072bcb607d59a7556d1d80ffdc96a7cc3ffb8cc9c5dd00daef21aa7656").unwrap(),
-        PrivateKey::from_hex("14efc02a92097572ae11d5b5f92d1c80736af51d20266e1c3831c3cc90fbba0e").unwrap(),
-        PrivateKey::from_hex("93799267d6f6b519d707d14b8fda0ee242f8a691d2b873591c7e087c5c64ab09").unwrap(),
-        PrivateKey::from_hex("d174079deaf759e7ea30b9f7f5163ebf71db50948ad5fad7328369eabe3f5f06").unwrap(),
+        Commitment::from_hex("eab87399f169dd65440a6e755cfcd0d7542e11c8a5765f3109bc6c0475a4f64e").unwrap(),
+        PublicKey::from_hex("80eb01d50a940a87fa48f932a1779c580a4bca51d1ba158057db3c0d45f19350").unwrap(),
+        PrivateKey::from_hex("f8bbbdb6aba4eb56a02bf4c54322b68881729cbcc961393b96531f2279e00c05").unwrap(),
+        PrivateKey::from_hex("5482c09b97a28078668fbe9bd7f8b97e04e6cae97d9d3cd09194802de5abab06").unwrap(),
+        PrivateKey::from_hex("6448b9c444e80145c84db7f50e2be9b78236434114a7fdea20f11996d397940e").unwrap(),
     );
     let mut body = AggregateBody::new(
         vec![],
@@ -130,14 +130,14 @@ fn get_igor_genesis_block_raw() -> Block {
                 .. Default::default()
             },
             Commitment::from_hex(
-                "e6a10a1c67381d3f64c352750f5f43424eb56b6984cf6a9c7818fc5b0697f66c",
+                "7885a238bc1fe9c17b4a921f42fe976047617557162f030453fff661097d9f02",
             )
                 .unwrap(),
-            BulletRangeProof::from_hex("013e2f41ec8a64d4246f4c021aff840e44b2e0663f6acd0b90e8aa962592ff0137d6b015093ea0f1c6ed22071b60ed517389f06f8962431bc09f9a0030345be476541252dfa39fc21541a433b374fad2e2e3da2e39f78b2b02b43ee6a3a8cde718a229f9c3a6b2bb604e475042000494581993496609389c73a52bbe9658e50c135c31f035e9301a06a46c1c40cc436c2bbfbaa1a415302507f0f8dc7b7f450431d85279cf0e55380982d3ee5ab50c2c3e63ba176b8f0c0a8031aa60ace2ce1b1784db5176fc0cacd03cd0158d644ccdd472f388e945c5625d9c63ba39fa2bda3b9819b017a49098a8f4b741f993aa5dcbeb3012153cf8ba27abcfe0dfd7e9de1ea29cc3a4aaab1ac5e5d30402b9618560325b598e01871e63c95eecac0861d06434c82ef10e0cdda5015122bed67ad7bcb45745aa05d10bb06ec7bd4aacf5d14cc82c3174b989a1906524ff13f6199060e7701340112624a5c209e92cc30f664426588a063f1f998a81645797f69669a5daf17c158fbfb510da74fe851d1ad201666cb0c933bff95a9d40f9feddc268f4d869cbce7b687af53245ad27a232cb0cc61cdf105383ca0c0ae8373ad7e158537713390bf87960c0c97fed2c5562486f8405596d03a2c248523f3931fd7cfbf5eca3f3749fa5e14dee2e199acc4ded7f8d7ac5d2ceafd825bc4b8f545eebbde751115c0facf638ba1f147b43cec0a40b24cf37941845489c62bd84f7435d3c788b096775b806164dc465f2cee759410ff2d02d5f01bd5771b96118a9e795778f08ddcda37d2986f49f7f66f03d29a30c").unwrap(),
+            BulletRangeProof::from_hex("016c9e55d1430a7f9cfdba549e52cfb9fb67847a246292e35637f29f4fa06e58476812d0377ebc323621d1aa9c18d807985888e9496daf2aa416eb6c6b82ae3f267421f59522816d01bf5d99126b73970e05ce9da3baab1e2559b79954b7e2e63960abdeb92a32217fbf80031d298459f100751d307dcfee9c91e8106b2cbd3738b029afae6bdf6006219d950542c9150b6c705ad97f9bfdf3133f682ed5539366aeb67e4e78ea0015d5f7d512ce3e26cbded441d90664890c87fb91059e8fd95aa8f81447ddb15c76f3647b4a3559abb4b8368148d8f91597c120aab4b2beae06ec736c9730bc362913aeaeb2188f2b3d8a090ec0b1e6618a0d441e4ccfe2d423362a6ad4c7bb337b389a7dbb5e924addd0d5ce98cd0771ce542b3139e6825954187e702ad0ba7e8addd36611dc42e52273c74df1ab1eb22a269b94d18fb93003ca6fb912c4847c56278cd7d7509b175ba41e67bf8d57a98432f8545cb258b04ebae4d2b3b4e0f6f75a6f4ed54a73f2d1c2638ff4b4e707ca771d152f224bce59645d02f4dcfb330febad2cee2ba3dde0ee17836598f01545dfef8b6cd0552a7c3e93e7cf6d06f4c4d9a41bab1c901756785c2d25387aedf0912fba39132590005c61e815be21c8b28b89feb9ddea944281360f1442850fc03ac13885946be514a33a9eaabef9ad4be70449c5901878a66fc2da37405d34bc10fff6043ef0080d075e91d78b2f26a962907464ee900eb57961b09f76917c336dda995cf9303901bbe66742546cdc296f78fea42c69271e7c9d31d0b3b3201a96895d03cb3e0b0b").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
             script!(Nop),
             // Script offset never checked for coinbase, thus can use default
-            PublicKey::from_hex("22e11cad45190efa73c118fb6709cc23e62b7aa76452a5f102ef541e448fee3c").unwrap(),
+            PublicKey::from_hex("8ee77eed474de6b1d6a5fdd0bb09b4b657c8d1dfdc0d410eae1f4ee8f615db70").unwrap(),
             // For genesis block: Metadata signature will never be checked
             coinbase_meta_sig,
             Covenant::default(),
@@ -150,7 +150,7 @@ fn get_igor_genesis_block_raw() -> Block {
             MicroTari(0),
             0,
             Commitment::from_hex(
-                "6880b1235ae8f3b074433d6899c01dacacc3c77dc7ed061bd61d5de7e6dd3412",
+                "848d0bed22bbbd1e64cfe7e5d2f2bc5f2f485e01f405def9525ec8db2471af13",
             )
                 .unwrap(),
             sig,None
@@ -159,7 +159,7 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("30 Aug 2022 11:48:00 +0100").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("23 Nov 2022 17:44:00 +0100").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -168,11 +168,11 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("9e009822fab5b5b9bcb8b5345a5fb9e30d5c8196ba37fffe6f11d09daa4ad006").unwrap(),
-            witness_mr: FixedHash::from_hex("956b885c332f639dfdc4eef1d9c6008cfff73e30f200df21a95e22ebf2a04fc5")
+            output_mr: FixedHash::from_hex("b72c6f3b239f23df47c5e7ac6522bfda37b9c58434dbffa291b385b1ee6d0075").unwrap(),
+            witness_mr: FixedHash::from_hex("feb49ddfcfbd78f2eb07aef24e47c08c022d512dfcc00d90de7e526aed936416")
                 .unwrap(),
             output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("56c3f43877fbbbd55bd5f77d277ab7236f0accd747c66786e93a68312ef8db1a").unwrap(),
+            kernel_mr: FixedHash::from_hex("acc58f014be7dea6614ab99f241a483b3c80d60137c9763ce5c066448f4b590b").unwrap(),
             kernel_mmr_size: 1,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -284,25 +284,25 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     // Note: Use print_new_genesis_block_esmeralda in core/tests/helpers/block_builders.rs to generate the required
     // fields below
     let excess_sig = Signature::new(
-        PublicKey::from_hex("72047a1aee71211aadf3a54b9e75cea75ab3aa7a919ba09f74ceb4cae60da315").unwrap(),
-        PrivateKey::from_hex("0e71bd9c96f24a77bb0b612489b7a766a6fb2b921c44af4850dbff9dcb224806").unwrap(),
+        PublicKey::from_hex("d83c732a632e1cb7fbd661d7c3acf21edce560930a6b9c69ceb3ce1b70ed2557").unwrap(),
+        PrivateKey::from_hex("be0f7fb71fc1b97a1fa886baecb08c2111cc8912f0f57911bff2ae3dd5381b09").unwrap(),
     );
     let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("307770b875e1e8026b32bca6bd9049e9c7541d09c30357537514b1d95bb87a22").unwrap(),
-        PublicKey::from_hex("da012fa9054bb010ef0a7253a6355b98c24b75e1e3585a34a3cd880d9992f82d").unwrap(),
-        PrivateKey::from_hex("e9fc1e405dfb151f8e061bc1c9446ea32e72c12a996c05e08b3db5d5b6b1d40f").unwrap(),
-        PrivateKey::from_hex("45252f91fa48978bbbee4181b7a4339c60df766bcc836eaccb22ac7ad9c3f70c").unwrap(),
-        PrivateKey::from_hex("0ba1454fcf5eb571584f04eab2dfd9d83bcf30b001ebce1df1d59bfa0204ff01").unwrap(),
+        Commitment::from_hex("46ad5ffe6e87d5ed85d98ba42887efc2e39c092a4d022dbd762fb952692cfc2e").unwrap(),
+        PublicKey::from_hex("664e1434d2ee32a73b7a17d84235ca5c203519b5e5b5772654d63e291fcbbf15").unwrap(),
+        PrivateKey::from_hex("f880046d213451f37d7c75e03eee74972900545355a0a53aec3490efc2455109").unwrap(),
+        PrivateKey::from_hex("7a01fd2294af47f9ba5b7d3b80c23fdbf4f969eed77f8bb575b053dc6ea82f01").unwrap(),
+        PrivateKey::from_hex("e8fc5a185ae98181ba8210f9126dc42183a0e732b525792feaf7730462edd00b").unwrap(),
     );
     let coinbase = TransactionOutput::new(
         TransactionOutputVersion::get_current_version(),
         OutputFeatures::create_coinbase(6),
-        Commitment::from_hex("2e26e546a855d4905ed736305d25d6c2eccc87ad2f0fd7abe895ebcfae337f1f").unwrap(),
-        BulletRangeProof::from_hex("01228797a7bc59b43b9633ce16e1457e237598f52425631c8fe70f916122287747b2a1105b685306ca37b83fd35b568810bbf65bbc1389529f1a89dc88d48d2c744026965bf310425e036d4728541dd5d9575b476e7215f36e2a05f15bb23edb1c86bf9b3514c7f1aaaef1c6a1fb54060fc15321ae279243087a308e4dfba61506a853aa9f4b9186369d5f9f38c68957df07265ae917b8db61ad7983a259c09639eaa859ee6b447111caf5cc705525cafe4481f7d9b75af7a6a49d7d9ce5beed11c8ddc506378c029e59ab0b3bf143bd430fd651c7ed2c09ff888b3e7d3c39d05bc4816fa0421803321593bcc52de85b5a77e2821b4b3005733d73a62fe16b7e48522ad2186bee77f5dabccbadc2d22bf6c56da4bdf6f761b84eb8d73c7d37151da036705b0d1ec4a443b43f0ed76e051c84fbcc742d1ba6bba574d364ab73bc6f46185e77d51f5e1062f2695795344f9ff271434261eacfe80a3743b33725a246ac943abeca8570a5a2603e5d06bca5fa1989fab80d295abecb6cc2fef1218901b0f6cc3e02dabb9da606ab0b9f50f170dcce9b5941055cb664e11ef45a487368be3b3ffa4ed8aea3fd805553524b106348ff4374dbf1210a7a76b7133abfb809c806991890c89ea0b7ade685f13a7e21709c10738cc42a9b5237eb55b8e12d296e8121a7c884bd62f9130dd6e8d3fc17206dd1e6129443815201a593c22a260829d1311f501765e9d6e5e2143de90d2537bf803bb0726b5fca0500934262220cf2e412076e3aaf643df10afdef62accf35f17edc55dc4dbfa894e74d94baaa07").unwrap(),
+        Commitment::from_hex("42813bd3a03de525c6c66518706cf92a5704427fae5f1032bc5f231be3241935").unwrap(),
+        BulletRangeProof::from_hex("01e223475aa85bae7d53724b8e61cb973c410943ccacd096e86b1eb40a703612181aab5feaf455484a9b2f1141536275549a4535d796f4767a3db0009db99ebd4c4cceb566f699486e3e9f08e807c25165c69b8c84c53db3e5cf498f5eede6b6060ae96c675fceb37ea73769a818ad6c134eb642943ea63711e7d639319795fc564e4fd850e9ea9df478c16c1ee6bd279aa57815b01b47c8fd45e88fbb1733c173c68a094f61fdeaf3e131d1c05a7510e211d8ae115c22f9c78cadfffdfc812a4bec6140b314d17aa5cd6810ea98c8198a71f6ed5765fb433917261a8503905b23983235cee615e19fffe342dc32ceeb62aa8929263976c400155f99c9cb277a1d56c7e41099b64cedc9f0df697e7ba092b0debfb9ece5608d16da93d787bb362a4809b9f77687a680e8852d541a66df69314a7ec4415f6d89ddc9448310860f049e1515e55b7215b04787c9501bc4aebe03df2df37a3b66d6b78dbfa494d84c046624c04ca58013458a0f9c120c365c5860ed4fd0d8ccf1046590c823aca4555cbc17326db9970f94bd25947418b28e40e4afe9d778eede5c7e1ad3b056a8502920f5990f0cd1547f9a78ea30ff89f5eaae36a49c3262fc5c9daa27a4b9906825443e06692d2f90d7ec957f8f199e8c6b166f834af6b5d4e6748a825c4e32ef60f02149c85ec41a40087fda206a9e2ec483c91c2c838709430677b42206d09305681a69092ab495b47238ec55164042022fa432951804fc772ab90f3c4888560d342fd5688301b2a28cf4039a56d6e61a03ef446bcf4b8edefe3b4634f431940e").unwrap(),
         // A default script can never be spent, intentionally
         script!(Nop),
         // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("9c0da41d803a1ff02136ead5e3e740a5bb1483c2e22d3229bd42ddfd268e2405").unwrap(),
+        PublicKey::from_hex("c29225024dc4c571ea9244854732a72cd404f667fb4138713f8a0eec99072410").unwrap(),
         // For genesis block: Metadata signature will never be checked
         coinbase_meta_sig,
         // Covenant
@@ -316,7 +316,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("98459367ecaafc2176b71cabecde8f513c0708f385980516644940237b27822e").unwrap(),
+        Commitment::from_hex("863a174c6f96341d660d82c01575814a369b53a02d4d79588184f007eba16c53").unwrap(),
         excess_sig,
         None,
     );
@@ -332,11 +332,11 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("8638aa9cd3a78fcda3fccf0e9cbd4277b3fc148953e4fae411b6bf5e583be484").unwrap(),
-            witness_mr: FixedHash::from_hex("3f0ac5a672eabdba998073724836cc5439d302834aeb8d946f561b44e68f7fe9")
+            output_mr: FixedHash::from_hex("948bb7309749706565b8af3f1b55b3a8a82a5017ca72b78d19249c181146c298").unwrap(),
+            witness_mr: FixedHash::from_hex("18c412d0ef6c1f9b0d07e21d762e7bcd0aee676f8e111ed800b09ec099d05c2f")
                 .unwrap(),
             output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("c1cd4f1b919601dac24581af034c2e78de999678811a45348ca1afaf706462d0").unwrap(),
+            kernel_mr: FixedHash::from_hex("bbd4d8d9ddd2d05e80a82894b65714710c48ce1b7fdd408cf704d9cf612431ee").unwrap(),
             kernel_mmr_size: 1,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(

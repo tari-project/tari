@@ -294,7 +294,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.to_db_unblinded_output(cipher.as_ref()))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -1244,8 +1244,7 @@ impl KnownOneSidedPaymentScriptSql {
         cipher: Option<&XChaCha20Poly1305>,
     ) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
         if let Some(cipher) = cipher {
-            self.decrypt(cipher)
-                .map_err(|e| OutputManagerStorageError::AeadError(e))?;
+            self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
         }
 
         let script_hash = self.script_hash;
@@ -1306,9 +1305,7 @@ impl KnownOneSidedPaymentScriptSql {
 
         // encrypt in place the output, so no private_key memory leaks remain
         if let Some(cipher) = cipher {
-            output
-                .encrypt(cipher)
-                .map_err(|e| OutputManagerStorageError::AeadError(e))?;
+            output.encrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
         }
         Ok(output)
     }

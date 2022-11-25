@@ -99,10 +99,13 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType},
-    CryptoFactories,
+use tari_core::{
+    borsh::FromBytes,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType},
+        CryptoFactories,
+    },
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -1427,9 +1430,9 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let decoded_covenant_bytes = (*covenant_bytes).0.clone();
+    let mut decoded_covenant_bytes = (*covenant_bytes).0.as_bytes();
 
-    match TariCovenant::from_bytes(&decoded_covenant_bytes) {
+    match TariCovenant::borsh_from_bytes(&mut decoded_covenant_bytes) {
         Ok(covenant) => Box::into_raw(Box::new(covenant)),
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
@@ -7639,7 +7642,7 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
-    use tari_core::{covenant, transactions::test_helpers::create_test_input};
+    use tari_core::{borsh::ToBytes, covenant, transactions::test_helpers::create_test_input};
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
@@ -8140,7 +8143,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let covenant_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(vec![0u8])));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);
@@ -8159,7 +8162,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let expected_covenant = covenant!(identity());
-            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.to_bytes())));
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.serialize_to_vec())));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);

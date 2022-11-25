@@ -30,7 +30,6 @@ use chacha20poly1305::{
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_utilities::{ByteArray, Hidden};
-use zeroize::Zeroize;
 
 pub trait Encryptable<C> {
     const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
