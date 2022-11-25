@@ -35,6 +35,7 @@ jobs:
     steps:
       - name: envs setup
         id: envs_setup
+        shell: bash
         run: |
           TOOLCHAIN=${{ github.event.inputs.toolchain }}
           echo "toolchain=${TOOLCHAIN:-${{ env.toolchain_default }}}" >> $GITHUB_OUTPUT
