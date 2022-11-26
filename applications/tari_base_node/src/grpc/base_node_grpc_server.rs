@@ -595,9 +595,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();
-        BorshSerialize::serialize(&header, &mut header_bytes).unwrap();
+        BorshSerialize::serialize(&header, &mut header_bytes).map_err(|err| Status::internal(err.to_string()))?;
         let mut block_body_bytes = Vec::new();
-        BorshSerialize::serialize(&block_body, &mut block_body_bytes).unwrap();
+        BorshSerialize::serialize(&block_body, &mut block_body_bytes)
+            .map_err(|err| Status::internal(err.to_string()))?;
         let response = tari_rpc::GetNewBlockBlobResult {
             block_hash,
             header: header_bytes,
@@ -652,7 +653,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| Status::internal(e.to_string()))?;
         debug!(target: LOG_TARGET, "doing body");
         let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| Status::internal(e.to_string()))?;
-        // let body = request.body_blob.try_into().unwrap();
 
         let block = Block::new(header, body);
         let block_height = block.header.height;
@@ -1057,15 +1057,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for output in outputs {
-                let resp = tari_rpc::FetchMatchingUtxosResponse {
-                    output: Some(output.into()),
-                };
-                if tx.send(Ok(resp)).await.is_err() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "[fetch_matching_utxos] Request was cancelled while sending a response"
-                    );
-                    return;
+                match output.try_into() {
+                    Ok(output) => {
+                        let resp = tari_rpc::FetchMatchingUtxosResponse { output: Some(output) };
+                        if tx.send(Ok(resp)).await.is_err() {
+                            warn!(
+                                target: LOG_TARGET,
+                                "[fetch_matching_utxos] Request was cancelled while sending a response"
+                            );
+                            return;
+                        }
+                    },
+                    Err(err) => {
+                        let _ignore = tx.send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Error communicating with local base node: {}", err)),
+                        )));
+                        return;
+                    },
                 }
             }
         });

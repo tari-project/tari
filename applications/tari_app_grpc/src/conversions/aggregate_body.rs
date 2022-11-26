@@ -37,7 +37,10 @@ impl TryFrom<AggregateBody> for grpc::AggregateBody {
                 .into_iter()
                 .map(grpc::TransactionInput::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-            outputs: outputs.into_iter().map(grpc::TransactionOutput::from).collect(),
+            outputs: outputs
+                .into_iter()
+                .map(grpc::TransactionOutput::try_from)
+                .collect::<Result<Vec<grpc::TransactionOutput>, Self::Error>>()?,
             kernels: kernels.into_iter().map(grpc::TransactionKernel::from).collect(),
         })
     }

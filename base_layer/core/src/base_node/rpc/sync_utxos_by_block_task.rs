@@ -148,7 +148,12 @@ where B: BlockchainBackend + 'static
                     // Don't include pruned UTXOs
                     .filter_map(|(_, utxo)| match utxo {
                         PrunedOutput::Pruned{output_hash: _,witness_hash:_} => None,
-                        PrunedOutput::NotPruned{output} => Some(output.into()),
+                        PrunedOutput::NotPruned{output} => {
+                            match output.try_into() {
+                                Ok(output) => Some(output),
+                                Err(_) => None,
+                            }
+                        },
                     }).collect();
 
             debug!(

@@ -240,12 +240,16 @@ where B: BlockchainBackend + 'static
                     // Only include pruned UTXOs if include_pruned_utxos is true
                     // We use filter_map because we still want the pruned utxos to count towards the index
                     if include_pruned_utxos || !utxo.is_pruned() {
+                        match SyncUtxo::try_from(utxo) {
+                            Ok(utxo) => 
                         Some(SyncUtxosResponse {
                             utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(
-                                SyncUtxo::from(utxo),
-                            )),
-                            mmr_index: start + i as u64,
-                        })
+utxo)),
+mmr_index: start + i as u64
+                            })
+                                ,
+                            Err(_) => None,
+                          }
                     } else {
                         None
                     }

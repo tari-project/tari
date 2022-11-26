@@ -69,17 +69,19 @@ impl TryFrom<proto::TransactionSenderMessage> for TransactionSenderMessage {
     }
 }
 
-impl From<TransactionSenderMessage> for proto::TransactionSenderMessage {
-    fn from(message: TransactionSenderMessage) -> Self {
+impl TryFrom<TransactionSenderMessage> for proto::TransactionSenderMessage {
+    type Error = String;
+
+    fn try_from(message: TransactionSenderMessage) -> Result<Self, Self::Error> {
         let message = match message {
             TransactionSenderMessage::None => ProtoTransactionSenderMessage::None(true),
             TransactionSenderMessage::Single(sender_data) => {
-                ProtoTransactionSenderMessage::Single((*sender_data).into())
+                ProtoTransactionSenderMessage::Single((*sender_data).try_into()?)
             },
             TransactionSenderMessage::Multiple => ProtoTransactionSenderMessage::Multiple(true),
         };
 
-        Self { message: Some(message) }
+        Ok(Self { message: Some(message) })
     }
 }
 
@@ -124,11 +126,13 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     }
 }
 
-impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
-    fn from(sender_data: SingleRoundSenderData) -> Self {
+impl TryFrom<SingleRoundSenderData> for proto::SingleRoundSenderData {
+    type Error = String;
+
+    fn try_from(sender_data: SingleRoundSenderData) -> Result<Self, Self::Error> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&sender_data.covenant, &mut covenant).unwrap();
-        Self {
+        BorshSerialize::serialize(&sender_data.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        Ok(Self {
             tx_id: sender_data.tx_id.into(),
             // The amount, in µT, being sent to the recipient
             amount: sender_data.amount.into(),
@@ -143,7 +147,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             ephemeral_public_nonce: sender_data.ephemeral_public_nonce.to_vec(),
             covenant,
             minimum_value_promise: sender_data.minimum_value_promise.into(),
-        }
+        })
     }
 }
 

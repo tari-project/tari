@@ -264,13 +264,15 @@ impl TryFrom<proto::NewBlock> for NewBlock {
     }
 }
 
-impl From<NewBlock> for proto::NewBlock {
-    fn from(new_block: NewBlock) -> Self {
-        Self {
+impl TryFrom<NewBlock> for proto::NewBlock {
+    type Error = String;
+
+    fn try_from(new_block: NewBlock) -> Result<Self, Self::Error> {
+        Ok(Self {
             header: Some(new_block.header.into()),
             coinbase_kernel: Some(new_block.coinbase_kernel.into()),
-            coinbase_output: Some(new_block.coinbase_output.into()),
+            coinbase_output: Some(new_block.coinbase_output.try_into()?),
             kernel_excess_sigs: new_block.kernel_excess_sigs.into_iter().map(|s| s.to_vec()).collect(),
-        }
+        })
     }
 }

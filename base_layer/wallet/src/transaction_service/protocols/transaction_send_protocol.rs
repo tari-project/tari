@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryInto, sync::Arc};
 
 use chrono::Utc;
 use futures::FutureExt;
@@ -664,7 +664,9 @@ where
         &mut self,
         msg: SingleRoundSenderData,
     ) -> Result<SendResult, TransactionServiceProtocolError<TxId>> {
-        let proto_message = proto::TransactionSenderMessage::single(msg.clone().into());
+        let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
+            TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
+        })?);
         let mut store_and_forward_send_result = false;
         let mut direct_send_result = false;
         let mut transaction_status = TransactionStatus::Queued;
@@ -816,7 +818,9 @@ where
         if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
             return Ok(false);
         }
-        let proto_message = proto::TransactionSenderMessage::single(msg.into());
+        let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
+            TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
+        })?);
         match self
             .resources
             .outbound_message_service

@@ -271,7 +271,8 @@ impl InnerService {
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
-            BorshSerialize::serialize(&monero_data, &mut header_mut.pow.as_mut().unwrap().pow_data).unwrap();
+            BorshSerialize::serialize(&monero_data, &mut header_mut.pow.as_mut().unwrap().pow_data)
+                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
             let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
