@@ -69,9 +69,9 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
 }
 
 /// Return seed matching the seed words.
-pub fn get_seed_from_seed_words(seed_words: SeedWords) -> Result<CipherSeed, ExitError> {
+pub fn get_seed_from_seed_words(seed_words: &SeedWords) -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Return seed derived from the provided seed words");
-    match CipherSeed::from_mnemonic(&seed_words, None) {
+    match CipherSeed::from_mnemonic(seed_words, None) {
         Ok(seed) => Ok(seed),
         Err(e) => {
             let err_msg = format!("MnemonicError parsing seed words: {}", e);

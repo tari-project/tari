@@ -32,9 +32,8 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_utilities::safe_array::SafeArray;
 
-use super::CommsNoiseKey;
+use super::{CommsNoiseKey, NOISE_KEY_LEN};
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -69,7 +68,7 @@ impl CryptoResolver for TariCryptoResolver {
 
 fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
     let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
-    let mut comms_noise_kdf = CommsNoiseKey::from(SafeArray::default());
+    let mut comms_noise_kdf = CommsNoiseKey::from([0u8; NOISE_KEY_LEN]);
     comms_noise_kdf
         .reveal_mut()
         .copy_from_slice(hasher.chain(shared_key.as_bytes()).finalize().as_ref());
@@ -131,7 +130,7 @@ mod test {
     use snow::Keypair;
 
     use super::*;
-    use crate::noise::{config::NOISE_IX_PARAMETER, NOISE_KEY_LEN};
+    use crate::noise::config::NOISE_IX_PARAMETER;
 
     fn build_keypair() -> Keypair {
         snow::Builder::with_resolver(
