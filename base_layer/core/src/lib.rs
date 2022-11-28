@@ -50,6 +50,7 @@ pub mod mempool;
 pub mod transactions;
 
 mod common;
+pub use common::borsh;
 
 #[allow(clippy::ptr_offset_with_cast)]
 #[allow(clippy::assign_op_pattern)]

@@ -15,8 +15,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io};
 
+use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -180,6 +182,30 @@ stack_item_from!(ScalarValue => Scalar);
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExecutionStack {
     items: Vec<StackItem>,
+}
+
+impl BorshSerialize for ExecutionStack {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for ExecutionStack {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let len = buf.read_varint()?;
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize(buf)?);
+        }
+        let stack = Self::from_bytes(data.as_slice())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        Ok(stack)
+    }
 }
 
 impl ExecutionStack {
@@ -356,6 +382,7 @@ fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
 
 #[cfg(test)]
 mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
     use digest::Digest;
     use tari_crypto::{
         hash::blake2::Blake256,
@@ -476,5 +503,19 @@ mod test {
         }
 
         assert!(expected_inputs.is_empty());
+    }
+
+    #[test]
+    fn test_borsh_de_serialization() {
+        let s = "06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da50500f7c695528c858cde76dab3076908e0122\
+        8b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa2\
+        6b48e745de834571534ca253ea82435f08ebbc7c";
+        let stack = ExecutionStack::from_hex(s).unwrap();
+        let mut buf = Vec::new();
+        stack.serialize(&mut buf).unwrap();
+        buf.extend_from_slice(&[1, 2, 3]);
+        let buf = &mut buf.as_slice();
+        assert_eq!(stack, ExecutionStack::deserialize(buf).unwrap());
+        assert_eq!(buf, &[1, 2, 3]);
     }
 }

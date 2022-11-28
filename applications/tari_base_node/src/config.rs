@@ -103,10 +103,8 @@ pub struct BaseNodeConfig {
     /// The relative path to store the lmbd data
     pub lmdb_path: PathBuf,
     /// The maximum amount of VMs that RandomX will be use
-    // TODO: This is a potential conflict with 'BaseNodeStateMachineConfig::max_randomx_vms'
     pub max_randomx_vms: usize,
     /// Bypass range proof verification to speed up validation
-    // TODO: This is a potential conflict with 'BaseNodeStateMachineConfig::bypass_range_proof_verification'
     pub bypass_range_proof_verification: bool,
     /// The p2p config settings
     pub p2p: P2pConfig,

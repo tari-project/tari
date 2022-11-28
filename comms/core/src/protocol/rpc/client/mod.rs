@@ -544,7 +544,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let start = Instant::now();
         self.framed.send(ack.to_encoded_bytes().into()).await?;
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "(stream={}) Ping (protocol {}) sent in {:.2?}",
             self.stream_id(),
@@ -611,7 +611,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             payload: request.message.to_vec(),
         };
 
-        debug!(target: LOG_TARGET, "Sending request: {}", req);
+        trace!(target: LOG_TARGET, "Sending request: {}", req);
 
         if reply.is_closed() {
             event!(Level::WARN, "Client request was cancelled before request was sent");
@@ -817,7 +817,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let resp = loop {
             match reader.read_response().await {
                 Ok(resp) => {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "(stream: {}, {}) Received body len = {}",
                         stream_id,

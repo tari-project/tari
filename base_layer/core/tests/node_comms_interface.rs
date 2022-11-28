@@ -289,7 +289,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         MicroTari::zero(),
     );
-    let metadata_signature = TransactionOutput::create_final_metadata_signature(
+    let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         amount,
         &key,
@@ -316,7 +316,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.minimum_value_promise,
     );
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 4002, 0);
+    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 1, 0);
     assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(

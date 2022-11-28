@@ -33,8 +33,9 @@ use tari_script::TariScript;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
+    borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{emission::Emission, ConsensusConstants, ConsensusEncodingSized, ConsensusManager},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -299,6 +300,12 @@ pub fn check_coinbase_output(
         .map_err(ValidationError::from)
 }
 
+pub fn check_output_features(block: &Block, rules: &ConsensusManager) -> Result<(), ValidationError> {
+    block
+        .check_output_features(rules.consensus_constants(block.header.height))
+        .map_err(ValidationError::from)
+}
+
 pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
     let mut items = items.into_iter();
     let prev_item = items.next();
@@ -427,13 +434,14 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_validator_node_registration_utxo(constants, output)?;
     }
     Ok(())
 }
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = script.consensus_encode_exact_size();
+    let script_size = script.get_serialized_size();
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
@@ -821,6 +829,34 @@ pub fn validate_versions(
         validate_kernel_version(consensus_constants, kernel)?;
     }
 
+    Ok(())
+}
+
+pub fn check_validator_node_registration_utxo(
+    consensus_constants: &ConsensusConstants,
+    utxo: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
+        }
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(),
+                actual: utxo.features.maturity,
+            });
+        }
+
+        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+        //                 keys this becomes difficult. Fix this once we have decided on a solution.
+        if !reg.is_valid_signature_for(&[]) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+    }
     Ok(())
 }
 

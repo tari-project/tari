@@ -20,14 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use std::{io, io::Write};
-
 use std::{io, io::Write, marker::PhantomData};
 
+use borsh::BorshSerialize;
 use digest::{consts::U32, Digest};
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparation};
-
-use crate::consensus::ConsensusEncoding;
 
 /// Domain separated consensus encoding hasher.
 pub struct DomainSeparatedConsensusHasher<M>(PhantomData<M>);
@@ -61,13 +58,12 @@ where D: Digest<OutputSize = U32>
         self.writer.0.finalize().into()
     }
 
-    pub fn update_consensus_encode<T: ConsensusEncoding + ?Sized>(&mut self, data: &T) {
-        // UNWRAP: ConsensusEncode MUST only error if the writer errors, HashWriter::write is infallible
-        data.consensus_encode(&mut self.writer)
-            .expect("Incorrect implementation of ConsensusEncoding encountered. Implementations MUST be infallible.");
+    pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
+        BorshSerialize::serialize(data, &mut self.writer)
+            .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
     }
 
-    pub fn chain<T: ConsensusEncoding>(mut self, data: &T) -> Self {
+    pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
         self.update_consensus_encode(data);
         self
     }
@@ -116,7 +112,7 @@ mod tests {
         let mut hasher = Blake256::new();
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
-        let expected_hash = hasher.chain(b"\xff\x01").finalize();
+        let expected_hash = hasher.chain(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
             .chain(&255u64)
             .finalize();

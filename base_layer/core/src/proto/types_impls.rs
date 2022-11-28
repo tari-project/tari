@@ -27,7 +27,7 @@ use std::{
 
 use tari_common_types::types::{
     BlindingFactor,
-    ComSignature,
+    ComAndPubSignature,
     Commitment,
     HashOutput,
     PrivateKey,
@@ -77,26 +77,30 @@ impl<T: Borrow<Signature>> From<T> for proto::Signature {
     }
 }
 
-//---------------------------------- ComSignature --------------------------------------------//
+//---------------------------------- ComAndPubSignature --------------------------------------//
 
-impl TryFrom<proto::ComSignature> for ComSignature {
+impl TryFrom<proto::ComAndPubSignature> for ComAndPubSignature {
     type Error = ByteArrayError;
 
-    fn try_from(sig: proto::ComSignature) -> Result<Self, Self::Error> {
-        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)?;
-        let signature_u = PrivateKey::from_bytes(&sig.signature_u)?;
-        let signature_v = PrivateKey::from_bytes(&sig.signature_v)?;
+    fn try_from(sig: proto::ComAndPubSignature) -> Result<Self, Self::Error> {
+        let ephemeral_commitment = Commitment::from_bytes(&sig.ephemeral_commitment)?;
+        let ephemeral_pubkey = PublicKey::from_bytes(&sig.ephemeral_pubkey)?;
+        let u_a = PrivateKey::from_bytes(&sig.u_a)?;
+        let u_x = PrivateKey::from_bytes(&sig.u_x)?;
+        let u_y = PrivateKey::from_bytes(&sig.u_y)?;
 
-        Ok(Self::new(public_nonce, signature_u, signature_v))
+        Ok(Self::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y))
     }
 }
 
-impl From<ComSignature> for proto::ComSignature {
-    fn from(sig: ComSignature) -> Self {
+impl From<ComAndPubSignature> for proto::ComAndPubSignature {
+    fn from(sig: ComAndPubSignature) -> Self {
         Self {
-            public_nonce_commitment: sig.public_nonce().to_vec(),
-            signature_u: sig.u().to_vec(),
-            signature_v: sig.v().to_vec(),
+            ephemeral_commitment: sig.ephemeral_commitment().to_vec(),
+            ephemeral_pubkey: sig.ephemeral_pubkey().to_vec(),
+            u_a: sig.u_a().to_vec(),
+            u_x: sig.u_x().to_vec(),
+            u_y: sig.u_y().to_vec(),
         }
     }
 }

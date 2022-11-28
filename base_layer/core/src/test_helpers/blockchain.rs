@@ -182,6 +182,10 @@ impl TempDatabase {
         self.delete_on_drop = false;
         self
     }
+
+    pub fn db(&self) -> &LMDBDatabase {
+        self.db.as_ref().unwrap()
+    }
 }
 
 impl Default for TempDatabase {
@@ -355,6 +359,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_orphan_chain_tip_by_hash(hash)
+    }
+
+    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_orphan_chain_tips()
     }
 
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {

@@ -193,6 +193,7 @@ pub async fn claim_htlc_refund(
 }
 
 pub async fn register_validator_node(
+    amount: MicroTari,
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
@@ -202,6 +203,7 @@ pub async fn register_validator_node(
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
+            amount,
             validator_node_public_key,
             validator_node_signature,
             selection_criteria,
@@ -971,6 +973,7 @@ pub async fn command_runner(
             },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
+                    args.amount,
                     transaction_service.clone(),
                     args.validator_node_public_key.into(),
                     Signature::new(
@@ -1032,13 +1035,13 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","sender_offset_public_key","public_nonce","signature_u","signature_v""##
+        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","sender_offset_public_key","emperical_commitment","emperical_nonce","signature_u_x","signature_u_a","signature_u_y""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{},"{}","{}","{}""##,
             i + 1,
             utxo.value.0,
             utxo.spending_key.to_hex(),
@@ -1052,9 +1055,11 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
             utxo.input_data.to_hex(),
             utxo.script_private_key.to_hex(),
             utxo.sender_offset_public_key.to_hex(),
-            utxo.metadata_signature.public_nonce().to_hex(),
-            utxo.metadata_signature.u().to_hex(),
-            utxo.metadata_signature.v().to_hex(),
+            utxo.metadata_signature.ephemeral_commitment().to_hex(),
+            utxo.metadata_signature.ephemeral_pubkey().to_hex(),
+            utxo.metadata_signature.u_x().to_hex(),
+            utxo.metadata_signature.u_a().to_hex(),
+            utxo.metadata_signature.u_y().to_hex(),
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     }

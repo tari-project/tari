@@ -35,30 +35,6 @@ struct Balance;
 
 struct ByteVector;
 
-/**
- * # Commitment Signatures
- *
- * Find out more about Commitment signatures [here](https://eprint.iacr.org/2020/061.pdf) and
- * [here](https://documents.uow.edu.au/~wsusilo/ZCMS_IJNS08.pdf).
- *
- * In short, a Commitment Signature is made up of the tuple _(R, u, v)_, where _R_ is a random Pedersen commitment (of
- * two secret nonces) and _u_ and _v_ are the two publicly known private signature keys. It demonstrates ownership of
- * a specific commitment.
- *
- * The Commitment Signature signes a challenge with the value commitment's value and blinding factor. The two nonces
- * should be completely random and never reused - that responsibility lies with the calling function.
- *   C = a*H + x*G          ... (Pedersen commitment to the value 'a' using blinding factor 'x')
- *   R = k_2*H + k_1*G      ... (a public (Pedersen) commitment nonce created with the two random nonces)
- *   u = k_1 + e.x          ... (the first publicly known private key of the signature signing with 'x')
- *   v = k_2 + e.a          ... (the second publicly known private key of the signature signing with 'a')
- *   signature = (R, u, v)  ... (the final signature tuple)
- *
- * Verification of the Commitment Signature (R, u, v) entails the following:
- *   S = v*H + u*G          ... (Pedersen commitment of the publicly known private signature keys)
- *   S =? R + e.C           ... (final verification)
- */
-struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey;
-
 struct CompletedTransaction;
 
 struct Contact;
@@ -207,106 +183,6 @@ typedef struct RistrettoSecretKey PrivateKey;
 typedef PrivateKey TariPrivateKey;
 
 typedef struct TariAddress TariWalletAddress;
-
-/**
- * # A Commitment signature implementation on Ristretto
- *
- * `RistrettoComSig` utilises the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek1)
- * implementation of `ristretto255` to provide Commitment Signature functionality utlizing Schnorr signatures.
- *
- * ## Examples
- *
- * You can create a `RistrettoComSig` from it's component parts:
- *
- * ```edition2018
- * # use tari_crypto::ristretto::*;
- * # use tari_crypto::keys::*;
- * # use tari_crypto::commitment::HomomorphicCommitment;
- * # use tari_utilities::ByteArray;
- * # use tari_utilities::hex::Hex;
- *
- * let r_pub = HomomorphicCommitment::from_hex(
- *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
- * )
- * .unwrap();
- * let u = RistrettoSecretKey::from_bytes(b"10000000000000000000000010000000").unwrap();
- * let v = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
- * let sig = RistrettoComSig::new(r_pub, u, v);
- * ```
- *
- * or you can create a signature for a commitment by signing a message with knowledge of the commitment and then
- * verify it by calling the `verify_challenge` method:
- *
- * ```rust
- * # use tari_crypto::ristretto::*;
- * # use tari_crypto::keys::*;
- * # use tari_crypto::hash::blake2::Blake256;
- * # use digest::Digest;
- * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
- * # use tari_crypto::ristretto::pedersen::*;
- * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
- * use tari_utilities::hex::Hex;
- *
- * let mut rng = rand::thread_rng();
- * let a_val = RistrettoSecretKey::random(&mut rng);
- * let x_val = RistrettoSecretKey::random(&mut rng);
- * let a_nonce = RistrettoSecretKey::random(&mut rng);
- * let x_nonce = RistrettoSecretKey::random(&mut rng);
- * let e = Blake256::digest(b"Maskerade");
- * let factory = PedersenCommitmentFactory::default();
- * let commitment = factory.commit(&x_val, &a_val);
- * // println!("commitment: {:?}", commitment.to_hex());
- * let sig = RistrettoComSig::sign(&a_val, &x_val, &a_nonce, &x_nonce, &e, &factory).unwrap();
- * // println!("sig: R {:?} u {:?} v {:?}", sig.public_nonce().to_hex(), sig.u().to_hex(), sig.v().to_hex());
- * assert!(sig.verify_challenge(&commitment, &e, &factory));
- * ```
- *
- * # Verifying signatures
- *
- * Given a signature, (R,u,v), a commitment C and a Challenge, e, you can verify that the signature is valid by
- * calling the `verify_challenge` method:
- *
- * ```edition2018
- * # use tari_crypto::ristretto::*;
- * # use tari_crypto::keys::*;
- * # use tari_crypto::commitment::HomomorphicCommitment;
- * # use tari_crypto::ristretto::pedersen::*;
- * # use tari_crypto::hash::blake2::Blake256;
- * # use tari_utilities::hex::*;
- * # use tari_utilities::ByteArray;
- * # use digest::Digest;
- * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
- *
- * let commitment = HomomorphicCommitment::from_hex(
- *     "167c6df11bf8106e89328c297e57423dc2a9be53df1ee63f6e50b4610104ab4a",
- * )
- * .unwrap();
- * let r_nonce = HomomorphicCommitment::from_hex(
- *     "4033e00996e61df2ea1abd1494b751b946663e21a20e2729c6592712beb15356",
- * )
- * .unwrap();
- * let u = RistrettoSecretKey::from_hex(
- *     "f44bbc3374b172f77ffa8b904ddf0ad9f879b3e6183f9e440c57e7f01e851300",
- * )
- * .unwrap();
- * let v = RistrettoSecretKey::from_hex(
- *     "fd54afb2d8008c8a3af10272b24161247b2b7ae11687813fe9fb03e34dd7f009",
- * )
- * .unwrap();
- * let sig = RistrettoComSig::new(r_nonce, u, v);
- * let e = Blake256::digest(b"Maskerade");
- * let factory = PedersenCommitmentFactory::default();
- * assert!(sig.verify_challenge(&commitment, &e, &factory));
- * ```
- */
-typedef struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey RistrettoComSig;
-
-/**
- * Define the explicit Commitment Signature implementation for the Tari base layer.
- */
-typedef RistrettoComSig ComSignature;
-
-typedef ComSignature TariCommitmentSignature;
 
 typedef struct Covenant TariCovenant;
 
@@ -864,20 +740,6 @@ TariPrivateKey *private_key_generate(void);
  */
 TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
-
-/**
- * Frees memory for a TariCommitmentSignature
- *
- * ## Arguments
- * `com_sig` - The pointer to a TariCommitmentSignature
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void commitment_signature_destroy(TariCommitmentSignature *com_sig);
 
 /**
  * -------------------------------------------------------------------------------------------- ///

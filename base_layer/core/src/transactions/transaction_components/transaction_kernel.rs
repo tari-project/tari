@@ -26,17 +26,16 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
+    consensus::DomainSeparatedConsensusHasher,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -50,7 +49,7 @@ use crate::{
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionKernel {
     pub version: TransactionKernelVersion,
     /// Options for a kernel's structure or use
@@ -227,63 +226,5 @@ impl PartialOrd for TransactionKernel {
 impl Ord for TransactionKernel {
     fn cmp(&self, other: &Self) -> Ordering {
         self.excess_sig.cmp(&other.excess_sig)
-    }
-}
-
-impl ConsensusEncoding for TransactionKernel {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.version.consensus_encode(writer)?;
-        self.features.consensus_encode(writer)?;
-        self.fee.consensus_encode(writer)?;
-        self.lock_height.consensus_encode(writer)?;
-        self.excess.consensus_encode(writer)?;
-        self.excess_sig.consensus_encode(writer)?;
-        self.burn_commitment.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for TransactionKernel {}
-
-impl ConsensusDecoding for TransactionKernel {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let version = TransactionKernelVersion::consensus_decode(reader)?;
-        let features = KernelFeatures::consensus_decode(reader)?;
-        let fee = MicroTari::consensus_decode(reader)?;
-        let lock_height = u64::consensus_decode(reader)?;
-        let excess = Commitment::consensus_decode(reader)?;
-        let excess_sig = Signature::consensus_decode(reader)?;
-        let commitment = <Option<Commitment> as ConsensusDecoding>::consensus_decode(reader)?;
-        let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig, commitment);
-        Ok(kernel)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tari_utilities::ByteArray;
-
-    use super::*;
-    use crate::{consensus::check_consensus_encoding_correctness, transactions::test_helpers::TestParams};
-
-    #[test]
-    fn consensus_encoding() {
-        let test_params = TestParams::new();
-
-        let output = TransactionKernel::new(
-            TransactionKernelVersion::get_current_version(),
-            KernelFeatures::all(),
-            MicroTari::from(100),
-            123,
-            test_params.commit_value(321.into()),
-            Signature::sign_raw(
-                &test_params.spend_key,
-                test_params.nonce.clone(),
-                test_params.nonce.as_bytes(),
-            )
-            .unwrap(),
-            Some(test_params.commit_value(321.into())),
-        );
-        check_consensus_encoding_correctness(output).unwrap();
     }
 }

@@ -55,7 +55,7 @@ pub enum CovenantToken {
 }
 
 impl CovenantToken {
-    pub fn read_from<R: io::Read>(reader: &mut R) -> Result<Option<Self>, CovenantDecodeError> {
+    pub fn read_from(reader: &mut &[u8]) -> Result<Option<Self>, CovenantDecodeError> {
         let code = match reader.read_next_byte_code()? {
             Some(c) => c,
             // Nothing further to read

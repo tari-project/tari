@@ -29,7 +29,7 @@ use chacha20poly1305::{
     XNonce,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, Hidden};
 
 pub trait Encryptable<C> {
     const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
@@ -77,7 +77,7 @@ pub fn decrypt_bytes_integral_nonce(
 pub fn encrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
-    plaintext: Vec<u8>,
+    plaintext: Hidden<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
     // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];
@@ -86,8 +86,8 @@ pub fn encrypt_bytes_integral_nonce(
 
     // Bind the domain as additional data
     let payload = Payload {
-        msg: plaintext.as_bytes(),
-        aad: domain.as_bytes(),
+        msg: plaintext.reveal(),
+        aad: domain.as_slice(),
     };
 
     // Attempt authenticated encryption
@@ -106,7 +106,7 @@ mod test {
 
     use chacha20poly1305::{aead::NewAead, Key, Tag, XChaCha20Poly1305, XNonce};
     use rand::{rngs::OsRng, RngCore};
-    use tari_utilities::ByteArray;
+    use tari_utilities::{ByteArray, Hidden};
 
     use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 
@@ -119,7 +119,8 @@ mod test {
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
-        let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), plaintext.clone()).unwrap();
+        let ciphertext =
+            encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), Hidden::hide(plaintext.clone())).unwrap();
 
         // Check the ciphertext size, which we rely on for later tests
         // It should extend the plaintext size by the nonce and tag sizes

@@ -1,3 +1,5 @@
+// @generated automatically by Diesel CLI.
+
 diesel::table! {
     client_key_values (key) {
         key -> Text,
@@ -105,9 +107,11 @@ diesel::table! {
         script_private_key -> Binary,
         script_lock_height -> BigInt,
         sender_offset_public_key -> Binary,
-        metadata_signature_nonce -> Binary,
-        metadata_signature_u_key -> Binary,
-        metadata_signature_v_key -> Binary,
+        metadata_signature_ephemeral_commitment -> Binary,
+        metadata_signature_ephemeral_pubkey -> Binary,
+        metadata_signature_u_a -> Binary,
+        metadata_signature_u_x -> Binary,
+        metadata_signature_u_y -> Binary,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
         mined_mmr_position -> Nullable<BigInt>,

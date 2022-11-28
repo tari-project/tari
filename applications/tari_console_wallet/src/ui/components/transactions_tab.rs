@@ -99,11 +99,13 @@ impl TransactionsTab {
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
+
         for t in windowed_view.iter() {
             let text_color = text_colors
                 .get(&t.cancelled.is_some())
                 .unwrap_or(&Color::Reset)
                 .to_owned();
+
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.destination_address),
@@ -129,11 +131,19 @@ impl TransactionsTab {
                 let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
-            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
+
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
+                match t.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
                 Style::default().fg(text_color),
             )));
+
             column3_items.push(ListItem::new(Span::styled(
                 t.message.as_str(),
                 Style::default().fg(text_color),
@@ -146,8 +156,9 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
-            .add_column(Some("Local Date/Time"), Some(20), column2_items)
+            .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
+
         column_list.render(f, area, &mut pending_list_state);
     }
 
@@ -227,11 +238,19 @@ impl TransactionsTab {
                 let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
-            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
+
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
+                match t.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
                 Style::default().fg(text_color),
             )));
+
             let status = if matches!(t.cancelled, Some(TxCancellationReason::AbandonedCoinbase)) {
                 "Abandoned".to_string()
             } else if matches!(t.cancelled, Some(TxCancellationReason::UserCancelled)) {
@@ -250,7 +269,7 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
-            .add_column(Some("Local Date/Time"), Some(20), column2_items)
+            .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
 
         column_list.render(f, area, &mut completed_list_state);
@@ -272,7 +291,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 13];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
@@ -283,7 +302,8 @@ impl TransactionsTab {
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
-        let timestamp = Span::styled("Local Date/Time:", Style::default().fg(Color::Magenta));
+        let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
+        let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
         let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
@@ -306,21 +326,23 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[6]);
         let paragraph = Paragraph::new(message).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(timestamp).wrap(trim);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(excess).wrap(trim);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        let paragraph = Paragraph::new(excess).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[11]);
-        let paragraph = Paragraph::new(maturity).wrap(trim);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
         f.render_widget(paragraph, label_layout[12]);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 13];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
 
@@ -363,11 +385,27 @@ impl TransactionsTab {
 
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
-            let local_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
-            let timestamp = Span::styled(
-                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
+
+            // let mined_time = DateTime::<Local>::from_utc(tx.mined_timestamp, Local::now().offset().to_owned());
+            let mined_timestamp = Span::styled(
+                match tx.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
+                // format!("{}", mined_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
+
+            let imported_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
+            let imported_timestamp = Span::styled(
+                format!("{}", imported_time.format("%Y-%m-%d %H:%M:%S")),
+                Style::default().fg(Color::White),
+            );
+
             let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
@@ -411,16 +449,18 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[6]);
             let paragraph = Paragraph::new(message).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
-            let paragraph = Paragraph::new(timestamp).wrap(trim);
+            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(excess).wrap(trim);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            let paragraph = Paragraph::new(excess).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
-            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[11]);
-            let paragraph = Paragraph::new(maturity).wrap(trim);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
             f.render_widget(paragraph, content_layout[12]);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
+            f.render_widget(paragraph, content_layout[13]);
         }
     }
 }

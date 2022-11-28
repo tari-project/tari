@@ -43,6 +43,7 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool,
     mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
 use tari_p2p::{
@@ -71,6 +72,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub mempool: Mempool,
     pub rules: ConsensusManager,
     pub factories: CryptoFactories,
+    pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,
 }
 
@@ -153,6 +155,8 @@ where B: BlockchainBackend + 'static
                 base_node_config.state_machine.clone(),
                 self.rules,
                 self.factories,
+                self.randomx_factory,
+                self.app_config.base_node.bypass_range_proof_verification,
             ))
             .build()
             .await?;

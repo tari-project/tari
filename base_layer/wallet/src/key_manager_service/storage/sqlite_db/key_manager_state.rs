@@ -25,6 +25,7 @@ use std::convert::TryFrom;
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
+use tari_utilities::Hidden;
 
 use crate::{
     key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState},
@@ -158,8 +159,11 @@ impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.primary_key_index =
-            encrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("primary_key_index"),
+            Hidden::hide(self.primary_key_index.clone()),
+        )?;
 
         Ok(())
     }
@@ -180,8 +184,11 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.primary_key_index =
-            encrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("primary_key_index"),
+            Hidden::hide(self.primary_key_index.clone()),
+        )?;
 
         Ok(())
     }
