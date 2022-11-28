@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
@@ -30,7 +29,7 @@ use tari_common_types::{
 };
 use tari_utilities::ByteArray;
 
-use crate::{consensus::DomainSeparatedConsensusHasher, transactions::TransactionHashDomain};
+use crate::{consensus::DomainSeparatedConsensusHasher, transactions::TransactionHashDomain, U256};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
@@ -95,6 +94,7 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
+    use crate::test_helpers::new_public_key;
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
