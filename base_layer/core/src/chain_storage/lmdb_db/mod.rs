@@ -29,11 +29,12 @@ use crate::transactions::transaction_components::{TransactionInput, TransactionK
 
 // mod composite_key;
 mod composite_key;
+pub(crate) mod cursors;
 pub(crate) mod helpers;
-pub(crate) mod key_prefix_cursor;
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
+mod validator_node_store;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {

@@ -42,8 +42,8 @@ use tari_utilities::hex::to_hex;
 use crate::chain_storage::{
     error::ChainStorageError,
     lmdb_db::{
+        cursors::KeyPrefixCursor,
         helpers::{deserialize, serialize},
-        key_prefix_cursor::KeyPrefixCursor,
     },
     OrNotFound,
 };

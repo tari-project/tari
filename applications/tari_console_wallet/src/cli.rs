@@ -271,6 +271,7 @@ pub struct HashPasswordArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct RegisterValidatorNodeArgs {
+    pub amount: MicroTari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
     pub validator_node_signature: Vec<u8>,

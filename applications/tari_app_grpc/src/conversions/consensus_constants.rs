@@ -113,7 +113,6 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,
             block_weight_kernels: weight_params.kernel_weight,
-            validator_node_timeout: cc.validator_node_timeout(),
             max_script_byte_size: cc.get_max_script_byte_size() as u64,
             faucet_value: cc.faucet_value().as_u64(),
             effective_from_height: cc.effective_from_height(),
@@ -125,6 +124,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max_randomx_seed_height: cc.max_randomx_seed_height(),
             output_version_range: Some(output_version_range),
             permitted_output_types,
+            validator_node_validity_period: cc.validator_node_validity_period().as_u64(),
+            epoch_length: cc.epoch_length(),
         }
     }
 }

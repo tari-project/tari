@@ -19,31 +19,26 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 
-mod sidechain_feature;
-pub use sidechain_feature::SideChainFeature;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+pub struct VnEpoch(pub u64);
 
-mod template_registration;
-mod validator_node_registration;
-mod validator_node_signature;
+impl VnEpoch {
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
 
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
-pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
-pub use validator_node_registration::ValidatorNodeRegistration;
-pub use validator_node_signature::{ValidatorNodeHashDomain, ValidatorNodeSignature};
+    pub fn to_be_bytes(&self) -> [u8; 8] {
+        self.0.to_be_bytes()
+    }
 
-hash_domain!(
-    ContractAcceptanceHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
-    1
-);
+    pub fn saturating_sub(self, other: VnEpoch) -> VnEpoch {
+        VnEpoch(self.0.saturating_sub(other.0))
+    }
+}
 
-pub type ContractAcceptanceHasherBlake256 = DomainSeparatedHasher<Blake256, ContractAcceptanceHashDomain>;
-
-hash_domain!(
-    SignerSignatureHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.side_chain.signer_signature",
-    1
-);
-
-pub type SignerSignatureHasherBlake256 = DomainSeparatedHasher<Blake256, SignerSignatureHashDomain>;
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self &Self }

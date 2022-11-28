@@ -89,6 +89,7 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     RegisterValidatorNode {
+        amount: MicroTari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
@@ -463,6 +464,7 @@ impl TransactionServiceHandle {
 
     pub async fn register_validator_node(
         &mut self,
+        amount: MicroTari,
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
@@ -472,6 +474,7 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::RegisterValidatorNode {
+                amount,
                 validator_node_public_key,
                 validator_node_signature,
                 selection_criteria,

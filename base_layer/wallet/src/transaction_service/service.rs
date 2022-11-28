@@ -651,6 +651,7 @@ where
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::RegisterValidatorNode {
+                amount,
                 validator_node_public_key,
                 validator_node_signature,
                 selection_criteria,
@@ -659,6 +660,7 @@ where
             } => {
                 let rp = reply_channel.take().expect("Cannot be missing");
                 self.register_validator_node(
+                    amount,
                     validator_node_public_key,
                     validator_node_signature,
                     selection_criteria,
@@ -1483,6 +1485,7 @@ where
 
     pub async fn register_validator_node(
         &mut self,
+        amount: MicroTari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
@@ -1498,16 +1501,14 @@ where
     ) -> Result<(), TransactionServiceError> {
         let output_features =
             OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
-        let tx_meta =
-            TransactionMetadata::new_with_features(0.into(), 3, KernelFeatures::create_validator_node_registration());
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
-            MicroTari::from(1),
+            amount,
             selection_criteria,
             output_features,
             fee_per_gram,
             message,
-            tx_meta,
+            TransactionMetadata::default(),
             join_handles,
             transaction_broadcast_join_handles,
             reply_channel,

@@ -38,6 +38,7 @@ use crate::{
             check_permitted_output_types,
             check_sorting_and_duplicates,
             check_total_burned,
+            check_validator_node_registration_utxo,
             validate_versions,
         },
         OrphanValidation,
@@ -97,6 +98,7 @@ impl OrphanValidation for OrphanBlockValidator {
 
         for output in block.body.outputs() {
             check_permitted_output_types(constants, output)?;
+            check_validator_node_registration_utxo(constants, output)?;
         }
 
         check_total_burned(&block.body)?;

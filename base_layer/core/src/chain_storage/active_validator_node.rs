@@ -21,13 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PublicKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{Commitment, PublicKey},
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ActiveValidatorNode {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
-    pub from_height: u64,
-    pub to_height: u64,
+    pub start_epoch: VnEpoch,
+    pub end_epoch: VnEpoch,
     pub public_key: PublicKey,
-    pub output_hash: HashOutput,
+    pub commitment: Commitment,
 }
