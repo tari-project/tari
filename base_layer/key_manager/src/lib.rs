@@ -1,6 +1,8 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::str::FromStr;
+
 use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
 use digest::Digest;
 use tari_crypto::{
@@ -98,6 +100,15 @@ impl SeedWords {
                 .collect::<Vec<_>>()
                 .join(sep),
         )
+    }
+}
+
+impl FromStr for SeedWords {
+    type Err = MnemonicError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let words = s.split(' ').map(|s| Hidden::hide(String::from(s))).collect::<Vec<_>>();
+        Ok(Self { words })
     }
 }
 
