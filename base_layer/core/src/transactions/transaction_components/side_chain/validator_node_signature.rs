@@ -23,10 +23,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
-
-use crate::types::{FixedHash, PrivateKey, PublicKey, Signature};
 
 hash_domain!(ValidatorNodeHashDomain, "com.tari.dan_layer.validator_node", 0);
 

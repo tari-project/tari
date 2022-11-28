@@ -24,10 +24,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    validator_node_signature::ValidatorNodeSignature,
-};
+use tari_common_types::types::{PublicKey, Signature};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -39,6 +36,7 @@ use crate::{
         SideChainFeature,
         TemplateType,
         ValidatorNodeRegistration,
+        ValidatorNodeSignature,
     },
 };
 

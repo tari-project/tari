@@ -28,10 +28,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    validator_node_signature::ValidatorNodeSignature,
-};
+use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
 use crate::transactions::transaction_components::{
@@ -39,6 +36,7 @@ use crate::transactions::transaction_components::{
     CodeTemplateRegistration,
     OutputType,
     ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
 
 /// Options for UTXO's

@@ -25,11 +25,14 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
     types::{FixedHash, PublicKey, Signature},
-    validator_node_signature::ValidatorNodeSignature,
 };
 use tari_utilities::ByteArray;
 
-use crate::{consensus::DomainSeparatedConsensusHasher, transactions::TransactionHashDomain, U256};
+use crate::{
+    consensus::DomainSeparatedConsensusHasher,
+    transactions::{transaction_components::ValidatorNodeSignature, TransactionHashDomain},
+    U256,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
