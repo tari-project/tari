@@ -540,6 +540,94 @@ fn test_handle_tip_reorg() {
 }
 
 #[test]
+fn test_handle_tip_reset() {
+    // GB --> A1 --> A2(Low PoW)      [Main Chain]
+    //          \--> B2(Highest PoW)  [Forked Chain]
+    // Initially, the main chain is GB->A1->A2. B2 has a higher accumulated PoW and when B2 is added the main chain is
+    // reorged to GB->A1->B2
+
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // Block A1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager,
+    )
+    .unwrap();
+    // Block A2
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(3),
+        &consensus_manager,
+    )
+    .unwrap();
+
+    // Create Forked Chain
+
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
+    let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+    let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+    // Block B2
+    let txs = vec![txn_schema!(from: vec![orphan_outputs[1][0].clone()], to: vec![5 * T])];
+    generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(7),
+        &consensus_manager,
+    )
+    .unwrap();
+
+    // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].to_arc_block()) {
+    } else {
+        panic!();
+    }
+
+    assert_eq!(store.fetch_tip_header().unwrap().header().height, 2);
+    store.rewind_to_height(1).unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().header().height, 1);
+    // both tips should be in the orphan pool
+    assert!(store.fetch_orphan(*orphan_blocks[2].hash()).is_ok());
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
+    store.swap_to_highest_pow_chain().unwrap();
+    // should no be on B2
+
+    assert_eq!(store.fetch_tip_header().unwrap().header().height, 2);
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), orphan_blocks[2].hash());
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
+
+    store.swap_to_highest_pow_chain().unwrap();
+    // Chain should not have swapped
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), orphan_blocks[2].hash());
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
+
+    // lets reset to A1 again
+    store.rewind_to_height(1).unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().header().height, 1);
+    store.cleanup_all_orphans().unwrap();
+    store.swap_to_highest_pow_chain().unwrap();
+    // current main chain should be the highest so is it still?
+    assert_eq!(store.fetch_tip_header().unwrap().header().height, 1);
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), blocks[1].hash());
+}
+
+#[test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 fn test_handle_reorg() {
