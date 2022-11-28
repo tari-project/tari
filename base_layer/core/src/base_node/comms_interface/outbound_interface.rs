@@ -32,7 +32,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{HistoricalBlock, NewBlock},
+    blocks::{Block, NewBlock},
 };
 
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
@@ -60,22 +60,15 @@ impl OutboundNodeCommsInterface {
     /// Fetch the Blocks corresponding to the provided block hashes from a specific base node.
     pub async fn request_blocks_by_hashes_from_peer(
         &mut self,
-        block_hashes: Vec<BlockHash>,
+        hash: BlockHash,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
-        if let NodeCommsResponse::HistoricalBlocks(blocks) = self
+    ) -> Result<Option<Block>, CommsInterfaceError> {
+        if let NodeCommsResponse::Block(block) = self
             .request_sender
-            .call((
-                NodeCommsRequest::FetchBlocksByHash {
-                    block_hashes,
-                    // We always request compact inputs from peer
-                    compact: true,
-                },
-                node_id,
-            ))
+            .call((NodeCommsRequest::GetBlockFromAllChains(hash), node_id))
             .await??
         {
-            Ok(blocks)
+            Ok(*block)
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }
