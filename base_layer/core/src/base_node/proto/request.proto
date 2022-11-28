@@ -12,8 +12,7 @@ package tari.base_node;
 message BaseNodeServiceRequest {
     uint64 request_key = 1;
     oneof request {
-        // Indicates a FetchBlocksByHash request.
-        FetchBlocksByHashRequest fetch_blocks_by_hash = 8;
+        GetBlockFromAllChainsRequest get_block_from_all_chains = 8;
         ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
     }
 }
@@ -27,9 +26,8 @@ message BlockHeights {
     repeated uint64 heights = 1;
 }
 
-message FetchBlocksByHashRequest {
-    repeated bytes block_hashes = 1;
-    bool compact = 2;
+message GetBlockFromAllChainsRequest {
+    bytes hash = 1;
 }
 
 message Signatures {
