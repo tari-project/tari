@@ -1865,7 +1865,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator, difficulty_calculator)?;
+    insert_orphan_and_find_new_tips(db, new_block, header_validator, difficulty_calculator)?;
     swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer)
 }
 

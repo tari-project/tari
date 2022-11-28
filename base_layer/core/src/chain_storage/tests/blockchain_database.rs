@@ -22,9 +22,6 @@
 // DAMAGE.
 use std::sync::Arc;
 
-use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
-
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -36,8 +33,8 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, Transaction, UnblindedOutput},
+        test_helpers::schema_to_transaction,
+        transaction_components::{Transaction, UnblindedOutput},
     },
     txn_schema,
 };
