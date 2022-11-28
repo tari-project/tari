@@ -85,6 +85,7 @@ use log4rs::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
+use tari_app_utilities::consts;
 use tari_common::configuration::StringList;
 use tari_common_types::{
     emoji::emoji_set,
@@ -4296,6 +4297,11 @@ pub unsafe extern "C" fn wallet_create(
             return ptr::null_mut();
         }
     }
+    info!(
+        target: LOG_TARGET,
+        "Starting Tari Wallet FFI version: {}",
+        consts::APP_VERSION
+    );
 
     let passphrase_option = if passphrase.is_null() {
         None
