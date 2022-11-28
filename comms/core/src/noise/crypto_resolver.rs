@@ -34,7 +34,7 @@ use tari_crypto::{
 };
 use tari_utilities::safe_array::SafeArray;
 
-use super::{CommsNoiseKey, NOISE_KEY_LEN};
+use super::CommsNoiseKey;
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -131,7 +131,7 @@ mod test {
     use snow::Keypair;
 
     use super::*;
-    use crate::noise::config::NOISE_IX_PARAMETER;
+    use crate::noise::{config::NOISE_IX_PARAMETER, NOISE_KEY_LEN};
 
     fn build_keypair() -> Keypair {
         snow::Builder::with_resolver(
