@@ -142,19 +142,14 @@ where B: BlockchainBackend + 'static
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?;
 
-            let utxos: Vec<proto::types::TransactionOutput> = utxos
+            let utxos = utxos
                     .into_iter()
                     .enumerate()
                     // Don't include pruned UTXOs
                     .filter_map(|(_, utxo)| match utxo {
                         PrunedOutput::Pruned{output_hash: _,witness_hash:_} => None,
-                        PrunedOutput::NotPruned{output} => {
-                            match output.try_into() {
-                                Ok(output) => Some(output),
-                                Err(_) => None,
-                            }
-                        },
-                    }).collect();
+                        PrunedOutput::NotPruned{output} => Some(output.try_into()),
+                    }).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
 
             debug!(
                 target: LOG_TARGET,

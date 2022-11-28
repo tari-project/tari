@@ -241,18 +241,13 @@ where B: BlockchainBackend + 'static
                     // We use filter_map because we still want the pruned utxos to count towards the index
                     if include_pruned_utxos || !utxo.is_pruned() {
                         match SyncUtxo::try_from(utxo) {
-                            Ok(utxo) =>
-                        Some(SyncUtxosResponse {
-                            utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(utxo)),mmr_index: start + i as u64
-                            })
-                                ,
-                            Err(_) => None,
+                            Ok(utxo) => Some(Ok(SyncUtxosResponse {utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(utxo)),mmr_index: start + i as u64})),
+                            Err(err) => Some(Err(err)),
                           }
                     } else {
                         None
                     }
-                })
-                .map(Ok);
+                }).collect::<Result<Vec<SyncUtxosResponse>,String>>().map_err(|err| RpcStatus::bad_request(&err))?.into_iter().map(Ok);
 
             // Ensure task stops if the peer prematurely stops their RPC session
             if utils::mpsc::send_all(tx, utxos).await.is_err() {
