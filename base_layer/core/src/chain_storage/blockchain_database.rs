@@ -1111,6 +1111,22 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
+    /// This method will compare all chain tips the node currently knows about. This includes
+    /// all tips in the orphan pool and the main active chain. It will swap the main active
+    /// chain to the highest pow chain
+    /// This is typically used when an attempted sync failed to sync to the expected height and
+    /// we are not sure if the new chain is higher than the old one.
+    pub fn swap_to_highest_pow_chain(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        swap_to_highest_pow_chain(
+            &mut *db,
+            &self.config,
+            &*self.validators.block,
+            self.consensus_manager.chain_strength_comparer(),
+        )?;
+        Ok(())
+    }
+
     pub fn fetch_horizon_data(&self) -> Result<HorizonData, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_horizon_data()?.unwrap_or_default())
@@ -1688,6 +1704,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
+#[allow(clippy::too_many_lines)]
 fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
@@ -1756,7 +1773,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
-        txn.delete_block(*block.hash());
+        let block_hash = *block.hash();
+        txn.delete_block(block_hash);
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
@@ -1781,6 +1799,15 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             expected_block_hash,
             chain_header.timestamp(),
         );
+        if h == 0 {
+            // insert the new orphan chain tip
+            debug!(
+                target: LOG_TARGET,
+                "Inserting new orphan chain tip: {}",
+                block_hash.to_hex()
+            );
+            txn.insert_orphan_chain_tip(block_hash);
+        }
         // Update metadata
         debug!(
             target: LOG_TARGET,
@@ -1838,152 +1865,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
-    let new_block_hash = new_block.hash();
-
-    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator, difficulty_calculator)?;
-    debug!(
-        target: LOG_TARGET,
-        "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found: {} ",
-        new_block.header.height,
-        new_block_hash.to_hex(),
-        db_height,
-        new_tips.len()
-    );
-
-    if new_tips.is_empty() {
-        debug!(
-            target: LOG_TARGET,
-            "No reorg required, could not construct complete chain using block #{} ({}).",
-            new_block.header.height,
-            new_block_hash.to_hex()
-        );
-        return Ok(BlockAddResult::OrphanBlock);
-    }
-
-    // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer).ok_or_else(|| {
-        // This should never happen because a block is always added to the orphan pool before
-        // checking, but just in case
-        warn!(
-            target: LOG_TARGET,
-            "Unable to find strongest orphan tip when adding block `{}`. This should never happen.",
-            new_block_hash.to_hex()
-        );
-        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
-    })?;
-
-    let tip_header = db.fetch_tip_header()?;
-    if fork_header.hash() == &new_block_hash {
-        debug!(
-            target: LOG_TARGET,
-            "Comparing candidate block #{} (accum_diff:{}, hash:{}) to main chain #{} (accum_diff: {}, hash: ({})).",
-            new_block.header.height,
-            fork_header.accumulated_data().total_accumulated_difficulty,
-            fork_header.accumulated_data().hash.to_hex(),
-            tip_header.header().height,
-            tip_header.accumulated_data().total_accumulated_difficulty,
-            tip_header.accumulated_data().hash.to_hex()
-        );
-    } else {
-        debug!(
-            target: LOG_TARGET,
-            "Comparing fork (accum_diff:{}, hash:{}) with block #{} ({}) to main chain #{} (accum_diff: {}, hash: \
-             ({})).",
-            fork_header.accumulated_data().total_accumulated_difficulty,
-            fork_header.accumulated_data().hash.to_hex(),
-            new_block.header.height,
-            new_block_hash.to_hex(),
-            tip_header.header().height,
-            tip_header.accumulated_data().total_accumulated_difficulty,
-            tip_header.accumulated_data().hash.to_hex()
-        );
-    }
-
-    match chain_strength_comparer.compare(&fork_header, &tip_header) {
-        Ordering::Greater => {
-            debug!(
-                target: LOG_TARGET,
-                "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip (#{} ({})).",
-                fork_header.accumulated_data().total_accumulated_difficulty,
-                fork_header.accumulated_data().hash.to_hex(),
-                tip_header.height(),
-                tip_header.hash().to_hex()
-            );
-        },
-        Ordering::Less | Ordering::Equal => {
-            debug!(
-                target: LOG_TARGET,
-                "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker difficulty.",
-                fork_header.accumulated_data().total_accumulated_difficulty,
-                fork_header.accumulated_data().hash.to_hex(),
-                new_block.header.height,
-                new_block_hash.to_hex(),
-            );
-            debug!(
-                target: LOG_TARGET,
-                "Orphan block received: #{} ", new_block.header.height
-            );
-            return Ok(BlockAddResult::OrphanBlock);
-        },
-    }
-
-    // TODO: We already have the first link in this chain, can be optimized to exclude it
-    let reorg_chain = get_orphan_link_main_chain(db, fork_header.hash())?;
-
-    let fork_hash = reorg_chain
-        .front()
-        .expect("The new orphan block should be in the queue")
-        .header()
-        .prev_hash;
-
-    let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
-    let num_removed_blocks = removed_blocks.len();
-
-    // reorg is required when any blocks are removed or more than one are added
-    // see https://github.com/tari-project/tari/issues/2101
-    if num_removed_blocks > 0 || num_added_blocks > 1 {
-        if config.track_reorgs {
-            let mut txn = DbTransaction::new();
-            txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
-            if let Err(e) = db.write(txn) {
-                error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
-            }
-        }
-
-        log!(
-            target: LOG_TARGET,
-            if num_removed_blocks > 1 {
-                Level::Warn
-            } else {
-                Level::Info
-            }, // We want a warning if the number of removed blocks is at least 2.
-            "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
-             blocks to remove: {}, to add: {}.",
-            tip_header.header().height,
-            fork_header.header().height,
-            tip_header.accumulated_data().total_accumulated_difficulty,
-            tip_header.accumulated_data().hash.to_hex(),
-            fork_header.accumulated_data().total_accumulated_difficulty,
-            fork_header.accumulated_data().hash.to_hex(),
-            num_removed_blocks,
-            num_added_blocks,
-        );
-        Ok(BlockAddResult::ChainReorg {
-            removed: removed_blocks,
-            added: reorg_chain.into(),
-        })
-    } else {
-        trace!(
-            target: LOG_TARGET,
-            "No reorg required. Number of blocks to remove: {}, to add: {}.",
-            num_removed_blocks,
-            num_added_blocks,
-        );
-        // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
-        Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
-    }
+    insert_orphan_and_find_new_tips(db, new_block, header_validator, difficulty_calculator)?;
+    swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer)
 }
 
 /// Reorganize the main chain with the provided fork chain, starting at the specified height.
@@ -2042,42 +1925,116 @@ fn reorganize_chain<T: BlockchainBackend>(
         }
     }
 
-    if let Some(block) = removed_blocks.first() {
-        // insert the new orphan chain tip
-        let mut txn = DbTransaction::new();
-        let hash = *block.hash();
-        debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", hash.to_hex());
-        txn.insert_orphan_chain_tip(hash);
-        backend.write(txn)?;
-    }
-
     Ok(removed_blocks)
 }
-// fn hydrate_block<T: BlockchainBackend>(
-//     backend: &mut T,
-//     block: Arc<ChainBlock>,
-// ) -> Result<Arc<ChainBlock>, ChainStorageError> {
-//     if !block.block().body.has_compact_inputs() {
-//         return Ok(block);
-//     }
-//
-//     for input in block.block().body.inputs() {
-//         let output = backend.fetch_mmr_leaf(MmrTree::Utxo, input.mmr_index())?;
-//         let output = output.ok_or_else(|| ChainStorageError::ValueNotFound {
-//             entity: "Output".to_string(),
-//             field: "mmr_index".to_string(),
-//             value: input.mmr_index().to_string(),
-//         })?;
-//         let output = TransactionOutput::try_from(output)?;
-//         let input = TransactionInput::new_with_commitment(input.features(), output.commitment());
-//         block.block_mut().body_mut().add_input(input);
-//     }
-//     backend.fetch_unspent_output_hash_by_commitment()
-//     let block = hydrate_block_from_db(backend, block_hash, block.header().clone())?;
-//     txn.delete_orphan(block_hash);
-//     backend.write(txn)?;
-//     Ok(block)
-// }
+
+fn swap_to_highest_pow_chain<T: BlockchainBackend>(
+    db: &mut T,
+    config: &BlockchainDatabaseConfig,
+    block_validator: &dyn PostOrphanBodyValidation<T>,
+    chain_strength_comparer: &dyn ChainStrengthComparer,
+) -> Result<BlockAddResult, ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    // lets clear out all remaining headers that dont have a matching block
+    // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
+    // height it will only trim the extra headers with no blocks
+    rewind_to_height(db, metadata.height_of_longest_chain())?;
+    let all_orphan_tips = db.fetch_all_orphan_chain_tips()?;
+    if all_orphan_tips.is_empty() {
+        // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
+        // return ok
+        return Ok(BlockAddResult::OrphanBlock);
+    }
+    // Check the accumulated difficulty of the best fork chain compared to the main chain.
+    let best_fork_header = find_strongest_orphan_tip(all_orphan_tips, chain_strength_comparer).ok_or_else(|| {
+        // This should never happen because a block is always added to the orphan pool before
+        // checking, but just in case
+        warn!(
+            target: LOG_TARGET,
+            "Unable to find strongest orphan tip`. This should never happen.",
+        );
+        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+    })?;
+    let tip_header = db.fetch_tip_header()?;
+    match chain_strength_comparer.compare(&best_fork_header, &tip_header) {
+        Ordering::Greater => {
+            debug!(
+                target: LOG_TARGET,
+                "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip (#{} ({})).",
+                best_fork_header.accumulated_data().total_accumulated_difficulty,
+                best_fork_header.accumulated_data().hash.to_hex(),
+                tip_header.height(),
+                tip_header.hash().to_hex()
+            );
+        },
+        Ordering::Less | Ordering::Equal => {
+            debug!(
+                target: LOG_TARGET,
+                "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker difficulty.",
+                best_fork_header.accumulated_data().total_accumulated_difficulty,
+                best_fork_header.accumulated_data().hash.to_hex(),
+                tip_header.header().height,
+                tip_header.hash().to_hex(),
+            );
+            return Ok(BlockAddResult::OrphanBlock);
+        },
+    }
+
+    let reorg_chain = get_orphan_link_main_chain(db, best_fork_header.hash())?;
+    let fork_hash = reorg_chain
+        .front()
+        .expect("The new orphan block should be in the queue")
+        .header()
+        .prev_hash;
+
+    let num_added_blocks = reorg_chain.len();
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
+    let num_removed_blocks = removed_blocks.len();
+
+    // reorg is required when any blocks are removed or more than one are added
+    // see https://github.com/tari-project/tari/issues/2101
+    if num_removed_blocks > 0 || num_added_blocks > 1 {
+        if config.track_reorgs {
+            let mut txn = DbTransaction::new();
+            txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
+            if let Err(e) = db.write(txn) {
+                error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
+            }
+        }
+
+        log!(
+            target: LOG_TARGET,
+            if num_removed_blocks > 1 {
+                Level::Warn
+            } else {
+                Level::Info
+            }, // We want a warning if the number of removed blocks is at least 2.
+            "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
+             blocks to remove: {}, to add: {}.",
+            tip_header.header().height,
+            best_fork_header.header().height,
+            tip_header.accumulated_data().total_accumulated_difficulty,
+            tip_header.accumulated_data().hash.to_hex(),
+            best_fork_header.accumulated_data().total_accumulated_difficulty,
+            best_fork_header.accumulated_data().hash.to_hex(),
+            num_removed_blocks,
+            num_added_blocks,
+        );
+        Ok(BlockAddResult::ChainReorg {
+            removed: removed_blocks,
+            added: reorg_chain.into(),
+        })
+    } else {
+        trace!(
+            target: LOG_TARGET,
+            "No reorg required. Number of blocks to remove: {}, to add: {}.",
+            num_removed_blocks,
+            num_added_blocks,
+        );
+        // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
+        Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
+    }
+}
 
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
@@ -2110,12 +2067,12 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     block: Arc<Block>,
     validator: &dyn HeaderValidation<T>,
     difficulty_calculator: &DifficultyCalculator,
-) -> Result<Vec<ChainHeader>, ChainStorageError> {
+) -> Result<(), ChainStorageError> {
     let hash = block.hash();
 
     // There cannot be any _new_ tips if we've seen this orphan block before
     if db.contains(&DbKey::OrphanBlock(hash))? {
-        return Ok(vec![]);
+        return Ok(());
     }
 
     let parent = match db.fetch_orphan_chain_tip_by_hash(&block.header.prev_hash)? {
@@ -2162,7 +2119,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                     txn.insert_orphan(block);
                     db.write(txn)?;
                 }
-                return Ok(vec![]);
+                return Ok(());
             },
         },
     };
@@ -2195,7 +2152,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     }
 
     db.write(txn)?;
-    Ok(tips)
+    Ok(())
 }
 
 // Find the tip set of any orphans that have hash as an ancestor
@@ -2609,15 +2566,13 @@ mod test {
             let (_, chain) = create_chained_blocks(&[("A->GB", 1u64, 120u64)], genesis_block);
             let block = chain.get("A").unwrap().clone();
             let mut access = db.db_write_access().unwrap();
-            let chain = insert_orphan_and_find_new_tips(
+            insert_orphan_and_find_new_tips(
                 &mut *access,
                 block.to_arc_block(),
                 &validator,
                 &db.difficulty_calculator,
             )
             .unwrap();
-            assert_eq!(chain.len(), 1);
-            assert_eq!(chain[0].hash(), block.hash());
 
             let maybe_block = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap();
             assert_eq!(maybe_block.unwrap().header(), block.header());
@@ -2635,24 +2590,22 @@ mod test {
             let mut access = db.db_write_access().unwrap();
 
             let block_d2 = orphan_chain.get("D2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(
+            insert_orphan_and_find_new_tips(
                 &mut *access,
                 block_d2.to_arc_block(),
                 &validator,
                 &db.difficulty_calculator,
             )
             .unwrap();
-            assert!(chain.is_empty());
 
             let block_e2 = orphan_chain.get("E2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(
+            insert_orphan_and_find_new_tips(
                 &mut *access,
                 block_e2.to_arc_block(),
                 &validator,
                 &db.difficulty_calculator,
             )
             .unwrap();
-            assert!(chain.is_empty());
 
             let maybe_block = access.fetch_orphan_children_of(*block_d2.hash()).unwrap();
             assert_eq!(maybe_block[0], *block_e2.to_arc_block());
@@ -2669,28 +2622,29 @@ mod test {
             let mut access = db.db_write_access().unwrap();
 
             let block = orphan_chain.get("B2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(
+            insert_orphan_and_find_new_tips(
                 &mut *access,
                 block.to_arc_block(),
                 &validator,
                 &db.difficulty_calculator,
             )
             .unwrap();
-            assert_eq!(chain.len(), 1);
-            assert_eq!(chain[0].header(), block.header());
-            assert_eq!(chain[0].accumulated_data().total_accumulated_difficulty, 4);
-            let fork_tip = access.fetch_orphan_chain_tip_by_hash(chain[0].hash()).unwrap().unwrap();
+            let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
+            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 4);
+            let all_tips = access.fetch_all_orphan_chain_tips().unwrap().len();
+            assert_eq!(all_tips, 1);
 
             // Insert again (block was received more than once), no new tips
-            let chain = insert_orphan_and_find_new_tips(
+            insert_orphan_and_find_new_tips(
                 &mut *access,
                 block.to_arc_block(),
                 &validator,
                 &db.difficulty_calculator,
             )
             .unwrap();
-            assert_eq!(chain.len(), 0);
+            let all_tips = access.fetch_all_orphan_chain_tips().unwrap().len();
+            assert_eq!(all_tips, 1);
         }
     }
 

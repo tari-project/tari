@@ -25,7 +25,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, Hidden};
 
 use crate::{
     output_manager_service::{
@@ -77,10 +77,12 @@ impl NewOutputSql {
         status: OutputStatus,
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
+        cipher: Option<&XChaCha20Poly1305>,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant).unwrap();
-        Ok(Self {
+
+        let mut output = Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
@@ -113,7 +115,14 @@ impl NewOutputSql {
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
-        })
+        };
+
+        if let Some(cipher) = cipher {
+            output
+                .encrypt(cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+        }
+        Ok(output)
     }
 
     /// Write this struct to the database
@@ -132,13 +141,16 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("spending_key"),
+            Hidden::hide(self.spending_key.clone()),
+        )?;
 
         self.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            self.script_private_key.clone(),
+            Hidden::hide(self.script_private_key.clone()),
         )?;
 
         Ok(())
