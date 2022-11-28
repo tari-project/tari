@@ -22,10 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    validator_node_signature::ValidatorNodeSignature,
-};
+use tari_common_types::types::{PublicKey, Signature};
 use tari_core::{
     consensus::MaxSizeString,
     transactions::transaction_components::{
@@ -34,6 +31,7 @@ use tari_core::{
         SideChainFeature,
         TemplateType,
         ValidatorNodeRegistration,
+        ValidatorNodeSignature,
     },
 };
 use tari_utilities::ByteArray;
