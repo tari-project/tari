@@ -20,17 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    fmt,
-    fs,
-    fs::File,
-    ops::Deref,
-    path::Path,
-    sync::Arc,
-    time::Instant,
-};
+use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 
 use croaring::Bitmap;
 use fs2::FileExt;
@@ -47,7 +37,7 @@ use tari_utilities::{
     ByteArray,
 };
 
-use super::{key_prefix_cursor::KeyPrefixCursor, lmdb::lmdb_get_prefix_cursor};
+use super::{cursors::KeyPrefixCursor, lmdb::lmdb_get_prefix_cursor};
 use crate::{
     blocks::{
         Block,
@@ -83,6 +73,7 @@ use crate::{
                 lmdb_len,
                 lmdb_replace,
             },
+            validator_node_store::ValidatorNodeStore,
             TransactionInputRowData,
             TransactionInputRowDataRef,
             TransactionKernelRowData,
@@ -90,7 +81,6 @@ use crate::{
         },
         stats::DbTotalSizeStats,
         utxo_mined_info::UtxoMinedInfo,
-        ActiveValidatorNode,
         BlockchainBackend,
         DbBasicStats,
         DbSize,
@@ -99,11 +89,18 @@ use crate::{
         PrunedOutput,
         Reorg,
         TemplateRegistrationEntry,
+        ValidatorNodeEntry,
     },
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeRegistration,
+        },
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
@@ -140,7 +137,6 @@ const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
 const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
-const LMDB_DB_VALIDATOR_NODE_ENDING: &str = "validator_node_ending";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 
 /// HeaderHash(32), mmr_pos(4), hash(32)
@@ -159,7 +155,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
-    std::fs::create_dir_all(&path)?;
+    fs::create_dir_all(&path)?;
 
     let file_lock = acquire_exclusive_file_lock(path.as_ref())?;
 
@@ -193,9 +189,8 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
-        .add_database(LMDB_DB_VALIDATOR_NODES, flags | db::DUPSORT)
-        .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags | db::DUPSORT)
-        .add_database(LMDB_DB_VALIDATOR_NODE_ENDING, flags | db::INTEGERKEY |  db::DUPSORT)
+        .add_database(LMDB_DB_VALIDATOR_NODES, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
@@ -255,12 +250,10 @@ pub struct LMDBDatabase {
     bad_blocks: DatabaseRef,
     /// Stores reorgs by epochtime and Reorg
     reorgs: DatabaseRef,
-    /// Maps VN Public Key -> ActiveValidatorNode
+    /// Maps <Height, VN PK> -> ActiveValidatorNode
     validator_nodes: DatabaseRef,
-    /// Maps VN Shard Key -> VN Public Key
+    /// Maps <Epoch, VN Public Key> -> VN Shard Key
     validator_nodes_mapping: DatabaseRef,
-    /// Maps the end block height of nodes
-    validator_nodes_ending: DatabaseRef,
     /// Maps CodeTemplateRegistration <block_height, hash> -> TemplateRegistration
     template_registrations: DatabaseRef,
     _file_lock: Arc<File>,
@@ -305,7 +298,6 @@ impl LMDBDatabase {
             reorgs: get_database(store, LMDB_DB_REORGS)?,
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
-            validator_nodes_ending: get_database(store, LMDB_DB_VALIDATOR_NODE_ENDING)?,
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             env,
             env_config: store.env_config(),
@@ -510,12 +502,6 @@ impl LMDBDatabase {
                 },
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
-                },
-                InsertValidatorNode { validator_node } => {
-                    self.insert_validator_node(&write_txn, validator_node)?;
-                },
-                InsertTemplateRegistration { template_registration } => {
-                    self.insert_template_registration(&write_txn, template_registration)?;
                 },
             }
         }
@@ -1306,7 +1292,8 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                self.delete_validator_node(txn, &vn_reg.public_key, &input.output_hash())?;
+                self.validator_node_store(txn)
+                    .delete(header.height, vn_reg.public_key(), input.commitment()?)?;
             }
 
             if !output_mmr.delete(index) {
@@ -1335,20 +1322,7 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                let shard_key = vn_reg.derive_shard_key(&block_hash);
-
-                let validator_node = ActiveValidatorNode {
-                    shard_key,
-                    from_height: header.height + 1, // The node is active one block after it's mined
-                    to_height: header.height +
-                        1 +
-                        self.consensus_manager
-                            .consensus_constants(header.height)
-                            .validator_node_timeout(),
-                    public_key: vn_reg.public_key.clone(),
-                    output_hash,
-                };
-                self.insert_validator_node(txn, &validator_node)?;
+                self.insert_validator_node(txn, header, &output.commitment, vn_reg)?;
             }
             if let Some(template_reg) = output
                 .features
@@ -1416,6 +1390,49 @@ impl LMDBDatabase {
             ),
         )?;
 
+        Ok(())
+    }
+
+    fn validator_node_store<'a, T: Deref<Target = ConstTransaction<'a>>>(
+        &'a self,
+        txn: &'a T,
+    ) -> ValidatorNodeStore<'a, T> {
+        ValidatorNodeStore::new(txn, self.validator_nodes.clone(), self.validator_nodes_mapping.clone())
+    }
+
+    fn insert_validator_node(
+        &self,
+        txn: &WriteTransaction<'_>,
+        header: &BlockHeader,
+        commitment: &Commitment,
+        vn_reg: &ValidatorNodeRegistration,
+    ) -> Result<(), ChainStorageError> {
+        let store = self.validator_node_store(txn);
+        let constants = self.get_consensus_constants(header.height);
+        let current_epoch = constants.block_height_to_current_epoch(header.height);
+
+        let prev_shard_key = store.get_shard_key(
+            (current_epoch.as_u64() - constants.validator_node_validity_period().as_u64()) * constants.epoch_length(),
+            current_epoch.as_u64() * constants.epoch_length(),
+            vn_reg.public_key(),
+        )?;
+        let shard_key = vn_reg.derive_shard_key(
+            prev_shard_key,
+            current_epoch,
+            constants.validator_node_registration_shuffle_interval(),
+            &header.prev_hash,
+        );
+
+        let next_epoch = constants.block_height_to_next_epoch(header.height);
+        let validator_node = ValidatorNodeEntry {
+            shard_key,
+            start_epoch: next_epoch,
+            end_epoch: next_epoch + constants.validator_node_validity_period(),
+            public_key: vn_reg.public_key().clone(),
+            commitment: commitment.clone(),
+        };
+
+        store.insert(header.height, &validator_node)?;
         Ok(())
     }
 
@@ -1606,55 +1623,6 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn insert_validator_node(
-        &self,
-        txn: &WriteTransaction<'_>,
-        validator_node: &ActiveValidatorNode,
-    ) -> Result<(), ChainStorageError> {
-        let mut key = validator_node.public_key.to_vec();
-        key.extend(validator_node.output_hash.as_slice());
-        lmdb_insert(txn, &self.validator_nodes, &key, validator_node, "validator_nodes")?;
-        lmdb_insert_dup(
-            txn,
-            &self.validator_nodes_ending,
-            &validator_node.to_height.to_le_bytes(),
-            validator_node,
-        )?;
-        lmdb_insert(
-            txn,
-            &self.validator_nodes_mapping,
-            &validator_node.shard_key,
-            &validator_node.public_key.as_bytes(),
-            "validator_nodes_mapping",
-        )
-    }
-
-    fn delete_validator_node(
-        &self,
-        txn: &WriteTransaction<'_>,
-        public_key: &PublicKey,
-        output_hash: &HashOutput,
-    ) -> Result<(), ChainStorageError> {
-        let mut key = public_key.to_vec();
-        key.extend(output_hash.as_slice());
-        let x: ActiveValidatorNode =
-            lmdb_get(txn, &self.validator_nodes, &key)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "ActiveValidatorNode",
-                field: "public_key and outputhash",
-                value: key.to_hex(),
-            })?;
-
-        lmdb_delete_key_value(txn, &self.validator_nodes_ending, &x.to_height.to_le_bytes(), &x)?;
-        lmdb_delete(txn, &self.validator_nodes, &key, "validator_nodes")?;
-        lmdb_delete(
-            txn,
-            &self.validator_nodes_mapping,
-            &x.shard_key,
-            "validator_nodes_mapping",
-        )?;
-        Ok(())
-    }
-
     fn insert_template_registration(
         &self,
         txn: &WriteTransaction<'_>,
@@ -1730,6 +1698,10 @@ impl LMDBDatabase {
             );
             Ok(None)
         }
+    }
+
+    fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
+        self.consensus_manager.consensus_constants(height)
     }
 }
 
@@ -2484,56 +2456,74 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    // The clippy warning is because PublicKey has a public inner type that could change. In this case
-    // it should be fine to ignore the warning. You could also change the logic to use something
-    // other than a hashmap.
-    #[allow(clippy::mutable_key_type)]
     fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let validator_node_timeout = self
-            .consensus_manager
-            .consensus_constants(height)
-            .validator_node_timeout();
-        let mut pub_keys = HashMap::new();
+        let vn_store = self.validator_node_store(&txn);
+        let constants = self.consensus_manager.consensus_constants(height);
 
-        let end = height + validator_node_timeout;
-        for h in height..end {
-            lmdb_get_multiple(&txn, &self.validator_nodes_ending, &h.to_le_bytes())?
-                .into_iter()
-                .for_each(|v: ActiveValidatorNode| {
-                    if v.from_height <= height {
-                        if let Some((shard_key, start)) =
-                            pub_keys.insert(v.public_key.clone(), (v.shard_key, v.from_height))
-                        {
-                            // If the node is already in the map, check if the start height is higher. If it is, replace
-                            // the old value with the new one.
-                            if start > v.from_height {
-                                pub_keys.insert(v.public_key, (shard_key, start));
-                            }
-                        }
-                    }
-                });
-        }
+        // Get the current epoch for the height
+        let end_epoch = constants.block_height_to_current_epoch(height);
+        // Subtract the registration validaty period to get the start epoch
+        let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period());
+        // Convert these back to height as validators regs are indexed by height
+        let start_height = start_epoch.as_u64() * constants.epoch_length();
+        let end_height = end_epoch.as_u64() * constants.epoch_length();
+        let nodes = vn_store.get_vn_set(start_height, end_height)?;
+        Ok(nodes)
 
-        // now remove the heights
-        Ok(pub_keys
-            .into_iter()
-            .map(|(pk, (shard_key, _))| (pk, shard_key))
-            .collect())
+        // let validator_node_validaty_period = constants.validator_node_validity_period();
+        // let mut pub_keys = HashMap::new();
+        //
+        // let end = height + validator_node_validaty_period;
+        // for h in height..end {
+        //     lmdb_get_multiple(&txn, &self.validator_nodes_ending, &h.to_le_bytes())?
+        //         .into_iter()
+        //         .for_each(|v: ValidatorNodeEntry| {
+        //             if v.from_height <= height {
+        //                 if let Some((shard_key, start)) =
+        //                     pub_keys.insert(v.public_key.clone(), (v.shard_key, v.from_height))
+        //                 {
+        //                     // If the node is already in the map, check if the start height is higher. If it is,
+        // replace                     // the old value with the new one.
+        //                     if start > v.from_height {
+        //                         pub_keys.insert(v.public_key, (shard_key, start));
+        //                     }
+        //                 }
+        //             }
+        //         });
+        // }
+        //
+        // // now remove the heights
+        // Ok(pub_keys
+        //     .into_iter()
+        //     .map(|(pk, (shard_key, _))| (pk, shard_key))
+        //     .collect())
     }
 
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let mut validator_nodes: Vec<ActiveValidatorNode> =
-            lmdb_fetch_matching_after(&txn, &self.validator_nodes, public_key.as_bytes())?;
-        validator_nodes = validator_nodes
-            .into_iter()
-            .filter(|a| a.from_height <= height && height <= a.to_height)
-            .collect();
-        // get the last one
-        validator_nodes.sort_by(|a, b| a.from_height.cmp(&b.from_height));
+        let store = self.validator_node_store(&txn);
+        let constants = self.get_consensus_constants(height);
 
-        Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
+        // Get the epoch height boundaries for our query
+        let current_epoch = constants.block_height_to_current_epoch(height);
+        let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period());
+        let start_height = start_epoch.as_u64() * constants.epoch_length();
+        let end_height = current_epoch.as_u64() * constants.epoch_length();
+        let maybe_shard_id = store.get_shard_key(start_height, end_height, &public_key)?;
+        Ok(maybe_shard_id)
+
+        // let txn = self.read_transaction()?;
+        // let mut validator_nodes: Vec<ValidatorNodeEntry> =
+        //     lmdb_fetch_matching_after(&txn, &self.validator_nodes, public_key.as_bytes())?;
+        // validator_nodes = validator_nodes
+        //     .into_iter()
+        //     .filter(|a| a.from_height <= height && height <= a.to_height)
+        //     .collect();
+        // // get the last one
+        // validator_nodes.sort_by(|a, b| a.from_height.cmp(&b.from_height));
+        //
+        // Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
     }
 
     fn fetch_template_registrations(

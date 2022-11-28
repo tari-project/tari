@@ -32,6 +32,7 @@ use crate::{
             check_outputs,
             check_permitted_output_types,
             check_total_burned,
+            check_validator_node_registration_utxo,
             validate_versions,
         },
         MempoolTransactionValidation,
@@ -138,6 +139,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
         validate_versions(tx.body(), consensus_constants)?;
         for output in tx.body.outputs() {
             check_permitted_output_types(consensus_constants, output)?;
+            check_validator_node_registration_utxo(consensus_constants, output)?;
         }
         Ok(())
     }

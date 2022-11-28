@@ -22,7 +22,10 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::{
+    types::{PublicKey, Signature},
+    validator_node_signature::ValidatorNodeSignature,
+};
 use tari_core::{
     consensus::MaxSizeString,
     transactions::transaction_components::{
@@ -79,21 +82,21 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
     type Error = String;
 
     fn try_from(value: grpc::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        Ok(Self {
-            public_key: PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
-            signature: value
+        Ok(ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+            PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            value
                 .signature
                 .map(Signature::try_from)
                 .ok_or("signature not provided")??,
-        })
+        )))
     }
 }
 
 impl From<ValidatorNodeRegistration> for grpc::ValidatorNodeRegistration {
     fn from(value: ValidatorNodeRegistration) -> Self {
         Self {
-            public_key: value.public_key.to_vec(),
-            signature: Some(value.signature.into()),
+            public_key: value.public_key().to_vec(),
+            signature: Some(value.signature().into()),
         }
     }
 }

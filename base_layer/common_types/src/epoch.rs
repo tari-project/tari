@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,6 +19,26 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 
-mod blockchain_database;
-pub mod temp_db;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+pub struct VnEpoch(pub u64);
+
+impl VnEpoch {
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+
+    pub fn to_be_bytes(&self) -> [u8; 8] {
+        self.0.to_be_bytes()
+    }
+
+    pub fn saturating_sub(self, other: VnEpoch) -> VnEpoch {
+        VnEpoch(self.0.saturating_sub(other.0))
+    }
+}
+
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self &Self }

@@ -25,7 +25,10 @@ use std::marker::PhantomData;
 use lmdb_zero::{ConstAccessor, Cursor, LmdbResultExt};
 use serde::de::DeserializeOwned;
 
-use crate::chain_storage::{lmdb_db::helpers::deserialize, ChainStorageError};
+use crate::chain_storage::{
+    lmdb_db::{composite_key::CompositeKey, helpers::deserialize},
+    ChainStorageError,
+};
 
 pub struct KeyPrefixCursor<'a, V> {
     cursor: Cursor<'a, 'a>,
@@ -93,44 +96,103 @@ where V: DeserializeOwned
     }
 }
 
+pub struct LmdbReadCursor<'a, V> {
+    cursor: Cursor<'a, 'a>,
+    value_type: PhantomData<V>,
+    access: ConstAccessor<'a>,
+}
+
+impl<'a, V: DeserializeOwned> LmdbReadCursor<'a, V> {
+    pub(super) fn new(cursor: Cursor<'a, 'a>, access: ConstAccessor<'a>) -> Self {
+        Self {
+            cursor,
+            access,
+            value_type: PhantomData,
+        }
+    }
+
+    /// Returns the item at the cursor, progressing forwards until there are no more elements
+    pub fn next<K: FromKeyBytes + Clone>(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        convert_result(self.cursor.next(&self.access))
+    }
+
+    pub fn next_dup<K: FromKeyBytes + Clone>(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        convert_result(self.cursor.next_dup(&self.access))
+    }
+
+    pub fn seek_range<K: FromKeyBytes + Clone>(&mut self, key: &[u8]) -> Result<Option<(K, V)>, ChainStorageError> {
+        convert_result(self.cursor.seek_range_k(&self.access, key))
+    }
+}
+
+pub trait FromKeyBytes {
+    fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
+    where Self: Sized;
+}
+
+impl FromKeyBytes for u64 {
+    fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
+    where Self: Sized {
+        if bytes.len() != 8 {
+            return Err(ChainStorageError::FromKeyBytesFailed(
+                "Invalid byte length for u64 key".to_string(),
+            ));
+        }
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&bytes[..8]);
+        Ok(u64::from_be_bytes(buf))
+    }
+}
+
+impl<const SZ: usize> FromKeyBytes for CompositeKey<SZ> {
+    fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
+    where Self: Sized {
+        if bytes.len() != SZ {
+            return Err(ChainStorageError::FromKeyBytesFailed(
+                "Invalid byte length for CompositeKey".to_string(),
+            ));
+        }
+        let mut key = CompositeKey::<SZ>::new();
+        key.push(bytes);
+        Ok(key)
+    }
+}
+
+fn convert_result<K: FromKeyBytes + Clone, V: DeserializeOwned>(
+    result: lmdb_zero::Result<(&[u8], &[u8])>,
+) -> Result<Option<(K, V)>, ChainStorageError> {
+    match result.to_opt()? {
+        Some((k, v)) => Ok(Some((K::from_key_bytes(k)?, deserialize(v)?))),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::fs;
 
-    use lmdb_zero::{db, ReadTransaction, WriteTransaction};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use tari_test_utils::paths::create_temporary_data_path;
-
-    use crate::chain_storage::lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert};
+    use crate::chain_storage::{
+        lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert},
+        tests::temp_db::TempLmdbDatabase,
+    };
 
     #[test]
     fn test_lmdb_get_prefix_cursor() {
-        let temp_path = create_temporary_data_path();
-
-        let lmdb_store = LMDBBuilder::new()
-            .set_path(&temp_path)
-            .set_env_config(LMDBConfig::default())
-            .set_max_number_of_databases(1)
-            .add_database("test", db::CREATE)
-            .build()
-            .unwrap();
-
-        let db = lmdb_store.get_handle("test").unwrap();
+        let database = TempLmdbDatabase::new();
+        let db = database.default_db();
         {
-            let txn = WriteTransaction::new(lmdb_store.env()).unwrap();
-            lmdb_insert(&txn, &db.db(), &[0xffu8, 0, 0, 0], &1u64, "test").unwrap();
-            lmdb_insert(&txn, &db.db(), &[0x2bu8, 0, 0, 1], &2u64, "test").unwrap();
-            lmdb_insert(&txn, &db.db(), &[0x2bu8, 0, 1, 1], &3u64, "test").unwrap();
-            lmdb_insert(&txn, &db.db(), &[0x2bu8, 1, 1, 0], &4u64, "test").unwrap();
-            lmdb_insert(&txn, &db.db(), &[0x2bu8, 1, 1, 1], &5u64, "test").unwrap();
-            lmdb_insert(&txn, &db.db(), &[0x00u8, 1, 1, 1], &5u64, "test").unwrap();
+            let txn = database.write_transaction();
+            lmdb_insert(&txn, db, &[0xffu8, 0, 0, 0], &1u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0x2bu8, 0, 0, 1], &2u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0x2bu8, 0, 1, 1], &3u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0x2bu8, 1, 1, 0], &4u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0x2bu8, 1, 1, 1], &5u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0x00u8, 1, 1, 1], &5u64, "test").unwrap();
             txn.commit().unwrap();
         }
 
         {
-            let txn = ReadTransaction::new(lmdb_store.env()).unwrap();
-            let db = db.db();
-            let mut cursor = lmdb_get_prefix_cursor::<u64>(&txn, &db, &[0x2b]).unwrap();
+            let txn = database.read_transaction();
+            let mut cursor = lmdb_get_prefix_cursor::<u64>(&txn, db, &[0x2b]).unwrap();
             let kv = cursor.next().unwrap().unwrap();
             assert_eq!(kv, (vec![0x2b, 0, 0, 1], 2));
             let kv = cursor.next().unwrap().unwrap();
@@ -151,7 +213,5 @@ mod tests {
             cursor.reset_to(&[0x11]);
             assert_eq!(cursor.next().unwrap(), None);
         }
-
-        fs::remove_dir_all(&temp_path).expect("Could not delete temporary file");
     }
 }

@@ -120,7 +120,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
             "Block validation: All inputs, outputs and kernels are valid for {}",
             block_id
         );
-        let mmr_roots = chain_storage::calculate_mmr_roots(backend, block.block())?;
+        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.rules, block.block())?;
         helpers::check_mmr_roots(block.header(), &mmr_roots)?;
         trace!(
             target: LOG_TARGET,
