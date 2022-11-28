@@ -20,13 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::types::HashOutput;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
@@ -41,6 +39,7 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
+    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
@@ -198,7 +197,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
-    pub node_identity: Arc<NodeIdentity>,
+    pub wallet_identity: WalletIdentity,
     pub factories: CryptoFactories,
     pub recovery_message: String,
     pub one_sided_payment_message: String,

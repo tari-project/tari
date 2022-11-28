@@ -18,7 +18,6 @@
 mod error;
 mod op_codes;
 mod script;
-mod script_commitment;
 mod script_context;
 mod serde;
 mod stack;
@@ -26,7 +25,6 @@ mod stack;
 pub use error::ScriptError;
 pub use op_codes::{slice_to_boxed_hash, slice_to_hash, HashValue, Message, Opcode, OpcodeVersion, ScalarValue};
 pub use script::TariScript;
-pub use script_commitment::{ScriptCommitment, ScriptCommitmentError, ScriptCommitmentFactory};
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
 

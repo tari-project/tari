@@ -104,6 +104,11 @@ impl PartialEq<Vec<u8>> for FixedHash {
         self == other.as_slice()
     }
 }
+impl PartialEq<FixedHash> for Vec<u8> {
+    fn eq(&self, other: &FixedHash) -> bool {
+        self == other.as_slice()
+    }
+}
 
 impl AsRef<[u8]> for FixedHash {
     fn as_ref(&self) -> &[u8] {

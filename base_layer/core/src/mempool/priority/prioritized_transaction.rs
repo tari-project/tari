@@ -38,20 +38,17 @@ use crate::transactions::{transaction_components::Transaction, weight::Transacti
 pub struct FeePriority(Vec<u8>);
 
 impl FeePriority {
-    pub fn new(transaction: &Transaction, weight: u64) -> Self {
+    pub fn new(transaction: &Transaction, insert_epoch: u64, weight: u64) -> Self {
         // The weights have been normalised, so the fee priority is now equal to the fee per gram ± a few pct points
         // Include 3 decimal places before flooring
         #[allow(clippy::cast_possible_truncation)]
         #[allow(clippy::cast_sign_loss)]
         let fee_per_byte = ((transaction.body.get_total_fee().as_u64() as f64 / weight as f64) * 1000.0) as u64;
-        // Big-endian used here, the MSB is in the starting index. The ordering for Vec<u8> is big-endian and the
-        // unconfirmed pool expects the lowest priority to be sorted lowest to highest in the BTreeMap
+        // Big-endian used here, the MSB is in the starting index. The ordering for Vec<u8> is taken from elements left
+        // to right and the unconfirmed pool expects the lowest priority to be sorted lowest to highest in the
+        // BTreeMap
         let fee_priority = fee_per_byte.to_be_bytes();
-        let age = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(n) => n.as_secs(),
-            Err(_) => 0,
-        };
-        let age_priority = (u64::MAX - age).to_be_bytes();
+        let age_priority = (u64::MAX - insert_epoch).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority[..8].copy_from_slice(&fee_priority[..]);
@@ -91,9 +88,13 @@ impl PrioritizedTransaction {
         dependent_outputs: Option<Vec<HashOutput>>,
     ) -> PrioritizedTransaction {
         let weight = transaction.calculate_weight(weighting);
+        let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(n) => n.as_secs(),
+            Err(_) => 0,
+        };
         Self {
             key,
-            priority: FeePriority::new(&transaction, weight),
+            priority: FeePriority::new(&transaction, insert_epoch, weight),
             weight,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
@@ -109,5 +110,45 @@ impl Display for PrioritizedTransaction {
             .map(|sig| sig.get_signature().to_hex())
             .unwrap_or_else(|| "No kernels!".to_string());
         write!(f, "{} (weight: {}, internal key: {})", sig_hex, self.weight, self.key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transactions::{
+        tari_amount::{uT, MicroTari, T},
+        test_helpers::create_tx,
+    };
+
+    fn create_tx_with_fee(fee_per_gram: MicroTari) -> Transaction {
+        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default());
+        tx
+    }
+
+    #[test]
+    fn fee_increases_priority() {
+        let weighting = TransactionWeight::latest();
+        let epoch = u64::MAX / 2;
+        let tx = create_tx_with_fee(2 * uT);
+        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+
+        let tx = create_tx_with_fee(3 * uT);
+        let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+
+        assert!(p2 > p1);
+    }
+
+    #[test]
+    fn age_increases_priority() {
+        let weighting = TransactionWeight::latest();
+        let epoch = u64::MAX / 2;
+        let tx = create_tx_with_fee(2 * uT);
+        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+
+        let tx = create_tx_with_fee(2 * uT);
+        let p2 = FeePriority::new(&tx, epoch - 1, tx.calculate_weight(&weighting));
+
+        assert!(p2 > p1);
     }
 }

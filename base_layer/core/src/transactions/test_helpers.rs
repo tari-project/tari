@@ -279,7 +279,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, feature
         &PublicKey::from_secret_key(&k),
         &tx_meta,
     );
-    Signature::sign(k, r, &e).unwrap()
+    Signature::sign_raw(&k, r, &e).unwrap()
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
@@ -294,7 +294,7 @@ pub fn create_random_signature_from_s_key(
     let p = PK::from_secret_key(&s_key);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&PublicKey::from_secret_key(&r), &p, &tx_meta);
-    (p, Signature::sign(s_key, r, &e).unwrap())
+    (p, Signature::sign_raw(&s_key, r, &e).unwrap())
 }
 
 pub fn create_consensus_manager() -> ConsensusManager {

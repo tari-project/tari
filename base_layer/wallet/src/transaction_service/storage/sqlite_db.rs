@@ -32,6 +32,7 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{
         TransactionConversionError,
         TransactionDirection,
@@ -41,7 +42,6 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::{
     hex::{from_hex, Hex},
@@ -492,10 +492,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+    fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
         tx_id: TxId,
-    ) -> Result<CommsPublicKey, TransactionStorageError> {
+    ) -> Result<TariAddress, TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -513,7 +513,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     start.elapsed().as_millis()
                 );
             }
-            return Ok(outbound_tx.destination_public_key);
+            return Ok(outbound_tx.destination_address);
         }
         if let Ok(mut inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             self.decrypt_if_necessary(&mut inbound_tx_sql)?;
@@ -528,7 +528,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     start.elapsed().as_millis()
                 );
             }
-            return Ok(inbound_tx.source_public_key);
+            return Ok(inbound_tx.source_address);
         }
 
         Err(TransactionStorageError::ValuesNotFound)
@@ -1310,7 +1310,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 #[derive(Debug, PartialEq)]
 pub struct InboundTransactionSenderInfo {
     pub(crate) tx_id: TxId,
-    pub(crate) source_public_key: CommsPublicKey,
+    pub(crate) source_address: TariAddress,
 }
 
 impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
@@ -1319,8 +1319,8 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: TxId::from(i.tx_id as u64),
-            source_public_key: CommsPublicKey::from_bytes(&*i.source_public_key)
-                .map_err(TransactionStorageError::ByteArrayError)?,
+            source_address: TariAddress::from_bytes(&*i.source_address)
+                .map_err(TransactionStorageError::TariAddressError)?,
         })
     }
 }
@@ -1328,7 +1328,7 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
 #[derive(Clone, Queryable)]
 pub struct InboundTransactionSenderInfoSql {
     pub tx_id: i64,
-    pub source_public_key: Vec<u8>,
+    pub source_address: Vec<u8>,
 }
 
 impl InboundTransactionSenderInfoSql {
@@ -1336,7 +1336,7 @@ impl InboundTransactionSenderInfoSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<InboundTransactionSenderInfoSql>, TransactionStorageError> {
         let query_result = inbound_transactions::table
-            .select((inbound_transactions::tx_id, inbound_transactions::source_public_key))
+            .select((inbound_transactions::tx_id, inbound_transactions::source_address))
             .filter(inbound_transactions::cancelled.eq(i32::from(false)))
             .load::<InboundTransactionSenderInfoSql>(conn)?;
         Ok(query_result)
@@ -1347,7 +1347,7 @@ impl InboundTransactionSenderInfoSql {
 #[table_name = "inbound_transactions"]
 struct InboundTransactionSql {
     tx_id: i64,
-    source_public_key: Vec<u8>,
+    source_address: Vec<u8>,
     amount: i64,
     receiver_protocol: String,
     message: String,
@@ -1565,7 +1565,7 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
     fn try_from(i: InboundTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: i.tx_id.as_u64() as i64,
-            source_public_key: i.source_public_key.to_vec(),
+            source_address: i.source_address.to_bytes().to_vec(),
             amount: u64::from(i.amount) as i64,
             receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
             message: i.message,
@@ -1584,7 +1584,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
     fn try_from(i: InboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
-            source_public_key: PublicKey::from_vec(&i.source_public_key).map_err(TransactionKeyError::Source)?,
+            source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
             amount: MicroTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
             status: TransactionStatus::Pending,
@@ -1613,7 +1613,7 @@ pub struct UpdateInboundTransactionSql {
 #[table_name = "outbound_transactions"]
 struct OutboundTransactionSql {
     tx_id: i64,
-    destination_public_key: Vec<u8>,
+    destination_address: Vec<u8>,
     amount: i64,
     fee: i64,
     sender_protocol: String,
@@ -1816,7 +1816,7 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
     fn try_from(o: OutboundTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: o.tx_id.as_u64() as i64,
-            destination_public_key: o.destination_public_key.to_vec(),
+            destination_address: o.destination_address.to_bytes().to_vec(),
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
             sender_protocol: serde_json::to_string(&o.sender_protocol)?,
@@ -1836,7 +1836,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
     fn try_from(o: OutboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (o.tx_id as u64).into(),
-            destination_public_key: PublicKey::from_vec(&o.destination_public_key)
+            destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(o.amount as u64),
             fee: MicroTari::from(o.fee as u64),
@@ -1867,8 +1867,8 @@ pub struct UpdateOutboundTransactionSql {
 #[table_name = "completed_transactions"]
 struct CompletedTransactionSql {
     tx_id: i64,
-    source_public_key: Vec<u8>,
-    destination_public_key: Vec<u8>,
+    source_address: Vec<u8>,
+    destination_address: Vec<u8>,
     amount: i64,
     fee: i64,
     transaction_protocol: String,
@@ -2098,13 +2098,19 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
+        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or_else(|| {
+            TransactionStorageError::UnexpectedResult(format!(
+                "Could not create timestamp mined_timestamp: {}",
+                mined_timestamp
+            ))
+        })?;
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 confirmations: Some(Some(num_confirmations as i64)),
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
-                mined_timestamp: Some(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
+                mined_timestamp: Some(timestamp),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
                 ..Default::default()
@@ -2216,8 +2222,8 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
     fn try_from(c: CompletedTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: c.tx_id.as_u64() as i64,
-            source_public_key: c.source_public_key.to_vec(),
-            destination_public_key: c.destination_public_key.to_vec(),
+            source_address: c.source_address.to_bytes().to_vec(),
+            destination_address: c.destination_address.to_bytes().to_vec(),
             amount: u64::from(c.amount) as i64,
             fee: u64::from(c.fee) as i64,
             transaction_protocol: serde_json::to_string(&c.transaction)?,
@@ -2271,8 +2277,8 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
         };
         Ok(Self {
             tx_id: (c.tx_id as u64).into(),
-            source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
-            destination_public_key: PublicKey::from_vec(&c.destination_public_key)
+            source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
+            destination_address: TariAddress::from_bytes(&c.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
@@ -2397,8 +2403,10 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
+    use tari_common::configuration::Network;
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
+        tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
     };
@@ -2490,9 +2498,13 @@ mod test {
 
         let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
 
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_address: address,
             amount,
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -2504,10 +2516,13 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
             tx_id: 2u64.into(),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_address: address,
             amount,
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -2545,10 +2560,13 @@ mod test {
             PrivateKey::random(&mut OsRng),
             &factories,
         );
-
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address: address,
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
@@ -2559,9 +2577,13 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let inbound_tx2 = InboundTransaction {
             tx_id: 3u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address: address,
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
@@ -2600,11 +2622,18 @@ mod test {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         );
-
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let completed_tx1 = CompletedTransaction {
             tx_id: 2u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2622,10 +2651,18 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
         };
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let completed_tx2 = CompletedTransaction {
             tx_id: 3u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2748,10 +2785,18 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &conn).is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_ok());
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let coinbase_tx1 = CompletedTransaction {
             tx_id: 101u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2770,10 +2815,18 @@ mod test {
             mined_timestamp: None,
         };
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let coinbase_tx2 = CompletedTransaction {
             tx_id: 102u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2792,10 +2845,18 @@ mod test {
             mined_timestamp: None,
         };
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let coinbase_tx3 = CompletedTransaction {
             tx_id: 103u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2836,6 +2897,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_encryption_crud() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
@@ -2854,9 +2916,13 @@ mod test {
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
             amount: MicroTari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
@@ -2876,9 +2942,13 @@ mod test {
         let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64.into(),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_address,
             amount: MicroTari::from(100),
             fee: MicroTari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
@@ -2900,10 +2970,18 @@ mod test {
         let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let destination_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let completed_tx = CompletedTransaction {
             tx_id: 3u64.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address,
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
             transaction: Transaction::new(
@@ -2939,6 +3017,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_apply_remove_encryption() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
@@ -2958,9 +3037,13 @@ mod test {
 
             embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
+            let source_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
             let inbound_tx = InboundTransaction {
                 tx_id: 1u64.into(),
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_address,
                 amount: MicroTari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
@@ -2974,9 +3057,13 @@ mod test {
             let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
+            let destination_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64.into(),
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                destination_address,
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
@@ -2991,10 +3078,18 @@ mod test {
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
             outbound_tx_sql.commit(&conn).unwrap();
 
+            let source_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
+            let destination_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
             let completed_tx = CompletedTransaction {
                 tx_id: 3u64.into(),
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_address,
+                destination_address,
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(100),
                 transaction: Transaction::new(
@@ -3119,10 +3214,18 @@ mod test {
                 10 => (None, TransactionStatus::MinedConfirmed, None),
                 _ => (None, TransactionStatus::Completed, Some(i)),
             };
+            let source_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
+            let destination_address = TariAddress::new(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                Network::LocalNet,
+            );
             let completed_tx = CompletedTransaction {
                 tx_id: TxId::from(i),
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_address,
+                destination_address,
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(100),
                 transaction: Transaction::new(
@@ -3156,7 +3259,7 @@ mod test {
             if cancelled.is_none() {
                 info_list_reference.push(InboundTransactionSenderInfo {
                     tx_id: inbound_tx.tx_id,
-                    source_public_key: inbound_tx.source_public_key,
+                    source_address: inbound_tx.source_address,
                 })
             }
         }

@@ -39,7 +39,7 @@ use crate::{
         monero_difficulty,
         monero_rx::MoneroPowData,
         randomx_factory::RandomXFactory,
-        sha3_difficulty,
+        sha3x_difficulty,
         AchievedTargetDifficulty,
         Difficulty,
         PowAlgorithm,
@@ -178,7 +178,7 @@ pub fn check_target_difficulty(
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3_difficulty(block_header),
+        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
@@ -545,6 +545,19 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
             kind: "Input",
+        }));
+    }
+    if header.validator_node_mr != mmr_roots.validator_node_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header validator node merkle root in {} do not match calculated root. Header.validator_node_mr: \
+             {}, Calculated: {}",
+            header.hash().to_hex(),
+            header.validator_node_mr.to_hex(),
+            mmr_roots.validator_node_mr.to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: "Validator Node",
         }));
     }
     Ok(())

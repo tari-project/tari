@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey, Signature};
+use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -63,6 +63,20 @@ pub enum NodeCommsRequest {
     FetchKernelByExcessSig(Signature),
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+    },
+    GetShardKey {
+        height: u64,
+        public_key: PublicKey,
+    },
+    FetchTemplateRegistrations {
+        start_height: u64,
+        end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
     },
 }
 
@@ -103,6 +117,21 @@ impl Display for NodeCommsRequest {
             ),
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
+            },
+            FetchValidatorNodesKeys { height } => {
+                write!(f, "FetchValidatorNodesKeys ({})", height)
+            },
+            GetShardKey { height, public_key } => {
+                write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
+            },
+            FetchTemplateRegistrations {
+                start_height: start,
+                end_height: end,
+            } => {
+                write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
+            },
+            FetchUnspentUtxosInBlock { block_hash } => {
+                write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
             },
         }
     }

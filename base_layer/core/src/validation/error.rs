@@ -134,6 +134,8 @@ pub enum ValidationError {
     OutputTypeNotPermitted { output_type: OutputType },
     #[error("FixedHash size error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Validator node MMR is not correct")]
+    ValidatorNodeMmmrError,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

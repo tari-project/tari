@@ -32,7 +32,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
     covenants::Covenant,
@@ -62,13 +62,12 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::RistrettoSecretKey,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -98,7 +97,8 @@ use crate::{
         tasks::TxoValidationTask,
     },
     types::WalletHasher,
-    WalletSecretKeysDomainHasher,
+    WalletOutputEncryptionKeysDomainHasher,
+    WalletOutputRewindKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -2321,15 +2321,12 @@ where
         pre_image: PublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(
-                self.node_identity.as_ref().secret_key(),
-                &output.sender_offset_public_key,
-            )
-            .as_bytes(),
-        )?;
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let shared_secret = CommsDHKE::new(
+            self.node_identity.as_ref().secret_key(),
+            &output.sender_offset_public_key,
+        );
+        let blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
         {
             let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
@@ -2557,28 +2554,14 @@ where
 
                         // match found
                         Some(matched_key) => {
-                            match PrivateKey::from_bytes(
-                                CommsPublicKey::shared_secret(
-                                    &matched_key.private_key,
-                                    &output.sender_offset_public_key,
-                                )
-                                .as_bytes(),
-                            ) {
-                                Ok(spending_sk) => scanned_outputs.push((
-                                    output.clone(),
-                                    OutputSource::OneSided,
-                                    matched_key.private_key.clone(),
-                                    spending_sk,
-                                )),
-                                Err(e) => {
-                                    error!(
-                                        target: LOG_TARGET,
-                                        "failed to derive private key from DH shared secret (simple one-sided): {:?}",
-                                        e
-                                    );
-                                    continue;
-                                },
-                            }
+                            let shared_secret =
+                                CommsDHKE::new(&matched_key.private_key, &output.sender_offset_public_key);
+                            scanned_outputs.push((
+                                output.clone(),
+                                OutputSource::OneSided,
+                                matched_key.private_key.clone(),
+                                shared_secret,
+                            ));
                         },
                     }
                 },
@@ -2588,37 +2571,27 @@ where
                 // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
-                    // computing shared secret
-                    let shared_secret = PrivateKey::from_bytes(
+                    // Compute the stealth address offset
+                    let stealth_address_offset = PrivateKey::from_bytes(
                         WalletHasher::new_with_label("stealth_address")
-                            .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
+                            .chain(CommsDHKE::new(&wallet_sk, nonce.as_ref()).as_bytes())
                             .finalize()
                             .as_ref(),
                     )
                     .unwrap();
 
                     // matching spending (public) keys
-                    if &(PublicKey::from_secret_key(&shared_secret) + wallet_pk) != scanned_pk.as_ref() {
+                    if &(PublicKey::from_secret_key(&stealth_address_offset) + wallet_pk) != scanned_pk.as_ref() {
                         continue;
                     }
 
-                    match PrivateKey::from_bytes(
-                        CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
-                    ) {
-                        Ok(spending_sk) => scanned_outputs.push((
-                            output.clone(),
-                            OutputSource::StealthOneSided,
-                            wallet_sk.clone() + shared_secret,
-                            spending_sk,
-                        )),
-                        Err(e) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "failed to derive private key from DH shared secret (stealth one-sided): {:?}", e
-                            );
-                            continue;
-                        },
-                    }
+                    let shared_secret = CommsDHKE::new(&wallet_sk, &output.sender_offset_public_key);
+                    scanned_outputs.push((
+                        output.clone(),
+                        OutputSource::StealthOneSided,
+                        wallet_sk.clone() + stealth_address_offset,
+                        shared_secret,
+                    ));
                 },
 
                 _ => {},
@@ -2631,13 +2604,13 @@ where
     // Imports scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(TransactionOutput, OutputSource, PrivateKey, RistrettoSecretKey)>,
+        scanned_outputs: Vec<(TransactionOutput, OutputSource, PrivateKey, CommsDHKE)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source, script_private_key, spending_sk) in scanned_outputs {
-            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_sk))?;
-            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
+            let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+            let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
             let committed_value =
                 EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
 
@@ -2754,12 +2727,24 @@ impl fmt::Display for Balance {
     }
 }
 
-fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    WalletSecretKeysDomainHasher::new()
-        .chain(key.as_bytes())
-        .finalize()
-        .as_ref()
-        .to_vec()
+/// Generate an output rewind key from a Diffie-Hellman shared secret
+fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputRewindKeysDomainHasher::new()
+            .chain(shared_secret.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
+}
+
+/// Generate an output encryption key from a Diffie-Hellman shared secret
+fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputEncryptionKeysDomainHasher::new()
+            .chain(shared_secret.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
 }
 
 #[derive(Debug, Clone)]

@@ -25,38 +25,36 @@ use tari_common_types::types::FixedHash;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use tari_utilities::hex::Hex;
 
-pub fn tip_height() -> IntGauge {
+pub fn tip_height() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge("base_node::blockchain::tip_height", "The current tip height").unwrap()
     });
 
-    METER.clone()
+    &METER
 }
 
-pub fn target_difficulty_sha(height: u64) -> IntGauge {
-    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+pub fn target_difficulty_sha() -> &'static IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
             "base_node::blockchain::target_difficulty_sha",
             "The current miner target difficulty for the sha3 PoW algo",
-            &["height"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[&height.to_string()])
+    &METER
 }
 
-pub fn target_difficulty_monero(height: u64) -> IntGauge {
-    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+pub fn target_difficulty_monero() -> &'static IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
             "base_node::blockchain::target_difficulty_monero",
             "The current miner target difficulty for the monero PoW algo",
-            &["height"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[&height.to_string()])
+    &METER
 }
 
 pub fn reorg(fork_height: u64, num_added: usize, num_removed: usize) -> IntGauge {
@@ -153,7 +151,7 @@ pub fn rejected_local_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     METER.with_label_values(&[&height.to_string(), &hash.to_hex()])
 }
 
-pub fn active_sync_peers() -> IntGauge {
+pub fn active_sync_peers() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
             "base_node::sync::active_peers",
@@ -162,10 +160,10 @@ pub fn active_sync_peers() -> IntGauge {
         .unwrap()
     });
 
-    METER.clone()
+    &METER
 }
 
-pub fn utxo_set_size() -> IntGauge {
+pub fn utxo_set_size() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
             "base_node::blockchain::utxo_set_size",
@@ -174,5 +172,5 @@ pub fn utxo_set_size() -> IntGauge {
         .unwrap()
     });
 
-    METER.clone()
+    &METER
 }

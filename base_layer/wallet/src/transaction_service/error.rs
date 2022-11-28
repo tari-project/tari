@@ -24,6 +24,7 @@ use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
 use tari_common_types::{
+    tari_address::TariAddressError,
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
     types::FixedHashSizeError,
 };
@@ -52,6 +53,8 @@ use crate::{
 pub enum TransactionServiceError {
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
+    #[error("Transaction is sending to a network different than ours")]
+    InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
     #[error("Transaction Protocol Error: `{0}`")]
@@ -179,10 +182,10 @@ pub enum TransactionServiceError {
 
 #[derive(Debug, Error)]
 pub enum TransactionKeyError {
-    #[error("Invalid source Publickey")]
-    Source(ByteArrayError),
-    #[error("Invalid destination PublicKey")]
-    Destination(ByteArrayError),
+    #[error("Invalid source address")]
+    Source(TariAddressError),
+    #[error("Invalid destination address")]
+    Destination(TariAddressError),
     #[error("Invalid transaction signature nonce")]
     SignatureNonce(ByteArrayError),
     #[error("Invalid transaction signature key")]
@@ -233,6 +236,8 @@ pub enum TransactionStorageError {
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Tari address error: `{0}`")]
+    TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
 }

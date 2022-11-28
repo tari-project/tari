@@ -31,7 +31,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{
@@ -58,6 +58,7 @@ use tari_core::{
     KernelMmr,
     KernelMmrHasherBlake256,
     MutableOutputMmr,
+    ValidatorNodeMmr,
     WitnessMmr,
     WitnessMmrHasherBlake256,
 };
@@ -107,24 +108,24 @@ fn genesis_template(
     (block, output)
 }
 
-#[test]
 // #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
+#[test]
 fn print_new_genesis_block_esmeralda() {
     print_new_genesis_block(Network::Esmeralda);
 }
 
-#[test]
 // #[ignore = "used to generate a new igor genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_igor
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
+#[test]
 fn print_new_genesis_block_igor() {
     print_new_genesis_block(Network::Igor);
 }
@@ -159,12 +160,14 @@ fn print_new_genesis_block(network: Network) {
     witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     output_mmr.push(utxo.hash().to_vec()).unwrap();
+    let vn_mmr = ValidatorNodeMmr::new(Vec::new());
 
     header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;
     header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
     header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     header.output_mmr_size += 1;
+    header.validator_node_mr = FixedHash::try_from(vn_mmr.get_merkle_root().unwrap()).unwrap();
 
     // header.kernel_mr = kernel.hash();
     // header.kernel_mmr_size += 1;
@@ -213,6 +216,7 @@ fn print_new_genesis_block(network: Network) {
     println!("header output_mr: {}", block.header.output_mr.to_hex());
     println!("header witness_mr: {}", block.header.witness_mr.to_hex());
     println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
+    println!("header validator_node_mr: {}", block.header.validator_node_mr.to_hex());
     println!(
         "header total_kernel_offset: {}",
         block.header.total_kernel_offset.to_hex()
@@ -540,7 +544,7 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
     let mut num_tries = 0;
 
-    while sha3_difficulty(header) != achieved_difficulty {
+    while sha3x_difficulty(header) != achieved_difficulty {
         header.nonce += 1;
         num_tries += 1;
         if num_tries > 10_000_000 {

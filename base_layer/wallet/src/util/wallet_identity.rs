@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,23 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, io, path::Path};
+use std::{fmt, fmt::Display, sync::Arc};
 
-use fs2::FileExt;
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::peer_manager::NodeIdentity;
 
-/// Acquire an exclusive OS level write lock at the given path. A file named .lock is written in
-/// this path.
-///
-/// ## Parameters
-/// `path` - Path of the lock file
-///
-/// ## Returns
-/// Returns a File handle that must be retained to keep the file lock active.
-/// Returns an IO error if the file lock cannot be acquired.
-pub fn try_lock_exclusive<P: AsRef<Path>>(path: P) -> Result<File, io::Error> {
-    let lock_file_path = path.as_ref().join(".lock");
-    let file = File::create(lock_file_path)?;
-    // Attempt to acquire exclusive OS level Write Lock
-    file.try_lock_exclusive()?;
-    Ok(file)
+#[derive(Clone, Debug)]
+pub struct WalletIdentity {
+    pub node_identity: Arc<NodeIdentity>,
+    pub network: Network,
+    pub address: TariAddress,
+}
+
+impl WalletIdentity {
+    pub fn new(node_identity: Arc<NodeIdentity>, network: Network) -> Self {
+        let address = TariAddress::new(node_identity.public_key().clone(), network);
+        WalletIdentity {
+            node_identity,
+            network,
+            address,
+        }
+    }
+}
+
+impl Display for WalletIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.node_identity)?;
+        writeln!(f, "Network: {:?}", self.network)?;
+
+        Ok(())
+    }
 }

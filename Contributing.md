@@ -169,7 +169,7 @@ A very rough outline of the flow goes as follows:
   ![testing status](./meta/img/status-testing.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
   feature is stabilised and is live on mainnet, the status can be updated to
-  ![stable status](./meta/img/status-active.svg).
+  ![stable status](./meta/img/status-stable.svg).
 
 If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as 
 ![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
@@ -353,7 +353,6 @@ These labels indicate to the PR author and other reviewers,
 
 Describes the type of PR or issue. E.g.
 
-* `C-Consensus_breaking` - This PR changes consensus rules and would require a hard-fork to implement.
 * `C-Documentation` - This PR is exclusively or dominantly adding to documentation. 
 * `C-RFC` - This PR introduces or contributes to an RFC.
 * `C-tests` - This PR exclusively adds new test cases.
@@ -396,6 +395,12 @@ These labels indicate the level or type of experience needed to address. Example
 * `E-medium`
 * `E-expert`
 
+### Warnings (W)
+
+* `W-consensus_breaking` - This PR changes consensus rules and would require a hard-fork to implement.
+* `W-network_breaking` - This PR changes networking messages and requires care when deploying.
+* `W-transaction_breaking` - This PR changes data that wallets use to send transactions. This might not cause 
+a hard fork, but wallets may not be able to recover funds or interact with each other.
 
 [git commit farming]: https://www.tari.com/git-farming/ "The Tari Blog: Git farming or, How to get your PRs merged into Tari"
 

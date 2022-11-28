@@ -42,6 +42,7 @@ use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 pub mod support;
 use support::data::get_temp_sqlite_database_connection;
 use tari_common::configuration::{Network, StringList};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_p2p::{
@@ -141,8 +142,9 @@ pub fn test_contacts_service() {
     let mut contacts = Vec::new();
     for i in 0..5 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let address = TariAddress::new(public_key, Network::default());
 
-        contacts.push(Contact::new(random::string(8), public_key, None, None));
+        contacts.push(Contact::new(random::string(8), address, None, None));
 
         runtime
             .block_on(contacts_service.upsert_contact(contacts[i].clone()))
@@ -153,31 +155,32 @@ pub fn test_contacts_service() {
     assert_eq!(contacts, got_contacts);
 
     let contact = runtime
-        .block_on(contacts_service.get_contact(contacts[0].public_key.clone()))
+        .block_on(contacts_service.get_contact(contacts[0].address.clone()))
         .unwrap();
     assert_eq!(contact, contacts[0]);
 
     let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+    let address = TariAddress::new(public_key, Network::default());
 
-    let contact = runtime.block_on(contacts_service.get_contact(public_key.clone()));
+    let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
     match contact {
         Ok(_) => panic!("There should be an error here"),
         Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-            assert_eq!(val, DbKey::Contact(public_key.clone()))
+            assert_eq!(val, DbKey::Contact(address.clone()))
         },
         _ => panic!("There should be a specific error here"),
     }
-    let result = runtime.block_on(contacts_service.remove_contact(public_key.clone()));
+    let result = runtime.block_on(contacts_service.remove_contact(address.clone()));
     match result {
         Ok(_) => panic!("There should be an error here"),
         Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-            assert_eq!(val, DbKey::Contact(public_key))
+            assert_eq!(val, DbKey::Contact(address))
         },
         _ => panic!("There should be a specific error here"),
     }
 
     let _contact = runtime
-        .block_on(contacts_service.remove_contact(contacts[0].public_key.clone()))
+        .block_on(contacts_service.remove_contact(contacts[0].address.clone()))
         .unwrap();
     contacts.remove(0);
     let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
@@ -191,7 +194,7 @@ pub fn test_contacts_service() {
         .block_on(contacts_service.upsert_contact(updated_contact.clone()))
         .unwrap();
     let new_contact = runtime
-        .block_on(contacts_service.get_contact(updated_contact.public_key))
+        .block_on(contacts_service.get_contact(updated_contact.address))
         .unwrap();
 
     assert_eq!(new_contact.alias, updated_contact.alias);

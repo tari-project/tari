@@ -113,6 +113,28 @@ impl From<Network> for String {
     }
 }
 
+impl TryFrom<u8> for Network {
+    type Error = ConfigurationError;
+
+    fn try_from(v: u8) -> Result<Self, ConfigurationError> {
+        match v {
+            x if x == Network::MainNet as u8 => Ok(Network::MainNet),
+            x if x == Network::LocalNet as u8 => Ok(Network::LocalNet),
+            x if x == Network::Ridcully as u8 => Ok(Network::Ridcully),
+            x if x == Network::Stibbons as u8 => Ok(Network::Stibbons),
+            x if x == Network::Weatherwax as u8 => Ok(Network::Weatherwax),
+            x if x == Network::Igor as u8 => Ok(Network::Igor),
+            x if x == Network::Dibbler as u8 => Ok(Network::Dibbler),
+            x if x == Network::Esmeralda as u8 => Ok(Network::Esmeralda),
+            _ => Err(ConfigurationError::new(
+                "network",
+                Some(v.to_string()),
+                &format!("Invalid network option: {}", v),
+            )),
+        }
+    }
+}
+
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(self.as_key_str())
@@ -177,5 +199,17 @@ mod test {
         // catch error case
         let err_network = Network::from_str("invalid network");
         assert!(err_network.is_err());
+    }
+
+    #[test]
+    fn network_from_byte() {
+        assert_eq!(Network::try_from(0x00).unwrap(), Network::MainNet);
+        assert_eq!(Network::try_from(0x10).unwrap(), Network::LocalNet);
+        assert_eq!(Network::try_from(0x21).unwrap(), Network::Ridcully);
+        assert_eq!(Network::try_from(0x22).unwrap(), Network::Stibbons);
+        assert_eq!(Network::try_from(0xa3).unwrap(), Network::Weatherwax);
+        assert_eq!(Network::try_from(0x24).unwrap(), Network::Igor);
+        assert_eq!(Network::try_from(0x25).unwrap(), Network::Dibbler);
+        assert_eq!(Network::try_from(0x26).unwrap(), Network::Esmeralda);
     }
 }

@@ -92,7 +92,7 @@ impl OutputField {
             Features => &output.features as &dyn Any,
             FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
-            FeaturesSideChainFeatures => &output.features.sidechain_features as &dyn Any,
+            FeaturesSideChainFeatures => &output.features.sidechain_feature as &dyn Any,
             FeaturesMetadata => &output.features.metadata as &dyn Any,
         };
         val.downcast_ref::<T>()
@@ -109,7 +109,7 @@ impl OutputField {
             Features => output.features.to_consensus_bytes(),
             FeaturesOutputType => output.features.output_type.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
-            FeaturesSideChainFeatures => output.features.sidechain_features.to_consensus_bytes(),
+            FeaturesSideChainFeatures => output.features.sidechain_feature.to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
         }
     }
@@ -145,7 +145,7 @@ impl OutputField {
                 .unwrap_or(false),
             FeaturesSideChainFeatures => input
                 .features()
-                .map(|features| features.sidechain_features == output.features.sidechain_features)
+                .map(|features| features.sidechain_feature == output.features.sidechain_feature)
                 .unwrap_or(false),
             FeaturesMetadata => input
                 .features()
@@ -228,7 +228,7 @@ impl OutputField {
 
     #[allow(dead_code)]
     #[allow(dead_code)]
-    pub fn features_sidechain_features() -> Self {
+    pub fn features_sidechain_feature() -> Self {
         OutputField::FeaturesSideChainFeatures
     }
 
@@ -249,7 +249,7 @@ impl Display for OutputField {
             Covenant => write!(f, "field::covenant"),
             Features => write!(f, "field::features"),
             FeaturesOutputType => write!(f, "field::features_flags"),
-            FeaturesSideChainFeatures => write!(f, "field::features_sidechain_features"),
+            FeaturesSideChainFeatures => write!(f, "field::features_sidechain_feature"),
             FeaturesMetadata => write!(f, "field::features_metadata"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
         }
@@ -335,13 +335,14 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
+
     use tari_common_types::types::{Commitment, PublicKey};
     use tari_script::script;
 
     use super::*;
     use crate::{
         covenant,
-        covenants::test::{create_input, create_outputs},
+        covenants::test::{create_input, create_outputs, make_sample_sidechain_feature},
         transactions::{
             test_helpers::UtxoTestParams,
             transaction_components::{OutputFeatures, OutputType, SpentOutput},
@@ -352,14 +353,15 @@ mod test {
         use super::*;
 
         mod is_eq {
+
             use super::*;
-            use crate::transactions::transaction_components::SideChainFeatures;
 
             #[test]
             fn it_returns_true_if_eq() {
+                let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures {})),
+                        sidechain_feature: Some(side_chain_features),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -378,10 +380,7 @@ mod test {
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures {})
-                    .unwrap());
-                assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
+                    .is_eq(&output, output.features.sidechain_feature.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::FeaturesMetadata
                     .is_eq(&output, &output.features.metadata)
@@ -393,9 +392,10 @@ mod test {
 
             #[test]
             fn it_returns_false_if_not_eq() {
+                let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures {})),
+                        sidechain_feature: Some(side_chain_features),
                         ..Default::default()
                     },
                     script: script![Drop Nop],

@@ -29,11 +29,17 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction_components::{side_chain::SideChainFeatures, OutputType},
+    transactions::transaction_components::{
+        side_chain::SideChainFeature,
+        CodeTemplateRegistration,
+        OutputType,
+        ValidatorNodeRegistration,
+    },
 };
 
 /// Options for UTXO's
@@ -46,24 +52,23 @@ pub struct OutputFeatures {
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
     pub metadata: Vec<u8>,
-    pub sidechain_features: Option<Box<SideChainFeatures>>,
+    pub sidechain_feature: Option<SideChainFeature>,
 }
 
 impl OutputFeatures {
     pub fn new(
         version: OutputFeaturesVersion,
-        flags: OutputType,
+        output_type: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
-        sidechain_features: Option<SideChainFeatures>,
+        sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
-        let boxed_sidechain_features = sidechain_features.map(Box::new);
         OutputFeatures {
             version,
-            output_type: flags,
+            output_type,
             maturity,
             metadata,
-            sidechain_features: boxed_sidechain_features,
+            sidechain_feature,
         }
     }
 
@@ -71,14 +76,14 @@ impl OutputFeatures {
         flags: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
-        sidechain_features: Option<SideChainFeatures>,
+        sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
             flags,
             maturity,
             metadata,
-            sidechain_features,
+            sidechain_feature,
         )
     }
 
@@ -98,6 +103,29 @@ impl OutputFeatures {
         }
     }
 
+    /// Creates template registration output features
+    pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::CodeTemplateRegistration,
+            sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_registration(
+        validator_node_public_key: PublicKey,
+        validator_node_signature: Signature,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::ValidatorNodeRegistration,
+            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(ValidatorNodeRegistration {
+                public_key: validator_node_public_key,
+                signature: validator_node_signature,
+            })),
+            ..Default::default()
+        }
+    }
+
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
     }
@@ -108,7 +136,7 @@ impl ConsensusEncoding for OutputFeatures {
         self.version.consensus_encode(writer)?;
         self.maturity.consensus_encode(writer)?;
         self.output_type.consensus_encode(writer)?;
-        self.sidechain_features.consensus_encode(writer)?;
+        self.sidechain_feature.consensus_encode(writer)?;
         self.metadata.consensus_encode(writer)?;
 
         Ok(())
@@ -124,14 +152,14 @@ impl ConsensusDecoding for OutputFeatures {
         let version = OutputFeaturesVersion::consensus_decode(reader)?;
         let maturity = u64::consensus_decode(reader)?;
         let flags = OutputType::consensus_decode(reader)?;
-        let sidechain_features = <Option<Box<SideChainFeatures>> as ConsensusDecoding>::consensus_decode(reader)?;
+        let sidechain_feature = ConsensusDecoding::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         Ok(Self {
             version,
             output_type: flags,
             maturity,
-            sidechain_features,
+            sidechain_feature,
             metadata: metadata.into(),
         })
     }
@@ -167,17 +195,43 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use std::convert::TryInto;
 
-    #[allow(clippy::too_many_lines)]
+    use tari_utilities::hex::from_hex;
+
+    use super::*;
+    use crate::{
+        consensus::{check_consensus_encoding_correctness, MaxSizeString},
+        transactions::transaction_components::{BuildInfo, TemplateType},
+    };
+
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
         OutputFeatures {
             version,
             output_type: OutputType::Standard,
             maturity: u64::MAX,
             metadata: vec![1; 1024],
-            sidechain_features: Some(Box::new(SideChainFeatures {})),
+            sidechain_feature: Some(SideChainFeature::TemplateRegistration(CodeTemplateRegistration {
+                author_public_key: Default::default(),
+                author_signature: Default::default(),
+                template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),
+                template_version: 1,
+                template_type: TemplateType::Wasm { abi_version: 123 },
+                build_info: BuildInfo {
+                    repo_url: "/dns/github.com/https/tari_project/wasm_examples".try_into().unwrap(),
+                    commit_hash: from_hex("ea29c9f92973fb7eda913902ff6173c62cb1e5df")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                },
+                binary_sha: from_hex("c93747637517e3de90839637f0ce1ab7c8a3800b")
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+                binary_url: "/dns4/github.com/https/tari_project/wasm_examples/releases/download/v0.0.6/coin.zip"
+                    .try_into()
+                    .unwrap(),
+            })),
         }
     }
 
@@ -193,7 +247,7 @@ mod test {
     #[test]
     fn it_encodes_and_decodes_correctly_in_none_case() {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        subject.sidechain_features = None;
+        subject.sidechain_feature = None;
         check_consensus_encoding_correctness(subject).unwrap();
     }
 }

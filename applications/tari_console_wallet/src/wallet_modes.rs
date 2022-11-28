@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(dead_code, unused)]
+
 use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
@@ -294,7 +296,6 @@ pub fn tui_mode(
     let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         wallet,
-        config.network,
         config.clone(),
         base_node_selected,
         base_node_config.clone(),
@@ -410,6 +411,7 @@ async fn run_grpc(
 
 #[cfg(test)]
 mod test {
+
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
 
     #[test]
@@ -423,7 +425,7 @@ mod test {
 
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            send-tari --message Our_secret! 125T 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+            send-tari --message Our_secret! 125T 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d615e
             
             burn-tari --message Ups_these_funds_will_be_burned! 100T
 
@@ -431,7 +433,7 @@ mod test {
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
                       --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
-                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d615e
 
             # End of script file
             "
@@ -468,6 +470,7 @@ mod test {
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::HashGrpcPassword(_) => {},
+                CliCommands::RegisterValidatorNode(_) => {},
             }
         }
         assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);

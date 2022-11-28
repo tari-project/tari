@@ -1,37 +1,15 @@
-// Copyright 2020. The Tari Project
-//
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-table! {
+diesel::table! {
     client_key_values (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-table! {
+diesel::table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
-        source_public_key -> Binary,
-        destination_public_key -> Binary,
+        source_address -> Binary,
+        destination_address -> Binary,
         amount -> BigInt,
         fee -> BigInt,
         transaction_protocol -> Text,
@@ -52,9 +30,9 @@ table! {
     }
 }
 
-table! {
-    contacts (public_key) {
-        public_key -> Binary,
+diesel::table! {
+    contacts (address) {
+        address -> Binary,
         node_id -> Binary,
         alias -> Text,
         last_seen -> Nullable<Timestamp>,
@@ -62,10 +40,10 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     inbound_transactions (tx_id) {
         tx_id -> BigInt,
-        source_public_key -> Binary,
+        source_address -> Binary,
         amount -> BigInt,
         receiver_protocol -> Text,
         message -> Text,
@@ -77,7 +55,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     key_manager_states (id) {
         id -> Integer,
         branch_seed -> Text,
@@ -86,17 +64,7 @@ table! {
     }
 }
 
-table! {
-    key_manager_states_old (id) {
-        id -> Integer,
-        seed -> Binary,
-        branch_seed -> Text,
-        primary_key_index -> BigInt,
-        timestamp -> Timestamp,
-    }
-}
-
-table! {
+diesel::table! {
     known_one_sided_payment_scripts (script_hash) {
         script_hash -> Binary,
         private_key -> Binary,
@@ -106,10 +74,10 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
-        destination_public_key -> Binary,
+        destination_address -> Binary,
         amount -> BigInt,
         fee -> BigInt,
         sender_protocol -> Text,
@@ -122,7 +90,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     outputs (id) {
         id -> Integer,
         commitment -> Nullable<Binary>,
@@ -159,7 +127,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -169,20 +137,19 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     wallet_settings (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
     contacts,
     inbound_transactions,
     key_manager_states,
-    key_manager_states_old,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,

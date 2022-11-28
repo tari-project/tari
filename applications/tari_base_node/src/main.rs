@@ -53,15 +53,15 @@
 ///
 /// `help` - Displays a list of commands
 /// `get-balance` - Displays the balance of the wallet (available, pending incoming, pending outgoing)
-/// `send-tari` - Sends Tari, the amount needs to be specified, followed by the destination (public key or emoji id) and
-/// an optional message `get-chain-metadata` - Lists information about the blockchain of this Base Node
+/// `send-tari` - Sends Tari, the amount needs to be specified, followed by the destination (public key or emoji
+/// id) and an optional message `get-chain-metadata` - Lists information about the blockchain of this Base Node
 /// `list-peers` - Lists information about peers known by this base node
 /// `ban-peer` - Bans a peer
 /// `unban-peer` - Removes a ban for a peer
 /// `list-connections` - Lists active connections to this Base Node
-/// `list-headers` - Lists header information. Either the first header height and the last header height needs to be
-/// specified, or the amount of headers from the top `check-db` - Checks the blockchain database for missing blocks and
-/// headers `calc-timing` - Calculates the time average time taken to mine a given range of blocks
+/// `list-headers` - Lists header information. Either the first header height and the last header height needs to
+/// be specified, or the amount of headers from the top `check-db` - Checks the blockchain database for missing
+/// blocks and headers `calc-timing` - Calculates the time average time taken to mine a given range of blocks
 /// `discover-peer` - Attempts to discover a peer on the network, a public key or emoji id needs to be specified
 /// `get-block` - Retrieves a block, the height of the block needs to be specified
 /// `get-mempool-stats` - Displays information about the mempool
@@ -69,50 +69,17 @@
 /// `whoami` - Displays identity information about this Base Node and it's wallet
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
-
-/// Used to display tabulated data
-#[macro_use]
-mod table;
-
-mod bootstrap;
-mod builder;
-mod cli;
-mod commands;
-mod config;
-mod grpc;
-#[cfg(feature = "metrics")]
-mod metrics;
-mod recovery;
-mod utils;
-
-use std::{env, process, sync::Arc};
+use std::{process, sync::Arc};
 
 use clap::Parser;
-use commands::{cli_loop::CliLoop, command::CommandContext};
-use futures::FutureExt;
 use log::*;
-use opentelemetry::{self, global, KeyValue};
-use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
-use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
-    exit_codes::{ExitCode, ExitError},
-    initialize_logging,
-    load_configuration,
-};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::PeerFeatures,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    NodeIdentity,
-};
+use tari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
+use tari_base_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
+use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
+use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::task;
-use tonic::transport::Server;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
-
-use crate::{cli::Cli, config::ApplicationConfig};
+use tari_shutdown::Shutdown;
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
@@ -184,129 +151,7 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, Arc::new(config), cli, shutdown))?;
+    runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
 
-    // Shutdown and send any traces
-    global::shutdown_tracer_provider();
-
-    Ok(())
-}
-
-/// Sets up the base node and runs the cli_loop
-async fn run_node(
-    node_identity: Arc<NodeIdentity>,
-    config: Arc<ApplicationConfig>,
-    cli: Cli,
-    shutdown: Shutdown,
-) -> Result<(), ExitError> {
-    if cli.tracing_enabled {
-        enable_tracing();
-    }
-
-    #[cfg(feature = "metrics")]
-    {
-        metrics::install(
-            ApplicationType::BaseNode,
-            &node_identity,
-            &config.metrics,
-            shutdown.to_signal(),
-        );
-    }
-
-    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
-    log_mdc::insert("node-id", node_identity.node_id().to_string());
-
-    if cli.rebuild_db {
-        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&config.base_node)?;
-        recovery::run_recovery(&config.base_node)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
-        return Ok(());
-    };
-
-    // Build, node, build!
-    let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
-
-    if config.base_node.grpc_enabled {
-        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
-            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
-            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
-        });
-        // Go, GRPC, go go
-        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
-    }
-
-    // Run, node, run!
-    let context = CommandContext::new(&ctx, shutdown);
-    let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
-    if cli.non_interactive_mode {
-        println!("Node started in non-interactive mode (pid = {})", process::id());
-    } else {
-        info!(
-            target: LOG_TARGET,
-            "Node has been successfully configured and initialized. Starting CLI loop."
-        );
-    }
-    if !config.base_node.force_sync_peers.is_empty() {
-        warn!(
-            target: LOG_TARGET,
-            "Force Sync Peers have been set! This node will only sync to the nodes in this set."
-        );
-    }
-
-    info!(target: LOG_TARGET, "Tari base node has STARTED");
-    main_loop.cli_loop().await;
-
-    ctx.wait_for_shutdown().await;
-
-    println!("Goodbye!");
-    Ok(())
-}
-
-fn enable_tracing() {
-    // To run:
-    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
-    // To view the UI after starting the container (default):
-    // http://localhost:16686
-    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("tari::base_node")
-        .with_tags(vec![
-            KeyValue::new("pid", process::id().to_string()),
-            KeyValue::new(
-                "current_exe",
-                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
-            ),
-            KeyValue::new("version", consts::APP_VERSION),
-        ])
-        .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap();
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-    let subscriber = Registry::default().with(telemetry);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
-}
-
-/// Runs the gRPC server
-async fn run_grpc(
-    grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
-    grpc_address: Multiaddr,
-    interrupt_signal: ShutdownSignal,
-) -> Result<(), anyhow::Error> {
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
-
-    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    Server::builder()
-        .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
-        .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
-        .await
-        .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
-            err
-        })?;
-
-    info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

@@ -25,6 +25,7 @@ import "types.proto";
 import "transaction.proto";
 import "block.proto";
 import "network.proto";
+import "sidechain_types.proto";
 
 package tari.rpc;
 
@@ -39,7 +40,7 @@ service BaseNode {
     // Returns the block timing for the chain heights
     rpc GetBlockTiming(HeightRequest) returns (BlockTimingResponse);
     // Returns the network Constants
-    rpc GetConstants(Empty) returns (ConsensusConstants);
+    rpc GetConstants(BlockHeight) returns (ConsensusConstants);
     // Returns Block Sizes
     rpc GetBlockSize (BlockGroupRequest) returns (BlockGroupResponse);
     // Returns Block Fees
@@ -88,7 +89,12 @@ service BaseNode {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
-
+    // Get VNs
+    rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
+    rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
+    // Get templates
+    rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
+    rpc GetSideChainUtxos(GetSideChainUtxosRequest) returns (stream GetSideChainUtxosResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -433,5 +439,50 @@ message MempoolStatsResponse {
     uint64 unconfirmed_txs = 2;
     uint64 reorg_txs = 3;
     uint64 unconfirmed_weight = 4;
+}
+
+message GetActiveValidatorNodesRequest {
+    uint64 height = 1;
+}
+
+message GetActiveValidatorNodesResponse {
+    bytes shard_key = 1;
+    bytes public_key = 2;
+}
+
+message GetShardKeyRequest {
+    uint64 height = 1;
+    bytes public_key = 2;
+}
+
+message GetShardKeyResponse {
+    bytes shard_key = 1;
+    bool found = 2;
+}
+
+message GetTemplateRegistrationsRequest {
+    bytes start_hash = 1;
+    uint64 count = 2;
+}
+
+message GetTemplateRegistrationResponse {
+    bytes utxo_hash = 1;
+    TemplateRegistration registration = 2;
+}
+
+message BlockInfo {
+    uint64 height = 1;
+    bytes hash = 2;
+    bytes next_block_hash = 3;
+}
+
+message GetSideChainUtxosRequest {
+    bytes start_hash = 1;
+    uint64 count = 2;
+}
+
+message GetSideChainUtxosResponse {
+    BlockInfo block_info = 1;
+    repeated TransactionOutput outputs = 2;
 }
 

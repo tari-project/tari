@@ -26,10 +26,10 @@ use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
@@ -64,11 +64,11 @@ pub enum TransactionReceiveProtocolStage {
 
 pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
-    source_pubkey: CommsPublicKey,
+    source_address: TariAddress,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
-    transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
+    transaction_finalize_receiver: Option<mpsc::Receiver<(TariAddress, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     prev_header: Option<HashOutput>,
     height: Option<u64>,
@@ -81,18 +81,18 @@ where
 {
     pub fn new(
         id: TxId,
-        source_pubkey: CommsPublicKey,
+        source_address: TariAddress,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
-        transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
+        transaction_finalize_receiver: mpsc::Receiver<(TariAddress, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
         prev_header: Option<HashOutput>,
         height: Option<u64>,
     ) -> Self {
         Self {
             id,
-            source_pubkey,
+            source_address,
             sender_message,
             stage,
             resources,
@@ -155,7 +155,7 @@ where
 
             let inbound_transaction = InboundTransaction::new(
                 data.tx_id,
-                self.source_pubkey.clone(),
+                self.source_address.clone(),
                 amount,
                 rtp,
                 TransactionStatus::Pending,
@@ -185,14 +185,14 @@ where
             if send_result {
                 info!(
                     target: LOG_TARGET,
-                    "Transaction with TX_ID = {} received from {}. Reply Sent", data.tx_id, self.source_pubkey,
+                    "Transaction with TX_ID = {} received from {}. Reply Sent", data.tx_id, self.source_address,
                 );
             } else {
                 error!(
                     target: LOG_TARGET,
                     "Transaction with TX_ID = {} received from {}. Reply could not be sent!",
                     data.tx_id,
-                    self.source_pubkey,
+                    self.source_address,
                 );
             }
 
@@ -304,9 +304,9 @@ where
             loop {
                 let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
                 tokio::select! {
-                    Some((spk, tx_id, tx)) = receiver.recv() => {
+                    Some((address, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
-                        if inbound_tx.source_public_key != spk {
+                        if inbound_tx.source_address != address {
                             warn!(
                                 target: LOG_TARGET,
                                 "Finalized Transaction did not come from the expected Public Key"
@@ -360,7 +360,7 @@ where
                 target: LOG_TARGET,
                 "Finalized Transaction with TX_ID = {} received from {}",
                 self.id,
-                self.source_pubkey.clone()
+                self.source_address.clone()
             );
 
             finalized_transaction
@@ -435,8 +435,8 @@ where
 
             let completed_transaction = CompletedTransaction::new(
                 self.id,
-                self.source_pubkey.clone(),
-                self.resources.node_identity.public_key().clone(),
+                self.source_address.clone(),
+                self.resources.wallet_identity.address.clone(),
                 inbound_tx.amount,
                 finalized_transaction.body.get_total_fee(),
                 finalized_transaction.clone(),
@@ -458,7 +458,7 @@ where
                 target: LOG_TARGET,
                 "Inbound Transaction with TX_ID = {} from {} moved to Completed Transactions",
                 self.id,
-                self.source_pubkey.clone()
+                self.source_address.clone()
             );
 
             let _size = self

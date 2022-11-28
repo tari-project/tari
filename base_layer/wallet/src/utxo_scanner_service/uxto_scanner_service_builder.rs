@@ -20,9 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey, NodeIdentity};
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::CryptoFactories;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -36,6 +34,7 @@ use crate::{
         sqlite_db::wallet::WalletSqliteDatabase,
     },
     transaction_service::handle::TransactionServiceHandle,
+    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         service::{UtxoScannerResources, UtxoScannerService},
@@ -109,6 +108,7 @@ impl UtxoScannerServiceBuilder {
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
     ) -> UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle> {
+        let wallet_identity = WalletIdentity::new(wallet.comms.node_identity(), wallet.network.as_network());
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             comms_connectivity: wallet.comms.connectivity(),
@@ -116,7 +116,7 @@ impl UtxoScannerServiceBuilder {
             current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
-            node_identity: wallet.comms.node_identity(),
+            wallet_identity,
             factories: wallet.factories.clone(),
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
@@ -144,7 +144,7 @@ impl UtxoScannerServiceBuilder {
         wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
-        node_identity: Arc<NodeIdentity>,
+        wallet_identity: WalletIdentity,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
@@ -159,7 +159,7 @@ impl UtxoScannerServiceBuilder {
             wallet_connectivity,
             output_manager_service,
             transaction_service,
-            node_identity,
+            wallet_identity,
             factories,
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),

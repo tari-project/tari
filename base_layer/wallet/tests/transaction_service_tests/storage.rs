@@ -25,7 +25,9 @@ use std::mem::size_of;
 use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
@@ -107,9 +109,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         outbound_txs.push(OutboundTransaction {
             tx_id,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_address: address,
             amount: amounts[i],
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -162,10 +168,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut inbound_txs = Vec::new();
 
     for i in 0..messages.len() {
+        let address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         let tx_id = TxId::from(i);
         inbound_txs.push(InboundTransaction {
             tx_id,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address: address,
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
@@ -203,19 +213,19 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found inbound tx");
     }
 
-    let inbound_pub_key = db
-        .get_pending_transaction_counterparty_pub_key_by_tx_id(inbound_txs[0].tx_id)
+    let inbound_address = db
+        .get_pending_transaction_counterparty_address_by_tx_id(inbound_txs[0].tx_id)
         .unwrap();
-    assert_eq!(inbound_pub_key, inbound_txs[0].source_public_key);
+    assert_eq!(inbound_address, inbound_txs[0].source_address);
 
     assert!(db
-        .get_pending_transaction_counterparty_pub_key_by_tx_id(100u64.into())
+        .get_pending_transaction_counterparty_address_by_tx_id(100u64.into())
         .is_err());
 
-    let outbound_pub_key = db
-        .get_pending_transaction_counterparty_pub_key_by_tx_id(outbound_txs[0].tx_id)
+    let outbound_address = db
+        .get_pending_transaction_counterparty_address_by_tx_id(outbound_txs[0].tx_id)
         .unwrap();
-    assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
+    assert_eq!(outbound_address, outbound_txs[0].destination_address);
 
     let mut completed_txs = Vec::new();
     let tx = Transaction::new(
@@ -227,10 +237,18 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     for i in 0..messages.len() {
+        let source_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
+        let dest_address = TariAddress::new(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        );
         completed_txs.push(CompletedTransaction {
             tx_id: outbound_txs[i].tx_id,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_address,
+            destination_address: dest_address,
             amount: outbound_txs[i].amount,
             fee: MicroTari::from(200),
             transaction: tx.clone(),
@@ -330,12 +348,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled completed tx");
     }
-
+    let address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     db.add_pending_inbound_transaction(
         999u64.into(),
         InboundTransaction::new(
             999u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            address,
             22 * uT,
             rtp,
             TransactionStatus::Pending,
@@ -378,12 +399,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&999u64.into()).is_some());
-
+    let address = TariAddress::new(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    );
     db.add_pending_outbound_transaction(
         998u64.into(),
         OutboundTransaction::new(
             998u64.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            address,
             22 * uT,
             stp.get_fee_amount().unwrap(),
             stp,
@@ -484,8 +508,8 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(1u64),
-        PublicKey::default(),
-        PublicKey::default(),
+        TariAddress::default(),
+        TariAddress::default(),
         MicroTari::from(100000),
         MicroTari::from(0),
         Transaction::new(
@@ -501,7 +525,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(5),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db
@@ -513,8 +537,8 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(2u64),
-        PublicKey::default(),
-        PublicKey::default(),
+        TariAddress::default(),
+        TariAddress::default(),
         MicroTari::from(100000),
         MicroTari::from(0),
         Transaction::new(
@@ -530,7 +554,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(6),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db
@@ -542,8 +566,8 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(3u64),
-        PublicKey::default(),
-        PublicKey::default(),
+        TariAddress::default(),
+        TariAddress::default(),
         MicroTari::from(100000),
         MicroTari::from(0),
         Transaction::new(
@@ -559,7 +583,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(7),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db

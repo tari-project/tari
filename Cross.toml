@@ -9,21 +9,47 @@ passthrough = ["CFLAGS"]
 
 [target.aarch64-unknown-linux-gnu]
 image = "ubuntu:18.04"
-pre-build = [
-  "apt-get update && apt-get install --assume-yes cmake gcc clang-10 pkg-config-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu && alias pkg-config=aarch64-linux-gnu-pkg-config"
-]
+# Mergered all scripts/install_ubuntu_dependencies*.sh scripts
+pre-build = [ """
+apt-get update && \
+apt-get -y install \
+  openssl \
+  libssl-dev \
+  pkg-config \
+  libsqlite3-dev \
+  clang-10 \
+  git \
+  cmake \
+  dh-autoreconf \
+  libc++-dev \
+  libc++abi-dev \
+  libprotobuf-dev \
+  protobuf-compiler \
+  libncurses5-dev \
+  libncursesw5-dev \
+  zip \
+  curl \
+  pkg-config-aarch64-linux-gnu \
+  gcc-aarch64-linux-gnu \
+  g++-aarch64-linux-gnu && \
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+export PATH="$HOME/.cargo/bin:$PATH" && \
+rustup target add aarch64-unknown-linux-gnu && \
+rustup toolchain install stable-aarch64-unknown-linux-gnu
+""" ]
 
 [target.aarch64-unknown-linux-gnu.env]
 passthrough = [
+  "CFLAGS",
   "RUST_DEBUG",
   "RUSTFLAGS",
   "ARCH",
   "FEATURES",
   "ROARING_ARCH",
-  "BUILD_TARGET=aarch64-unknown-linux-gnu/",
-  "RUST_TARGET=--target=aarch64-unknown-linux-gnu",
+  "TARGET",
+  "RUST_TARGET",
+  "BUILD_TARGET",
+  "CARGO_BUILD_TARGET",
   "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc",
-  "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc",
-  "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++",
   "BINDGEN_EXTRA_CLANG_ARGS=--sysroot /usr/aarch64-linux-gnu/include/",
 ]
