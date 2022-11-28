@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -33,7 +32,9 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_utilities::safe_array::SafeArray;
 
+use super::{CommsNoiseKey, NOISE_KEY_LEN};
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -66,9 +67,13 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
-fn noise_kdf(shared_key: &CommsDHKE) -> [u8; 32] {
+fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
     let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
-    Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
+    let mut comms_noise_kdf = CommsNoiseKey::from(SafeArray::default());
+    comms_noise_kdf
+        .reveal_mut()
+        .copy_from_slice(hasher.chain(shared_key.as_bytes()).finalize().as_ref());
+    comms_noise_kdf
 }
 
 #[derive(Default)]
@@ -116,7 +121,7 @@ impl Dh for CommsDiffieHellman {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
-        copy_slice!(hash, out);
+        copy_slice!(hash.reveal(), out);
         Ok(())
     }
 }
@@ -162,6 +167,6 @@ mod test {
         let mut out = [0; 32];
         dh.dh(public_key2.as_bytes(), &mut out).unwrap();
 
-        assert_eq!(out, expected_shared);
+        assert_eq!(out, expected_shared.reveal().as_ref()[..NOISE_KEY_LEN]);
     }
 }
