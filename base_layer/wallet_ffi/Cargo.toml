@@ -54,6 +54,7 @@ tari_key_manager = { version = "^0.42", path = "../key_manager" }
 tari_common_types = { version = "^0.42", path = "../../base_layer/common_types"}
 tari_test_utils = { version = "^0.42", path = "../../infrastructure/test_utils"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
+borsh = "0.9.3"
 
 [build-dependencies]
 cbindgen = "0.24.3"

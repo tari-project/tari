@@ -158,14 +158,14 @@ mod test {
     #[test]
     fn test_from_none() {
         let tsm = TransactionSenderMessage::None;
-        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        let ptsm = proto::TransactionSenderMessage::try_from(tsm).unwrap();
         assert_eq!(ptsm.message, proto::TransactionSenderMessage::none().message);
     }
 
     #[test]
     fn test_from_multiple() {
         let tsm = TransactionSenderMessage::Multiple;
-        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        let ptsm = proto::TransactionSenderMessage::try_from(tsm).unwrap();
         assert_eq!(ptsm.message, proto::TransactionSenderMessage::multiple().message);
     }
 }

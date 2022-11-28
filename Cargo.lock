@@ -5328,6 +5328,7 @@ dependencies = [
 name = "tari_wallet_ffi"
 version = "0.42.0"
 dependencies = [
+ "borsh",
  "cbindgen 0.24.3",
  "chrono",
  "futures 0.3.25",

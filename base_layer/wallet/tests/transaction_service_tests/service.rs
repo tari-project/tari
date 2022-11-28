@@ -1401,13 +1401,19 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     tx_reply.public_spend_key = pub_key;
     alice_ts_interface
         .transaction_ack_message_channel
-        .send(create_dummy_message(wrong_tx_id.into(), bob_node_identity.public_key()))
+        .send(create_dummy_message(
+            wrong_tx_id.try_into().unwrap(),
+            bob_node_identity.public_key(),
+        ))
         .await
         .unwrap();
 
     alice_ts_interface
         .transaction_ack_message_channel
-        .send(create_dummy_message(tx_reply.into(), bob_node_identity.public_key()))
+        .send(create_dummy_message(
+            tx_reply.try_into().unwrap(),
+            bob_node_identity.public_key(),
+        ))
         .await
         .unwrap();
 
@@ -1480,7 +1486,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
     let tx_message = create_dummy_message(
-        TransactionSenderMessage::Single(Box::new(msg)).into(),
+        TransactionSenderMessage::Single(Box::new(msg)).try_into().unwrap(),
         bob_node_identity.public_key(),
     );
 
@@ -1594,7 +1600,7 @@ async fn finalize_tx_with_missing_output() {
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
     let tx_message = create_dummy_message(
-        TransactionSenderMessage::Single(Box::new(msg)).into(),
+        TransactionSenderMessage::Single(Box::new(msg)).try_into().unwrap(),
         bob_node_identity.public_key(),
     );
 
@@ -2199,7 +2205,7 @@ async fn test_transaction_cancellation() {
     let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id2 = tx_sender_msg.tx_id;
-    let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
+    let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.try_into().unwrap());
     alice_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(proto_message, bob_node_identity.public_key()))
@@ -2281,7 +2287,7 @@ async fn test_transaction_cancellation() {
     let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id3 = tx_sender_msg.tx_id;
-    let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
+    let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.try_into().unwrap());
     alice_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(proto_message, bob_node_identity.public_key()))
@@ -2449,7 +2455,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.clone().into(),
+            tx_sender_msg.clone().try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -2499,7 +2505,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob2_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.into(),
+            tx_sender_msg.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -2541,7 +2547,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            tx_reply_msg.into(),
+            tx_reply_msg.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -2607,7 +2613,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.into(),
+            tx_sender_msg.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -2640,7 +2646,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            tx_reply_msg.into(),
+            tx_reply_msg.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -3028,7 +3034,10 @@ async fn test_restarting_transaction_protocols() {
 
     bob_ts_interface
         .transaction_ack_message_channel
-        .send(create_dummy_message(alice_reply.into(), alice_identity.public_key()))
+        .send(create_dummy_message(
+            alice_reply.try_into().unwrap(),
+            alice_identity.public_key(),
+        ))
         .await
         .unwrap();
 
@@ -4124,7 +4133,7 @@ async fn test_transaction_resending() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            alice_sender_message.clone().into(),
+            alice_sender_message.clone().try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -4149,7 +4158,7 @@ async fn test_transaction_resending() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            alice_sender_message.clone().into(),
+            alice_sender_message.clone().try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -4166,7 +4175,7 @@ async fn test_transaction_resending() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            alice_sender_message.into(),
+            alice_sender_message.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -4187,7 +4196,7 @@ async fn test_transaction_resending() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_reply_message.clone().into(),
+            bob_reply_message.clone().try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -4208,7 +4217,7 @@ async fn test_transaction_resending() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_reply_message.clone().into(),
+            bob_reply_message.clone().try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -4226,7 +4235,7 @@ async fn test_transaction_resending() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_reply_message.into(),
+            bob_reply_message.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -4621,7 +4630,7 @@ async fn test_replying_to_cancelled_tx() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            alice_sender_message.into(),
+            alice_sender_message.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -4644,7 +4653,7 @@ async fn test_replying_to_cancelled_tx() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_reply_message.into(),
+            bob_reply_message.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -4867,7 +4876,7 @@ async fn test_transaction_timeout_cancellation() {
     carol_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.into(),
+            tx_sender_msg.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -4991,7 +5000,7 @@ async fn transaction_service_tx_broadcast() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.into(),
+            tx_sender_msg.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -5047,7 +5056,7 @@ async fn transaction_service_tx_broadcast() {
     bob_ts_interface
         .transaction_send_message_channel
         .send(create_dummy_message(
-            tx_sender_msg.into(),
+            tx_sender_msg.try_into().unwrap(),
             alice_node_identity.public_key(),
         ))
         .await
@@ -5080,7 +5089,7 @@ async fn transaction_service_tx_broadcast() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_tx_reply_msg1.into(),
+            bob_tx_reply_msg1.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
@@ -5167,7 +5176,7 @@ async fn transaction_service_tx_broadcast() {
     alice_ts_interface
         .transaction_ack_message_channel
         .send(create_dummy_message(
-            bob_tx_reply_msg2.into(),
+            bob_tx_reply_msg2.try_into().unwrap(),
             bob_node_identity.public_key(),
         ))
         .await
