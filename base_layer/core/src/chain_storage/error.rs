@@ -136,6 +136,8 @@ pub enum ChainStorageError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Composite key length was exceeded (THIS SHOULD NEVER HAPPEN)")]
     CompositeKeyLengthExceeded,
+    #[error("Failed to decode key bytes: {0}")]
+    FromKeyBytesFailed(String),
 }
 
 impl ChainStorageError {

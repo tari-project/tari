@@ -37,6 +37,7 @@ pub use block_add_result::BlockAddResult;
 mod blockchain_database;
 pub use blockchain_database::{
     calculate_mmr_roots,
+    calculate_validator_node_mr,
     fetch_header,
     fetch_headers,
     fetch_target_difficulty_for_next_block,
@@ -81,7 +82,7 @@ pub use target_difficulties::TargetDifficulties;
 pub use utxo_mined_info::*;
 
 mod active_validator_node;
-pub use active_validator_node::ActiveValidatorNode;
+pub use active_validator_node::ValidatorNodeEntry;
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
