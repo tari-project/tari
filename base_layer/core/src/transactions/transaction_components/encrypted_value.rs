@@ -25,9 +25,10 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
-    aead::{Aead, Error, NewAead, Payload},
+    aead::{Aead, Error, Payload},
     ChaCha20Poly1305,
     Key,
+    KeyInit,
     Nonce,
 };
 use serde::{Deserialize, Serialize};
