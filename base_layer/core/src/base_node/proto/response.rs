@@ -32,7 +32,7 @@ use tari_utilities::{convert::try_convert_all, ByteArray};
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
-    blocks::{BlockHeader, HistoricalBlock},
+    blocks::{Block, BlockHeader, HistoricalBlock},
     proto,
 };
 
@@ -40,8 +40,9 @@ impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsResponse, Self::Error> {
-        use ProtoNodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
+        use ProtoNodeCommsResponse::{BlockResponse, FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
         let response = match self {
+            BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.try_into()?)),
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
                 NodeCommsResponse::HistoricalBlocks(blocks)
@@ -76,6 +77,7 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
     fn try_from(response: NodeCommsResponse) -> Result<Self, Self::Error> {
         use NodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
         match response {
+            NodeCommsResponse::Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse((*block).try_into()?)),
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks
                     .into_iter()
@@ -141,6 +143,30 @@ impl TryInto<Option<HistoricalBlock>> for proto::base_node::HistoricalBlockRespo
     type Error = String;
 
     fn try_into(self) -> Result<Option<HistoricalBlock>, Self::Error> {
+        match self.block {
+            Some(block) => {
+                let block = block.try_into()?;
+                Ok(Some(block))
+            },
+            None => Ok(None),
+        }
+    }
+}
+
+impl TryFrom<Option<Block>> for proto::base_node::BlockResponse {
+    type Error = String;
+
+    fn try_from(v: Option<Block>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            block: v.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryInto<Option<Block>> for proto::base_node::BlockResponse {
+    type Error = String;
+
+    fn try_into(self) -> Result<Option<Block>, Self::Error> {
         match self.block {
             Some(block) => {
                 let block = block.try_into()?;

@@ -35,18 +35,10 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
-        use ProtoNodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
+        use ProtoNodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockFromAllChains};
         let request = match self {
-            FetchBlocksByHash(req) => {
-                let block_hashes = req
-                    .block_hashes
-                    .into_iter()
-                    .map(|hash| hash.try_into().map_err(|_| "Malformed hash".to_string()))
-                    .collect::<Result<_, _>>()?;
-                NodeCommsRequest::FetchBlocksByHash {
-                    block_hashes,
-                    compact: req.compact,
-                }
+            GetBlockFromAllChains(req) => {
+                NodeCommsRequest::GetBlockFromAllChains(req.hash.try_into().map_err(|_| "Malformed hash".to_string())?)
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
                 let excess_sigs = excess_sigs
@@ -66,13 +58,10 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
-        use NodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
+        use NodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockFromAllChains};
         match request {
-            FetchBlocksByHash { block_hashes, compact } => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(
-                proto::FetchBlocksByHashRequest {
-                    block_hashes: block_hashes.into_iter().map(|hash| hash.to_vec()).collect(),
-                    compact,
-                },
+            GetBlockFromAllChains(hash) => Ok(ProtoNodeCommsRequest::GetBlockFromAllChains(
+                proto::GetBlockFromAllChainsRequest { hash: hash.to_vec() },
             )),
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
                 ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
