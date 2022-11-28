@@ -28,6 +28,7 @@ use std::{
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_utilities::ByteArray;
+use zeroize::Zeroize;
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 
@@ -75,6 +76,10 @@ impl ConsensusDecoding for PrivateKey {
         let mut buf = [0u8; 32];
         reader.read_exact(&mut buf)?;
         let sk = PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+        // zeroize the data content of buf, so no sensitive data gets leaked away
+        buf.zeroize();
+
         Ok(sk)
     }
 }
