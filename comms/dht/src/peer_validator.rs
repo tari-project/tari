@@ -75,7 +75,7 @@ impl<'a> PeerValidator<'a> {
             None => false,
         };
 
-        debug!(target: LOG_TARGET, "Adding peer `{}`", new_peer.node_id);
+        trace!(target: LOG_TARGET, "Adding peer `{}`", new_peer.node_id);
 
         match self.peer_manager.find_by_node_id(&new_peer.node_id).await? {
             Some(mut current_peer) => {
