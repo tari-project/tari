@@ -28,11 +28,7 @@ use chacha20::{
     Key,
     Nonce,
 };
-use chacha20poly1305::{
-    self,
-    aead::{Aead, NewAead},
-    ChaCha20Poly1305,
-};
+use chacha20poly1305::{self, aead::Aead, ChaCha20Poly1305, KeyInit};
 use digest::Digest;
 use prost::bytes::BytesMut;
 use rand::{rngs::OsRng, RngCore};

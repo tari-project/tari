@@ -104,7 +104,7 @@ pub fn encrypt_bytes_integral_nonce(
 mod test {
     use std::mem::size_of;
 
-    use chacha20poly1305::{aead::NewAead, Key, Tag, XChaCha20Poly1305, XNonce};
+    use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
     use rand::{rngs::OsRng, RngCore};
     use tari_utilities::{ByteArray, Hidden};
 

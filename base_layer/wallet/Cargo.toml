@@ -55,7 +55,7 @@ thiserror = "1.0.26"
 tower = "0.4"
 prost = "0.9"
 itertools = "0.10.3"
-chacha20poly1305 = "0.9.1"
+chacha20poly1305 = "0.10.1"
 zeroize = "1"
 
 [dev-dependencies]
