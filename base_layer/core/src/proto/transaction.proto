@@ -93,7 +93,7 @@ message OutputFeatures {
     // Version
     uint32 version = 1;
     // Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
-    uint32 flags = 2;
+    uint32 output_type = 2;
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 3;
