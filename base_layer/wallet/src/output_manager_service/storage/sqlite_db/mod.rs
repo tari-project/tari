@@ -1512,7 +1512,7 @@ mod test {
         let cipher = XChaCha20Poly1305::new(key_ga);
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-        let decrypted_spending_key = uo.spending_key.clone().to_vec();
+        let decrypted_spending_key = uo.spending_key.to_vec();
 
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
 
