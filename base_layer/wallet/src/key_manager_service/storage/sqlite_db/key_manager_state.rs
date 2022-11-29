@@ -170,7 +170,7 @@ impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.primary_key_index =
-            decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
+            decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), &self.primary_key_index)?;
 
         Ok(())
     }

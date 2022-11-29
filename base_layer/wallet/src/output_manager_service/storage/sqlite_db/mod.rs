@@ -1332,7 +1332,7 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
+        self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &self.private_key)?;
         Ok(())
     }
 }
