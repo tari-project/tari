@@ -4170,6 +4170,12 @@ unsafe fn init_logging(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
+                .build("dht", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
                 .build("mio", LevelFilter::Warn),
         )
         .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
