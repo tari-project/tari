@@ -85,7 +85,6 @@ use log4rs::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_app_utilities::consts;
 use tari_common::configuration::StringList;
 use tari_common_types::{
     emoji::emoji_set,
@@ -177,6 +176,11 @@ mod error;
 #[cfg(test)]
 mod output_manager_service_mock;
 mod tasks;
+
+mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
 
 const LOG_TARGET: &str = "wallet_ffi";
 
