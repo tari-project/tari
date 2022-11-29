@@ -1,4 +1,4 @@
-## Build Notes we don't want to loose?
+## Build Notes we don't want to lose?
 
 Build options:
  - Native
