@@ -86,7 +86,7 @@ impl DbKey {
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
             DbKey::TorId => "TorId".to_string(),
-            DbKey::ClientKey(k) => format!("ClientKey__{}", k),
+            DbKey::ClientKey(k) => format!("ClientKey.{}", k),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::PassphraseHash => "PassphraseHash".to_string(),
             DbKey::EncryptionSalt => "EncryptionSalt".to_string(),
