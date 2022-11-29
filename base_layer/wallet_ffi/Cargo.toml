@@ -56,3 +56,4 @@ tari_service_framework = { path = "../../base_layer/service_framework" }
 
 [build-dependencies]
 cbindgen = "0.24.3"
+tari_common = { path = "../../common", features = ["build", "static-application-info"] }
