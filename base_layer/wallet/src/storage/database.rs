@@ -79,6 +79,23 @@ pub enum DbKey {
     WalletBirthday,
 }
 
+impl DbKey {
+    pub fn to_key_string(&self) -> String {
+        match self {
+            DbKey::MasterSeed => "MasterSeed".to_string(),
+            DbKey::CommsAddress => "CommsAddress".to_string(),
+            DbKey::CommsFeatures => "NodeFeatures".to_string(),
+            DbKey::TorId => "TorId".to_string(),
+            DbKey::ClientKey(k) => format!("ClientKey__{}", k),
+            DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
+            DbKey::PassphraseHash => "PassphraseHash".to_string(),
+            DbKey::EncryptionSalt => "EncryptionSalt".to_string(),
+            DbKey::WalletBirthday => "WalletBirthday".to_string(),
+            DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
+        }
+    }
+}
+
 pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
@@ -320,23 +337,6 @@ where T: WalletBackend + 'static
     }
 }
 
-impl Display for DbKey {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            DbKey::MasterSeed => f.write_str("MasterSeed"),
-            DbKey::CommsAddress => f.write_str("CommsAddress"),
-            DbKey::CommsFeatures => f.write_str("Nod features"),
-            DbKey::TorId => f.write_str("TorId"),
-            DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
-            DbKey::BaseNodeChainMetadata => f.write_str("Last seen Chain metadata from basw node"),
-            DbKey::PassphraseHash => f.write_str("PassphraseHash"),
-            DbKey::EncryptionSalt => f.write_str("EncryptionSalt"),
-            DbKey::WalletBirthday => f.write_str("WalletBirthday"),
-            DbKey::CommsIdentitySignature => f.write_str("CommsIdentitySignature"),
-        }
-    }
-}
-
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
@@ -359,14 +359,18 @@ fn log_error<T>(req: DbKey, err: WalletStorageError) -> Result<T, WalletStorageE
     error!(
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
-        req,
+        req.to_key_string(),
         err.to_string()
     );
     Err(err)
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+    let msg = format!(
+        "Unexpected result for database query {}. Response: {}",
+        req.to_key_string(),
+        res
+    );
     error!(target: LOG_TARGET, "{}", msg);
     Err(WalletStorageError::UnexpectedResult(msg))
 }
