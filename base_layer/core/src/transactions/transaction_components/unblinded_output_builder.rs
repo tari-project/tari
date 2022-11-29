@@ -21,15 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{
-    BlindingFactor,
-    ComAndPubSignature,
-    Commitment,
-    CommitmentFactory,
-    PrivateKey,
-    PublicKey,
-};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_common_types::types::{BlindingFactor, ComAndPubSignature, PrivateKey, PublicKey};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -45,7 +38,6 @@ use crate::{
             UnblindedOutput,
         },
         transaction_protocol::RewindData,
-        CryptoFactories,
     },
 };
 
@@ -94,93 +86,6 @@ impl UnblindedOutputBuilder {
         self.sender_offset_public_key = Some(sender_offset_public_key);
     }
 
-    pub fn sign_as_receiver(&mut self, ephemeral_pubkey: PublicKey) -> Result<(), TransactionError> {
-        let sender_offset_public_key = self
-            .sender_offset_public_key
-            .as_ref()
-            .ok_or(TransactionError::MissingTransactionInputData)?;
-        let metadata_partial = TransactionOutput::create_receiver_partial_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            self.value,
-            &self.spending_key,
-            self.script
-                .as_ref()
-                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
-            &self.features,
-            sender_offset_public_key,
-            &ephemeral_pubkey,
-            &self.covenant,
-            &self.encrypted_value,
-            self.minimum_value_promise,
-        )?;
-        self.metadata_signature = Some(metadata_partial);
-        self.metadata_signed_by_receiver = true;
-        Ok(())
-    }
-
-    pub fn sign_as_sender(
-        &mut self,
-        sender_offset_private_key: &PrivateKey,
-        ephemeral_private_key: &PrivateKey,
-    ) -> Result<(), TransactionError> {
-        let commitment = CommitmentFactory::default().commit_value(&self.spending_key, self.value.as_u64());
-        let def_commitment = Commitment::default();
-        let ephemeral_commitment = match self.metadata_signature.as_ref().map(|v| v.ephemeral_commitment()) {
-            Some(v) => v,
-            None => &def_commitment,
-        };
-        let metadata_sig = TransactionOutput::create_sender_partial_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            &commitment,
-            ephemeral_commitment,
-            self.script
-                .as_ref()
-                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
-            &self.features,
-            sender_offset_private_key,
-            Some(ephemeral_private_key),
-            &self.covenant,
-            &self.encrypted_value,
-            self.minimum_value_promise,
-        )?;
-        self.metadata_signature = Some(metadata_sig);
-        self.metadata_signed_by_sender = true;
-        Ok(())
-    }
-
-    pub fn try_build(self) -> Result<UnblindedOutput, TransactionError> {
-        if !self.metadata_signed_by_receiver {
-            return Err(TransactionError::ValidationError(
-                "Cannot build output because it has not been signed by the receiver".to_string(),
-            ));
-        }
-        if !self.metadata_signed_by_sender {
-            return Err(TransactionError::ValidationError(
-                "Cannot build output because it has not been signed by the sender".to_string(),
-            ));
-        }
-        let ub = UnblindedOutput::new_current_version(
-            self.value,
-            self.spending_key,
-            self.features,
-            self.script
-                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
-            self.input_data
-                .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
-            self.script_private_key
-                .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
-            self.sender_offset_public_key
-                .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
-            self.metadata_signature
-                .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
-            0,
-            self.covenant,
-            self.encrypted_value,
-            self.minimum_value_promise,
-        );
-        Ok(ub)
-    }
-
     pub fn with_features(mut self, features: OutputFeatures) -> Self {
         self.features = features;
         self
@@ -222,10 +127,63 @@ impl UnblindedOutputBuilder {
         &self.covenant
     }
 
-    pub fn generate_commitment(&self, factories: &CryptoFactories) -> Commitment {
-        factories
-            .commitment
-            .commit_value(&self.spending_key, self.value.as_u64())
+    pub fn sign_as_sender_and_receiver(
+        &mut self,
+        sender_offset_private_key: &PrivateKey,
+    ) -> Result<(), TransactionError> {
+        let script = self
+            .script
+            .as_ref()
+            .ok_or_else(|| TransactionError::ValidationError("Cannot sign metadata without a script".to_string()))?;
+        let metadata_signature = TransactionOutput::create_metadata_signature(
+            TransactionOutputVersion::get_current_version(),
+            self.value,
+            &self.spending_key,
+            script,
+            &self.features,
+            sender_offset_private_key,
+            &self.covenant,
+            &self.encrypted_value,
+            self.minimum_value_promise,
+        )?;
+        self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
+        self.metadata_signature = Some(metadata_signature);
+        self.metadata_signed_by_receiver = true;
+        self.metadata_signed_by_sender = true;
+        Ok(())
+    }
+
+    pub fn try_build(self) -> Result<UnblindedOutput, TransactionError> {
+        if !self.metadata_signed_by_receiver {
+            return Err(TransactionError::ValidationError(
+                "Cannot build output because it has not been signed by the receiver".to_string(),
+            ));
+        }
+        if !self.metadata_signed_by_sender {
+            return Err(TransactionError::ValidationError(
+                "Cannot build output because it has not been signed by the sender".to_string(),
+            ));
+        }
+        let ub = UnblindedOutput::new_current_version(
+            self.value,
+            self.spending_key,
+            self.features,
+            self.script
+                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
+            self.input_data
+                .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
+            self.script_private_key
+                .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
+            self.sender_offset_public_key
+                .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
+            self.metadata_signature
+                .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
+            0,
+            self.covenant,
+            self.encrypted_value,
+            self.minimum_value_promise,
+        );
+        Ok(ub)
     }
 }
 
@@ -237,19 +195,12 @@ mod test {
 
     #[test]
     fn test_try_build() {
-        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
-        assert!(uob.sign_as_receiver(PublicKey::default(),).is_err());
-        assert!(uob
-            .sign_as_sender(&PrivateKey::default(), &PrivateKey::default())
-            .is_err());
+        let uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
         let mut uob = uob.with_script(TariScript::new(vec![]));
         assert!(uob.clone().try_build().is_err());
         uob.with_sender_offset_public_key(PublicKey::default());
-        assert!(uob.sign_as_receiver(PublicKey::default()).is_ok());
+        assert!(uob.sign_as_sender_and_receiver(&PrivateKey::default()).is_ok());
         assert!(uob.clone().try_build().is_err());
-        assert!(uob
-            .sign_as_sender(&PrivateKey::default(), &PrivateKey::default())
-            .is_ok());
         let uob = uob.with_input_data(ExecutionStack::new(vec![]));
         let uob = uob.with_script_private_key(RistrettoSecretKey::default());
         let uob = uob.with_features(OutputFeatures::default());
