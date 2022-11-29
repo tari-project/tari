@@ -23,7 +23,7 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{
-    aead::{Aead, Error as AeadError, Payload},
+    aead::{Aead, Payload},
     Tag,
     XChaCha20Poly1305,
     XNonce,
@@ -55,7 +55,7 @@ pub fn decrypt_bytes_integral_nonce(
 ) -> Result<Vec<u8>, String> {
     // We need at least a nonce and tag, or there's no point in attempting decryption
     if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
-        return Err(AeadError.to_string());
+        return Err("Ciphertext is too short".to_string());
     }
 
     // Extract the nonce
@@ -68,7 +68,9 @@ pub fn decrypt_bytes_integral_nonce(
     };
 
     // Attempt authentication and decryption
-    let plaintext = cipher.decrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
+    let plaintext = cipher
+        .decrypt(nonce_ga, payload)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
 
     Ok(plaintext)
 }
@@ -91,7 +93,9 @@ pub fn encrypt_bytes_integral_nonce(
     };
 
     // Attempt authenticated encryption
-    let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
+    let mut ciphertext = cipher
+        .encrypt(nonce_ga, payload)
+        .map_err(|e| format!("Failed to encrypt: {}", e))?;
 
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
