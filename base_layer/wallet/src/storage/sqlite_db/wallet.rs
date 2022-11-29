@@ -31,7 +31,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, Decimal, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use chacha20poly1305::{aead::NewAead, Key, Tag, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
