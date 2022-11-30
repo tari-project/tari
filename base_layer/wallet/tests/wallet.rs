@@ -75,11 +75,7 @@ use tari_wallet::{
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{
-            initialize_sqlite_database_backends,
-            partial_wallet_backup,
-            run_migration_and_create_sqlite_connection,
-        },
+        sqlite_utilities::{initialize_sqlite_database_backends, run_migration_and_create_sqlite_connection},
     },
     test_utils::make_wallet_database_connection,
     transaction_service::{
@@ -411,8 +407,6 @@ async fn test_wallet() {
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
-
-    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone()).unwrap();
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");

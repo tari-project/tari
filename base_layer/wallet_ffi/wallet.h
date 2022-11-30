@@ -3207,26 +3207,6 @@ bool wallet_set_one_sided_payment_message(struct TariWallet *wallet,
                                           int *error_out);
 
 /**
- * This function will produce a partial backup of the specified wallet database file. This backup will be written to
- * the provided file (full path must include the filename and extension) and will include the full wallet db but will
- * clear the sensitive Master Private Key
- *
- * ## Arguments
- * `original_file_path` - The full path of the original database file to be backed up, including the file name and
- * extension `backup_file_path` - The full path, including the file name and extension, of where the backup db will be
- * written `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- * Functions as an out parameter.
- *
- * ## Returns
- *
- * # Safety
- * None
- */
-void file_partial_backup(const char *original_file_path,
-                         const char *backup_file_path,
-                         int *error_out);
-
-/**
  * Gets the current emoji set
  *
  * ## Arguments

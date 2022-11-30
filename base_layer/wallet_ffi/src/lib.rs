@@ -143,7 +143,7 @@ use tari_wallet::{
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
+        sqlite_utilities::initialize_sqlite_database_backends,
     },
     transaction_service::{
         config::TransactionServiceConfig,
@@ -7149,76 +7149,6 @@ pub unsafe extern "C" fn wallet_set_one_sided_payment_message(
         .set_one_sided_payment_message(message_string);
 
     true
-}
-
-/// This function will produce a partial backup of the specified wallet database file. This backup will be written to
-/// the provided file (full path must include the filename and extension) and will include the full wallet db but will
-/// clear the sensitive Master Private Key
-///
-/// ## Arguments
-/// `original_file_path` - The full path of the original database file to be backed up, including the file name and
-/// extension `backup_file_path` - The full path, including the file name and extension, of where the backup db will be
-/// written `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
-/// Functions as an out parameter.
-///
-/// ## Returns
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn file_partial_backup(
-    original_file_path: *const c_char,
-    backup_file_path: *const c_char,
-    error_out: *mut c_int,
-) {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    let original_path_string;
-    if original_file_path.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("original_file_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
-    } else {
-        match CStr::from_ptr(original_file_path).to_str() {
-            Ok(v) => {
-                original_path_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("original_file_path".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return;
-            },
-        }
-    }
-    let original_path = PathBuf::from(original_path_string);
-
-    let backup_path_string;
-    if backup_file_path.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("backup_file_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
-    } else {
-        match CStr::from_ptr(backup_file_path).to_str() {
-            Ok(v) => {
-                backup_path_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("backup_file_path".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return;
-            },
-        }
-    }
-    let backup_path = PathBuf::from(backup_path_string);
-
-    match partial_wallet_backup(original_path, backup_path) {
-        Ok(_) => (),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-        },
-    }
 }
 
 /// Gets the current emoji set

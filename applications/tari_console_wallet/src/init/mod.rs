@@ -82,9 +82,9 @@ pub enum WalletBoot {
 pub fn get_or_prompt_password(
     arg_password: Option<SafePassword>,
     config_password: Option<SafePassword>,
-) -> Result<Option<SafePassword>, ExitError> {
+) -> Result<SafePassword, ExitError> {
     if arg_password.is_some() {
-        return Ok(arg_password);
+        return Ok(arg_password.unwrap());
     }
 
     let env = std::env::var_os(TARI_WALLET_PASSWORD);
@@ -92,16 +92,16 @@ pub fn get_or_prompt_password(
         let env_password = p
             .into_string()
             .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?;
-        return Ok(Some(env_password.into()));
+        return Ok(env_password.into());
     }
 
     if config_password.is_some() {
-        return Ok(config_password);
+        return Ok(config_password.unwrap());
     }
 
     let password = prompt_password("Wallet password: ")?;
 
-    Ok(Some(password))
+    Ok(password)
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
@@ -269,27 +269,14 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    // test encryption by initializing with no passphrase...
     let db_path = &config.wallet.db_file;
 
-    let result = initialize_sqlite_database_backends(db_path, None, config.wallet.db_connection_pool_size);
-    let (backends, wallet_encrypted) = match result {
-        Ok(backends) => {
-            // wallet is not encrypted
-            (backends, false)
-        },
-        Err(WalletStorageError::NoPasswordError) => {
-            // get supplied or prompt password
-            let passphrase = get_or_prompt_password(arg_password.clone(), config.wallet.password.clone())?;
-            let backends =
-                initialize_sqlite_database_backends(db_path, passphrase, config.wallet.db_connection_pool_size)?;
-            (backends, true)
-        },
-        Err(e) => {
-            return Err(e.into());
-        },
-    };
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
+    // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
+    let passphrase = get_or_prompt_password(arg_password, config.wallet.password.clone())?;
+
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+        initialize_sqlite_database_backends(db_path, passphrase, config.wallet.db_connection_pool_size)?;
+
     let wallet_db = WalletDatabase::new(wallet_backend);
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 

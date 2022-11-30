@@ -71,10 +71,7 @@ pub struct WalletSqliteDatabase {
     cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(
-        database_connection: WalletDbConnection,
-        passphrase: Option<SafePassword>,
-    ) -> Result<Self, WalletStorageError> {
+    pub fn new(database_connection: WalletDbConnection, passphrase: SafePassword) -> Result<Self, WalletStorageError> {
         let cipher = check_db_encryption_status(&database_connection, passphrase)?;
 
         Ok(Self {
