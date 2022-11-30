@@ -69,13 +69,8 @@ use crate::{
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 /// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
-/// transaction Typically you don't instantiate this object directly. Rather use
-/// ```ignore
-/// # use crate::SenderTransactionProtocol;
-/// SenderTransactionProtocol::new(1);
-/// ```
-/// which returns an instance of this builder. Once all the sender's information has been added via the builder
-/// methods, you can call `build()` which will return a
+/// transaction. Once all the sender's information has been added via the builder
+/// methods, you can call `build()` which will return a [SenderTransactionProtocol]
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer {
     num_recipients: usize,
@@ -157,7 +152,7 @@ impl SenderTransactionInitializer {
         }
     }
 
-    /// Set the fee per weight for the transaction. See (Fee::calculate)[Struct.Fee.html#calculate] for how the
+    /// Set the fee per weight for the transaction. See [Fee::calculate] for how the
     /// absolute fee is calculated from the fee-per-gram value.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroTari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
@@ -171,7 +166,10 @@ impl SenderTransactionInitializer {
     }
 
     /// Set the spending script of the ith recipient's output, a script offset will be generated for this recipient at
-    /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
+    /// the same time.
+    /// The script and covenant will usually be supplied by the recipient, but the sender commits to the script
+    /// by using the script offset public key.
+    /// > This method will silently fail if `receiver_index` >= num_receivers.
     pub fn with_recipient_data(
         &mut self,
         receiver_index: usize,

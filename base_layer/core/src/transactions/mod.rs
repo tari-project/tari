@@ -1,6 +1,14 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+//! This module contains transaction related types. Of particular interest is the [transaction_protocol]
+//! module which allows the creation of a transaction between two parties.
+//!
+//! Example
+//! ```
+//! todo!()
+//! ```
+
 pub mod aggregated_body;
 
 mod crypto_factories;

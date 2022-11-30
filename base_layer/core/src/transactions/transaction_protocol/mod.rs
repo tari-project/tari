@@ -16,72 +16,7 @@
 //! illustrates the progression of the two state machines and shows where the public data messages are constructed and
 //! accepted in each state machine
 //!
-//! The sequence diagram for the single receiver protocol is:
-//!
-//! <div class="mermaid">
-//!   sequenceDiagram
-//!   participant Sender
-//!   participant Receiver
-//! #
-//!   activate Sender
-//!     Sender-->>Sender: initialize transaction
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!   Sender-->>+Receiver: partial tx info
-//!   Receiver-->>Receiver: validate tx info
-//!   Receiver-->>Receiver: create new output and sign
-//!   Receiver-->>-Sender: signed partial transaction
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!     Sender-->>Sender: validate and sign
-//!   deactivate Sender
-//! #
-//!   alt tx is valid
-//!   Sender-->>Network: Broadcast transaction
-//!   else tx is invalid
-//!   Sender--XSender: Failed
-//!   end
-//! </div>
-//!
-//! If there are multiple recipients, the protocol is more involved and requires three rounds of communication:
-//!
-//! <div class="mermaid">
-//!   sequenceDiagram
-//!   participant Sender
-//!   participant Receivers
-//! #
-//!   activate Sender
-//!   Sender-->>Sender: initialize
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!   Sender-->>+Receivers: [tx_id, amount_i]
-//!   note left of Sender: CollectingPubKeys
-//!   note right of Receivers: Initialization
-//!   Receivers-->>-Sender: [tx_id, Pi, Ri]
-//!   deactivate Sender
-//! #
-//!   alt invalid
-//!   Sender--XSender: failed
-//!   end
-//! #
-//!   activate Sender
-//!   Sender-->>+Receivers: [tx_id, ΣR, ΣP]
-//!   note left of Sender: CollectingSignatures
-//!   note right of Receivers: Signing
-//!   Receivers-->>Receivers: create output and sign
-//!   Receivers-->>-Sender: [tx_id, Output_i, s_i]
-//!   deactivate Sender
-//! #
-//!   note left of Sender: Finalizing
-//!   alt is_valid()
-//!   Sender-->>Sender: Finalized
-//!   else invalid
-//!   Sender--XSender: Failed
-//!   end
-//! </div>
+//! See [single_receiver::SingleReceiverTransactionProtocol] for more detail.
 
 // #![allow(clippy::op_ref)]
 

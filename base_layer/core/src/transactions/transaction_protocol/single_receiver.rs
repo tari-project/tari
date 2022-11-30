@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{PrivateKey, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
-    keys::PublicKey as PK,
-    range_proof::RangeProofService as RPS,
+    keys::PublicKey as PublicKeyTrait,
+    range_proof::RangeProofService,
     tari_utilities::byte_array::ByteArray,
 };
 
@@ -34,29 +34,59 @@ use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction_components::{EncryptedValue, TransactionKernel, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
-        recipient::RecipientSignedMessage as RD,
-        sender::SingleRoundSenderData as SD,
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
         RewindData,
-        TransactionProtocolError as TPE,
+        TransactionProtocolError,
     },
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
 /// * Checks the input for validity
 /// * Constructs his output, range proof and signature
 /// * Constructs the reply
 /// If any step fails, an error is returned.
+///
+/// The sequence diagram for the single receiver protocol is:
+///
+/// ```mermaid
+///   sequenceDiagram
+///   participant Sender
+///   participant Receiver
+/// #
+///   activate Sender
+///     Sender-->>Sender: initialize transaction
+///   deactivate Sender
+/// #
+///   activate Sender
+///   Sender-->>+Receiver: partial tx info
+///   Receiver-->>Receiver: validate tx info
+///   Receiver-->>Receiver: create new output and sign
+///   Receiver-->>-Sender: signed partial transaction
+///   deactivate Sender
+/// #
+///   activate Sender
+///     Sender-->>Sender: validate and sign
+///   deactivate Sender
+/// #
+///   alt tx is valid
+///   Sender-->>Network: Broadcast transaction
+///   else tx is invalid
+///   Sender--XSender: Failed
+///   end
+/// ```
 pub struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
     pub fn create(
-        sender_info: &SD,
-        nonce: SK,
-        spending_key: SK,
+        sender_info: &SingleRoundSenderData,
+        nonce: PrivateKey,
+        spending_key: PrivateKey,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> Result<RD, TPE> {
+    ) -> Result<RecipientSignedMessage, TransactionProtocolError> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
         let output =
             SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, rewind_data)?;
@@ -74,8 +104,9 @@ impl SingleReceiverTransactionProtocol {
             &(&sender_info.public_excess + &public_spending_key),
             &tx_meta,
         );
-        let signature = Signature::sign_raw(&spending_key, nonce, &e).map_err(TPE::SigningError)?;
-        let data = RD {
+        let signature =
+            Signature::sign_raw(&spending_key, nonce, &e).map_err(TransactionProtocolError::SigningError)?;
+        let data = RecipientSignedMessage {
             tx_id: sender_info.tx_id,
             output,
             public_spend_key: public_spending_key,
@@ -86,19 +117,21 @@ impl SingleReceiverTransactionProtocol {
     }
 
     /// Validates the sender info
-    fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
+    fn validate_sender_data(sender_info: &SingleRoundSenderData) -> Result<(), TransactionProtocolError> {
         if sender_info.amount == 0.into() {
-            return Err(TPE::ValidationError("Cannot send zero microTari".into()));
+            return Err(TransactionProtocolError::ValidationError(
+                "Cannot send zero microTari".into(),
+            ));
         }
         Ok(())
     }
 
     fn build_output(
-        sender_info: &SD,
-        spending_key: &SK,
+        sender_info: &SingleRoundSenderData,
+        spending_key: &PrivateKey,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> Result<TransactionOutput, TPE> {
+    ) -> Result<TransactionOutput, TransactionProtocolError> {
         let commitment = factories
             .commitment
             .commit_value(spending_key, sender_info.amount.into());
@@ -121,7 +154,7 @@ impl SingleReceiverTransactionProtocol {
             .as_ref()
             .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, sender_info.amount))
             .transpose()
-            .map_err(|_| TPE::EncryptionError)?
+            .map_err(|_| TransactionProtocolError::EncryptionError)?
             .unwrap_or_default();
 
         let minimum_value_promise = sender_info.minimum_value_promise;
@@ -143,7 +176,7 @@ impl SingleReceiverTransactionProtocol {
             sender_features,
             commitment,
             RangeProof::from_bytes(&proof).map_err(|_| {
-                TPE::RangeProofError(RangeProofError::ProofConstructionError(
+                TransactionProtocolError::RangeProofError(RangeProofError::ProofConstructionError(
                     "Creating transaction output".to_string(),
                 ))
             })?,
