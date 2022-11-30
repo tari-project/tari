@@ -104,11 +104,15 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         consts::APP_VERSION
     );
 
-    let password = get_password(config, &cli);
-
-    if password.is_none() {
+    if cli.password.is_none() {
         tari_splash_screen("Console Wallet");
     }
+
+    let password = if let Some(pass) = get_password(config, &cli) {
+        pass
+    } else {
+        get_or_prompt_password(None, config.wallet.password.clone())?
+    };
 
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&cli, &config.wallet)?;
@@ -125,7 +129,7 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         info!(target: LOG_TARGET, "Change password requested.");
         return runtime.block_on(change_password(
             config,
-            password,
+            Some(password),
             shutdown_signal,
             cli.non_interactive_mode,
         ));

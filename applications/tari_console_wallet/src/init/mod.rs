@@ -72,7 +72,7 @@ const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
 
 #[derive(Clone, Copy)]
 pub enum WalletBoot {
-    New,
+    New(SafePassword),
     Existing,
     Recovery,
 }
@@ -250,7 +250,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 #[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
     config: &ApplicationConfig,
-    arg_password: Option<SafePassword>,
+    arg_password: SafePassword,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
@@ -272,8 +272,6 @@ pub async fn init_wallet(
     let db_path = &config.wallet.db_file;
 
     // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
-    let passphrase = get_or_prompt_password(arg_password, config.wallet.password.clone())?;
-
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         initialize_sqlite_database_backends(db_path, passphrase, config.wallet.db_connection_pool_size)?;
 
@@ -600,7 +598,12 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
     } else {
         // automation/wallet created with --password
         if cli.password.is_some() || wallet_config.password.is_some() {
-            return Ok(WalletBoot::New);
+            let password = match (cli.password, wallet_config.password) {
+                (Some(pass), _) => cli.password.unwrap(),
+                (_, Some(pass)) => wallet_config.password.unwrap(),
+                (_, _) => unreachable!("Wallet boot: already verified that passphrase was provided"),
+            };
+            return Ok(WalletBoot::New(password));
         }
 
         // In non-interactive mode, we never prompt. Otherwise, it's not very non-interactive, now is it?
@@ -623,7 +626,16 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
                     match line.as_ref() {
                         "1" | "c" | "n" | "create" => {
                             // new wallet
-                            return Ok(WalletBoot::New);
+                            // prompt the user to provide a new password
+                            debug!(target: LOG_TARGET, "Prompting for password.");
+                            let password = prompt_password("Create wallet password: ")?;
+                            let confirmed = prompt_password("Confirm wallet password: ")?;
+
+                            if password.reveal() != confirmed.reveal() {
+                                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
+                            }
+
+                            return Ok(WalletBoot::New(password));
                         },
                         "2" | "r" | "s" | "recover" => {
                             // recover wallet
