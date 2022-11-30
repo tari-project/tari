@@ -83,8 +83,8 @@ pub fn get_or_prompt_password(
     arg_password: Option<SafePassword>,
     config_password: Option<SafePassword>,
 ) -> Result<SafePassword, ExitError> {
-    if arg_password.is_some() {
-        return Ok(arg_password.unwrap());
+    if let Some(passphrase) = arg_password {
+        return Ok(passphrase);
     }
 
     let env = std::env::var_os(TARI_WALLET_PASSWORD);
@@ -95,8 +95,8 @@ pub fn get_or_prompt_password(
         return Ok(env_password.into());
     }
 
-    if config_password.is_some() {
-        return Ok(config_password.unwrap());
+    if let Some(passphrase) = config_password {
+        return Ok(passphrase);
     }
 
     let password = prompt_password("Wallet password: ")?;
@@ -625,9 +625,7 @@ pub(crate) fn boot_with_password(
         },
         WalletBoot::Existing | WalletBoot::Recovery => {
             debug!(target: LOG_TARGET, "Prompting for password.");
-            let password = prompt_password("Prompt wallet password: ")?;
-
-            password
+            prompt_password("Prompt wallet password: ")?
         },
     };
 
