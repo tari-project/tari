@@ -80,7 +80,7 @@ use log4rs::{
         },
         Append,
     },
-    config::{Appender, Config, Root},
+    config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
 use num_traits::FromPrimitive;
@@ -160,6 +160,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
+use zeroize::Zeroize;
 
 use crate::{
     callback_handler::CallbackHandler,
@@ -1550,7 +1551,8 @@ pub unsafe extern "C" fn encrypted_value_as_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncryptedValue) {
     if !encrypted_value.is_null() {
-        Box::from_raw(encrypted_value);
+        // zeroize the data content of encrypted_value, as to prevent memory leaks
+        (*encrypted_value).zeroize();
     }
 }
 
@@ -4153,6 +4155,36 @@ unsafe fn init_logging(
 
     let lconfig = Config::builder()
         .appender(Appender::builder().build("logfile", log_appender))
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("comms", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("p2p", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("yamux", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("dht", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("mio", LevelFilter::Warn),
+        )
         .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
         .expect("Should be able to create a Config");
 

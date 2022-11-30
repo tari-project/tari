@@ -75,6 +75,7 @@ tokio = { version = "1.20", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 tracing-attributes = "*"
 uint = { version = "0.9", default-features = false }
+zeroize = "1"
 
 [dev-dependencies]
 tari_p2p = { version = "^0.41", path = "../../base_layer/p2p", features = ["test-mocks"] }

@@ -135,9 +135,7 @@ impl NewOutputSql {
 impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
-        [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
+        [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()].concat()
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
@@ -157,14 +155,10 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
-        self.script_private_key = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("script_private_key"),
-            self.script_private_key.clone(),
-        )?;
+        self.script_private_key =
+            decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
         Ok(())
     }

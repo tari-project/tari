@@ -27,22 +27,24 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{Aead, Error, Payload},
     ChaCha20Poly1305,
-    Key,
     KeyInit,
     Nonce,
 };
+use digest::generic_array::GenericArray;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{safe_array::SafeArray, ByteArray, ByteArrayError};
 use thiserror::Error;
+use zeroize::Zeroize;
 
+use super::{CoreTransactionAEADKey, AEAD_KEY_LEN};
 use crate::transactions::{tari_amount::MicroTari, TransactionKdfDomain};
 
 const SIZE: usize = 24;
 
 /// value: u64 + tag: [u8; 16]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
 pub struct EncryptedValue(#[serde(with = "tari_utilities::serde::hex")] pub [u8; SIZE]);
 
 impl Default for EncryptedValue {
@@ -89,7 +91,8 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         // Included in the public transaction
-        let buffer = ChaCha20Poly1305::new(&aead_key).encrypt(&Nonce::default(), aead_payload)?;
+        let buffer = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()))
+            .encrypt(&Nonce::default(), aead_payload)?;
         let mut data: [u8; SIZE] = [0; SIZE];
         data.copy_from_slice(&buffer);
         Ok(EncryptedValue(data))
@@ -107,21 +110,25 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         let mut value_bytes = [0u8; 8];
-        let decrypted_bytes = ChaCha20Poly1305::new(&aead_key).decrypt(&Nonce::default(), aead_payload)?;
+        let decrypted_bytes = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()))
+            .decrypt(&Nonce::default(), aead_payload)?;
         value_bytes.clone_from_slice(&decrypted_bytes[..8]);
         Ok(u64::from_le_bytes(value_bytes).into())
     }
 }
 
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
-fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
-    const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
+fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> CoreTransactionAEADKey {
     let output = DomainSeparatedHasher::<Blake256, TransactionKdfDomain>::new_with_label("encrypted_value")
         .chain(shared_secret.as_bytes())
         .chain(commitment.as_bytes())
         .finalize();
 
-    *Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH])
+    let default_array = SafeArray::<u8, AEAD_KEY_LEN>::default();
+    let mut aead_key = CoreTransactionAEADKey::from(default_array);
+    aead_key.reveal_mut().copy_from_slice(&output.as_ref()[..AEAD_KEY_LEN]);
+
+    aead_key
 }
 
 #[cfg(test)]

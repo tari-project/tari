@@ -15,6 +15,7 @@
 ./base_layer/wallet/src/schema.rs
 ./base_layer/p2p/src/dns/roots/tls.rs
 ./buildtools/docker/torrc
+./buildtools/vagrant/Vagrantfile
 ./docs/src/theme/book.js
 ./docs/src/theme/highlight.js
 ./integration_tests/Makefile

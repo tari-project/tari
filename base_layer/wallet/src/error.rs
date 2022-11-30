@@ -135,7 +135,7 @@ pub enum WalletStorageError {
     DieselConnectionError(#[from] diesel::ConnectionError),
     #[error("Database migration error")]
     DatabaseMigrationError(String),
-    #[error("Value not found: `{0}`")]
+    #[error("Value not found: `{}`", .0.to_key_string())]
     ValueNotFound(DbKey),
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),

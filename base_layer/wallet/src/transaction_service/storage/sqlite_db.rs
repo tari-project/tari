@@ -1550,7 +1550,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -1804,7 +1804,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
-            from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -2213,7 +2213,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
