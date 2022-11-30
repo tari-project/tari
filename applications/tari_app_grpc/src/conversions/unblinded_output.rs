@@ -30,6 +30,7 @@ use tari_core::transactions::{
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
+use zeroize::Zeroize;
 
 use crate::tari_rpc as grpc;
 
@@ -63,7 +64,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
 impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
     type Error = String;
 
-    fn try_from(output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
+    fn try_from(mut output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
         let spending_key =
             PrivateKey::from_bytes(output.spending_key.as_bytes()).map_err(|e| format!("spending_key: {:?}", e))?;
 
@@ -95,6 +96,10 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
+
+        // zeroize output sensitive data
+        output.spending_key.zeroize();
+        output.script_private_key.zeroize();
 
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,

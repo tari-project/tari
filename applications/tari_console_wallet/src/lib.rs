@@ -48,8 +48,7 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_crypto::tari_utilities::Hidden;
-use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
+use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
@@ -213,16 +212,7 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
 
 fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
-        let seed = if cli.seed_words.is_some() {
-            // need to zeroize first, to clean up memory of cli.seed_words clone
-            let seed_words: SeedWords = SeedWords::new(
-                cli.seed_words
-                    .as_ref()
-                    .unwrap()
-                    .split_whitespace()
-                    .map(|s| Hidden::hide(s.to_string()))
-                    .collect(),
-            );
+        let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words)?
         } else {
             prompt_private_key_from_seed_words()?

@@ -33,6 +33,7 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
+use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
@@ -59,7 +60,7 @@ pub struct Cli {
     /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
     /// separated. e.g. --seed-words "seed1 seed2 ..."
     #[clap(long, alias = "seed-words")]
-    pub seed_words: Option<String>,
+    pub seed_words: Option<SeedWords>,
     /// Supply the optional file name to save the wallet seed words into
     #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
     pub seed_words_file_name: Option<PathBuf>,

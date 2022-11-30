@@ -160,6 +160,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
+use zeroize::Zeroize;
 
 use crate::{
     callback_handler::CallbackHandler,
@@ -1550,7 +1551,8 @@ pub unsafe extern "C" fn encrypted_value_as_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncryptedValue) {
     if !encrypted_value.is_null() {
-        Box::from_raw(encrypted_value);
+        // zeroize the data content of encrypted_value, as to prevent memory leaks
+        (*encrypted_value).zeroize();
     }
 }
 
