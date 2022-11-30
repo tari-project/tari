@@ -635,7 +635,6 @@ fn check_db_encryption_status(
     let acquire_lock = start.elapsed();
 
     let db_passphrase_hash = WalletSettingSql::get(&DbKey::PassphraseHash, &conn)?;
-    println!("FLAG: {}", db_passphrase_hash.clone().unwrap());
     let db_encryption_salt = WalletSettingSql::get(&DbKey::EncryptionSalt, &conn)?;
 
     let cipher = match (db_passphrase_hash, db_encryption_salt) {
