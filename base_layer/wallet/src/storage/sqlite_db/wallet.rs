@@ -632,7 +632,7 @@ impl WalletBackend for WalletSqliteDatabase {
 /// Master Public Key that is stored in the db
 fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
-    passphrase: Option<SafePassword>,
+    passphrase: SafePassword,
 ) -> Result<Option<XChaCha20Poly1305>, WalletStorageError> {
     let start = Instant::now();
     let conn = database_connection.get_pooled_connection()?;
@@ -641,15 +641,15 @@ fn check_db_encryption_status(
     let db_passphrase_hash = WalletSettingSql::get(DbKey::PassphraseHash.to_string(), &conn)?;
     let db_encryption_salt = WalletSettingSql::get(DbKey::EncryptionSalt.to_string(), &conn)?;
 
-    let cipher = match (passphrase, db_passphrase_hash, db_encryption_salt) {
-        (Some(_), None, _) => {
+    let cipher = match (db_passphrase_hash, db_encryption_salt) {
+        (None, _) => {
             error!(
                 target: LOG_TARGET,
                 "Passphrase is provided but database is not encrypted"
             );
             return Err(WalletStorageError::InvalidPassphrase);
         },
-        (Some(passphrase), Some(db_passphrase_hash), Some(encryption_salt)) => {
+        (Some(db_passphrase_hash), Some(encryption_salt)) => {
             let argon2 = Argon2::default();
             let stored_hash =
                 PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
@@ -909,7 +909,8 @@ mod test {
             .unwrap();
         }
 
-        let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
+        let passphrase = SafePassword::from("an example very very secret key.".to_string());
+        let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
 
         if let DbValue::MasterSeed(sk) = db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
             assert_eq!(sk, secret_seed1);
@@ -940,7 +941,7 @@ mod test {
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
+        assert!(WalletSqliteDatabase::new(connection.clone(), passphrase.clone()).is_err());
 
         let seed = CipherSeed::new();
         {
@@ -949,15 +950,9 @@ mod test {
                 .set(&conn)
                 .unwrap();
         }
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
+        assert!(WalletSqliteDatabase::new(connection.clone(), passphrase.clone()).is_err());
 
-        {
-            let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
-            db.apply_encryption(passphrase.clone()).unwrap();
-        }
-
-        assert!(WalletSqliteDatabase::new(connection.clone(), None).is_err());
-        assert!(WalletSqliteDatabase::new(connection, Some(passphrase)).is_ok());
+        assert!(WalletSqliteDatabase::new(connection, passphrase).is_ok());
     }
 
     #[test]
@@ -974,7 +969,8 @@ mod test {
             ClientKeyValueSql::new("key2".to_string(), "value2".to_string()),
             ClientKeyValueSql::new("key3".to_string(), "value3".to_string()),
         ];
-        let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
+        let passphrase = "an example very very secret key.".to_string().into();
+        let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
         {
             let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
@@ -991,8 +987,6 @@ mod test {
         };
         assert_eq!(seed, read_seed1);
 
-        let passphrase = "an example very very secret key.".to_string().into();
-        db.apply_encryption(passphrase).unwrap();
         let read_seed2 = match db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
             DbValue::MasterSeed(sk) => sk,
             _ => {

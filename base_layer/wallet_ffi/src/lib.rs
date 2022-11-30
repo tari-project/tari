@@ -4307,14 +4307,16 @@ pub unsafe extern "C" fn wallet_create(
         consts::APP_VERSION
     );
 
-    let passphrase_option = if passphrase.is_null() {
-        None
+    let passphrase = if passphrase.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("passphrase".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     } else {
         let pf = CStr::from_ptr(passphrase)
             .to_str()
             .expect("A non-null passphrase should be able to be converted to string")
             .to_owned();
-        Some(SafePassword::from(pf))
+        SafePassword::from(pf)
     };
 
     let network = if network_str.is_null() {
@@ -4368,7 +4370,7 @@ pub unsafe extern "C" fn wallet_create(
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
-        match initialize_sqlite_database_backends(sql_database_path, passphrase_option, 16) {
+        match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
             Ok((w, t, o, c, x)) => (w, t, o, c, x),
             Err(e) => {
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -8373,7 +8375,8 @@ mod test {
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+            let passphrase = SafePassword::from("My lovely secret passphrase");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
             let stored_seed = wallet_backend.get_master_seed().unwrap();
             drop(wallet_backend);
@@ -8412,7 +8415,9 @@ mod test {
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+            let wallet_backend = WalletDatabase::new(
+                WalletSqliteDatabase::new(connection, "passphrasev2.0.1".to_string().into()).unwrap(),
+            );
 
             let stored_seed1 = wallet_backend.get_master_seed().unwrap().unwrap();
 
@@ -8453,7 +8458,9 @@ mod test {
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+
+            let passphrase = SafePassword::from("My lovely secret passphrase");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
             let stored_seed2 = wallet_backend.get_master_seed().unwrap().unwrap();
 
@@ -8467,12 +8474,12 @@ mod test {
             let backup_path_alice_str: *const c_char = CString::into_raw(backup_path_alice) as *const c_char;
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
             let original_path_str: *const c_char = CString::into_raw(original_path_cstring) as *const c_char;
-            file_partial_backup(original_path_str, backup_path_alice_str, error_ptr);
 
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+            let wallet_backend =
+                WalletDatabase::new(WalletSqliteDatabase::new(connection, "holiday".to_string().into()).unwrap());
 
             let stored_seed = wallet_backend.get_master_seed().unwrap();
 

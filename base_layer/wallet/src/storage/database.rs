@@ -375,6 +375,7 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
 mod test {
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
+    use tari_utilities::SafePassword;
     use tempfile::tempdir;
 
     use crate::storage::{
@@ -389,7 +390,8 @@ mod test {
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
 
-        let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+        let passphrase = SafePassword::from("my secret lovely passphrase");
+        let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
         // Test wallet settings
         assert!(db.get_master_seed().unwrap().is_none());

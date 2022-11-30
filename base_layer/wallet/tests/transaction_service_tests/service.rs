@@ -100,6 +100,7 @@ use tari_script::{inputs, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
+use tari_utilities::SafePassword;
 use tari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
@@ -181,7 +182,8 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     )
     .await;
 
-    let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), None).unwrap());
+    let passphrase = SafePassword::from("My lovely secret passphrase");
+    let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
     let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
 
     db.set_chain_metadata(metadata).unwrap();
@@ -318,8 +320,9 @@ async fn setup_transaction_service_no_comms(
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
+    let passphrase = SafePassword::from("My lovely secret passphrase");
     let wallet_db = WalletDatabase::new(
-        WalletSqliteDatabase::new(db_connection.clone(), None).expect("Should be able to create wallet database"),
+        WalletSqliteDatabase::new(db_connection.clone(), passphrase).expect("Should be able to create wallet database"),
     );
     let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
     let cipher = CipherSeed::new();
