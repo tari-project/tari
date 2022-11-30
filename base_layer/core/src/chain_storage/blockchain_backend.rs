@@ -154,6 +154,8 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches an current tip orphan by hash or returns None if the orphan is not found or is not a tip of any
     /// alternate chain
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
+    /// Fetches all currently stored orphan tips, if none are stored, returns an empty vec.
+    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
     /// Fetch all orphans that have `hash` as a previous hash
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
@@ -193,8 +195,12 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches all tracked reorgs
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
 
+    /// Fetches the validator node set for the given height ordered according to height of registration and canonical
+    /// block body ordering.
     fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    /// Returns the shard key for the validator node if valid at the given height.
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
+    /// Returns all template registrations within (inclusive) the given height range.
     fn fetch_template_registrations(
         &self,
         start_height: u64,

@@ -591,7 +591,7 @@ where
                             Err(OutputManagerProtocolError { id, error }) => {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                                    "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
                                 );
                                 let event_payload = match error {
                                     OutputManagerError::InconsistentBaseNodeDataError(_) |

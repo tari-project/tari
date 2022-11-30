@@ -100,6 +100,15 @@ jobs:
 #        run: |
 #          find . -name changelog.md -type f -exec cp -vf {} "$GITHUB_WORKSPACE/" \;
 
+      - name: Update sha256sums for top level paths
+        shell: bash
+        working-directory: libwallets
+        run: |
+          ls -alht
+          find . -name "libtari_wallet_ffi.*.sha256sums" -type f \
+            -exec sed -i -e "s/libwallet-.*\///g" '{}' \;
+          ls -alht
+
       - name: Create release
         uses: ncipollo/release-action@v1
         with:

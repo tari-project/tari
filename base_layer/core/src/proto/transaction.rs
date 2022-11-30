@@ -309,8 +309,8 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .map(SideChainFeature::try_from)
             .transpose()?;
 
-        let flags = features
-            .flags
+        let output_type = features
+            .output_type
             .try_into()
             .map_err(|_| "Invalid output type: overflowed")?;
 
@@ -318,7 +318,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
+            OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             features.metadata,
             sidechain_feature,
@@ -329,7 +329,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
 impl From<OutputFeatures> for proto::types::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
-            flags: u32::from(features.output_type.as_byte()),
+            output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             metadata: features.metadata,
             version: features.version as u32,

@@ -46,9 +46,11 @@ use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
+    Hidden,
 };
 use thiserror::Error;
 use tokio::time::Instant;
+use zeroize::Zeroize;
 
 use crate::{
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
@@ -1537,7 +1539,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         self.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            self.receiver_protocol.as_bytes().to_vec(),
+            Hidden::hide(self.receiver_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -1545,15 +1547,18 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize the decrypted protocol data buffer
+        decrypted_protocol.zeroize();
 
         Ok(())
     }
@@ -1788,7 +1793,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         self.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
-            self.sender_protocol.as_bytes().to_vec(),
+            Hidden::hide(self.sender_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -1796,15 +1801,18 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
-            from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize the decrypted protocol data buffer
+        decrypted_protocol.zeroize();
 
         Ok(())
     }
@@ -2194,7 +2202,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         self.transaction_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            self.transaction_protocol.as_bytes().to_vec(),
+            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -2202,15 +2210,18 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize the decrypted protocol data buffer
+        decrypted_protocol.zeroize();
 
         Ok(())
     }
@@ -2399,7 +2410,7 @@ impl UnconfirmedTransactionInfoSql {
 mod test {
     use std::{convert::TryFrom, mem::size_of, time::Duration};
 
-    use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
+    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
