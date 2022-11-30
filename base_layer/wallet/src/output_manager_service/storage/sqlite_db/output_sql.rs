@@ -804,14 +804,10 @@ impl Encryptable<XChaCha20Poly1305> for OutputSql {
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
-        self.script_private_key = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("script_private_key"),
-            self.script_private_key.clone(),
-        )?;
+        self.script_private_key =
+            decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
         Ok(())
     }

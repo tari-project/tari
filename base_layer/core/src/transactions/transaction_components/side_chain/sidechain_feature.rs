@@ -45,13 +45,4 @@ impl SideChainFeature {
             _ => None,
         }
     }
-
-    pub fn as_byte(&self) -> u8 {
-        #[allow(clippy::enum_glob_use)]
-        use SideChainFeature::*;
-        match self {
-            ValidatorNodeRegistration(_) => 0x01,
-            TemplateRegistration(_) => 0x02,
-        }
-    }
 }

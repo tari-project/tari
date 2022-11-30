@@ -117,7 +117,7 @@ impl WalletSqliteDatabase {
                         decrypt_bytes_integral_nonce(
                             cipher,
                             b"wallet_setting_master_seed".to_vec(),
-                            from_hex(seed_str.as_str())?,
+                            &from_hex(seed_str.as_str())?,
                         )
                         .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
                     );
@@ -205,7 +205,7 @@ impl WalletSqliteDatabase {
                     // we must zeroize decrypted_key_bytes, as this contains sensitive data,
                     // including private key informations
                     let decrypted_key_bytes = Hidden::hide(
-                        decrypt_bytes_integral_nonce(cipher, b"wallet_setting_tor_id".to_vec(), from_hex(&key_str)?)
+                        decrypt_bytes_integral_nonce(cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
                             .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
                     );
 
@@ -533,7 +533,7 @@ impl WalletBackend for WalletSqliteDatabase {
             decrypt_bytes_integral_nonce(
                 &cipher,
                 b"wallet_setting_master_seed".to_vec(),
-                from_hex(master_seed_str.as_str())?,
+                &from_hex(master_seed_str.as_str())?,
             )
             .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
         );
@@ -559,7 +559,7 @@ impl WalletBackend for WalletSqliteDatabase {
             // decrypted_key_bytes contains sensitive information regarding private key, we thus
             // make sure the data is appropriately zeroized when we leave the current scope
             let decrypted_key_bytes = Hidden::hide(
-                decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), from_hex(v.as_str())?)
+                decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(v.as_str())?)
                     .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
             );
 
@@ -718,11 +718,11 @@ fn check_db_encryption_status(
                     // decrypted key contains sensitive data, we make sure we appropriately zeroize
                     // the corresponding data buffer, when leaving the current scope
                     let decrypted_key = Hidden::hide(
-                        decrypt_bytes_integral_nonce(&cipher_inner, b"wallet_setting_master_seed".to_vec(), sk_bytes)
+                        decrypt_bytes_integral_nonce(&cipher_inner, b"wallet_setting_master_seed".to_vec(), &sk_bytes)
                             .map_err(|e| {
-                            error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
-                            WalletStorageError::InvalidPassphrase
-                        })?,
+                                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
+                                WalletStorageError::InvalidPassphrase
+                            })?,
                     );
 
                     let _cipher_seed =
@@ -866,7 +866,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
         let mut decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
-            from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         self.value = from_utf8(decrypted_value.as_slice())
