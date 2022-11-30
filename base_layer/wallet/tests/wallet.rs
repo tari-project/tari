@@ -725,6 +725,10 @@ async fn test_import_utxo() {
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
+    alice_wallet
+        .set_base_node_peer(node_identity.public_key().clone(), node_identity.public_address())
+        .await
+        .unwrap();
     let tx_id = alice_wallet
         .import_external_utxo_as_non_rewindable(
             utxo.value,
