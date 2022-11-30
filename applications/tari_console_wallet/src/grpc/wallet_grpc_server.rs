@@ -99,6 +99,7 @@ use tari_core::{
         },
     },
 };
+use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
@@ -929,7 +930,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let fee_per_gram = message.fee_per_gram;
 
         let message = format!("Template registration {}", template_registration.template_name);
-        let output = output_manager
+        let mut output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
                 sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
@@ -937,6 +938,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
+        output = output.with_script(script![Nop]);
 
         let (tx_id, transaction) = output_manager
             .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())

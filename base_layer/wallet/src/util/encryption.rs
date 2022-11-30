@@ -23,7 +23,7 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{
-    aead::{Aead, Error as AeadError, Payload},
+    aead::{Aead, Payload},
     Tag,
     XChaCha20Poly1305,
     XNonce,
@@ -51,11 +51,11 @@ pub trait Encryptable<C> {
 pub fn decrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
-    ciphertext: Vec<u8>,
+    ciphertext: &[u8],
 ) -> Result<Vec<u8>, String> {
     // We need at least a nonce and tag, or there's no point in attempting decryption
     if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
-        return Err(AeadError.to_string());
+        return Err("Ciphertext is too short".to_string());
     }
 
     // Extract the nonce
@@ -68,7 +68,9 @@ pub fn decrypt_bytes_integral_nonce(
     };
 
     // Attempt authentication and decryption
-    let plaintext = cipher.decrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
+    let plaintext = cipher
+        .decrypt(nonce_ga, payload)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
 
     Ok(plaintext)
 }
@@ -91,7 +93,9 @@ pub fn encrypt_bytes_integral_nonce(
     };
 
     // Attempt authenticated encryption
-    let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
+    let mut ciphertext = cipher
+        .encrypt(nonce_ga, payload)
+        .map_err(|e| format!("Failed to encrypt: {}", e))?;
 
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
@@ -130,19 +134,20 @@ mod test {
         );
 
         // Valid decryption must succeed and yield correct plaintext
-        let decrypted_text =
-            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext.clone()).unwrap();
+        let decrypted_text = decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext).unwrap();
         assert_eq!(decrypted_text, plaintext);
 
         // Must fail on an incorrect domain
-        assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), ciphertext.clone()).is_err());
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), &ciphertext).is_err());
 
         // Must fail with an evil nonce
         let ciphertext_with_evil_nonce = ciphertext
             .clone()
             .splice(0..size_of::<XNonce>(), [0u8; size_of::<XNonce>()])
-            .collect();
-        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
+            .collect::<Vec<_>>();
+        assert!(
+            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext_with_evil_nonce).is_err()
+        );
 
         // Must fail with malleated ciphertext
         let ciphertext_with_evil_ciphertext = ciphertext
@@ -151,9 +156,10 @@ mod test {
                 size_of::<XNonce>()..(ciphertext.len() - size_of::<Tag>()),
                 vec![0u8; plaintext.len()],
             )
-            .collect();
+            .collect::<Vec<_>>();
         assert!(
-            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_ciphertext).is_err()
+            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext_with_evil_ciphertext)
+                .is_err()
         );
 
         // Must fail with malleated authentication tag
@@ -166,14 +172,14 @@ mod test {
                 >(
                 )
             ])
-            .collect();
-        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_tag).is_err());
+            .collect::<Vec<_>>();
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext_with_evil_tag).is_err());
 
         // Must fail if truncated too short (if shorter than a nonce and tag, decryption is not even attempted)
         assert!(decrypt_bytes_integral_nonce(
             &cipher,
             b"correct_domain".to_vec(),
-            ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)].to_vec()
+            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)]
         )
         .is_err());
     }

@@ -591,7 +591,7 @@ where
                             Err(OutputManagerProtocolError { id, error }) => {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                                    "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
                                 );
                                 let event_payload = match error {
                                     OutputManagerError::InconsistentBaseNodeDataError(_) |
@@ -738,6 +738,9 @@ where
             OutputSource::default(),
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
+
+        // Because we added new outputs, let try to trigger a validation for them
+        self.validate_outputs()?;
         Ok(())
     }
 
@@ -1187,13 +1190,7 @@ where
         let mut db_outputs = vec![];
         for mut unblinded_output in outputs {
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-            unblinded_output.with_sender_offset_public_key(sender_offset_public_key);
-            let ephemeral_private_key = PrivateKey::random(&mut OsRng);
-            let ephemeral_pub_key = PublicKey::from_secret_key(&ephemeral_private_key);
-
-            unblinded_output.sign_as_receiver(ephemeral_pub_key)?;
-            unblinded_output.sign_as_sender(&sender_offset_private_key, &ephemeral_private_key)?;
+            unblinded_output.sign_as_sender_and_receiver(&sender_offset_private_key)?;
 
             let ub = unblinded_output.try_build()?;
             builder
