@@ -17,6 +17,30 @@
 //! accepted in each state machine
 //!
 //! See [single_receiver::SingleReceiverTransactionProtocol] for more detail.
+//!
+//! Example use:
+//! ```
+//! use tari_core::{
+//!     test_helpers::create_consensus_constants,
+//!     transactions::{
+//!         test_helpers::TestParams,
+//!         transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
+//!         CryptoFactories,
+//!         SenderTransactionProtocol,
+//!     },
+//! };
+//!
+//! let alice_secrets = TestParams::new();
+//! let bob_secrets = TestParams::new();
+//!
+//! let builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+//! // ... set builder options
+//! let mut alice = builder.build(&CryptoFactories::default(), None, u64::MAX).unwrap();
+//! let msg = alice.build_single_round_message().unwrap();
+//! let mut bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
+//! alice.add_single_recipient_info(bob_info.clone()).unwrap();
+//! alice.finalize(&factories, None, u64::MAX).unwrap();
+//! ```
 
 // #![allow(clippy::op_ref)]
 
