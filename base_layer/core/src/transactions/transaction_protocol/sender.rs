@@ -23,20 +23,10 @@
 use std::fmt;
 
 use derivative::Derivative;
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{
-        BlindingFactor,
-        ComAndPubSignature,
-        CommitmentFactory,
-        HashOutput,
-        PrivateKey,
-        PublicKey,
-        RangeProofService,
-        Signature,
-    },
+    types::{BlindingFactor, ComAndPubSignature, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -440,14 +430,9 @@ impl SenderTransactionProtocol {
     }
 
     /// Add the signed transaction from the recipient and move to the next state
-    pub fn add_single_recipient_info(
-        &mut self,
-        rec: RecipientSignedMessage,
-        prover: &RangeProofService,
-    ) -> Result<(), TPE> {
+    pub fn add_single_recipient_info(&mut self, rec: RecipientSignedMessage) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
-                rec.output.verify_range_proof(prover)?;
                 // Consolidate transaction info
                 info.outputs.push(rec.output.clone());
 
@@ -470,7 +455,6 @@ impl SenderTransactionProtocol {
                         private_commitment_nonce,
                         recipient_sender_offset_private_key,
                         &info.outputs[index].clone(),
-                        &CommitmentFactory::default(),
                     )?;
                 }
 
@@ -490,10 +474,8 @@ impl SenderTransactionProtocol {
         private_commitment_nonce: &PrivateKey,
         sender_offset_private_key: &PrivateKey,
         output: &TransactionOutput,
-        commitment_factory: &CommitmentFactory,
     ) -> Result<ComAndPubSignature, TPE> {
         // Create sender signature
-        let ephemeral_public_nonce = PublicKey::from_secret_key(private_commitment_nonce);
         let sender_signature = TransactionOutput::create_sender_partial_metadata_signature(
             output.version,
             &output.commitment,
@@ -508,33 +490,8 @@ impl SenderTransactionProtocol {
         )?;
         // Create aggregated metadata signature
         let aggregated_metadata_signature = &sender_signature + &output.metadata_signature;
-        // lets verify everything is fine
-        let e = TransactionOutput::build_metadata_signature_challenge(
-            output.version,
-            &output.script,
-            &output.features,
-            &output.sender_offset_public_key,
-            output.metadata_signature.ephemeral_commitment(),
-            &ephemeral_public_nonce,
-            &output.commitment,
-            &output.covenant,
-            &output.encrypted_value,
-            output.minimum_value_promise,
-        );
-        if aggregated_metadata_signature.verify_challenge(
-            &output.commitment,
-            &output.sender_offset_public_key,
-            &e,
-            commitment_factory,
-            &mut OsRng,
-        ) {
-            Ok(aggregated_metadata_signature)
-        } else {
-            Err(TPE::InvalidSignatureError(format!(
-                "Transaction output metadata signature not valid for {}",
-                output
-            )))
-        }
+
+        Ok(aggregated_metadata_signature)
     }
 
     /// Attempts to build the final transaction.
@@ -1052,9 +1009,7 @@ mod test {
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
             SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
-        alice
-            .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
-            .unwrap();
+        alice.add_single_recipient_info(bob_info.clone()).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(&factories, None, u64::MAX) {
@@ -1135,9 +1090,7 @@ mod test {
             bob_info.output.commitment.as_public_key().to_hex()
         );
         // Alice gets message back, deserializes it, etc
-        alice
-            .add_single_recipient_info(bob_info, &factories.range_proof)
-            .unwrap();
+        alice.add_single_recipient_info(bob_info).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(&factories, None, u64::MAX) {
@@ -1336,9 +1289,7 @@ mod test {
         .unwrap();
 
         // Alice gets message back, deserializes it, etc
-        alice
-            .add_single_recipient_info(bob_info, &factories.range_proof)
-            .unwrap();
+        alice.add_single_recipient_info(bob_info).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(&factories, None, u64::MAX) {

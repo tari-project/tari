@@ -1508,8 +1508,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .try_into()
         .unwrap();
 
-    stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
-        .unwrap();
+    stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
     stp.finalize(&factories, None, u64::MAX).unwrap();
     let tx = stp.get_transaction().unwrap();
 
@@ -1623,8 +1622,7 @@ async fn finalize_tx_with_missing_output() {
         .try_into()
         .unwrap();
 
-    stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
-        .unwrap();
+    stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
     stp.finalize(&factories, None, u64::MAX).unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -2966,9 +2964,7 @@ async fn test_restarting_transaction_protocols() {
 
     let alice_reply = receiver_protocol.get_signed_data().unwrap().clone();
 
-    bob_stp
-        .add_single_recipient_info(alice_reply.clone(), &factories.range_proof)
-        .unwrap();
+    bob_stp.add_single_recipient_info(alice_reply.clone()).unwrap();
 
     match bob_stp.finalize(&factories, None, u64::MAX) {
         Ok(_) => (),
