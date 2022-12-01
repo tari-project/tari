@@ -546,7 +546,7 @@ where
 
         outbound_tx
             .sender_protocol
-            .add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         outbound_tx

@@ -1141,7 +1141,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1278,7 +1278,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1430,7 +1430,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
