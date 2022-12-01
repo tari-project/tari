@@ -23,11 +23,13 @@
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
+    mem::size_of,
     path::Path,
     sync::Arc,
     time::Duration,
 };
 
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -35,7 +37,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
@@ -188,9 +190,14 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     db.set_chain_metadata(metadata).unwrap();
 
-    let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), None);
-    let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), None);
-    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, None).unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
+    let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), cipher.clone());
+    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, cipher).unwrap();
     let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
     let cipher = CipherSeed::new();
@@ -324,10 +331,19 @@ async fn setup_transaction_service_no_comms(
     let wallet_db = WalletDatabase::new(
         WalletSqliteDatabase::new(db_connection.clone(), passphrase).expect("Should be able to create wallet database"),
     );
-    let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
-    let cipher = CipherSeed::new();
-    let key_manager = KeyManagerMock::new(cipher);
-    let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, None));
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        db_connection.clone(),
+        cipher.clone(),
+    ));
+    let cipher_seed = CipherSeed::new();
+    let key_manager = KeyManagerMock::new(cipher_seed);
+    let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, cipher.clone()));
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,
@@ -1848,7 +1864,13 @@ async fn discovery_async_return_test() {
 async fn test_power_mode_updates() {
     let factories = CryptoFactories::default();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
 
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
@@ -2899,10 +2921,16 @@ async fn test_tx_direct_send_behaviour() {
 async fn test_restarting_transaction_protocols() {
     let factories = CryptoFactories::default();
     let (alice_connection, _temp_dir) = make_wallet_database_connection(None);
-    let alice_backend = TransactionServiceSqliteDatabase::new(alice_connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let alice_backend = TransactionServiceSqliteDatabase::new(alice_connection.clone(), cipher.clone());
 
     let (bob_connection, _temp_dir2) = make_wallet_database_connection(None);
-    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), None);
+    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), cipher);
 
     let base_node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
@@ -3241,7 +3269,13 @@ async fn test_coinbase_generation_and_monitoring() {
     let factories = CryptoFactories::default();
 
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
     let db = TransactionDatabase::new(tx_backend);
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
@@ -4313,7 +4347,13 @@ async fn test_resend_on_startup() {
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let alice_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let alice_backend = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
     alice_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -4361,7 +4401,13 @@ async fn test_resend_on_startup() {
     outbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
 
     let (connection2, _temp_dir2) = make_wallet_database_connection(None);
-    let alice_backend2 = TransactionServiceSqliteDatabase::new(connection2.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let alice_backend2 = TransactionServiceSqliteDatabase::new(connection2.clone(), cipher);
 
     alice_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
@@ -4442,7 +4488,13 @@ async fn test_resend_on_startup() {
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
     let (bob_connection, _temp_dir) = make_wallet_database_connection(None);
-    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), cipher);
 
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
@@ -4491,7 +4543,13 @@ async fn test_resend_on_startup() {
     inbound_tx.send_count = 1;
     inbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
     let (bob_connection2, _temp_dir2) = make_wallet_database_connection(None);
-    let bob_backend2 = TransactionServiceSqliteDatabase::new(bob_connection2.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let bob_backend2 = TransactionServiceSqliteDatabase::new(bob_connection2.clone(), cipher);
     bob_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
             tx_id,
@@ -4803,7 +4861,13 @@ async fn test_transaction_timeout_cancellation() {
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
     let (bob_connection, _temp_dir) = make_wallet_database_connection(None);
-    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let bob_backend = TransactionServiceSqliteDatabase::new(bob_connection.clone(), cipher);
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -5272,7 +5336,13 @@ async fn transaction_service_tx_broadcast() {
 async fn broadcast_all_completed_transactions_on_startup() {
     let factories = CryptoFactories::default();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let db = TransactionServiceSqliteDatabase::new(connection.clone(), None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
         .with_signature(&Signature::default())

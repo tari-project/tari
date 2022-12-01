@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{panic, path::Path, sync::Arc, time::Duration};
+use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use rand::{rngs::OsRng, RngCore};
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common::configuration::StringList;
 use tari_common_types::{
@@ -693,7 +694,12 @@ async fn test_import_utxo() {
         ..Default::default()
     };
 
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
 
     let mut alice_wallet = Wallet::start(
         config,
@@ -705,10 +711,10 @@ async fn test_import_utxo() {
             WalletSqliteDatabase::new(connection.clone(), "a new passphrase".to_string().into()).unwrap(),
         ),
         OutputManagerDatabase::new(output_manager_backend.clone()),
-        TransactionServiceSqliteDatabase::new(connection.clone(), None),
+        TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
         ContactsServiceSqliteDatabase::new(connection.clone()),
-        KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
+        KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
     )
@@ -763,7 +769,7 @@ async fn test_import_utxo() {
 
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
-    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, cipher));
     let outputs = db.fetch_outputs_by_tx_id(tx_id).unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
