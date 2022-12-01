@@ -2429,7 +2429,7 @@ mod test {
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
         transaction_service::storage::{
-            database::TransactionBackend,
+            database::{DbKey, TransactionBackend},
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
             sqlite_db::{
                 CompletedTransactionSql,
@@ -3122,26 +3122,20 @@ mod test {
 
         let connection = WalletDbConnection::new(pool, None);
 
-        let db1 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
-        assert!(db1.apply_encryption(cipher.clone()).is_err());
+        let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
 
-        // let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), None);
-        // assert!(db2.remove_encryption().is_ok());
-        // db2.apply_encryption(cipher).unwrap();
-        // assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
-        // assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        // assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
 
-        // let db3 = TransactionServiceSqliteDatabase::new(connection, None);
-        // assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
-        // assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
-        // assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
+        let db3 = TransactionServiceSqliteDatabase::new(connection, cipher.clone());
+        assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
+        assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
+        assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
 
-        // db2.remove_encryption().unwrap();
-
-        // assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_ok());
-        // assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        // assert!(db3.fetch(&DbKey::CompletedTransactions).is_ok());
+        assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_ok());
+        assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_ok());
+        assert!(db3.fetch(&DbKey::CompletedTransactions).is_ok());
     }
 
     #[test]
