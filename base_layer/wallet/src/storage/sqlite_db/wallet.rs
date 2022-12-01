@@ -367,7 +367,7 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 
     fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError> {
-        let mut current_cipher = acquire_write_lock!(self.cipher);
+        let _current_cipher = acquire_write_lock!(self.cipher);
 
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -465,7 +465,6 @@ impl WalletBackend for WalletSqliteDatabase {
             WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(&conn)?;
         }
 
-        (*current_cipher) = cipher.clone();
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
