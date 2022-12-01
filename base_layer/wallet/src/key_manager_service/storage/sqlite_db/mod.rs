@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct KeyManagerSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
+    cipher: Arc<RwLock<XChaCha20Poly1305>>,
 }
 
 impl KeyManagerSqliteDatabase {
@@ -56,7 +56,7 @@ impl KeyManagerSqliteDatabase {
     ///   not encrypt sensitive fields
     pub fn new(
         database_connection: WalletDbConnection,
-        cipher: Option<XChaCha20Poly1305>,
+        cipher: XChaCha20Poly1305,
     ) -> Result<Self, KeyManagerStorageError> {
         let db = Self {
             database_connection,
@@ -67,19 +67,19 @@ impl KeyManagerSqliteDatabase {
 
     fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(cipher) = cipher.as_ref() {
-            o.decrypt(cipher)
-                .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))?;
-        }
+
+        o.decrypt(&cipher)
+            .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))?;
+
         Ok(())
     }
 
     fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(cipher) = cipher.as_ref() {
-            o.encrypt(cipher)
-                .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        }
+
+        o.encrypt(&cipher)
+            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
+
         Ok(())
     }
 }
@@ -181,10 +181,6 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
     fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
-        if (*current_cipher).is_some() {
-            return Err(KeyManagerStorageError::AlreadyEncrypted);
-        }
-
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -197,7 +193,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
             key_manager_state.set_state(&conn)?;
         }
 
-        (*current_cipher) = Some(cipher);
+        (*current_cipher) = cipher;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -212,12 +208,9 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
     }
 
     fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
-        let mut current_cipher = acquire_write_lock!(self.cipher);
-        let cipher = if let Some(cipher) = (*current_cipher).clone().take() {
-            cipher
-        } else {
-            return Ok(());
-        };
+        let current_cipher = acquire_write_lock!(self.cipher);
+        let cipher = (*current_cipher).clone();
+
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -229,8 +222,6 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
             key_manager_state.set_state(&conn)?;
         }
-        // Now that all the decryption has been completed we can safely remove the cipher fully
-        std::mem::drop((*current_cipher).take());
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,

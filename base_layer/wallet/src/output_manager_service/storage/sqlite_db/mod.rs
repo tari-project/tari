@@ -74,11 +74,11 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
+    cipher: Arc<RwLock<XChaCha20Poly1305>>,
 }
 
 impl OutputManagerSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection, cipher: Option<XChaCha20Poly1305>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: XChaCha20Poly1305) -> Self {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
@@ -93,14 +93,14 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None, cipher.as_ref())?;
+                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None, &cipher)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None, cipher.as_ref())?;
+                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None, &cipher)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::OutputToBeReceived(c, (tx_id, o, coinbase_block_height)) => {
@@ -112,14 +112,13 @@ impl OutputManagerSqliteDatabase {
                     OutputStatus::EncumberedToBeReceived,
                     Some(tx_id),
                     coinbase_block_height,
-                    cipher.as_ref(),
+                    &cipher,
                 )?;
                 new_output.commit(conn)?
             },
 
             DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
-                let script_sql =
-                    KnownOneSidedPaymentScriptSql::from_known_one_sided_payment_script(script, cipher.as_ref())?;
+                let script_sql = KnownOneSidedPaymentScriptSql::from_known_one_sided_payment_script(script, &cipher)?;
                 if KnownOneSidedPaymentScriptSql::find(&script_sql.script_hash, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateScript);
                 }
@@ -149,9 +148,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &conn) {
-                Ok(o) => Some(DbValue::SpentOutput(Box::new(
-                    o.to_db_unblinded_output(cipher.as_ref())?,
-                ))),
+                Ok(o) => Some(DbValue::SpentOutput(Box::new(o.to_db_unblinded_output(&cipher)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -161,9 +158,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &conn) {
-                Ok(o) => Some(DbValue::UnspentOutput(Box::new(
-                    o.to_db_unblinded_output(cipher.as_ref())?,
-                ))),
+                Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(&cipher)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -174,9 +169,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputHash(hash) => {
                 match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
-                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(
-                        o.to_db_unblinded_output(cipher.as_ref())?,
-                    ))),
+                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(&cipher)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -188,7 +181,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
-                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(cipher.as_ref())?))),
+                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(&cipher)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -204,7 +197,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::AnyOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -214,7 +207,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -224,7 +217,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::SpentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -234,7 +227,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -244,7 +237,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::InvalidOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -254,7 +247,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::KnownOneSidedPaymentScripts(
                     known_one_sided_payment_scripts
                         .iter()
-                        .map(|script| script.clone().to_known_one_sided_payment_script(cipher.as_ref()))
+                        .map(|script| script.clone().to_known_one_sided_payment_script(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -283,7 +276,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.clone().to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -294,7 +287,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -317,7 +310,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -340,7 +333,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -365,9 +358,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
                             Ok(o) => {
                                 o.delete(&conn)?;
-                                Ok(Some(DbValue::AnyOutput(Box::new(
-                                    o.to_db_unblinded_output(cipher.as_ref())?,
-                                ))))
+                                Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(&cipher)?))))
                             },
                             Err(e) => match e {
                                 OutputManagerStorageError::DieselError(DieselError::NotFound) => Ok(None),
@@ -425,7 +416,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
         outputs
             .iter()
-            .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.clone().to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -658,7 +649,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 Some(tx_id),
                 None,
-                cipher.as_ref(),
+                &cipher,
             )?;
             new_output.commit(&conn)?;
         }
@@ -758,7 +749,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_unblinded_output(cipher.as_ref())?)),
+            Some(o) => Ok(Some(o.to_db_unblinded_output(&cipher)?)),
             None => Ok(None),
         }
     }
@@ -780,7 +771,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_unblinded_output(cipher.as_ref())?)),
+            Some(o) => Ok(Some(o.to_db_unblinded_output(&cipher)?)),
             None => Ok(None),
         }
     }
@@ -1015,13 +1006,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn).is_ok() {
             return Err(OutputManagerStorageError::DuplicateOutput);
         }
-        let new_output = NewOutputSql::new(
-            output,
-            OutputStatus::EncumberedToBeReceived,
-            Some(tx_id),
-            None,
-            cipher.as_ref(),
-        )?;
+        let new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id), None, &cipher)?;
         new_output.commit(&conn)?;
 
         if start.elapsed().as_millis() > 0 {
@@ -1059,7 +1044,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         );
         outputs
             .iter()
-            .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.clone().to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -1070,7 +1055,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_unblinded_output(cipher.as_ref()))
+            .map(|o| o.clone().to_db_unblinded_output(&cipher))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -1080,7 +1065,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(OutputSql::fetch_outputs_by(q, &conn)?
             .into_iter()
             .filter_map(|x| {
-                x.to_db_unblinded_output(cipher.as_ref())
+                x.to_db_unblinded_output(&cipher)
                     .map_err(|e| {
                         error!(
                             target: LOG_TARGET,
@@ -1241,11 +1226,9 @@ impl KnownOneSidedPaymentScriptSql {
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
     pub fn to_known_one_sided_payment_script(
         mut self,
-        cipher: Option<&XChaCha20Poly1305>,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
-        if let Some(cipher) = cipher {
-            self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
-        }
+        self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
 
         let script_hash = self.script_hash;
         let private_key = PrivateKey::from_bytes(&self.private_key).map_err(|_| {
@@ -1287,7 +1270,7 @@ impl KnownOneSidedPaymentScriptSql {
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
     pub fn from_known_one_sided_payment_script(
         known_script: KnownOneSidedPaymentScript,
-        cipher: Option<&XChaCha20Poly1305>,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let script_lock_height = known_script.script_lock_height as i64;
         let script_hash = known_script.script_hash;
@@ -1304,9 +1287,8 @@ impl KnownOneSidedPaymentScriptSql {
         };
 
         // encrypt in place the output, so no private_key memory leaks remain
-        if let Some(cipher) = cipher {
-            output.encrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
-        }
+        output.encrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
+
         Ok(output)
     }
 }
@@ -1395,10 +1377,15 @@ mod test {
 
         let factories = CryptoFactories::default();
 
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
+
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, None).unwrap();
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1407,7 +1394,7 @@ mod test {
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None, None).unwrap();
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None, &cipher).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1516,7 +1503,7 @@ mod test {
 
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
 
-        let mut output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, Some(&cipher)).unwrap();
+        let mut output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
 
         output.commit(&conn).unwrap();
         let mut encrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();

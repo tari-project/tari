@@ -612,11 +612,9 @@ impl OutputSql {
     #[allow(clippy::too_many_lines)]
     pub fn to_db_unblinded_output(
         mut self,
-        cipher: Option<&XChaCha20Poly1305>,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        if let Some(cipher) = cipher {
-            self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
-        }
+        self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
 
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
