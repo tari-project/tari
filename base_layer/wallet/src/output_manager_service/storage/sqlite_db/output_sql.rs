@@ -344,10 +344,8 @@ impl OutputSql {
     }
 
     /// Find a particular Output, if it exists
-    pub fn find(spending_key: &[u8], conn: &SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(outputs::spending_key.eq(spending_key))
-            .first::<OutputSql>(conn)?)
+    pub fn find(id: i32, conn: &SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table.filter(outputs::id.eq(id)).first::<OutputSql>(conn)?)
     }
 
     pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
@@ -606,7 +604,7 @@ impl OutputSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        OutputSql::find(&self.spending_key, conn)
+        OutputSql::find(self.id, conn)
     }
 
     #[allow(clippy::too_many_lines)]
