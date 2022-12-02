@@ -134,7 +134,6 @@ pub async fn change_password(
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
-    // TODO: add update encryption instead
     // wallet
     //     .remove_encryption()
     //     .await
