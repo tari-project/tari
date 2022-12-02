@@ -130,14 +130,6 @@ impl OutputManagerSqliteDatabase {
 }
 
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
-    fn apply_encryption(&self, _cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
-        Ok(())
-    }
-
-    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
-        Ok(())
-    }
-
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {

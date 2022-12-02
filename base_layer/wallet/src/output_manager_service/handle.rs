@@ -22,7 +22,6 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc};
 
-use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, HashOutput, PublicKey},
@@ -116,8 +115,6 @@ pub enum OutputManagerRequest {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     },
-    ApplyEncryption(Box<XChaCha20Poly1305>),
-    RemoveEncryption,
     FeeEstimate {
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
@@ -195,8 +192,6 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
                 commitments, fee_per_gram,
             ),
-            ApplyEncryption(_) => write!(f, "ApplyEncryption"),
-            RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
@@ -258,8 +253,6 @@ pub enum OutputManagerResponse {
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
-    EncryptionApplied,
-    EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
     FeeEstimate(MicroTari),
@@ -775,24 +768,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::ClaimHtlcTransaction(ct) => Ok(ct),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ApplyEncryption(Box::new(cipher)))
-            .await??
-        {
-            OutputManagerResponse::EncryptionApplied => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn remove_encryption(&mut self) -> Result<(), OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::RemoveEncryption).await?? {
-            OutputManagerResponse::EncryptionRemoved => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

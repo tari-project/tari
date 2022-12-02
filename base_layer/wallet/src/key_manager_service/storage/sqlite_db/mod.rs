@@ -177,62 +177,6 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
         Ok(())
     }
-
-    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
-        let mut current_cipher = acquire_write_lock!(self.cipher);
-
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
-        for key_manager_state in &mut key_manager_states {
-            key_manager_state
-                .encrypt(&cipher)
-                .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-            key_manager_state.set_state(&conn)?;
-        }
-
-        (*current_cipher) = cipher;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
-        let current_cipher = acquire_write_lock!(self.cipher);
-        let cipher = (*current_cipher).clone();
-
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
-
-        for key_manager_state in &mut key_manager_states {
-            key_manager_state
-                .decrypt(&cipher)
-                .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-            key_manager_state.set_state(&conn)?;
-        }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]

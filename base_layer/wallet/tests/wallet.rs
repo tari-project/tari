@@ -321,22 +321,6 @@ async fn test_wallet() {
     // Test applying and removing encryption
     let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
-    alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string().into())
-        .await
-        .unwrap();
-
-    // Second encryption should fail
-    #[allow(clippy::match_wild_err_arm)]
-    match alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string().into())
-        .await
-    {
-        Ok(_) => panic!("Should not be able to encrypt twice"),
-        Err(WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted)) => {},
-        Err(_) => panic!("Should be the Already Encrypted error"),
-    }
-
     drop(alice_event_stream);
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
@@ -361,7 +345,7 @@ async fn test_wallet() {
     drop(db);
 
     let mut shutdown_a = Shutdown::new();
-    let mut alice_wallet = create_wallet(
+    let alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
@@ -371,8 +355,6 @@ async fn test_wallet() {
     )
     .await
     .unwrap();
-
-    alice_wallet.remove_encryption().await.unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;

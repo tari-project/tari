@@ -35,6 +35,7 @@ macro_rules! acquire_lock {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! acquire_write_lock {
     ($e:expr) => {
         acquire_lock!($e, write)
