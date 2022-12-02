@@ -303,12 +303,12 @@ pub fn create_consensus_manager() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()
 }
 
-pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64) -> UnblindedOutput {
+pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64, extra: Option<Vec<u8>>) -> UnblindedOutput {
     let rules = create_consensus_manager();
     let constants = rules.consensus_constants(height);
     test_params.create_unblinded_output(UtxoTestParams {
         value: rules.get_block_reward_at(height),
-        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height()),
+        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), extra),
         ..Default::default()
     })
 }

@@ -71,10 +71,10 @@ pub enum TransactionError {
     InvalidCommitteeLength { len: usize, max: usize },
     #[error("Missing validator node signature")]
     MissingValidatorNodeSignature,
-    #[error("Only coinbase outputs may have metadata")]
-    NonCoinbaseHasOutputFeaturesMetadata,
-    #[error("Metadata size is {len} but the maximum is {max}")]
-    InvalidOutputFeaturesMetadataSize { len: usize, max: usize },
+    #[error("Only coinbase outputs may have extra coinbase info")]
+    NonCoinbaseHasOutputFeaturesCoinbaseExtra,
+    #[error("Coinbase extra size is {len} but the maximum is {max}")]
+    InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: usize },
 }
 
 impl From<CovenantError> for TransactionError {

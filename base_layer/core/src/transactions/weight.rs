@@ -33,7 +33,7 @@ pub struct WeightParams {
     /// Weight in grams per output, excl. TariScript and OutputFeatures
     pub output_weight: u64,
     /// Metadata per byte weight
-    pub metadata_bytes_per_gram: Option<NonZeroU64>,
+    pub metadata_bytes_per_gram: Option<NonZeroU64>, // Why is this defined like this? Seems very hacky
 }
 
 impl WeightParams {

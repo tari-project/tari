@@ -990,14 +990,13 @@ mod test {
     }
 
     mod check_coinbase_maturity {
-
         use super::*;
 
         #[test]
         fn it_succeeds_for_valid_coinbase() {
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap();
         }
@@ -1006,7 +1005,7 @@ mod test {
         fn it_returns_error_for_invalid_coinbase_maturity() {
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             let err = check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap_err();
@@ -1023,7 +1022,7 @@ mod test {
         fn it_succeeds_for_valid_coinbase() {
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
             check_coinbase_reward(
@@ -1041,7 +1040,7 @@ mod test {
         fn it_returns_error_for_invalid_coinbase_reward() {
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
             coinbase.value = 123.into();
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);

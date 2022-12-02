@@ -8279,7 +8279,7 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert!((*output_features).metadata.is_empty());
+            assert!((*output_features).coinbase_extra.is_empty());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -8308,7 +8308,7 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).metadata, expected_metadata);
+            assert_eq!((*output_features).coinbase_extra, expected_metadata);
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);

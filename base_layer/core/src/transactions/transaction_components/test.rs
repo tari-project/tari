@@ -214,7 +214,7 @@ fn sender_signature_verification() {
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.features = OutputFeatures::create_coinbase(0);
+    tx_output.features = OutputFeatures::create_coinbase(0, None);
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();

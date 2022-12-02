@@ -185,7 +185,7 @@ mod test {
         unpack_enum!(CovenantArg::OutputFields(fields) = token.as_arg().unwrap());
         assert_eq!(fields.fields(), &[
             OutputField::Commitment,
-            OutputField::FeaturesMetadata
+            OutputField::FeaturesCoinbaseExtra
         ]);
 
         let token = decoder.next().unwrap().unwrap();

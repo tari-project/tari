@@ -327,17 +327,17 @@ impl AggregateBody {
 
     pub fn check_output_features(&self, max_coinbase_metadata_size: usize) -> Result<(), TransactionError> {
         for output in self.outputs() {
-            // This field should be optional for coinbases (mining pools and
-            // other merge mined coins can use it), but it should be empty for non-coinbases
-            if !output.is_coinbase() && !output.features.metadata.is_empty() {
-                return Err(TransactionError::NonCoinbaseHasOutputFeaturesMetadata);
+            // This field is optional for coinbases (mining pools and
+            // other merge mined coins can use it), but must be empty for non-coinbases
+            if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
+                return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
             }
 
             // For coinbases, the maximum length should be 64 bytes (2x hashes),
             // so that arbitrary data cannot be included
-            if output.is_coinbase() && output.features.metadata.len() > max_coinbase_metadata_size {
-                return Err(TransactionError::InvalidOutputFeaturesMetadataSize {
-                    len: output.features.metadata.len(),
+            if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size {
+                return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
+                    len: output.features.coinbase_extra.len(),
                     max: max_coinbase_metadata_size,
                 });
             }

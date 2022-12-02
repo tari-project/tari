@@ -320,7 +320,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            features.metadata,
+            features.coinbase_extra,
             sidechain_feature,
         ))
     }
@@ -331,7 +331,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
         Self {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
-            metadata: features.metadata,
+            coinbase_extra: features.coinbase_extra,
             version: features.version as u32,
             sidechain_feature: features.sidechain_feature.map(Into::into),
         }
