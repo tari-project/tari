@@ -26,18 +26,18 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
-    io,
-    io::{ErrorKind, Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::Hex};
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
+    consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -56,7 +56,7 @@ use crate::{
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionInput {
     pub version: TransactionInputVersion,
     /// Either the hash of TransactionOutput that this Input is spending or its data
@@ -64,7 +64,7 @@ pub struct TransactionInput {
     /// The script input data, if any
     pub input_data: ExecutionStack,
     /// A signature with k_s, signing the script, input data, and mined height
-    pub script_signature: ComSignature,
+    pub script_signature: ComAndPubSignature,
 }
 
 /// An input for a transaction that spends an existing output
@@ -73,7 +73,7 @@ impl TransactionInput {
         version: TransactionInputVersion,
         spent_output: SpentOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput {
             version,
@@ -86,7 +86,7 @@ impl TransactionInput {
     pub fn new_current_version(
         spent_output: SpentOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput::new(
             TransactionInputVersion::get_current_version(),
@@ -100,7 +100,7 @@ impl TransactionInput {
     pub fn new_with_output_hash(
         output_hash: HashOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
     ) -> TransactionInput {
         TransactionInput::new_current_version(SpentOutput::OutputHash(output_hash), input_data, script_signature)
     }
@@ -112,7 +112,7 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: ComAndPubSignature,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
@@ -161,7 +161,8 @@ impl TransactionInput {
 
     pub fn build_script_challenge(
         version: TransactionInputVersion,
-        nonce_commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
         script: &TariScript,
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
@@ -170,7 +171,8 @@ impl TransactionInput {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
-                    .chain(nonce_commitment)
+                    .chain(ephemeral_commitment)
+                    .chain(ephemeral_pubkey)
                     .chain(script)
                     .chain(input_data)
                     .chain(script_public_key)
@@ -282,7 +284,7 @@ impl TransactionInput {
 
     pub fn validate_script_signature(
         &self,
-        public_script_key: &PublicKey,
+        script_public_key: &PublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         match self.spent_output {
@@ -294,16 +296,20 @@ impl TransactionInput {
             } => {
                 let challenge = TransactionInput::build_script_challenge(
                     self.version,
-                    self.script_signature.public_nonce(),
+                    self.script_signature.ephemeral_commitment(),
+                    self.script_signature.ephemeral_pubkey(),
                     script,
                     &self.input_data,
-                    public_script_key,
+                    script_public_key,
                     commitment,
                 );
-                if self
-                    .script_signature
-                    .verify_challenge(&(commitment + public_script_key), &challenge, factory)
-                {
+                if self.script_signature.verify_challenge(
+                    commitment,
+                    script_public_key,
+                    &challenge,
+                    factory,
+                    &mut OsRng,
+                ) {
                     Ok(())
                 } else {
                     Err(TransactionError::InvalidSignatureError(
@@ -457,30 +463,7 @@ impl Ord for TransactionInput {
     }
 }
 
-impl ConsensusEncoding for TransactionInput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.version.consensus_encode(writer)?;
-        self.spent_output.consensus_encode(writer)?;
-        self.input_data.consensus_encode(writer)?;
-        self.script_signature.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for TransactionInput {}
-
-impl ConsensusDecoding for TransactionInput {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let version = TransactionInputVersion::consensus_decode(reader)?;
-        let spent_output = SpentOutput::consensus_decode(reader)?;
-        let input_data = ExecutionStack::consensus_decode(reader)?;
-        let script_signature = ComSignature::consensus_decode(reader)?;
-        let input = TransactionInput::new(version, spent_output, input_data, script_signature);
-        Ok(input)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
     OutputHash(HashOutput),
@@ -503,83 +486,5 @@ impl SpentOutput {
             SpentOutput::OutputHash(_) => 0,
             SpentOutput::OutputData { .. } => 1,
         }
-    }
-}
-
-impl ConsensusEncoding for SpentOutput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        writer.write_all(&[self.get_type()])?;
-        match self {
-            SpentOutput::OutputHash(hash) => hash.consensus_encode(writer)?,
-            SpentOutput::OutputData {
-                version,
-                features,
-                commitment,
-                script,
-                sender_offset_public_key,
-                covenant,
-                encrypted_value,
-                minimum_value_promise,
-            } => {
-                version.consensus_encode(writer)?;
-                features.consensus_encode(writer)?;
-                commitment.consensus_encode(writer)?;
-                script.consensus_encode(writer)?;
-                sender_offset_public_key.consensus_encode(writer)?;
-                covenant.consensus_encode(writer)?;
-                encrypted_value.consensus_encode(writer)?;
-                minimum_value_promise.consensus_encode(writer)?;
-            },
-        };
-        Ok(())
-    }
-}
-
-impl ConsensusDecoding for SpentOutput {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; 1];
-        reader.read_exact(&mut buf)?;
-        match buf[0] {
-            0 => {
-                let hash = FixedHash::consensus_decode(reader)?;
-                Ok(SpentOutput::OutputHash(hash))
-            },
-            1 => {
-                let version = TransactionOutputVersion::consensus_decode(reader)?;
-                let features = OutputFeatures::consensus_decode(reader)?;
-                let commitment = Commitment::consensus_decode(reader)?;
-                let script = TariScript::consensus_decode(reader)?;
-                let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
-                let covenant = Covenant::consensus_decode(reader)?;
-                let encrypted_value = EncryptedValue::consensus_decode(reader)?;
-                let minimum_value_promise = MicroTari::consensus_decode(reader)?;
-                Ok(SpentOutput::OutputData {
-                    version,
-                    features,
-                    commitment,
-                    script,
-                    sender_offset_public_key,
-                    covenant,
-                    encrypted_value,
-                    minimum_value_promise,
-                })
-            },
-            _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use crate::{consensus::check_consensus_encoding_correctness, transactions::test_helpers::create_test_input};
-
-    #[test]
-    fn consensus_encoding() {
-        let factory = CommitmentFactory::default();
-
-        let (input, _) = create_test_input(123.into(), 321, &factory);
-        check_consensus_encoding_correctness(input).unwrap();
     }
 }

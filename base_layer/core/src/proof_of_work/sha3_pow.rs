@@ -80,8 +80,14 @@ pub mod test {
         let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
-        let epoch_secs =
-            DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).timestamp() as u64;
+        let epoch_secs = DateTime::<Utc>::from_utc(
+            NaiveDate::from_ymd_opt(2000, 1, 1)
+                .unwrap()
+                .and_hms_opt(1, 1, 1)
+                .unwrap(),
+            Utc,
+        )
+        .timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
         header.pow.pow_algo = PowAlgorithm::Sha3;
         header
@@ -91,6 +97,7 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 14;
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(25));
+        println!("{:?}", header);
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(6));
     }
 }

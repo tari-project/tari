@@ -22,7 +22,7 @@
 
 use std::mem::size_of;
 
-use chacha20poly1305::{aead::NewAead, Key, XChaCha20Poly1305};
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -525,7 +525,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(5),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db
@@ -554,7 +554,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(6),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db
@@ -583,7 +583,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(7),
-        Some(NaiveDateTime::from_timestamp(0, 0)),
+        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
     );
 
     sqlite_db

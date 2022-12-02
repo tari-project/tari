@@ -651,6 +651,7 @@ where
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::RegisterValidatorNode {
+                amount,
                 validator_node_public_key,
                 validator_node_signature,
                 selection_criteria,
@@ -659,6 +660,7 @@ where
             } => {
                 let rp = reply_channel.take().expect("Cannot be missing");
                 self.register_validator_node(
+                    amount,
                     validator_node_public_key,
                     validator_node_signature,
                     selection_criteria,
@@ -740,7 +742,9 @@ where
                     tx_id,
                     current_height,
                     mined_timestamp,
+                    transaction_validation_join_handles,
                 )
+                .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
@@ -1137,7 +1141,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1274,7 +1278,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1426,7 +1430,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+        stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1483,6 +1487,7 @@ where
 
     pub async fn register_validator_node(
         &mut self,
+        amount: MicroTari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
@@ -1498,16 +1503,14 @@ where
     ) -> Result<(), TransactionServiceError> {
         let output_features =
             OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
-        let tx_meta =
-            TransactionMetadata::new_with_features(0.into(), 3, KernelFeatures::create_validator_node_registration());
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
-            MicroTari::from(1),
+            amount,
             selection_criteria,
             output_features,
             fee_per_gram,
             message,
-            tx_meta,
+            TransactionMetadata::default(),
             join_handles,
             transaction_broadcast_join_handles,
             reply_channel,
@@ -2498,7 +2501,7 @@ where
     }
 
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
-    pub fn add_utxo_import_transaction_with_status(
+    pub async fn add_utxo_import_transaction_with_status(
         &mut self,
         value: MicroTari,
         source_address: TariAddress,
@@ -2508,6 +2511,9 @@ where
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        transaction_validation_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db.add_utxo_import_transaction_with_status(
@@ -2540,6 +2546,9 @@ where
             );
             e
         });
+        // Because we added new transactions, let try to trigger a validation for them
+        self.start_transaction_validation_protocol(transaction_validation_join_handles)
+            .await?;
         Ok(tx_id)
     }
 

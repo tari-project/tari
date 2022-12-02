@@ -22,21 +22,22 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, TransactionOutputVersion, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, TransactionOutputVersion, UnblindedOutput},
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
+use zeroize::Zeroize;
 
 use crate::tari_rpc as grpc;
 
 impl From<UnblindedOutput> for grpc::UnblindedOutput {
     fn from(output: UnblindedOutput) -> Self {
+        let mut covenant = Vec::new();
+        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
         grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
@@ -45,13 +46,15 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             input_data: output.input_data.to_bytes(),
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
-            metadata_signature: Some(grpc::ComSignature {
-                public_nonce_commitment: Vec::from(output.metadata_signature.public_nonce().as_bytes()),
-                signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
-                signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: Vec::from(output.metadata_signature.ephemeral_commitment().as_bytes()),
+                ephemeral_pubkey: Vec::from(output.metadata_signature.ephemeral_pubkey().as_bytes()),
+                u_a: Vec::from(output.metadata_signature.u_a().as_bytes()),
+                u_x: Vec::from(output.metadata_signature.u_x().as_bytes()),
+                u_y: Vec::from(output.metadata_signature.u_y().as_bytes()),
             }),
             script_lock_height: output.script_lock_height,
-            covenant: output.covenant.to_bytes(),
+            covenant,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         }
@@ -61,7 +64,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
 impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
     type Error = String;
 
-    fn try_from(output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
+    fn try_from(mut output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
         let spending_key =
             PrivateKey::from_bytes(output.spending_key.as_bytes()).map_err(|e| format!("spending_key: {:?}", e))?;
 
@@ -87,11 +90,16 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
+        let mut buffer = output.covenant.as_bytes();
+        let covenant = BorshDeserialize::deserialize(&mut buffer).unwrap();
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
+
+        // zeroize output sensitive data
+        output.spending_key.zeroize();
+        output.script_private_key.zeroize();
 
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,

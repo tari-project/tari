@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -34,7 +34,7 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::ConsensusEncodingSized,
+    borsh::SerializedSize,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
@@ -52,10 +52,11 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
+use tari_utilities::Hidden;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -102,9 +103,8 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
-    )
+    TransactionWeight::latest()
+        .round_up_metadata_size(OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size())
 }
 
 struct TestOmsService<U> {
@@ -180,18 +180,14 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
     // println!("{:?}", mnemonic_seq);
 
-    let cipher_seed = CipherSeed::from_mnemonic(
-        &[
-            "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion",
-            "myself", "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park",
-            "midnight", "quantum", "bright", "carbon",
-        ]
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>(),
-        None,
-    )
-    .unwrap();
+    let words = [
+        "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion", "myself",
+        "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park", "midnight", "quantum",
+        "bright", "carbon",
+    ];
+    let seed_words = SeedWords::new(words.iter().map(|s| Hidden::hide(s.to_string())).collect::<Vec<_>>());
+
+    let cipher_seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
     let key_manager = KeyManagerHandle::new(cipher_seed.clone(), KeyManagerDatabase::new(ks_backend));
 
     let output_manager_service = OutputManagerService::new(
@@ -408,7 +404,7 @@ async fn fee_estimate() {
         )
         .await
         .unwrap();
-    assert_eq!(fee, MicroTari::from(360));
+    assert_eq!(fee, MicroTari::from(365));
 }
 
 #[allow(clippy::identity_op)]
@@ -501,14 +497,14 @@ async fn test_utxo_selection_no_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroTari::from(250));
+    assert_eq!(fee, MicroTari::from(252));
 
     let broke_amount = spendable_amount + MicroTari::from(2000);
     let fee = oms
         .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroTari::from(250));
+    assert_eq!(fee, MicroTari::from(252));
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -594,7 +590,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroTari::from(250));
+    assert_eq!(fee, MicroTari::from(252));
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -1476,7 +1472,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) -
                 MicroTari::from(900_000) -
-                MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
+                MicroTari::from(1280) + //Output4 = output 1 -900_000 and 1280 for fees
                 MicroTari::from(8_000_000)
     );
 
@@ -1626,7 +1622,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
                 MicroTari::from(900_000) -
-                MicroTari::from(1260) + //spent 900_000 and 1260 for fees
+                MicroTari::from(1280) + //spent 900_000 and 1280 for fees
                 MicroTari::from(8_000_000) +    //output 5
                 MicroTari::from(16_000_000) // output 6
     );
@@ -1768,7 +1764,7 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
-        MicroTari::from(output1_value) - MicroTari::from(901_260)
+        MicroTari::from(output1_value) - MicroTari::from(901_280)
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1830,7 +1826,7 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(901_260)
+            MicroTari::from(901_280)
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
@@ -2086,7 +2082,7 @@ async fn scan_for_recovery_test() {
             inputs!(PublicKey::from_secret_key(&script_key)),
             script_key,
             PublicKey::default(),
-            ComSignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::new(),
             encrypted_value,

@@ -23,10 +23,9 @@ use std::{
     cmp::max,
     convert::TryInto,
     fmt::{Display, Error, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -46,32 +45,30 @@ use tari_crypto::{
 };
 use tari_script::ScriptContext;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroTari,
-        transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelFeatures,
-            KernelSum,
-            OutputType,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
+use crate::transactions::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroTari,
+    transaction_components::{
+        transaction_output::batch_verify_range_proofs,
+        KernelFeatures,
+        KernelSum,
+        OutputType,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
+    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AggregateBody {
+    #[borsh_skip]
     sorted: bool,
     /// List of inputs spent by the transaction.
     inputs: Vec<TransactionInput>,
@@ -328,8 +325,29 @@ impl AggregateBody {
         Ok(())
     }
 
-    /// This function will check all stxo to ensure that feature flags where followed
-    pub fn check_stxo_rules(&self, height: u64) -> Result<(), TransactionError> {
+    pub fn check_output_features(&self, max_coinbase_metadata_size: usize) -> Result<(), TransactionError> {
+        for output in self.outputs() {
+            // This field should be optional for coinbases (mining pools and
+            // other merge mined coins can use it), but it should be empty for non-coinbases
+            if !output.is_coinbase() && !output.features.metadata.is_empty() {
+                return Err(TransactionError::NonCoinbaseHasOutputFeaturesMetadata);
+            }
+
+            // For coinbases, the maximum length should be 64 bytes (2x hashes),
+            // so that arbitrary data cannot be included
+            if output.is_coinbase() && output.features.metadata.len() > max_coinbase_metadata_size {
+                return Err(TransactionError::InvalidOutputFeaturesMetadataSize {
+                    len: output.features.metadata.len(),
+                    max: max_coinbase_metadata_size,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// This function will check all UTXO to ensure that feature flags where followed
+    pub fn check_utxo_rules(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs() {
             if input.features()?.maturity > height {
                 warn!(
@@ -566,46 +584,5 @@ impl Display for AggregateBody {
             writeln!(fmt, "{}", output)?;
         }
         Ok(())
-    }
-}
-
-impl ConsensusEncoding for AggregateBody {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.inputs.consensus_encode(writer)?;
-        self.outputs.consensus_encode(writer)?;
-        self.kernels.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for AggregateBody {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.inputs.consensus_encode_exact_size() +
-            self.outputs.consensus_encode_exact_size() +
-            self.kernels.consensus_encode_exact_size()
-    }
-}
-
-impl ConsensusDecoding for AggregateBody {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        const MAX_SIZE: usize = 50000;
-        let inputs = MaxSizeVec::<TransactionInput, MAX_SIZE>::consensus_decode(reader)?.into();
-        let outputs = MaxSizeVec::<TransactionOutput, MAX_SIZE>::consensus_decode(reader)?.into();
-        let kernels = MaxSizeVec::<TransactionKernel, MAX_SIZE>::consensus_decode(reader)?.into();
-        let body = AggregateBody::new(inputs, outputs, kernels);
-        Ok(body)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tari_common::configuration::Network;
-
-    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
-
-    #[test]
-    fn consensus_encoding() {
-        let body = get_genesis_block(Network::Esmeralda).block().body.clone();
-        check_consensus_encoding_correctness(body).unwrap();
     }
 }

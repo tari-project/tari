@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 source build.config
 TARI_REPO_PATH=${TARI_REPO_PATH:-$(git rev-parse --show-toplevel)}
 CURRENT_DIR=${TARI_REPO_PATH}/base_layer/wallet_ffi
+TARGET_CLEAN=${TARGET_CLEAN:-1}
 cd "${CURRENT_DIR}" || exit
 mkdir -p logs
 cd logs || exit
@@ -94,7 +95,9 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   # XCode will select the relevant set of symbols to be included in the mobile application depending on which arch is built
   cp libtari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/" || exit
   cd ../../.. || exit
-  rm -rf target
+  if [ "${TARGET_CLEAN}" -eq 1 ]; then
+    rm -rf target
+  fi
   cd "${DEPENDENCIES}" || exit
   echo "${GREEN}iOS build completed${NC}"
 elif [ "${BUILD_IOS}" -eq 1 ]; then
@@ -432,7 +435,9 @@ EOF
       cd release || exit
       cp libtari_wallet_ffi.a "${OUTPUT_DIR}"
       cd ../..
-      rm -rf target
+      if [ "${TARGET_CLEAN}" -eq 1 ]; then
+        rm -rf target
+      fi
       cd "${DEPENDENCIES}" || exit
       mkdir -p "${PLATFORM_OUTDIR}"
       cd "${PLATFORM_OUTDIR}" || exit

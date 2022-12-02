@@ -22,9 +22,6 @@
 // DAMAGE.
 use std::sync::Arc;
 
-use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
-
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -36,8 +33,8 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, Transaction, UnblindedOutput},
+        test_helpers::schema_to_transaction,
+        transaction_components::{Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -368,92 +365,6 @@ mod fetch_block_hashes_from_header_tip {
     }
 }
 
-mod add_block {
-    use super::*;
-
-    #[test]
-    fn it_rejects_duplicate_commitments_in_the_utxo_set() {
-        let db = setup();
-        let (blocks, outputs) = add_many_chained_blocks(5, &db);
-
-        let prev_block = blocks.last().unwrap();
-        // Used to help identify the output we're interrogating in this test
-        let features = OutputFeatures {
-            maturity: 1,
-            ..Default::default()
-        };
-        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
-            from: vec![outputs[0].clone()],
-            to: vec![500 * T],
-            features: features
-        )]);
-        let mut prev_utxo = tx_outputs[0].clone();
-
-        let (block, _) = create_next_block(&db, prev_block, txns);
-        db.add_block(block.clone()).unwrap().assert_added();
-
-        let prev_block = block;
-
-        let (txns, _) = schema_to_transaction(&[TransactionSchema {
-            from: vec![outputs[1].clone()],
-            to: vec![],
-            to_outputs: vec![prev_utxo.clone()],
-            fee: 5.into(),
-            lock_height: 0,
-            features,
-            script: tari_script::script![Nop],
-            covenant: Default::default(),
-            input_data: None,
-            input_version: None,
-            output_version: None,
-        }]);
-        let commitment_hex = txns[0]
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.maturity == 1)
-            .unwrap()
-            .commitment
-            .to_hex();
-
-        let (block, _) = create_next_block(&db, &prev_block, txns);
-        let err = db.add_block(block.clone()).unwrap_err();
-        unpack_enum!(ChainStorageError::KeyExists { key, .. } = err);
-        assert_eq!(key, commitment_hex);
-        // Check rollback
-        let header = db.fetch_header(block.header.height).unwrap();
-        assert!(header.is_none());
-
-        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![prev_utxo.clone()], to: vec![50 * T])]);
-        let (block, _) = create_next_block(&db, &prev_block, txns);
-        let block = db.add_block(block).unwrap().assert_added();
-        let prev_block = block.to_arc_block();
-
-        // Different metadata so that the output hash is different in txo_hash_to_index_db
-        prev_utxo.features = OutputFeatures {
-            metadata: vec![1],
-            ..Default::default()
-        };
-        // Now we can reuse a commitment
-        let (txns, _) = schema_to_transaction(&[TransactionSchema {
-            from: vec![outputs[1].clone()],
-            to: vec![],
-            to_outputs: vec![prev_utxo],
-            fee: 5.into(),
-            lock_height: 0,
-            features: Default::default(),
-            script: tari_script::script![Nop],
-            covenant: Default::default(),
-            input_data: None,
-            input_version: None,
-            output_version: None,
-        }]);
-
-        let (block, _) = create_next_block(&db, &prev_block, txns);
-        db.add_block(block).unwrap().assert_added();
-    }
-}
-
 mod get_stats {
     use super::*;
 
@@ -566,7 +477,7 @@ mod fetch_header_containing_kernel_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 2);
+        assert_eq!(genesis.block().body.kernels().len(), 1);
         let mut mmr_position = 0;
         genesis.block().body.kernels().iter().for_each(|_| {
             let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();

@@ -36,6 +36,7 @@ use crate::{
         SideChainFeature,
         TemplateType,
         ValidatorNodeRegistration,
+        ValidatorNodeSignature,
     },
 };
 
@@ -81,21 +82,21 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
     type Error = String;
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        Ok(Self {
-            public_key: PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
-            signature: value
+        Ok(Self::new(ValidatorNodeSignature::new(
+            PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            value
                 .signature
                 .map(Signature::try_from)
                 .ok_or("signature not provided")??,
-        })
+        )))
     }
 }
 
 impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration {
     fn from(value: ValidatorNodeRegistration) -> Self {
         Self {
-            public_key: value.public_key.to_vec(),
-            signature: Some(value.signature.into()),
+            public_key: value.public_key().to_vec(),
+            signature: Some(value.signature().into()),
         }
     }
 }

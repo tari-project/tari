@@ -34,7 +34,8 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized},
+    borsh::SerializedSize,
+    consensus::ConsensusConstants,
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -590,7 +591,7 @@ where
                             Err(OutputManagerProtocolError { id, error }) => {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                                    "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
                                 );
                                 let event_payload = match error {
                                     OutputManagerError::InconsistentBaseNodeDataError(_) |
@@ -737,6 +738,9 @@ where
             OutputSource::default(),
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
+
+        // Because we added new outputs, let try to trigger a validation for them
+        self.validate_outputs()?;
         Ok(())
     }
 
@@ -825,15 +829,15 @@ where
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
                 single_round_sender_data.sender_offset_public_key.clone(),
-                // Note: The commitment signature at this time is only partially built
-                TransactionOutput::create_partial_metadata_signature(
+                // Note: The signature at this time is only partially built
+                TransactionOutput::create_receiver_partial_metadata_signature(
                     TransactionOutputVersion::get_current_version(),
                     single_round_sender_data.amount,
                     &spending_key,
                     &single_round_sender_data.script,
                     &features,
                     &single_round_sender_data.sender_offset_public_key,
-                    &single_round_sender_data.public_commitment_nonce,
+                    &single_round_sender_data.ephemeral_public_nonce,
                     &single_round_sender_data.covenant,
                     &encrypted_value,
                     minimum_value_promise,
@@ -892,9 +896,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                OutputFeatures::default().consensus_encode_exact_size() +
-                    script![Nop].consensus_encode_exact_size() +
-                    Covenant::new().consensus_encode_exact_size(),
+                OutputFeatures::default().get_serialized_size() +
+                    script![Nop].get_serialized_size() +
+                    Covenant::new().get_serialized_size(),
             );
 
         let utxo_selection = match self
@@ -915,10 +919,11 @@ where
                 );
                 let fee_calc = self.get_fee_calc();
                 let output_features_estimate = OutputFeatures::default();
+
                 let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-                    output_features_estimate.consensus_encode_exact_size() +
-                        Covenant::new().consensus_encode_exact_size() +
-                        script![Nop].consensus_encode_exact_size(),
+                    output_features_estimate.get_serialized_size() +
+                        script![Nop].get_serialized_size() +
+                        Covenant::new().get_serialized_size(),
                 );
                 let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_metadata_size);
                 return Ok(Fee::normalize(fee));
@@ -962,9 +967,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                recipient_output_features.consensus_encode_exact_size() +
-                    recipient_script.consensus_encode_exact_size() +
-                    recipient_covenant.consensus_encode_exact_size(),
+                recipient_output_features.get_serialized_size() +
+                    recipient_script.get_serialized_size() +
+                    recipient_covenant.get_serialized_size(),
             );
 
         let input_selection = self
@@ -1135,9 +1140,9 @@ where
         let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
                 weighting.round_up_metadata_size({
-                    output.features().consensus_encode_exact_size() +
-                        output.covenant().consensus_encode_exact_size() +
-                        output.script().unwrap_or(&nop_script).consensus_encode_exact_size()
+                    output.features().get_serialized_size() +
+                        output.covenant().get_serialized_size() +
+                        output.script().unwrap_or(&nop_script).get_serialized_size()
                 })
         });
 
@@ -1185,13 +1190,7 @@ where
         let mut db_outputs = vec![];
         for mut unblinded_output in outputs {
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-
-            let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
-            let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
-
-            unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
-            unblinded_output.sign_as_sender(&sender_offset_private_key)?;
+            unblinded_output.sign_as_sender_and_receiver(&sender_offset_private_key)?;
 
             let ub = unblinded_output.try_build()?;
             builder
@@ -1244,14 +1243,13 @@ where
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
+
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() +
-                    script.consensus_encode_exact_size() +
-                    covenant.consensus_encode_exact_size(),
+                output_features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size(),
             );
 
         let input_selection = self
@@ -1292,7 +1290,7 @@ where
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
         let minimum_amount_promise = MicroTari::zero();
-        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
             &spending_key.clone(),
@@ -1462,9 +1460,9 @@ where
         // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
         let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-            output_features_estimate.consensus_encode_exact_size() +
-                Covenant::new().consensus_encode_exact_size() +
-                script![Nop].consensus_encode_exact_size(),
+            output_features_estimate.get_serialized_size() +
+                Covenant::new().get_serialized_size() +
+                script![Nop].get_serialized_size(),
         );
 
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
@@ -1553,7 +1551,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+                script!(Nop).get_serialized_size() + OutputFeatures::default().get_serialized_size(),
             )
     }
 
@@ -1782,7 +1780,7 @@ where
             )?;
 
             let minimum_amount_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            let commitment_signature = TransactionOutput::create_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 amount_per_split,
                 &spending_key,
@@ -2001,7 +1999,7 @@ where
                 amount_per_split,
             )?;
             let minimum_value_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            let commitment_signature = TransactionOutput::create_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 amount_per_split,
                 &spending_key,
@@ -2208,7 +2206,7 @@ where
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
         let minimum_value_promise = MicroTari::zero();
-        let commitment_signature = TransactionOutput::create_final_metadata_signature(
+        let commitment_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             aftertax_amount,
             &spending_key,

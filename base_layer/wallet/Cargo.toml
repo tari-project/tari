@@ -3,24 +3,24 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.39.0"
+version = "0.42.0"
 edition = "2018"
 
 [dependencies]
-tari_core = {path = "../../base_layer/core", version = "^0.39", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"]}
+tari_core = {path = "../../base_layer/core", version = "^0.42", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"]}
 tari_common = { path = "../../common" }
-tari_common_types = { version = "^0.39", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.39", path = "../../comms/core" }
-tari_comms_dht = { version = "^0.39", path = "../../comms/dht" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.7" }
-tari_key_manager = { version = "^0.39", path = "../key_manager" }
-tari_p2p = { version = "^0.39", path = "../p2p", features = ["auto-update"] }
+tari_common_types = { version = "^0.42", path = "../../base_layer/common_types" }
+tari_comms = { version = "^0.42", path = "../../comms/core" }
+tari_comms_dht = { version = "^0.42", path = "../../comms/dht" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.5" }
+tari_key_manager = { version = "^0.42", path = "../key_manager" }
+tari_p2p = { version = "^0.42", path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = { version = "^0.39", path = "../service_framework" }
-tari_shutdown = { version = "^0.39", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.39", path = "../../infrastructure/storage" }
+tari_service_framework = { version = "^0.42", path = "../service_framework" }
+tari_shutdown = { version = "^0.42", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.42", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.7" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.1.3"
@@ -32,6 +32,7 @@ async-trait = "0.1.50"
 argon2 = "0.4.1"
 bincode = "1.3.1"
 blake2 = "0.9.0"
+borsh = "0.9.3"
 sha2 = "0.9.5"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
@@ -54,14 +55,14 @@ thiserror = "1.0.26"
 tower = "0.4"
 prost = "0.9"
 itertools = "0.10.3"
-chacha20poly1305 = "0.9.1"
-zeroize = "1.3"
+chacha20poly1305 = "0.10.1"
+zeroize = "1"
 
 [dev-dependencies]
-tari_p2p = { version = "^0.39", path = "../p2p", features = ["test-mocks"] }
-tari_comms_dht = { version = "^0.39", path = "../../comms/dht", features = ["test-mocks"] }
-tari_test_utils = { version = "^0.39", path = "../../infrastructure/test_utils" }
-tari_core = {path = "../../base_layer/core", version = "^0.39", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"]}
+tari_p2p = { version = "^0.42", path = "../p2p", features = ["test-mocks"] }
+tari_comms_dht = { version = "^0.42", path = "../../comms/dht", features = ["test-mocks"] }
+tari_test_utils = { version = "^0.42", path = "../../infrastructure/test_utils" }
+tari_core = {path = "../../base_layer/core", version = "^0.42", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"]}
 env_logger = "0.7.1"
 prost = "0.9.0"
 

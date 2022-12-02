@@ -24,26 +24,23 @@ use std::{
     cmp::Ordering,
     fmt,
     fmt::{Display, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction_components::{
-        side_chain::SideChainFeature,
-        CodeTemplateRegistration,
-        OutputType,
-        ValidatorNodeRegistration,
-    },
+use crate::transactions::transaction_components::{
+    side_chain::SideChainFeature,
+    CodeTemplateRegistration,
+    OutputType,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
 
 /// Options for UTXO's
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct OutputFeatures {
     pub version: OutputFeaturesVersion,
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
@@ -118,50 +115,24 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
-            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(ValidatorNodeRegistration {
-                public_key: validator_node_public_key,
-                signature: validator_node_signature,
-            })),
+            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
+                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+                    validator_node_public_key,
+                    validator_node_signature,
+                )),
+            )),
             ..Default::default()
         }
     }
 
+    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.validator_node_registration())
+    }
+
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
-    }
-}
-
-impl ConsensusEncoding for OutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.version.consensus_encode(writer)?;
-        self.maturity.consensus_encode(writer)?;
-        self.output_type.consensus_encode(writer)?;
-        self.sidechain_feature.consensus_encode(writer)?;
-        self.metadata.consensus_encode(writer)?;
-
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for OutputFeatures {}
-
-impl ConsensusDecoding for OutputFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        // Changing the order of these operations is consensus breaking
-        // Decode safety: consensus_decode will stop reading the varint after 10 bytes
-        let version = OutputFeaturesVersion::consensus_decode(reader)?;
-        let maturity = u64::consensus_decode(reader)?;
-        let flags = OutputType::consensus_decode(reader)?;
-        let sidechain_feature = ConsensusDecoding::consensus_decode(reader)?;
-        const MAX_METADATA_SIZE: usize = 1024;
-        let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
-        Ok(Self {
-            version,
-            output_type: flags,
-            maturity,
-            sidechain_feature,
-            metadata: metadata.into(),
-        })
     }
 }
 
@@ -190,64 +161,5 @@ impl Display for OutputFeatures {
             "OutputFeatures: Flags = {:?}, Maturity = {}",
             self.output_type, self.maturity
         )
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::convert::TryInto;
-
-    use tari_utilities::hex::from_hex;
-
-    use super::*;
-    use crate::{
-        consensus::{check_consensus_encoding_correctness, MaxSizeString},
-        transactions::transaction_components::{BuildInfo, TemplateType},
-    };
-
-    fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
-        OutputFeatures {
-            version,
-            output_type: OutputType::Standard,
-            maturity: u64::MAX,
-            metadata: vec![1; 1024],
-            sidechain_feature: Some(SideChainFeature::TemplateRegistration(CodeTemplateRegistration {
-                author_public_key: Default::default(),
-                author_signature: Default::default(),
-                template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),
-                template_version: 1,
-                template_type: TemplateType::Wasm { abi_version: 123 },
-                build_info: BuildInfo {
-                    repo_url: "/dns/github.com/https/tari_project/wasm_examples".try_into().unwrap(),
-                    commit_hash: from_hex("ea29c9f92973fb7eda913902ff6173c62cb1e5df")
-                        .unwrap()
-                        .try_into()
-                        .unwrap(),
-                },
-                binary_sha: from_hex("c93747637517e3de90839637f0ce1ab7c8a3800b")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
-                binary_url: "/dns4/github.com/https/tari_project/wasm_examples/releases/download/v0.0.6/coin.zip"
-                    .try_into()
-                    .unwrap(),
-            })),
-        }
-    }
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let subject = make_fully_populated_output_features(OutputFeaturesVersion::V0);
-        check_consensus_encoding_correctness(subject).unwrap();
-
-        let subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        check_consensus_encoding_correctness(subject).unwrap();
-    }
-
-    #[test]
-    fn it_encodes_and_decodes_correctly_in_none_case() {
-        let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        subject.sidechain_feature = None;
-        check_consensus_encoding_correctness(subject).unwrap();
     }
 }

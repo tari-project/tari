@@ -23,19 +23,26 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::{
-    fmt::{Display, Formatter},
-    io,
-    io::Read,
-};
+use std::fmt::{Display, Formatter};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-#[derive(Debug, Clone, Copy, Hash, Deserialize_repr, Serialize_repr, PartialEq, Eq, FromPrimitive)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    Deserialize_repr,
+    Serialize_repr,
+    PartialEq,
+    Eq,
+    FromPrimitive,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 #[repr(u8)]
 pub enum OutputType {
     /// An standard non-coinbase output.
@@ -86,33 +93,6 @@ impl Default for OutputType {
     }
 }
 
-impl ConsensusEncoding for OutputType {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        writer.write_all(&[self.as_byte()])?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for OutputType {
-    fn consensus_encode_exact_size(&self) -> usize {
-        1
-    }
-}
-
-impl ConsensusDecoding for OutputType {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; 1];
-        reader.read_exact(&mut buf)?;
-        let output_type = OutputType::from_byte(buf[0]).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Byte {:x?} is not a valid OutputType", buf[0]),
-            )
-        })?;
-        Ok(output_type)
-    }
-}
-
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // Debug "shortcut" works because variants do not have fields
@@ -123,7 +103,6 @@ impl Display for OutputType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
 
     #[test]
     fn it_converts_from_byte_to_output_type() {
@@ -133,11 +112,5 @@ mod tests {
         assert_eq!(OutputType::from_byte(3), Some(OutputType::ValidatorNodeRegistration));
         assert_eq!(OutputType::from_byte(4), Some(OutputType::CodeTemplateRegistration));
         assert_eq!(OutputType::from_byte(108), None);
-    }
-
-    #[test]
-    fn consensus_encoding() {
-        let t = OutputType::Standard;
-        check_consensus_encoding_correctness(t).unwrap();
     }
 }

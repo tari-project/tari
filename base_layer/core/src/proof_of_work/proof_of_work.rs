@@ -20,28 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
-    io,
-    io::{ErrorKind, Read, Write},
-};
+use std::fmt::{Display, Error, Formatter};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    proof_of_work::PowAlgorithm,
-};
+use crate::proof_of_work::PowAlgorithm;
 
 pub trait AchievedDifficulty {}
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
 /// to make serialization more straightforward
 #[allow(deprecated)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ProofOfWork {
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
@@ -87,38 +80,9 @@ impl Display for ProofOfWork {
     }
 }
 
-impl ConsensusEncoding for ProofOfWork {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.pow_algo.as_u64().consensus_encode(writer)?;
-        self.pow_data.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for ProofOfWork {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.pow_algo.as_u64().consensus_encode_exact_size() + self.pow_data.consensus_encode_exact_size()
-    }
-}
-
-impl ConsensusDecoding for ProofOfWork {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let pow_algo = PowAlgorithm::try_from(u64::consensus_decode(reader)?)
-            .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
-        let mut pow = ProofOfWork::new(pow_algo);
-        const MAX_POW_DATA_SIZE: usize = 5120;
-        let pow_data = <MaxSizeBytes<MAX_POW_DATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
-        pow.pow_data = pow_data.into();
-        Ok(pow)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::{
-        consensus::check_consensus_encoding_correctness,
-        proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork},
-    };
+    use crate::proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork};
 
     #[test]
     fn display() {
@@ -133,12 +97,5 @@ mod test {
             ..Default::default()
         };
         assert_eq!(pow.to_bytes(), vec![1]);
-    }
-
-    #[test]
-    fn consensus_encoding() {
-        let mut arr = ProofOfWork::new(PowAlgorithm::Monero);
-        arr.pow_data = vec![1, 2, 3];
-        check_consensus_encoding_correctness(arr).unwrap();
     }
 }

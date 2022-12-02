@@ -22,17 +22,14 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::types::PublicKey;
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
-use crate::{
-    consensus::{ConsensusDecoding, ToConsensusBytes},
-    covenants::Covenant,
-    transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
-};
+use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {
@@ -101,13 +98,14 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
         let message = data.message;
-        let public_commitment_nonce =
-            PublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;
+        let ephemeral_public_nonce =
+            PublicKey::from_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
         let features = data
             .features
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
-        let covenant = Covenant::consensus_decode(&mut data.covenant.as_slice()).map_err(|err| err.to_string())?;
+        let mut buffer = data.covenant.as_slice();
+        let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
 
         Ok(Self {
             tx_id: data.tx_id.into(),
@@ -119,7 +117,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             features,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             sender_offset_public_key,
-            public_commitment_nonce,
+            ephemeral_public_nonce,
             covenant,
             minimum_value_promise: data.minimum_value_promise.into(),
         })
@@ -128,6 +126,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
 
 impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
     fn from(sender_data: SingleRoundSenderData) -> Self {
+        let mut covenant = Vec::new();
+        BorshSerialize::serialize(&sender_data.covenant, &mut covenant).unwrap();
         Self {
             tx_id: sender_data.tx_id.into(),
             // The amount, in µT, being sent to the recipient
@@ -140,8 +140,8 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             features: Some(sender_data.features.into()),
             script: sender_data.script.to_bytes(),
             sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
-            public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
-            covenant: sender_data.covenant.to_consensus_bytes(),
+            ephemeral_public_nonce: sender_data.ephemeral_public_nonce.to_vec(),
+            covenant,
             minimum_value_promise: sender_data.minimum_value_promise.into(),
         }
     }

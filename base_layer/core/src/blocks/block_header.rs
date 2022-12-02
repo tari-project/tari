@@ -41,10 +41,9 @@ use std::{
     cmp::Ordering,
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
-    io,
-    io::{Read, Write},
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
@@ -55,7 +54,7 @@ use thiserror::Error;
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
     blocks::BlocksHashDomain,
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
+    consensus::DomainSeparatedConsensusHasher,
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -79,7 +78,7 @@ pub enum BlockHeaderValidationError {
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, BorshSerialize, BorshDeserialize)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -238,7 +237,8 @@ impl BlockHeader {
     }
 
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
-        let dt = NaiveDateTime::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0);
+        let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
+            .unwrap_or(NaiveDateTime::MAX);
         DateTime::from_utc(dt, Utc)
     }
 
@@ -311,55 +311,9 @@ impl Display for BlockHeader {
     }
 }
 
-impl ConsensusEncoding for BlockHeader {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.version.consensus_encode(writer)?;
-        self.height.consensus_encode(writer)?;
-        self.prev_hash.consensus_encode(writer)?;
-        self.timestamp.consensus_encode(writer)?;
-        self.output_mr.consensus_encode(writer)?;
-        self.witness_mr.consensus_encode(writer)?;
-        self.output_mmr_size.consensus_encode(writer)?;
-        self.kernel_mr.consensus_encode(writer)?;
-        self.kernel_mmr_size.consensus_encode(writer)?;
-        self.input_mr.consensus_encode(writer)?;
-        self.total_kernel_offset.consensus_encode(writer)?;
-        self.total_script_offset.consensus_encode(writer)?;
-        self.nonce.consensus_encode(writer)?;
-        self.pow.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for BlockHeader {}
-
-impl ConsensusDecoding for BlockHeader {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let version = u16::consensus_decode(reader)?;
-        let mut header = BlockHeader::new(version);
-        header.height = u64::consensus_decode(reader)?;
-        header.prev_hash = FixedHash::consensus_decode(reader)?;
-        header.timestamp = EpochTime::consensus_decode(reader)?;
-        header.output_mr = FixedHash::consensus_decode(reader)?;
-        header.witness_mr = FixedHash::consensus_decode(reader)?;
-        header.output_mmr_size = u64::consensus_decode(reader)?;
-        header.kernel_mr = FixedHash::consensus_decode(reader)?;
-        header.kernel_mmr_size = u64::consensus_decode(reader)?;
-        header.input_mr = FixedHash::consensus_decode(reader)?;
-        header.total_kernel_offset = BlindingFactor::consensus_decode(reader)?;
-        header.total_script_offset = BlindingFactor::consensus_decode(reader)?;
-        header.nonce = u64::consensus_decode(reader)?;
-        header.pow = ProofOfWork::consensus_decode(reader)?;
-        Ok(header)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use tari_common::configuration::Network;
-
     use super::*;
-    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
 
     #[test]
     fn from_previous() {
@@ -456,11 +410,5 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
-    }
-
-    #[test]
-    fn block_header_encode_decode() {
-        let header = get_genesis_block(Network::LocalNet).block().header.clone();
-        check_consensus_encoding_correctness(header).unwrap();
     }
 }

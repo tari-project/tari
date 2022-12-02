@@ -27,23 +27,23 @@ use std::{
     iter::FromIterator,
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
 use integer_encoding::VarIntWriter;
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
-use super::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
+use super::{
+    decoder::{CovenantDecodeError, CovenantReadExt},
+    encoder::CovenentWriteExt,
+    BaseLayerCovenantsDomain,
+    COVENANTS_FIELD_HASHER_LABEL,
+};
 use crate::{
-    consensus::ToConsensusBytes,
-    covenants::{
-        byte_codes,
-        decoder::{CovenantDecodeError, CovenantReadExt},
-        encoder::CovenentWriteExt,
-        error::CovenantError,
-    },
+    covenants::{byte_codes, error::CovenantError},
     transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
 pub enum OutputField {
     Commitment = byte_codes::FIELD_COMMITMENT,
@@ -101,17 +101,21 @@ impl OutputField {
     pub fn get_field_value_bytes(self, output: &TransactionOutput) -> Vec<u8> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
+
+        let mut writer = Vec::new();
         match self {
-            Commitment => output.commitment.to_consensus_bytes(),
-            Script => output.script.to_consensus_bytes(),
-            SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
-            Covenant => output.covenant.to_consensus_bytes(),
-            Features => output.features.to_consensus_bytes(),
-            FeaturesOutputType => output.features.output_type.to_consensus_bytes(),
-            FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
-            FeaturesSideChainFeatures => output.features.sidechain_feature.to_consensus_bytes(),
-            FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
+            Commitment => BorshSerialize::serialize(&output.commitment, &mut writer),
+            Script => BorshSerialize::serialize(&output.script, &mut writer),
+            SenderOffsetPublicKey => BorshSerialize::serialize(&output.sender_offset_public_key, &mut writer),
+            Covenant => BorshSerialize::serialize(&output.covenant, &mut writer),
+            Features => BorshSerialize::serialize(&output.features, &mut writer),
+            FeaturesOutputType => BorshSerialize::serialize(&output.features.output_type, &mut writer),
+            FeaturesMaturity => BorshSerialize::serialize(&output.features.maturity, &mut writer),
+            FeaturesSideChainFeatures => BorshSerialize::serialize(&output.features.sidechain_feature, &mut writer),
+            FeaturesMetadata => BorshSerialize::serialize(&output.features.metadata, &mut writer),
         }
+        .unwrap();
+        writer
     }
 
     pub fn is_eq_input(self, input: &TransactionInput, output: &TransactionOutput) -> bool {
@@ -256,7 +260,7 @@ impl Display for OutputField {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
 pub struct OutputFields {
     fields: Vec<OutputField>,
 }
@@ -517,9 +521,9 @@ mod test {
                 let mut hasher = Blake256::new();
                 BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
                 let expected_hash = hasher
-                    .chain(output.features.to_consensus_bytes())
-                    .chain(output.commitment.to_consensus_bytes())
-                    .chain(output.script.to_consensus_bytes())
+                    .chain(output.features.try_to_vec().unwrap())
+                    .chain(output.commitment.try_to_vec().unwrap())
+                    .chain(output.script.try_to_vec().unwrap())
                     .finalize()
                     .to_vec();
                 assert_eq!(hash, expected_hash);

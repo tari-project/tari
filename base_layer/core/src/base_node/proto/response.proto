@@ -13,6 +13,7 @@ package tari.base_node;
 message BaseNodeServiceResponse {
     uint64 request_key = 1;
     oneof response {
+        BlockResponse block_response = 5;
         // Indicates a HistoricalBlocks response.
         HistoricalBlocks historical_blocks = 6;
         FetchMempoolTransactionsResponse fetch_mempool_transactions_by_excess_sigs_response = 7;
@@ -42,6 +43,10 @@ message TransactionOutputs {
 
 message HistoricalBlocks {
     repeated tari.core.HistoricalBlock blocks = 1;
+}
+
+message BlockResponse {
+  tari.core.Block block = 1;
 }
 
 message NewBlockResponse {

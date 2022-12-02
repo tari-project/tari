@@ -86,13 +86,24 @@ use tari_common_types::{
     types::{BlockHash, PublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
-use tari_core::transactions::{
-    tari_amount::{MicroTari, T},
-    transaction_components::{CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput},
+use tari_core::{
+    consensus::{ConsensusConstants, ConsensusManager},
+    transactions::{
+        tari_amount::{MicroTari, T},
+        transaction_components::{
+            CodeTemplateRegistration,
+            OutputFeatures,
+            OutputType,
+            SideChainFeature,
+            UnblindedOutput,
+        },
+    },
 };
+use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
@@ -127,11 +138,13 @@ async fn send_transaction_event(
 
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
+    rules: ConsensusManager,
 }
 
 impl WalletGrpcServer {
     pub fn new(wallet: WalletSqlite) -> Self {
-        Self { wallet }
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build();
+        Self { wallet, rules }
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {
@@ -144,6 +157,18 @@ impl WalletGrpcServer {
 
     fn comms(&self) -> &CommsNode {
         &self.wallet.comms
+    }
+
+    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
+        // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
+        // spend more than we need to or the the transaction is rejected.
+        let height = self
+            .wallet
+            .db
+            .get_chain_metadata()?
+            .map(|m| m.height_of_longest_chain())
+            .unwrap_or_default();
+        Ok(self.rules.consensus_constants(height))
     }
 }
 
@@ -905,7 +930,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let fee_per_gram = message.fee_per_gram;
 
         let message = format!("Template registration {}", template_registration.template_name);
-        let output = output_manager
+        let mut output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
                 sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
@@ -913,6 +938,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
+        output = output.with_script(script![Nop]);
 
         let (tx_id, transaction) = output_manager
             .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
@@ -955,10 +982,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .validator_node_signature
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
-            .unwrap();
+            .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
 
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        // TODO: we need to set the output maturity
         let response = match transaction_service
             .register_validator_node(
+                constants.validator_node_registration_min_deposit_amount(),
                 validator_node_public_key,
                 validator_node_signature,
                 UtxoSelectionCriteria::default(),

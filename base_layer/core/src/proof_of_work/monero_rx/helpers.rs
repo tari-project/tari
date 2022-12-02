@@ -179,6 +179,7 @@ pub fn create_block_hashing_blob(
 mod test {
     use std::convert::TryFrom;
 
+    use borsh::BorshSerialize;
     use monero::{
         blockdata::transaction::{ExtraField, TxOutTarget},
         consensus::deserialize,
@@ -200,10 +201,7 @@ mod test {
     };
 
     use super::*;
-    use crate::{
-        consensus::ConsensusEncoding,
-        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
-    };
+    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -325,7 +323,7 @@ mod test {
             coinbase_tx: block.miner_tx,
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -387,7 +385,7 @@ mod test {
             coinbase_tx: block.miner_tx,
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -437,7 +435,7 @@ mod test {
         };
 
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -493,7 +491,7 @@ mod test {
             coinbase_tx: block.miner_tx,
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -549,7 +547,7 @@ mod test {
             coinbase_tx: Default::default(),
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -588,7 +586,7 @@ mod test {
             coinbase_tx: Default::default(),
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -644,7 +642,7 @@ mod test {
             coinbase_tx: block.miner_tx,
         };
         let mut serialized = Vec::new();
-        monero_data.consensus_encode(&mut serialized).unwrap();
+        monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,

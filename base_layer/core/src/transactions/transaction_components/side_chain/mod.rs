@@ -25,9 +25,12 @@ pub use sidechain_feature::SideChainFeature;
 
 mod template_registration;
 mod validator_node_registration;
+mod validator_node_signature;
+
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
 pub use validator_node_registration::ValidatorNodeRegistration;
+pub use validator_node_signature::{ValidatorNodeHashDomain, ValidatorNodeSignature};
 
 hash_domain!(
     ContractAcceptanceHashDomain,

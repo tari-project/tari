@@ -65,7 +65,7 @@ impl<const L: usize> CompositeKey<L> {
         true
     }
 
-    fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
 

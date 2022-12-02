@@ -1012,9 +1012,7 @@ async fn test_birthday_timestamp_over_chain() {
         ..
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
-    test_interface
-        .rpc_service_state
-        .set_utxos_by_block(utxos_by_block.clone());
+    test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {

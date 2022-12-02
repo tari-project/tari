@@ -34,7 +34,8 @@ use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusManager},
+    borsh::SerializedSize,
+    consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
@@ -87,8 +88,8 @@ pub struct TestParams {
     pub sender_offset_private_key: PrivateKey,
     pub sender_sig_private_nonce: PrivateKey,
     pub sender_sig_public_nonce: PublicKey,
-    pub sender_private_commitment_nonce: PrivateKey,
-    pub sender_public_commitment_nonce: PublicKey,
+    pub ephemeral_private_nonce: PrivateKey,
+    pub sender_ephemeral_public_nonce: PublicKey,
     pub commitment_factory: CommitmentFactory,
     pub transaction_weight: TransactionWeight,
     pub rewind_data: RewindData,
@@ -145,8 +146,8 @@ impl TestParams {
             sender_offset_private_key,
             sender_sig_private_nonce: sender_sig_pvt_nonce.clone(),
             sender_sig_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
-            sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
-            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            ephemeral_private_nonce: sender_sig_pvt_nonce.clone(),
+            sender_ephemeral_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v1(),
             rewind_data: RewindData {
@@ -179,7 +180,7 @@ impl TestParams {
             EncryptedValue::default()
         };
 
-        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
             &self.spend_key,
@@ -231,9 +232,10 @@ impl TestParams {
 
     pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
         let output_features = OutputFeatures { ..Default::default() };
-        self.fee().weighting().round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
-        ) * num_outputs
+        self.fee()
+            .weighting()
+            .round_up_metadata_size(script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
+            num_outputs
     }
 
     pub fn commit_value(&self, value: MicroTari) -> Commitment {
@@ -279,7 +281,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, feature
         &PublicKey::from_secret_key(&k),
         &tx_meta,
     );
-    Signature::sign(k, r, &e).unwrap()
+    Signature::sign_raw(&k, r, &e).unwrap()
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
@@ -294,7 +296,7 @@ pub fn create_random_signature_from_s_key(
     let p = PK::from_secret_key(&s_key);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&PublicKey::from_secret_key(&r), &p, &tx_meta);
-    (p, Signature::sign(s_key, r, &e).unwrap())
+    (p, Signature::sign_raw(&s_key, r, &e).unwrap())
 }
 
 pub fn create_consensus_manager() -> ConsensusManager {
@@ -514,9 +516,9 @@ pub fn create_unblinded_txos(
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_metadata_size = weighting.round_up_metadata_size(
-        output_features.consensus_encode_exact_size() +
-            output_script.consensus_encode_exact_size() +
-            output_covenant.consensus_encode_exact_size(),
+        output_features.get_serialized_size() +
+            output_script.get_serialized_size() +
+            output_covenant.get_serialized_size(),
     ) * output_count;
     let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
@@ -688,7 +690,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     }
     for mut utxo in schema.to_outputs {
         let test_params = TestParams::new();
-        utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
+        utxo.metadata_signature = TransactionOutput::create_metadata_signature(
             output_version,
             utxo.value,
             &utxo.spending_key,
@@ -720,7 +722,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     let minimum_value_promise = MicroTari::zero();
 
-    let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
+    let change_metadata_sig = TransactionOutput::create_metadata_signature(
         output_version,
         change,
         &test_params_change_and_txn.change_spend_key,
@@ -791,7 +793,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+    let metadata_sig = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
         &keys.k,

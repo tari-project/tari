@@ -23,10 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::io;
-
 use serde::{Deserialize, Serialize};
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
+use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
 use tari_script::ScriptError;
 use thiserror::Error;
 
@@ -44,7 +42,7 @@ pub enum TransactionError {
     #[error("A range proof construction or verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
     #[error("An error occurred while performing a commitment signature: {0}")]
-    SigningError(#[from] CommitmentSignatureError),
+    SigningError(#[from] CommitmentAndPublicKeySignatureError),
     #[error("Invalid kernel in body : {0}")]
     InvalidKernel(String),
     #[error("Invalid coinbase in body")]
@@ -69,36 +67,18 @@ pub enum TransactionError {
     MissingTransactionInputData,
     #[error("Error executing covenant: {0}")]
     CovenantError(String),
-    #[error("Consensus encoding error: {0}")]
-    ConsensusEncodingError(String),
     #[error("Committee contains too many members: contains {len} members but maximum is {max}")]
     InvalidCommitteeLength { len: usize, max: usize },
     #[error("Missing validator node signature")]
     MissingValidatorNodeSignature,
+    #[error("Only coinbase outputs may have metadata")]
+    NonCoinbaseHasOutputFeaturesMetadata,
+    #[error("Metadata size is {len} but the maximum is {max}")]
+    InvalidOutputFeaturesMetadataSize { len: usize, max: usize },
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
-    }
-}
-
-impl From<io::Error> for TransactionError {
-    fn from(err: io::Error) -> Self {
-        TransactionError::ConsensusEncodingError(err.to_string())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_from_io_error() {
-        let error = io::ErrorKind::Other;
-        assert_eq!(
-            TransactionError::ConsensusEncodingError("other error".to_string()),
-            TransactionError::from(io::Error::from(error))
-        );
     }
 }

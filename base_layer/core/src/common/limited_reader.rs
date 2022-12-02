@@ -28,15 +28,6 @@ pub struct LimitedBytesReader<R> {
     inner: R,
 }
 
-impl<R: Read> LimitedBytesReader<R> {
-    pub fn new(byte_limit: usize, reader: R) -> Self {
-        Self {
-            byte_limit,
-            num_read: 0,
-            inner: reader,
-        }
-    }
-}
 impl<R: Read> Read for LimitedBytesReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let read = self.inner.read(buf)?;
@@ -56,6 +47,16 @@ mod test {
     use std::io::Read;
 
     use super::*;
+
+    impl<R: Read> LimitedBytesReader<R> {
+        pub fn new(byte_limit: usize, reader: R) -> Self {
+            Self {
+                byte_limit,
+                num_read: 0,
+                inner: reader,
+            }
+        }
+    }
 
     #[test]
     fn read_test() {

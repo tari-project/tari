@@ -22,6 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use borsh::BorshDeserialize;
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
@@ -29,18 +30,17 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
-        CryptoFactories,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
+    CryptoFactories,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::Hidden;
+use zeroize::Zeroize;
 
 use crate::{
     output_manager_service::{
@@ -85,9 +85,11 @@ pub struct OutputSql {
     pub script_private_key: Vec<u8>,
     pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
-    pub metadata_signature_nonce: Vec<u8>,
-    pub metadata_signature_u_key: Vec<u8>,
-    pub metadata_signature_v_key: Vec<u8>,
+    pub metadata_signature_ephemeral_commitment: Vec<u8>,
+    pub metadata_signature_ephemeral_pubkey: Vec<u8>,
+    pub metadata_signature_u_a: Vec<u8>,
+    pub metadata_signature_u_x: Vec<u8>,
+    pub metadata_signature_u_y: Vec<u8>,
     pub mined_height: Option<i64>,
     pub mined_in_block: Option<Vec<u8>>,
     pub mined_mmr_position: Option<i64>,
@@ -607,35 +609,34 @@ impl OutputSql {
         OutputSql::find(&self.spending_key, conn)
     }
 
-    /// Update the changed fields of this record after encryption/decryption is performed
-    pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        let _output_sql = self.update(
-            UpdateOutput {
-                spending_key: Some(self.spending_key.clone()),
-                script_private_key: Some(self.script_private_key.clone()),
-                ..Default::default()
-            },
-            conn,
-        )?;
-        Ok(())
-    }
-}
-
-/// Conversion from an DbUnblindedOutput to the Sql datatype form
-impl TryFrom<OutputSql> for DbUnblindedOutput {
-    type Error = OutputManagerStorageError;
-
     #[allow(clippy::too_many_lines)]
-    fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
+    pub fn to_db_unblinded_output(
+        mut self,
+        cipher: Option<&XChaCha20Poly1305>,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        if let Some(cipher) = cipher {
+            self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
+        }
+
         let features: OutputFeatures =
-            serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
+            serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
+        let covenant = BorshDeserialize::deserialize(&mut self.covenant.as_bytes()).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: "Covenant could not be converted from bytes".to_string(),
+            }
+        })?;
+
+        let encrypted_value = EncryptedValue::from_bytes(&self.encrypted_value)?;
         let unblinded_output = UnblindedOutput::new_current_version(
-            MicroTari::from(o.value as u64),
-            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+            MicroTari::from(self.value as u64),
+            PrivateKey::from_vec(&self.spending_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -645,9 +646,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 }
             })?,
             features,
-            TariScript::from_bytes(o.script.as_slice())?,
-            ExecutionStack::from_bytes(o.input_data.as_slice())?,
-            PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
+            TariScript::from_bytes(self.script.as_slice())?,
+            ExecutionStack::from_bytes(self.input_data.as_slice())?,
+            PrivateKey::from_vec(&self.script_private_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -656,7 +657,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     reason: "PrivateKey could not be converted from bytes".to_string(),
                 }
             })?,
-            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
+            PublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
@@ -665,17 +666,26 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     reason: "PrivateKey could not be converted from bytes".to_string(),
                 }
             })?,
-            ComSignature::new(
-                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+            ComAndPubSignature::new(
+                Commitment::from_vec(&self.metadata_signature_ephemeral_commitment).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create Commitment from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "Commitment could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PublicKey::from_vec(&self.metadata_signature_ephemeral_pubkey).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
                     OutputManagerStorageError::ConversionError {
-                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                        reason: "PublicKey could not be converted from bytes".to_string(),
                     }
                 })?,
-                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                PrivateKey::from_vec(&self.metadata_signature_u_a).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -684,7 +694,16 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                         reason: "PrivateKey could not be converted from bytes".to_string(),
                     }
                 })?,
-                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
+                PrivateKey::from_vec(&self.metadata_signature_u_x).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
+                })?,
+                PrivateKey::from_vec(&self.metadata_signature_u_y).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -694,21 +713,17 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     }
                 })?,
             ),
-            o.script_lock_height as u64,
-            Covenant::from_bytes(&o.covenant).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: "Covenant could not be converted from bytes".to_string(),
-                }
-            })?,
+            self.script_lock_height as u64,
+            covenant,
             encrypted_value,
-            MicroTari::from(o.minimum_value_promise as u64),
+            MicroTari::from(self.minimum_value_promise as u64),
         );
 
-        let hash = match o.hash {
+        // we manually zeroize the sensitive data associated with OuptputSql, to avoid any leaks
+        self.spending_key.zeroize();
+        self.script_private_key.zeroize();
+
+        let hash = match self.hash {
             None => {
                 let factories = CryptoFactories::default();
                 unblinded_output.as_transaction_output(&factories)?.hash()
@@ -723,7 +738,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 },
             },
         };
-        let commitment = match o.commitment {
+        let commitment = match self.commitment {
             None => {
                 let factories = CryptoFactories::default();
                 factories
@@ -732,34 +747,34 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
-        let spending_priority = (o.spending_priority as u32).into();
-        let mined_in_block = match o.mined_in_block {
+        let spending_priority = (self.spending_priority as u32).into();
+        let mined_in_block = match self.mined_in_block {
             Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
                 Err(_) => None,
             },
             None => None,
         };
-        let marked_deleted_in_block = match o.marked_deleted_in_block {
+        let marked_deleted_in_block = match self.marked_deleted_in_block {
             Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
                 Err(_) => None,
             },
             None => None,
         };
-        Ok(Self {
+        Ok(DbUnblindedOutput {
             commitment,
             unblinded_output,
             hash,
-            status: o.status.try_into()?,
-            mined_height: o.mined_height.map(|mh| mh as u64),
+            status: self.status.try_into()?,
+            mined_height: self.mined_height.map(|mh| mh as u64),
             mined_in_block,
-            mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
-            mined_timestamp: o.mined_timestamp,
-            marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
+            mined_mmr_position: self.mined_mmr_position.map(|mp| mp as u64),
+            mined_timestamp: self.mined_timestamp,
+            marked_deleted_at_height: self.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block,
             spending_priority,
-            source: o.source.try_into()?,
+            source: self.source.try_into()?,
         })
     }
 }
@@ -773,34 +788,27 @@ impl Encryptable<XChaCha20Poly1305> for OutputSql {
     }
 
     fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("spending_key"),
+            Hidden::hide(self.spending_key.clone()),
+        )?;
 
         self.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            self.script_private_key.clone(),
+            Hidden::hide(self.script_private_key.clone()),
         )?;
 
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key =
-            decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
+        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
-        self.script_private_key = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("script_private_key"),
-            self.script_private_key.clone(),
-        )?;
+        self.script_private_key =
+            decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
         Ok(())
     }
 }
-
-// impl PartialEq<NewOutputSql> for OutputSql {
-//     fn eq(&self, other: &NewOutputSql) -> bool {
-//         &NewOutputSql::from(self.clone()) == other
-//     }
-// }

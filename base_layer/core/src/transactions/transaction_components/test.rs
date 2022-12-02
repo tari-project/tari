@@ -21,7 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{self, rngs::OsRng};
-use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{
+    BlindingFactor,
+    ComAndPubSignature,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    Signature,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
@@ -231,7 +238,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "a3443f6f77ad0546128559e1ea874e184ea4967c265a7b201a837218ed0298d7"
+        "d99f6c45b0c1051987eb5ce8f4434fbd88ae44c2d0f3a066ebc7f64114d33df8"
     );
 }
 
@@ -250,7 +257,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "7d245a06bd53031d9b24f6f5c4e94ff7782d83f51a1af9e93788f2c51f9dc4f1"
+        "ee7ff5ebcdc66757411afb2dced7d1bd7c09373f1717a7b6eb618fbda849ab4d"
     )
 }
 
@@ -263,7 +270,7 @@ fn check_timelocks() {
 
     let script = TariScript::default();
     let input_data = ExecutionStack::default();
-    let script_signature = ComSignature::default();
+    let script_signature = ComAndPubSignature::default();
     let offset_pub_key = PublicKey::default();
     let mut input = TransactionInput::new_with_output_data(
         TransactionInputVersion::get_current_version(),
@@ -287,10 +294,10 @@ fn check_timelocks() {
     tx.body.add_input(input.clone());
     tx.body.add_kernel(kernel.clone());
     assert!(matches!(
-        tx.body.check_stxo_rules(1),
+        tx.body.check_utxo_rules(1),
         Err(TransactionError::InputMaturity)
     ));
-    tx.body.check_stxo_rules(5).unwrap();
+    tx.body.check_utxo_rules(5).unwrap();
 
     assert_eq!(tx.max_input_maturity(), 5);
     assert_eq!(tx.max_kernel_timelock(), 2);
@@ -460,92 +467,16 @@ fn test_output_rewinding_bulletproofs() {
         .unwrap();
     assert_eq!(recovered_mask, test_params.spend_key);
 }
-mod output_features {
-    use std::io;
-
-    use super::*;
-    use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-    #[test]
-    #[allow(clippy::field_reassign_with_default)]
-    fn consensus_encode_minimal() {
-        let mut features = OutputFeatures::default();
-        features.version = OutputFeaturesVersion::V0;
-
-        let mut buf = Vec::new();
-        features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 5);
-        assert_eq!(features.consensus_encode_exact_size(), 5);
-
-        let mut features = OutputFeatures::default();
-        features.version = OutputFeaturesVersion::V1;
-        let mut buf = Vec::new();
-        features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 5);
-        assert_eq!(features.consensus_encode_exact_size(), 5);
-    }
-
-    #[test]
-    fn consensus_encode_decode() {
-        let mut features_u64_max = OutputFeatures::create_coinbase(u64::MAX);
-
-        features_u64_max.version = OutputFeaturesVersion::V0;
-        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
-        let mut buf = Vec::with_capacity(known_size_u8_max);
-        assert_eq!(known_size_u8_max, 14);
-        features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 14);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 14);
-        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features_u64_max, decoded_features);
-
-        features_u64_max.version = OutputFeaturesVersion::V1;
-        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
-        assert_eq!(known_size_u8_max, 14);
-        let mut buf = Vec::with_capacity(known_size_u8_max);
-        features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 14);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 14);
-        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features_u64_max, decoded_features);
-    }
-
-    #[test]
-    fn consensus_decode_bad_flags() {
-        let data = [
-            0x00u8, 0x00, 0x02, 0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-        let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
-        // Assert the flag data is preserved
-        assert_eq!(features.output_type.as_byte() & 0x02, 0x02);
-    }
-
-    #[test]
-    fn consensus_decode_bad_maturity() {
-        let data = [0x00u8, 0xFF, 0x00, 0x00, 0x00];
-        let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
-    }
-
-    #[test]
-    fn consensus_decode_attempt_maturity_overflow() {
-        let data = [0x00u8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-        let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    }
-}
 
 mod validate_internal_consistency {
 
+    use borsh::BorshSerialize;
     use digest::Digest;
     use tari_common_types::types::FixedHash;
     use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
     use super::*;
-    use crate::{
-        consensus::ToConsensusBytes,
-        covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-    };
+    use crate::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
 
     fn test_case(
         input_params: &UtxoTestParams,
@@ -597,7 +528,7 @@ mod validate_internal_consistency {
         let mut hasher = Blake256::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
-        let hash = hasher.chain(features.to_consensus_bytes()).finalize().to_vec();
+        let hash = hasher.chain(features.try_to_vec().unwrap()).finalize().to_vec();
 
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());

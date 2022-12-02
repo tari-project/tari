@@ -225,7 +225,7 @@ async fn build_node_context(
         rules.clone(),
         validators,
         app_config.base_node.storage,
-        DifficultyCalculator::new(rules.clone(), randomx_factory),
+        DifficultyCalculator::new(rules.clone(), randomx_factory.clone()),
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
@@ -262,6 +262,7 @@ async fn build_node_context(
         mempool,
         rules: rules.clone(),
         factories: factories.clone(),
+        randomx_factory,
         interrupt_signal: interrupt_signal.clone(),
     }
     .bootstrap()

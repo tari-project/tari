@@ -25,11 +25,12 @@ use std::{
     str::FromStr,
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq, BorshSerialize, BorshDeserialize)]
 pub enum PowAlgorithm {
     Monero = 0,
     Sha3 = 1,

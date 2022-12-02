@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,48 +19,26 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 
-use std::{
-    io::{Error, Read, Write},
-    mem,
-};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+pub struct VnEpoch(pub u64);
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::tari_amount::MicroTari,
-};
+impl VnEpoch {
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
 
-const U64_SIZE: usize = mem::size_of::<u64>();
+    pub fn to_be_bytes(&self) -> [u8; 8] {
+        self.0.to_be_bytes()
+    }
 
-impl ConsensusEncoding for MicroTari {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        writer.write_all(&self.0.to_le_bytes()[..])?;
-        Ok(())
+    pub fn saturating_sub(self, other: VnEpoch) -> VnEpoch {
+        VnEpoch(self.0.saturating_sub(other.0))
     }
 }
 
-impl ConsensusEncodingSized for MicroTari {
-    fn consensus_encode_exact_size(&self) -> usize {
-        U64_SIZE
-    }
-}
-
-impl ConsensusDecoding for MicroTari {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let mut buf = [0u8; U64_SIZE];
-        reader.read_exact(&mut buf)?;
-        Ok(u64::from_le_bytes(buf).into())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let subject = MicroTari::from(u64::MAX);
-        check_consensus_encoding_correctness(subject).unwrap();
-    }
-}
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self &Self }

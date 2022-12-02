@@ -62,7 +62,8 @@ pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
 
 /// Utility function that converts a `EpochTime` to a `chrono::DateTime`
 pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
-    let dt = NaiveDateTime::from_timestamp(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0);
+    let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
+        .unwrap_or(NaiveDateTime::MAX);
     DateTime::from_utc(dt, Utc)
 }
 

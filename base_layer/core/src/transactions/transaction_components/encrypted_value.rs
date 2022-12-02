@@ -23,29 +23,28 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::io::{self, Read, Write};
-
+use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
-    aead::{Aead, Error, NewAead, Payload},
+    aead::{Aead, Error, Payload},
     ChaCha20Poly1305,
-    Key,
+    KeyInit,
     Nonce,
 };
+use digest::generic_array::GenericArray;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{safe_array::SafeArray, ByteArray, ByteArrayError};
 use thiserror::Error;
+use zeroize::Zeroize;
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::{tari_amount::MicroTari, TransactionKdfDomain},
-};
+use super::{CoreTransactionAEADKey, AEAD_KEY_LEN};
+use crate::transactions::{tari_amount::MicroTari, TransactionKdfDomain};
 
 const SIZE: usize = 24;
 
 /// value: u64 + tag: [u8; 16]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
 pub struct EncryptedValue(#[serde(with = "tari_utilities::serde::hex")] pub [u8; SIZE]);
 
 impl Default for EncryptedValue {
@@ -92,7 +91,8 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         // Included in the public transaction
-        let buffer = ChaCha20Poly1305::new(&aead_key).encrypt(&Nonce::default(), aead_payload)?;
+        let buffer = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()))
+            .encrypt(&Nonce::default(), aead_payload)?;
         let mut data: [u8; SIZE] = [0; SIZE];
         data.copy_from_slice(&buffer);
         Ok(EncryptedValue(data))
@@ -110,74 +110,34 @@ impl EncryptedValue {
             aad: Self::TAG,
         };
         let mut value_bytes = [0u8; 8];
-        let decrypted_bytes = ChaCha20Poly1305::new(&aead_key).decrypt(&Nonce::default(), aead_payload)?;
+        let decrypted_bytes = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()))
+            .decrypt(&Nonce::default(), aead_payload)?;
         value_bytes.clone_from_slice(&decrypted_bytes[..8]);
         Ok(u64::from_le_bytes(value_bytes).into())
     }
 }
 
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
-fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
-    const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
+fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> CoreTransactionAEADKey {
     let output = DomainSeparatedHasher::<Blake256, TransactionKdfDomain>::new_with_label("encrypted_value")
         .chain(shared_secret.as_bytes())
         .chain(commitment.as_bytes())
         .finalize();
 
-    *Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH])
-}
+    let default_array = SafeArray::<u8, AEAD_KEY_LEN>::default();
+    let mut aead_key = CoreTransactionAEADKey::from(default_array);
+    aead_key.reveal_mut().copy_from_slice(&output.as_ref()[..AEAD_KEY_LEN]);
 
-impl ConsensusEncoding for EncryptedValue {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.0.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for EncryptedValue {
-    fn consensus_encode_exact_size(&self) -> usize {
-        SIZE
-    }
-}
-
-impl ConsensusDecoding for EncryptedValue {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let data = <[u8; SIZE]>::consensus_decode(reader)?;
-        Ok(Self(data))
-    }
+    aead_key
 }
 
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::{CommitmentFactory, PrivateKey};
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey, SecretKey},
-    };
+    use tari_common_types::types::PrivateKey;
+    use tari_crypto::keys::{PublicKey, SecretKey};
 
     use super::*;
-    use crate::consensus::{check_consensus_encoding_correctness, ToConsensusBytes};
-
-    #[test]
-    fn it_encodes_to_bytes() {
-        let commitment_factory = CommitmentFactory::default();
-        let spending_key = PrivateKey::random(&mut OsRng);
-        let encryption_key = PrivateKey::random(&mut OsRng);
-        let value = 123u64;
-        let commitment = commitment_factory.commit(&spending_key, &PrivateKey::from(value));
-        let bytes = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into())
-            .unwrap()
-            .to_consensus_bytes();
-        assert_eq!(bytes.len(), SIZE);
-    }
-
-    #[test]
-    fn it_decodes_from_bytes() {
-        let value = &[0; SIZE];
-        let encrypted_value = EncryptedValue::consensus_decode(&mut &value[..]).unwrap();
-        assert_eq!(encrypted_value, EncryptedValue::default());
-    }
 
     #[test]
     fn it_encrypts_and_decrypts_correctly() {
@@ -190,11 +150,5 @@ mod test {
                 EncryptedValue::decrypt_value(&encryption_key, &commitment, &encrypted_value).unwrap();
             assert_eq!(amount, decrypted_value);
         }
-    }
-    #[test]
-    fn consensus_encoding() {
-        let value = [0u8; SIZE];
-        let encrypted_value = EncryptedValue(value);
-        check_consensus_encoding_correctness(encrypted_value).unwrap();
     }
 }

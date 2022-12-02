@@ -90,7 +90,7 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "VBRANCH=$(echo ${{ GITHUB_REF_NAME }})" >> $GITHUB_ENV
+          echo "VBRANCH=$(echo ${{ env.GITHUB_REF_NAME }})" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Default Destination Folder
@@ -430,10 +430,15 @@ jobs:
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v3
+
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "tari_*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+          #bodyFile: changelog.md
           prerelease: true
           draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true

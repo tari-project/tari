@@ -471,7 +471,8 @@ where
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
             let current_height = response.height;
             let current_header_hash = response.header_hash;
-            let mined_timestamp = NaiveDateTime::from_timestamp(response.mined_timestamp as i64, 0);
+            let mined_timestamp =
+                NaiveDateTime::from_timestamp_opt(response.mined_timestamp as i64, 0).unwrap_or(NaiveDateTime::MIN);
             let outputs = response
                 .outputs
                 .into_iter()

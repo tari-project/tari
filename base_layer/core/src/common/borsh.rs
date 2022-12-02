@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,45 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io::{Error, Read, Write},
-    ops::Deref,
-};
+use std::io::Result;
 
-use tari_common_types::types::FixedHash;
+use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+use super::byte_counter::ByteCounter;
 
-impl ConsensusEncoding for FixedHash {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.deref().consensus_encode(writer)?;
-        Ok(())
-    }
+pub trait FromBytes<T: BorshDeserialize> {
+    fn borsh_from_bytes(buf: &mut &[u8]) -> Result<T>;
 }
-impl ConsensusEncodingSized for FixedHash {
-    fn consensus_encode_exact_size(&self) -> usize {
-        FixedHash::byte_size()
+
+impl<T: BorshDeserialize> FromBytes<T> for T {
+    fn borsh_from_bytes(buf: &mut &[u8]) -> Result<T> {
+        T::deserialize(buf)
     }
 }
 
-impl ConsensusDecoding for FixedHash {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let buf = <[u8; FixedHash::byte_size()] as ConsensusDecoding>::consensus_decode(reader)?;
-        Ok(buf.into())
+pub trait ToBytes {
+    fn serialize_to_vec(&self) -> Vec<u8>;
+}
+
+impl<T: BorshSerialize> ToBytes for T {
+    fn serialize_to_vec(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        self.serialize(&mut buffer).unwrap();
+        buffer
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use rand::{rngs::OsRng, RngCore};
+pub trait SerializedSize {
+    fn get_serialized_size(&self) -> usize;
+}
 
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let mut hash = FixedHash::zero();
-        OsRng.fill_bytes(&mut *hash);
-        check_consensus_encoding_correctness(hash).unwrap();
+impl<T: BorshSerialize> SerializedSize for T {
+    fn get_serialized_size(&self) -> usize {
+        let mut counter = ByteCounter::new();
+        self.serialize(&mut counter).unwrap();
+        counter.get()
     }
 }
