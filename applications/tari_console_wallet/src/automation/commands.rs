@@ -1035,13 +1035,13 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","sender_offset_public_key","emperical_commitment","emperical_nonce","signature_u_x","signature_u_a","signature_u_y""##
+        r##""index","value","spending_key","commitment","flags","maturity","metadata","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{},"{}","{}","{}""##,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{},"{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
             utxo.value.0,
             utxo.spending_key.to_hex(),
@@ -1051,7 +1051,9 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
                 .to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
+            utxo.features.metadata.to_hex(),
             utxo.script.to_hex(),
+            utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),
             utxo.script_private_key.to_hex(),
             utxo.sender_offset_public_key.to_hex(),
@@ -1060,6 +1062,9 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
             utxo.metadata_signature.u_x().to_hex(),
             utxo.metadata_signature.u_a().to_hex(),
             utxo.metadata_signature.u_y().to_hex(),
+            utxo.script_lock_height,
+            utxo.encrypted_value.to_hex(),
+            utxo.minimum_value_promise.as_u64()
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     }
