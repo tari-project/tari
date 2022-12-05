@@ -4401,15 +4401,18 @@ pub unsafe extern "C" fn wallet_create(
         .with_extension("sqlite3");
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
+
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
             Ok((w, t, o, c, x)) => (w, t, o, c, x),
             Err(e) => {
+                println!("FLAG: {}", e.to_string().as_str());
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
         };
+
     let wallet_database = WalletDatabase::new(wallet_backend);
     let output_manager_database = OutputManagerDatabase::new(output_manager_backend.clone());
 
@@ -6650,6 +6653,7 @@ pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariW
 pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariSeedWords {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -8338,21 +8342,15 @@ mod test {
                 error_ptr,
             );
 
-            let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
-            let passphrase = SafePassword::from("My lovely secret passphrase");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
-
-            let stored_seed = wallet_backend.get_master_seed().unwrap();
-            drop(wallet_backend);
-            assert!(stored_seed.is_none(), "No key should be stored yet");
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
 
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 alice_network_str,
                 received_tx_callback,
@@ -8381,7 +8379,7 @@ mod test {
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(
-                WalletSqliteDatabase::new(connection, "passphrasev2.0.1".to_string().into()).unwrap(),
+                WalletSqliteDatabase::new(connection, "Hello from Alasca".to_string().into()).unwrap(),
             );
 
             let stored_seed1 = wallet_backend.get_master_seed().unwrap().unwrap();
@@ -8394,7 +8392,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 alice_network_str,
                 received_tx_callback,
@@ -8424,7 +8422,7 @@ mod test {
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
 
-            let passphrase = SafePassword::from("My lovely secret passphrase");
+            let passphrase = SafePassword::from("Hello from Alasca");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
             let stored_seed2 = wallet_backend.get_master_seed().unwrap().unwrap();
@@ -8496,12 +8494,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -8714,12 +8715,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
+
             let wallet = wallet_create(
                 config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -8768,12 +8772,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
+
             let recovered_wallet = wallet_create(
                 config,
-                ptr::null(),
+                passphrase,
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 seed_words,
                 network_str,
                 received_tx_callback,
@@ -8840,12 +8847,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -8981,12 +8991,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -9089,12 +9102,15 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -9280,12 +9296,14 @@ mod test {
                 error_ptr,
             );
 
+            let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
