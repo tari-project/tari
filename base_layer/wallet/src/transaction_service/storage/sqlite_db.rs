@@ -1728,7 +1728,7 @@ pub struct UpdateOutboundTransactionSql {
 /// A structure to represent a Sql compatible version of the CompletedTransaction struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "completed_transactions"]
-struct CompletedTransactionSql {
+pub struct CompletedTransactionSql {
     tx_id: i64,
     source_address: Vec<u8>,
     destination_address: Vec<u8>,
@@ -2886,7 +2886,7 @@ mod test {
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_apply_remove_encryption() {
+    fn test_transaction_db_values_must_be_encrypted() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2896,6 +2896,12 @@ mod test {
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
+
         // Note: For this test the connection pool is setup with a pool size of one; the pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
         {
@@ -2922,7 +2928,9 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+
+            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             let destination_address = TariAddress::new(
@@ -2943,7 +2951,9 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+            let mut outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+
+            outbound_tx_sql.encrypt(&cipher).unwrap();
             outbound_tx_sql.commit(&conn).unwrap();
 
             let source_address = TariAddress::new(
@@ -2981,31 +2991,31 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+
+            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
         }
-
-        let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
-        let key_ga = Key::from_slice(&key);
-        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let connection = WalletDbConnection::new(pool, None);
 
         let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
 
+        db2.fetch(&DbKey::PendingInboundTransactions).unwrap();
+
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
 
-        let db3 = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let new_cipher = XChaCha20Poly1305::new(key_ga);
+
+        let db3 = TransactionServiceSqliteDatabase::new(connection, new_cipher);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
-
-        assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_ok());
-        assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        assert!(db3.fetch(&DbKey::CompletedTransactions).is_ok());
     }
 
     #[test]
@@ -3027,6 +3037,11 @@ mod test {
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let mut info_list_reference: Vec<InboundTransactionSenderInfo> = vec![];
         for i in 0..1000 {
@@ -3111,11 +3126,15 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+
+            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
 
             let inbound_tx = InboundTransaction::from(completed_tx);
-            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+
+            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             if cancelled.is_none() {
@@ -3125,11 +3144,6 @@ mod test {
                 })
             }
         }
-
-        let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
-        let key_ga = Key::from_slice(&key);
-        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let connection = WalletDbConnection::new(pool, None);
         let db1 = TransactionServiceSqliteDatabase::new(connection, cipher);
