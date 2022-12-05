@@ -2999,7 +2999,7 @@ mod test {
 
         let connection = WalletDbConnection::new(pool, None);
 
-        let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
+        let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
 
         db2.fetch(&DbKey::PendingInboundTransactions).unwrap();
 

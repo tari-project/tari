@@ -733,10 +733,10 @@ mod test {
         }
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
-        match WalletSqliteDatabase::new(connection.clone(), passphrase) {
+        match WalletSqliteDatabase::new(connection, passphrase) {
             Err(WalletStorageError::MissingNonce) => (),
             Ok(_) => panic!("we should not be able to have a non encrypted master seed in the db"),
-            Err(_) => panic!("unrecognized error"),
+            _ => panic!("unrecognized error"),
         };
     }
 
@@ -902,7 +902,7 @@ mod test {
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
-        let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase.clone()).unwrap();
+        let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
 
         let seed = CipherSeed::new();
 
