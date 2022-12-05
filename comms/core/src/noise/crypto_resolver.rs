@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use digest::{generic_array::GenericArray, FixedOutput};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -32,8 +33,9 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_utilities::safe_array::SafeArray;
 
-use super::{CommsNoiseKey, NOISE_KEY_LEN};
+use super::CommsNoiseKey;
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -67,12 +69,12 @@ impl CryptoResolver for TariCryptoResolver {
 }
 
 fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
-    let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
-    let mut comms_noise_kdf = CommsNoiseKey::from([0u8; NOISE_KEY_LEN]);
-    comms_noise_kdf
-        .reveal_mut()
-        .copy_from_slice(hasher.chain(shared_key.as_bytes()).finalize().as_ref());
-    comms_noise_kdf
+    let mut comms_noise_key = CommsNoiseKey::from(SafeArray::default());
+    DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh")
+        .chain(shared_key.as_bytes())
+        .finalize_into(GenericArray::from_mut_slice(comms_noise_key.reveal_mut()));
+
+    comms_noise_key
 }
 
 #[derive(Default)]
@@ -129,7 +131,7 @@ impl Dh for CommsDiffieHellman {
 mod test {
     use snow::Keypair;
 
-    use super::*;
+    use super::{super::NOISE_KEY_LEN, *};
     use crate::noise::config::NOISE_IX_PARAMETER;
 
     fn build_keypair() -> Keypair {
