@@ -942,15 +942,7 @@ where
 
             let (fee, transaction) = self
                 .output_manager_service
-                .create_pay_to_self_transaction(
-                    tx_id,
-                    amount,
-                    selection_criteria,
-                    output_features,
-                    fee_per_gram,
-                    None,
-                    message.clone(),
-                )
+                .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
                 .await?;
 
             // Notify that the transaction was successfully resolved.

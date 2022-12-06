@@ -94,7 +94,6 @@ pub enum OutputManagerRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<UnblindedOutputBuilder>,
@@ -167,7 +166,7 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
-            CreatePayToSelfTransaction { message, .. } => write!(f, "CreatePayToSelfTransaction ({})", message),
+            CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
@@ -860,7 +859,6 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
@@ -871,7 +869,6 @@ impl OutputManagerHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
-                message,
             })
             .await??
         {
