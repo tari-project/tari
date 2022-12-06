@@ -38,6 +38,7 @@ use crate::{
     },
     txn_schema,
 };
+
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
 }
@@ -569,5 +570,66 @@ mod clear_all_pending_headers {
         assert_eq!(num_deleted, 5);
         let last_header = db.fetch_last_header().unwrap();
         assert_eq!(last_header.height, 2);
+    }
+}
+
+mod validator_node_merkle_root {
+    use digest::Digest;
+    use rand::rngs::OsRng;
+    use tari_common_types::types::PublicKey;
+    use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
+    use tari_utilities::ByteArray;
+
+    use super::*;
+    use crate::{
+        transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
+        ValidatorNodeMmr,
+    };
+
+    #[test]
+    fn it_has_the_correct_genesis_merkle_root() {
+        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
+        let db = setup();
+        let (blocks, _outputs) = add_many_chained_blocks(1, &db);
+        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root().unwrap());
+    }
+
+    #[test]
+    fn it_has_the_correct_merkle_root_for_current_vn_set() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let signature = ValidatorNodeSignature::sign(&sk, &[]);
+        let features =
+            OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone());
+        let (tx, _outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![50 * T],
+            features: features
+        )]);
+        let (block, _) = create_next_block(&db, &blocks[0], tx);
+        db.add_block(block).unwrap().assert_added();
+
+        let consts = db.consensus_constants().unwrap();
+        add_many_chained_blocks(consts.epoch_length() as usize, &db);
+        let shard_key = db
+            .get_shard_key(consts.epoch_length(), public_key.clone())
+            .unwrap()
+            .unwrap();
+
+        let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
+        vn_mmr
+            .push(
+                Blake256::new()
+                    .chain(public_key.as_bytes())
+                    .chain(shard_key.as_slice())
+                    .finalize()
+                    .to_vec(),
+            )
+            .unwrap();
+
+        let tip = db.fetch_tip_header().unwrap();
+        assert_eq!(tip.header().validator_node_mr, vn_mmr.get_merkle_root().unwrap());
     }
 }
