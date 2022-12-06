@@ -419,109 +419,7 @@ fn get_db_encryption(
 
     let secret_seed = WalletSettingSql::get(&DbKey::MasterSeed, &conn)?;
 
-    let cipher = match (db_passphrase_hash, db_encryption_salt) {
-        (None, None) => {
-            // Use the recommended OWASP parameters, which are not the default:
-            // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-
-            // These are the parameters for the passphrase hash
-            let params_passphrase = argon2::Params::new(
-                37 * 1024, // m-cost: 37 MiB, converted to KiB
-                1,         // t-cost
-                1,         // p-cost
-                None,      // output length: default is fine for this use
-            )
-            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            // These are the parameters for the encryption key
-            // We set them separately to ensure a proper key size
-            let params_encryption = argon2::Params::new(
-                37 * 1024,              // m-cost: 37 MiB, converted to KiB
-                1,                      // t-cost
-                1,                      // p-cost
-                Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
-            )
-            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            // Hash the passphrase to a PHC string for later verification
-            let passphrase_salt = SaltString::generate(&mut OsRng);
-            let passphrase_hash = argon2::Argon2::default()
-                .hash_password_customized(
-                    passphrase.reveal(),
-                    Some(argon2::Algorithm::Argon2id.ident()),
-                    Some(argon2::Version::V0x13 as Decimal), // the API requires the numerical version representation
-                    params_passphrase,
-                    &passphrase_salt,
-                )
-                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
-                .to_string();
-
-            // Hash the passphrase to produce a ChaCha20-Poly1305 key
-            let encryption_salt = SaltString::generate(&mut OsRng);
-            let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
-            argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
-                .hash_password_into(
-                    passphrase.reveal(),
-                    encryption_salt.as_bytes(),
-                    derived_encryption_key.as_mut(),
-                )
-                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            let cipher = XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref()));
-
-            WalletSettingSql::new(DbKey::PassphraseHash, passphrase_hash).set(&conn)?;
-            WalletSettingSql::new(DbKey::EncryptionSalt, encryption_salt.as_str().to_string()).set(&conn)?;
-
-            cipher
-        },
-        (Some(db_passphrase_hash), Some(encryption_salt)) => {
-            let argon2 = Argon2::default();
-            let stored_hash =
-                PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            // Check the passphrase PHC string against the provided passphrase
-            if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
-                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
-                return Err(WalletStorageError::InvalidPassphrase);
-            }
-
-            // Use the recommended OWASP parameters, which are not the default:
-            // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-            let params_encryption = argon2::Params::new(
-                37 * 1024,              // m-cost: 37 MiB, converted to KiB
-                1,                      // t-cost
-                1,                      // p-cost
-                Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
-            )
-            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            // Hash the passphrase to produce a ChaCha20-Poly1305 key
-            let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
-            argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
-                .hash_password_into(
-                    passphrase.reveal(),
-                    encryption_salt.as_bytes(),
-                    derived_encryption_key.as_mut(),
-                )
-                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            if secret_seed.is_none() {
-                error!(
-                    target: LOG_TARGET,
-                    "Cipher is provided but there is no Master Secret Key in DB to decrypt"
-                );
-                return Err(WalletStorageError::InvalidEncryptionCipher);
-            }
-
-            XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref()))
-        },
-        _ => {
-            error!(target: LOG_TARGET, "Should not happen");
-            return Err(WalletStorageError::UnexpectedResult(
-                "Encryption should be possible only by providing both passphrase hash and encrypted salt".into(),
-            ));
-        },
-    };
+    let cipher = get_cipher_for_db_encryption(passphrase, db_passphrase_hash, db_encryption_salt, &secret_seed, &conn)?;
 
     if let Some(mut sk) = secret_seed {
         // We need to make sure the secret key was encrypted. Try to decrypt it
@@ -568,6 +466,103 @@ fn get_db_encryption(
     }
 
     Ok(cipher)
+}
+
+fn get_cipher_for_db_encryption(
+    passphrase: SafePassword,
+    passphrase_hash: Option<String>,
+    encryption_salt: Option<String>,
+    secret_seed: &Option<String>,
+    conn: &SqliteConnection,
+) -> Result<XChaCha20Poly1305, WalletStorageError> {
+    let encryption_salt = match (passphrase_hash, encryption_salt) {
+        (None, None) => {
+            // Use the recommended OWASP parameters, which are not the default:
+            // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+
+            // These are the parameters for the passphrase hash
+            let params_passphrase = argon2::Params::new(
+                37 * 1024, // m-cost: 37 MiB, converted to KiB
+                1,         // t-cost
+                1,         // p-cost
+                None,      // output length: default is fine for this use
+            )
+            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+            // Hash the passphrase to a PHC string for later verification
+            let passphrase_salt = SaltString::generate(&mut OsRng);
+            let passphrase_hash = argon2::Argon2::default()
+                .hash_password_customized(
+                    passphrase.reveal(),
+                    Some(argon2::Algorithm::Argon2id.ident()),
+                    Some(argon2::Version::V0x13 as Decimal), // the API requires the numerical version representation
+                    params_passphrase,
+                    &passphrase_salt,
+                )
+                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
+                .to_string();
+
+            // Hash the passphrase to produce a ChaCha20-Poly1305 key
+            let encryption_salt = SaltString::generate(&mut OsRng);
+
+            // insert passphrase hash and encryption salt on the wallet db
+            WalletSettingSql::new(DbKey::PassphraseHash, passphrase_hash).set(conn)?;
+            WalletSettingSql::new(DbKey::EncryptionSalt, encryption_salt.to_string()).set(conn)?;
+
+            encryption_salt.to_string()
+        },
+        (Some(ph), Some(es)) => {
+            let argon2 = Argon2::default();
+            let stored_hash = PasswordHash::new(&ph).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+            // Check the passphrase PHC string against the provided passphrase
+            if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
+                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
+                return Err(WalletStorageError::InvalidPassphrase);
+            }
+
+            if secret_seed.is_none() {
+                error!(
+                    target: LOG_TARGET,
+                    "Cipher is provided but there is no Master Secret Key in DB to decrypt"
+                );
+                return Err(WalletStorageError::InvalidEncryptionCipher);
+            }
+
+            es
+        },
+        _ => {
+            error!(
+                target: LOG_TARGET,
+                "Only passphrase hash or encryption hash were provided, need both values for successful encryption"
+            );
+            return Err(WalletStorageError::UnexpectedResult(
+                "Encryption should be possible only by providing both passphrase hash and encrypted salt".into(),
+            ));
+        },
+    };
+
+    // Use the recommended OWASP parameters, which are not the default:
+    // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+    let params_encryption = argon2::Params::new(
+        37 * 1024,              // m-cost: 37 MiB, converted to KiB
+        1,                      // t-cost
+        1,                      // p-cost
+        Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
+    )
+    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+    // Hash the passphrase to produce a ChaCha20-Poly1305 key
+    let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
+    argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
+        .hash_password_into(
+            passphrase.reveal(),
+            encryption_salt.as_bytes(),
+            derived_encryption_key.as_mut(),
+        )
+        .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+
+    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref())))
 }
 
 /// A Sql version of the wallet setting key-value table
