@@ -883,7 +883,6 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
 }
 
 fn err_to_log_level(err: &io::Error) -> log::Level {
-    error!(target: LOG_TARGET, "KIND: {}", err.kind());
     match err.kind() {
         ErrorKind::ConnectionReset |
         ErrorKind::ConnectionAborted |
