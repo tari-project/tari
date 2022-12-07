@@ -550,7 +550,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
             ));
         }
         return Ok(WalletBoot::Recovery);
-    } else if cli.seed_words.is_some() && !wallet_exists {
+    } else if cli.seed_words.is_some() && !wallet_exists && cli.password.is_some() {
         return Ok(WalletBoot::Recovery);
     }
 
