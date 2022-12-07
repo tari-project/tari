@@ -1398,7 +1398,10 @@ pub fn calculate_validator_node_mr(
             .to_vec()
     }
 
-    let vn_mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(hash_node).collect());
+    let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
+    for vn in validator_nodes {
+        vn_mmr.push(hash_node(vn))?;
+    }
     let merkle_root = vn_mmr.get_merkle_root()?;
     Ok(merkle_root)
 }

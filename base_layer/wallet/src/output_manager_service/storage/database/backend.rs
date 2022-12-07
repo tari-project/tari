@@ -1,7 +1,6 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash},
@@ -82,10 +81,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
-    /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError>;
-    /// Remove encryption from the backend.
-    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
     fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;

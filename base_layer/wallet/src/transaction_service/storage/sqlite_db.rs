@@ -80,11 +80,11 @@ const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 #[derive(Clone)]
 pub struct TransactionServiceSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
+    cipher: Arc<RwLock<XChaCha20Poly1305>>,
 }
 
 impl TransactionServiceSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection, cipher: Option<XChaCha20Poly1305>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: XChaCha20Poly1305) -> Self {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
@@ -215,10 +215,9 @@ impl TransactionServiceSqliteDatabase {
         o: &mut T,
     ) -> Result<(), TransactionStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(cipher) = cipher.as_ref() {
-            o.decrypt(cipher)
-                .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
-        }
+        o.decrypt(&cipher)
+            .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
+
         Ok(())
     }
 
@@ -227,10 +226,9 @@ impl TransactionServiceSqliteDatabase {
         o: &mut T,
     ) -> Result<(), TransactionStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(cipher) = cipher.as_ref() {
-            o.encrypt(cipher)
-                .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
-        }
+        o.encrypt(&cipher)
+            .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
+
         Ok(())
     }
 }
@@ -792,155 +790,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), TransactionStorageError> {
-        let mut current_cipher = acquire_write_lock!(self.cipher);
-
-        if (*current_cipher).is_some() {
-            return Err(TransactionStorageError::AlreadyEncrypted);
-        }
-
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut inbound_txs = InboundTransactionSql::index(&conn)?;
-            // If the db is already encrypted then the very first output we try to encrypt will fail.
-            for tx in &mut inbound_txs {
-                // Test if this transaction is encrypted or not to avoid a double encryption.
-                let _inbound_transaction = InboundTransaction::try_from(tx.clone()).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not convert Inbound Transaction from database version, it might already be encrypted"
-                    );
-                    TransactionStorageError::AlreadyEncrypted
-                })?;
-                tx.encrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut outbound_txs = OutboundTransactionSql::index(&conn)?;
-            // If the db is already encrypted then the very first output we try to encrypt will fail.
-            for tx in &mut outbound_txs {
-                // Test if this transaction is encrypted or not to avoid a double encryption.
-                let _outbound_transaction = OutboundTransaction::try_from(tx.clone()).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not convert Inbound Transaction from database version, it might already be encrypted"
-                    );
-                    TransactionStorageError::AlreadyEncrypted
-                })?;
-                tx.encrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut completed_txs = CompletedTransactionSql::index(&conn)?;
-            // If the db is already encrypted then the very first output we try to encrypt will fail.
-            for tx in &mut completed_txs {
-                // Test if this transaction is encrypted or not to avoid a double encryption.
-                let _completed_transaction = CompletedTransaction::try_from(tx.clone()).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not convert Inbound Transaction from database version, it might already be encrypted"
-                    );
-                    TransactionStorageError::AlreadyEncrypted
-                })?;
-                tx.encrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        (*current_cipher) = Some(cipher);
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn remove_encryption(&self) -> Result<(), TransactionStorageError> {
-        let mut current_cipher = acquire_write_lock!(self.cipher);
-
-        let cipher = if let Some(cipher) = (*current_cipher).clone().take() {
-            cipher
-        } else {
-            return Ok(());
-        };
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut inbound_txs = InboundTransactionSql::index(&conn)?;
-
-            for tx in &mut inbound_txs {
-                tx.decrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut outbound_txs = OutboundTransactionSql::index(&conn)?;
-
-            for tx in &mut outbound_txs {
-                tx.decrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        conn.transaction::<_, TransactionStorageError, _>(|| {
-            let mut completed_txs = CompletedTransactionSql::index(&conn)?;
-            for tx in &mut completed_txs {
-                tx.decrypt(&cipher)
-                    .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
-                tx.update_encryption(&conn)?;
-            }
-
-            Ok(())
-        })?;
-
-        // Now that all the decryption has been completed we can safely remove the cipher fully
-        std::mem::drop((*current_cipher).take());
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
     fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -1368,6 +1217,7 @@ impl InboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn index(conn: &SqliteConnection) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table.load::<InboundTransactionSql>(conn)?)
     }
@@ -1472,6 +1322,7 @@ impl InboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update(
         &self,
         update: UpdateInboundTransactionSql,
@@ -1510,6 +1361,7 @@ impl InboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateInboundTransactionSql {
@@ -1638,6 +1490,7 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn index(conn: &SqliteConnection) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table.load::<OutboundTransactionSql>(conn)?)
     }
@@ -1732,6 +1585,7 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update(
         &self,
         update: UpdateOutboundTransactionSql,
@@ -1764,6 +1618,7 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateOutboundTransactionSql {
@@ -1873,7 +1728,7 @@ pub struct UpdateOutboundTransactionSql {
 /// A structure to represent a Sql compatible version of the CompletedTransaction struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "completed_transactions"]
-struct CompletedTransactionSql {
+pub struct CompletedTransactionSql {
     tx_id: i64,
     source_address: Vec<u8>,
     destination_address: Vec<u8>,
@@ -1904,6 +1759,7 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn index(conn: &SqliteConnection) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
         Ok(completed_transactions::table.load::<CompletedTransactionSql>(conn)?)
     }
@@ -2174,6 +2030,7 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateCompletedTransactionSql {
@@ -3029,7 +2886,7 @@ mod test {
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_apply_remove_encryption() {
+    fn test_transaction_db_values_must_be_encrypted() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -3039,6 +2896,12 @@ mod test {
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
+
         // Note: For this test the connection pool is setup with a pool size of one; the pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
         {
@@ -3065,7 +2928,9 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+
+            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             let destination_address = TariAddress::new(
@@ -3086,7 +2951,9 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+            let mut outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+
+            outbound_tx_sql.encrypt(&cipher).unwrap();
             outbound_tx_sql.commit(&conn).unwrap();
 
             let source_address = TariAddress::new(
@@ -3124,37 +2991,31 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+
+            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
         }
 
-        let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
-        let key_ga = Key::from_slice(&key);
-        let cipher = XChaCha20Poly1305::new(key_ga);
-
         let connection = WalletDbConnection::new(pool, None);
 
-        let db1 = TransactionServiceSqliteDatabase::new(connection.clone(), Some(cipher.clone()));
-        assert!(db1.apply_encryption(cipher.clone()).is_err());
+        let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
 
-        let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), None);
-        assert!(db2.remove_encryption().is_ok());
-        db2.apply_encryption(cipher).unwrap();
+        db2.fetch(&DbKey::PendingInboundTransactions).unwrap();
+
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
 
-        let db3 = TransactionServiceSqliteDatabase::new(connection, None);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let new_cipher = XChaCha20Poly1305::new(key_ga);
+
+        let db3 = TransactionServiceSqliteDatabase::new(connection, new_cipher);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
-
-        db2.remove_encryption().unwrap();
-
-        assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_ok());
-        assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        assert!(db3.fetch(&DbKey::CompletedTransactions).is_ok());
     }
 
     #[test]
@@ -3176,6 +3037,11 @@ mod test {
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let mut info_list_reference: Vec<InboundTransactionSenderInfo> = vec![];
         for i in 0..1000 {
@@ -3260,11 +3126,15 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+
+            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
 
             let inbound_tx = InboundTransaction::from(completed_tx);
-            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+
+            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             if cancelled.is_none() {
@@ -3276,7 +3146,7 @@ mod test {
         }
 
         let connection = WalletDbConnection::new(pool, None);
-        let db1 = TransactionServiceSqliteDatabase::new(connection, None);
+        let db1 = TransactionServiceSqliteDatabase::new(connection, cipher);
 
         let txn_list = db1.get_transactions_to_be_broadcast().unwrap();
         assert_eq!(txn_list.len(), 335);

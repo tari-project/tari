@@ -4,13 +4,15 @@
 #[cfg(test)]
 mod test {
     use std::{
+        mem::size_of,
         sync::{Arc, Mutex},
         thread,
         time::Duration,
     };
 
+    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::{NaiveDateTime, Utc};
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
@@ -249,7 +251,13 @@ mod test {
         let runtime = Runtime::new().unwrap();
 
         let (connection, _tempdir) = make_wallet_database_connection(None);
-        let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
+
+        let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let source_address = TariAddress::new(

@@ -35,44 +35,6 @@ use tari_wallet::key_manager_service::{
 use crate::support::data::get_temp_sqlite_database_connection;
 
 #[tokio::test]
-async fn get_key_at_test_no_encryption() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let cipher = CipherSeed::new();
-    let key1;
-    {
-        let key_manager = KeyManagerHandle::new(
-            cipher.clone(),
-            KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap()),
-        );
-        key_manager.add_new_branch("branch1").await.unwrap();
-        let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-        let key_2 = key_manager.get_next_key("branch1").await.unwrap();
-        let key_3 = key_manager.get_next_key("branch1").await.unwrap();
-
-        assert_ne!(key_1.key, key_2.key);
-        assert_ne!(key_1.key, key_3.key);
-        assert_ne!(key_2.key, key_3.key);
-
-        key1 = Some(key_manager.get_key_at_index("branch1", 1).await.unwrap());
-
-        assert_eq!(key_1.key, key1.clone().unwrap());
-    }
-    {
-        let key_manager = KeyManagerHandle::new(
-            cipher,
-            KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
-        );
-        key_manager.add_new_branch("branch1").await.unwrap();
-        let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-
-        assert_ne!(key_1.key, key1.clone().unwrap());
-        let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
-
-        assert_eq!(key1.unwrap(), key_1_2);
-    }
-}
-
-#[tokio::test]
 async fn get_key_at_test_with_encryption() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
@@ -82,7 +44,7 @@ async fn get_key_at_test_with_encryption() {
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, Some(db_cipher)).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
@@ -102,9 +64,15 @@ async fn get_key_at_test_with_encryption() {
 async fn key_manager_multiple_branches() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     assert_eq!(
         key_manager.add_new_branch("branch1").await.unwrap(),
@@ -139,9 +107,14 @@ async fn key_manager_find_index() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
@@ -157,9 +130,14 @@ async fn key_manager_update_current_key_index_if_higher() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
@@ -185,9 +163,14 @@ async fn key_manager_test_index() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     key_manager.add_new_branch("branch2").await.unwrap();
