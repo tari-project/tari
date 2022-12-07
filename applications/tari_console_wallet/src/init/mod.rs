@@ -552,22 +552,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
         return Ok(WalletBoot::Recovery);
     }
 
-    if cli.seed_words.is_some() && !wallet_exists && cli.password.is_some() {
-        return Ok(WalletBoot::Recovery);
-    }
-
     if cli.seed_words.is_some() && !wallet_exists {
-        if let Some(ref pass) = wallet_config.password {
-            let cli_pass = prompt_password("Please provide wallet password")?;
-
-            if cli_pass.reveal() == pass.reveal() {
-                return Ok(WalletBoot::Recovery);
-            } else {
-                return Err(ExitError::new(ExitCode::WalletError, "Invalid passphrase for wallet"));
-            }
-        }
-
-        // if both cli and config passwords are not available, we allow the user to recover its wallet
         return Ok(WalletBoot::Recovery);
     }
 
