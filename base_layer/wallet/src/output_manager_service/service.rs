@@ -410,18 +410,6 @@ where
                 .create_coin_join(commitments, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::Transaction),
-            OutputManagerRequest::ApplyEncryption(cipher) => self
-                .resources
-                .db
-                .apply_encryption(*cipher)
-                .map(|_| OutputManagerResponse::EncryptionApplied)
-                .map_err(OutputManagerError::OutputManagerStorageError),
-            OutputManagerRequest::RemoveEncryption => self
-                .resources
-                .db
-                .remove_encryption()
-                .map(|_| OutputManagerResponse::EncryptionRemoved)
-                .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),

@@ -77,7 +77,7 @@ impl NewOutputSql {
         status: OutputStatus,
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
-        cipher: Option<&XChaCha20Poly1305>,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant).unwrap();
@@ -117,11 +117,10 @@ impl NewOutputSql {
             source: output.source as i32,
         };
 
-        if let Some(cipher) = cipher {
-            output
-                .encrypt(cipher)
-                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        }
+        output
+            .encrypt(cipher)
+            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+
         Ok(output)
     }
 

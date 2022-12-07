@@ -20,6 +20,7 @@ tari_shutdown = { version = "^0.42", path = "../../infrastructure/shutdown" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 tari_wallet = { version = "^0.42", path = "../wallet", features = ["c_integration"]}
 
+chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 libc = "0.2.65"

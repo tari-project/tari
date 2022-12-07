@@ -70,7 +70,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::ByteArray;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -78,12 +78,7 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::{WalletError, WalletStorageError},
-    key_manager_service::{
-        storage::database::KeyManagerBackend,
-        KeyManagerHandle,
-        KeyManagerInitializer,
-        KeyManagerInterface,
-    },
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -666,27 +661,6 @@ where
             },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
-    }
-
-    /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
-    /// in which case this will fail.
-    pub async fn apply_encryption(&mut self, passphrase: SafePassword) -> Result<(), WalletError> {
-        debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let cipher = self.db.apply_encryption(passphrase)?;
-        self.output_manager_service.apply_encryption(cipher.clone()).await?;
-        self.transaction_service.apply_encryption(cipher.clone()).await?;
-        self.key_manager_service.apply_encryption(cipher).await?;
-        Ok(())
-    }
-
-    /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
-    /// fail
-    pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
-        self.output_manager_service.remove_encryption().await?;
-        self.transaction_service.remove_encryption().await?;
-        self.key_manager_service.remove_encryption().await?;
-        self.db.remove_encryption()?;
-        Ok(())
     }
 
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery

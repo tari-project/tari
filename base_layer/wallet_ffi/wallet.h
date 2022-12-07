@@ -3012,37 +3012,6 @@ void wallet_set_normal_power_mode(struct TariWallet *wallet,
                                   int *error_out);
 
 /**
- * Apply encryption to the databases used in this wallet using the provided passphrase. If the databases are already
- * encrypted this function will fail.
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `passphrase` - A string that represents the passphrase will be used to encrypt the databases for this
- * wallet. Once encrypted the passphrase will be required to start a wallet using these databases
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- * # Safety
- * None
- */
-void wallet_apply_encryption(struct TariWallet *wallet,
-                             const char *passphrase,
-                             int *error_out);
-
-/**
- * Remove encryption to the databases used in this wallet. If this wallet is currently encrypted this encryption will
- * be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- * # Safety
- * None
- */
-void wallet_remove_encryption(struct TariWallet *wallet,
-                              int *error_out);
-
-/**
  * Set a Key Value in the Wallet storage used for Client Key Value store
  *
  * ## Arguments
@@ -3205,26 +3174,6 @@ bool wallet_start_recovery(struct TariWallet *wallet,
 bool wallet_set_one_sided_payment_message(struct TariWallet *wallet,
                                           const char *message,
                                           int *error_out);
-
-/**
- * This function will produce a partial backup of the specified wallet database file. This backup will be written to
- * the provided file (full path must include the filename and extension) and will include the full wallet db but will
- * clear the sensitive Master Private Key
- *
- * ## Arguments
- * `original_file_path` - The full path of the original database file to be backed up, including the file name and
- * extension `backup_file_path` - The full path, including the file name and extension, of where the backup db will be
- * written `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- * Functions as an out parameter.
- *
- * ## Returns
- *
- * # Safety
- * None
- */
-void file_partial_backup(const char *original_file_path,
-                         const char *backup_file_path,
-                         int *error_out);
 
 /**
  * Gets the current emoji set

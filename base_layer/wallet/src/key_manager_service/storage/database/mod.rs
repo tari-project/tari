@@ -24,7 +24,6 @@ mod backend;
 use std::sync::Arc;
 
 pub use backend::KeyManagerBackend;
-use chacha20poly1305::XChaCha20Poly1305;
 
 use crate::key_manager_service::error::KeyManagerStorageError;
 
@@ -71,16 +70,5 @@ where T: KeyManagerBackend + 'static
     /// Will error if the branch does not exist.
     pub fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
         self.db.set_key_index(branch, index)
-    }
-
-    /// Encrypts the entire key manager with all branches.
-    /// This will only encrypt the index used, as the master seed phrase is not directly stored with the key manager.
-    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
-        self.db.apply_encryption(cipher)
-    }
-
-    /// Decrypts the entire key manager.
-    pub fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
-        self.db.remove_encryption()
     }
 }
