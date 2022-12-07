@@ -3726,8 +3726,8 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "1.1.13"
-source = "git+https://github.com/tari-project/randomx-rs?tag=v1.1.13#c33f8679fab73961104df9692c6c3bb1d29ad156"
+version = "1.1.14"
+source = "git+https://github.com/tari-project/randomx-rs?tag=v1.1.14#6e75547cfde93f5b33d506364d101301e2f4039d"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
