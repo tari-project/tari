@@ -605,6 +605,8 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
             ));
         }
         return Ok(WalletBoot::Recovery);
+    } else if cli.seed_words.is_some() && !wallet_exists {
+        return Ok(WalletBoot::Recovery);
     }
 
     if wallet_exists {
