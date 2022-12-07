@@ -194,7 +194,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 ))
             },
             DbKey::UnspentOutputs => {
-                let outputs = OutputSql::index_status(OutputStatus::Unspent, &conn)?;
+                let outputs = OutputSql::index_status(
+                    vec![OutputStatus::Unspent, OutputStatus::UnspentMinedUnconfirmed],
+                    &conn,
+                )?;
 
                 Some(DbValue::UnspentOutputs(
                     outputs
@@ -204,7 +207,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 ))
             },
             DbKey::SpentOutputs => {
-                let outputs = OutputSql::index_status(OutputStatus::Spent, &conn)?;
+                let outputs = OutputSql::index_status(vec![OutputStatus::Spent], &conn)?;
 
                 Some(DbValue::SpentOutputs(
                     outputs
@@ -224,7 +227,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 ))
             },
             DbKey::InvalidOutputs => {
-                let outputs = OutputSql::index_status(OutputStatus::Invalid, &conn)?;
+                let outputs = OutputSql::index_status(vec![OutputStatus::Invalid], &conn)?;
 
                 Some(DbValue::InvalidOutputs(
                     outputs
@@ -413,12 +416,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
-        let mut outputs = OutputSql::index_status(OutputStatus::EncumberedToBeReceived, &conn)?;
-        outputs.extend(OutputSql::index_status(
-            OutputStatus::ShortTermEncumberedToBeReceived,
+        let outputs = OutputSql::index_status(
+            vec![
+                OutputStatus::EncumberedToBeReceived,
+                OutputStatus::UnspentMinedUnconfirmed,
+                OutputStatus::ShortTermEncumberedToBeReceived,
+            ],
             &conn,
-        )?);
-        outputs.extend(OutputSql::index_status(OutputStatus::UnspentMinedUnconfirmed, &conn)?);
+        )?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1458,7 +1463,7 @@ mod test {
             outputs.iter().map(|o| o.spending_key.clone()).collect::<Vec<Vec<u8>>>()
         );
         assert_eq!(
-            OutputSql::index_status(OutputStatus::Unspent, &conn)
+            OutputSql::index_status(vec!(OutputStatus::Unspent), &conn)
                 .unwrap()
                 .iter()
                 .map(|o| o.spending_key.clone())
@@ -1469,7 +1474,7 @@ mod test {
                 .collect::<Vec<Vec<u8>>>()
         );
         assert_eq!(
-            OutputSql::index_status(OutputStatus::Spent, &conn)
+            OutputSql::index_status(vec!(OutputStatus::Spent), &conn)
                 .unwrap()
                 .iter()
                 .map(|o| o.spending_key.clone())

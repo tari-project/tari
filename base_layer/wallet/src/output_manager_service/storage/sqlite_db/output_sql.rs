@@ -117,10 +117,12 @@ impl OutputSql {
 
     /// Return all outputs with a given status
     pub fn index_status(
-        status: OutputStatus,
+        statuses: Vec<OutputStatus>,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+        Ok(outputs::table
+            .filter(outputs::status.eq_any::<Vec<i32>>(statuses.into_iter().map(|s| s as i32).collect()))
+            .load(conn)?)
     }
 
     /// Retrieves UTXOs by a set of given rules
