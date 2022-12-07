@@ -320,18 +320,17 @@ impl ConsensusConstants {
     }
 
     /// Returns the current epoch from the given height
-    pub fn block_height_to_current_epoch(&self, height: u64) -> VnEpoch {
+    pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
         VnEpoch(height / self.vn_epoch_length)
+    }
+
+    /// Returns the block height of the start of the given epoch
+    pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
+        epoch.as_u64() * self.vn_epoch_length
     }
 
     pub fn epoch_length(&self) -> u64 {
         self.vn_epoch_length
-    }
-
-    /// Returns the next epoch up from the given height
-    pub fn block_height_to_next_epoch(&self, height: u64) -> VnEpoch {
-        let rem = height % self.vn_epoch_length;
-        VnEpoch((height + rem) / self.vn_epoch_length)
     }
 
     pub fn localnet() -> Vec<Self> {

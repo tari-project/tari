@@ -95,7 +95,7 @@ pub enum BlockHeaderSyncError {
     #[error(
         "Validator node MMR at height {height} is not correct. Expected {actual} to equal the computed {computed}"
     )]
-    ValidatorNodeMmmr {
+    ValidatorNodeMmr {
         height: u64,
         actual: String,
         computed: String,
