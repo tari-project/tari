@@ -215,7 +215,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             .try_into()
             .map_err(|_| "Malformed prev block hash".to_string())?;
         Ok(Self {
-            version: u16::try_from(header.version).unwrap(),
+            version: u16::try_from(header.version).map_err(|err| err.to_string())?,
             height: header.height,
             prev_hash,
             total_kernel_offset,

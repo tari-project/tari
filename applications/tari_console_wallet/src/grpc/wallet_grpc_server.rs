@@ -956,7 +956,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .outputs()
             .iter()
             .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .unwrap();
+            .ok_or(Status::internal("No code template registration output!"))?;
         let template_address = reg_output.hash();
 
         transaction_service
