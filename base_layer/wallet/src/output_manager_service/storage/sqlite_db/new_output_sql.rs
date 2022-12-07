@@ -80,7 +80,7 @@ impl NewOutputSql {
         cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant).unwrap();
+        BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant)?;
 
         let mut output = Self {
             commitment: Some(output.commitment.to_vec()),

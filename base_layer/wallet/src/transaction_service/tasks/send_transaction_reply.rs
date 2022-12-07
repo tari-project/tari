@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{convert::TryInto, time::Duration};
 
 use log::*;
 use tari_common_types::transaction::TxId;
@@ -50,7 +50,9 @@ pub async fn send_transaction_reply(
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
-    let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
+    let proto_message: proto::RecipientSignedMessage = recipient_reply
+        .try_into()
+        .map_err(TransactionServiceError::ServiceError)?;
 
     let send_result = match transaction_routing_mechanism {
         TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
@@ -90,7 +92,9 @@ pub async fn send_transaction_reply_direct(
     let mut direct_send_result = false;
 
     let tx_id = inbound_transaction.tx_id;
-    let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
+    let proto_message: proto::RecipientSignedMessage = recipient_reply
+        .try_into()
+        .map_err(TransactionServiceError::ServiceError)?;
     match outbound_message_service
         .send_direct(
             inbound_transaction.source_address.public_key().clone(),

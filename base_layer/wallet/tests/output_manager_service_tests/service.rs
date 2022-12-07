@@ -19,7 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
+
+use std::{collections::HashMap, convert::TryInto, mem::size_of, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
@@ -1438,7 +1439,7 @@ async fn test_txo_validation() {
     // These responses will mark outputs 1 and 2 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1446,7 +1447,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1579,7 +1580,7 @@ async fn test_txo_validation() {
 
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1587,7 +1588,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1595,7 +1596,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output4_tx_output.clone().into()),
+            output: Some(output4_tx_output.clone().try_into().unwrap()),
             mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1603,7 +1604,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output5_tx_output.clone().into()),
+            output: Some(output5_tx_output.clone().try_into().unwrap()),
             mmr_position: 5,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1611,7 +1612,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output6_tx_output.clone().into()),
+            output: Some(output6_tx_output.clone().try_into().unwrap()),
             mmr_position: 6,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1757,7 +1758,7 @@ async fn test_txo_validation() {
     // Update UtxoResponses to not have the received output5 and coinbase output6
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1765,7 +1766,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1773,7 +1774,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output4_tx_output.clone().into()),
+            output: Some(output4_tx_output.clone().try_into().unwrap()),
             mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
@@ -1986,7 +1987,7 @@ async fn test_txo_revalidation() {
     // These responses will mark outputs 1 and 2 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1994,7 +1995,7 @@ async fn test_txo_revalidation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),

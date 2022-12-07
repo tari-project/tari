@@ -146,7 +146,10 @@ impl BorshDeserialize for MerkleProof {
         let len = buf.read_varint()?;
         let mut branch = Vec::with_capacity(len);
         for _ in 0..len {
-            branch.push(Hash::consensus_decode(buf).unwrap());
+            branch.push(
+                Hash::consensus_decode(buf)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?,
+            );
         }
         let depth = BorshDeserialize::deserialize(buf)?;
         let path_bitmap = BorshDeserialize::deserialize(buf)?;
