@@ -41,6 +41,8 @@ pub struct OutputManagerServiceConfig {
     /// If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
     /// inputs for further transactions, but can still be selected individually as specific outputs.
     pub autoignore_onesided_utxos: bool,
+    /// The number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
+    pub num_of_seconds_to_revalidate_invalid_utxos: i64,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -51,6 +53,7 @@ impl Default for OutputManagerServiceConfig {
             num_confirmations_required: 3,
             tx_validator_batch_size: 100,
             autoignore_onesided_utxos: false,
+            num_of_seconds_to_revalidate_invalid_utxos: 60 * 60 * 24 * 3,
         }
     }
 }

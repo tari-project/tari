@@ -25,6 +25,7 @@ use std::{
     sync::Arc,
 };
 
+use chrono::{Duration, Utc};
 use log::*;
 use tari_common_types::types::{BlockHash, FixedHash};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcError::RequestFailed};
@@ -108,12 +109,67 @@ where
         self.update_spent_outputs(&mut base_node_client, last_mined_header)
             .await?;
 
+        self.update_invalid_outputs(&mut base_node_client).await?;
+
         self.publish_event(OutputManagerEvent::TxoValidationSuccess(self.operation_id));
         debug!(
             target: LOG_TARGET,
             "Finished TXO validation protocol from base node {} (Id: {})", base_node_peer, self.operation_id,
         );
         Ok(self.operation_id)
+    }
+
+    async fn update_invalid_outputs(
+        &self,
+        wallet_client: &mut BaseNodeWalletRpcClient,
+    ) -> Result<(), OutputManagerProtocolError> {
+        let invalid_outputs = self
+            .db
+            .fetch_invalid_outputs(
+                (Utc::now() - Duration::seconds(self.config.num_of_seconds_to_revalidate_invalid_utxos)).timestamp(),
+            )
+            .for_protocol(self.operation_id)?;
+
+        for batch in invalid_outputs.chunks(self.config.tx_validator_batch_size) {
+            let (mined, unmined, tip_height) = self
+                .query_base_node_for_outputs(batch, wallet_client)
+                .await
+                .for_protocol(self.operation_id)?;
+            debug!(
+                target: LOG_TARGET,
+                "Base node returned {} outputs as mined and {} outputs as unmined (Operation ID: {})",
+                mined.len(),
+                unmined.len(),
+                self.operation_id
+            );
+            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
+                info!(
+                    target: LOG_TARGET,
+                    "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID:
+                {})",
+                    output.commitment.to_hex(),
+                    output.hash.to_hex(),
+                    mined_height,
+                    tip_height,
+                    self.operation_id
+                );
+                self.update_output_as_mined(
+                    output,
+                    mined_in_block,
+                    *mined_height,
+                    *mmr_position,
+                    tip_height,
+                    *mined_timestamp,
+                )
+                .await?;
+            }
+            for output in unmined {
+                self.db
+                    .update_last_validation_timestamp(output.hash)
+                    .for_protocol(self.operation_id)?;
+            }
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines)]
