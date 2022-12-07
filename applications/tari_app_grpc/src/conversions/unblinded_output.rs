@@ -34,11 +34,13 @@ use zeroize::Zeroize;
 
 use crate::tari_rpc as grpc;
 
-impl From<UnblindedOutput> for grpc::UnblindedOutput {
-    fn from(output: UnblindedOutput) -> Self {
+impl TryFrom<UnblindedOutput> for grpc::UnblindedOutput {
+    type Error = String;
+
+    fn try_from(output: UnblindedOutput) -> Result<Self, Self::Error> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
-        grpc::UnblindedOutput {
+        BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        Ok(grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
             features: Some(output.features.into()),
@@ -57,7 +59,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             covenant,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
-        }
+        })
     }
 }
 
@@ -91,7 +93,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
         let mut buffer = output.covenant.as_bytes();
-        let covenant = BorshDeserialize::deserialize(&mut buffer).unwrap();
+        let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 

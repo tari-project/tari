@@ -28,7 +28,6 @@ use std::{
     sync::Arc,
 };
 
-use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use log::*;
 use tari_common_types::{
@@ -124,10 +123,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
         block_height: u64,
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
-    /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), TransactionStorageError>;
-    /// Remove encryption from the backend.
-    fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a transactions mined height. A transaction can either be mined as valid or mined as invalid
@@ -702,14 +697,6 @@ where T: TransactionBackend + 'static
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.find_coinbase_transaction_at_block_height(block_height, amount)
-    }
-
-    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), TransactionStorageError> {
-        self.db.apply_encryption(cipher)
-    }
-
-    pub fn remove_encryption(&self) -> Result<(), TransactionStorageError> {
-        self.db.remove_encryption()
     }
 
     pub fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {

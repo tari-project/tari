@@ -33,7 +33,7 @@ use crate::{
     error::WalletStorageError,
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
+    storage::sqlite_db::wallet::WalletSqliteDatabase,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 
@@ -67,29 +67,6 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
         .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
 
     Ok(WalletDbConnection::new(pool, Some(file_lock)))
-}
-
-/// This function will copy a wallet database to the provided path and then clear the Master Private Key from the
-/// database.
-pub fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P) -> Result<(), WalletStorageError> {
-    // Copy the current db to the backup path
-    let db_path = current_db
-        .as_ref()
-        .to_str()
-        .ok_or(WalletStorageError::InvalidUnicodePath)?;
-    let backup_path = backup_path
-        .as_ref()
-        .to_str()
-        .ok_or(WalletStorageError::InvalidUnicodePath)?;
-    std::fs::copy(db_path, backup_path)
-        .map_err(|_| WalletStorageError::FileError("Could not copy database file for backup".to_string()))?;
-
-    // open a connection and clear the Master Secret Key
-    let connection = run_migration_and_create_sqlite_connection(backup_path, 16)?;
-    let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
-    db.clear_master_seed()?;
-
-    Ok(())
 }
 
 pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorageError> {
@@ -126,7 +103,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
 
 pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     db_path: P,
-    passphrase: Option<SafePassword>,
+    passphrase: SafePassword,
     sqlite_pool_size: usize,
 ) -> Result<
     (

@@ -292,7 +292,7 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\nWitness: {}\nKernels: {} ({})\n",
+            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\nWitness: {}\nKernels: {} ({})",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
             self.output_mmr_size,
@@ -300,6 +300,7 @@ impl Display for BlockHeader {
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
         )?;
+        writeln!(fmt, "ValidatorNode: {}\n", self.validator_node_mr.to_hex())?;
         writeln!(
             fmt,
             "Total offset: {}\nTotal script offset: {}\nNonce: {}\nProof of work:\n{}",

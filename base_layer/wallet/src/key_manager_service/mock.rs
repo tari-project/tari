@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
@@ -152,14 +151,6 @@ impl KeyManagerInterface for KeyManagerMock {
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
         self.get_key_at_index_mock(branch.into(), index).await
-    }
-
-    async fn apply_encryption(&self, _cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
-        unimplemented!("Not supported");
-    }
-
-    async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
-        unimplemented!("Not supported");
     }
 
     async fn find_key_index<T: Into<String> + Send>(

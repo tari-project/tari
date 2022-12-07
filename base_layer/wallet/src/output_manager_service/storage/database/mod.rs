@@ -27,7 +27,6 @@ use std::{
 };
 
 pub use backend::OutputManagerBackend;
-use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
@@ -322,14 +321,6 @@ where T: OutputManagerBackend + 'static
 
     pub fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         self.db.reinstate_cancelled_inbound_output(tx_id)
-    }
-
-    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
-        self.db.apply_encryption(cipher)
-    }
-
-    pub fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
-        self.db.remove_encryption()
     }
 
     pub fn get_all_known_one_sided_payment_scripts(
