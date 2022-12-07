@@ -49,7 +49,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, wallet_mode};
+use crate::init::{boot_with_password, confirm_seed_words, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -135,6 +135,12 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         );
     }
 
+    let on_init = match boot_mode {
+        WalletBoot::New => true,
+        _ => false,
+    };
+    let on_recovery = recovery_seed.is_none();
+
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
         config,
@@ -144,6 +150,18 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         shutdown_signal,
         cli.non_interactive_mode,
     ))?;
+
+    // if wallet is being set for the first time, wallet seed words are prompted on the screen
+    if !cli.non_interactive_mode && on_recovery && on_init {
+        match confirm_seed_words(&mut wallet) {
+            Ok(()) => {
+                print!("\x1Bc"); // Clear the screen
+            },
+            Err(error) => {
+                return Err(error);
+            },
+        };
+    }
 
     // Check if there is an in progress recovery in the wallet's database
     if wallet.is_recovery_in_progress()? {
