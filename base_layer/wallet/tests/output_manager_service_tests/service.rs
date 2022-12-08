@@ -1667,7 +1667,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
-    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 2);
+    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 5);
 
     assert!(oms.output_manager_handle.get_spent_outputs().await.unwrap().is_empty());
 
