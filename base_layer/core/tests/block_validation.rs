@@ -651,12 +651,12 @@ async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(500)
+        .with_max_block_transaction_weight(400)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
@@ -703,7 +703,7 @@ async fn test_block_sync_body_validator() {
     );
     let new_block = db.prepare_new_block(template).unwrap();
     let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
-    let err = validator.validate_body(new_block).await.unwrap_err(); // Whoops! This should not pass validation
+    let err = validator.validate_body(new_block).await.unwrap_err();
     assert!(
         matches!(
             err,
@@ -729,7 +729,24 @@ async fn test_block_sync_body_validator() {
         None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+
+    assert!(
+        new_block
+            .body
+            .calculate_weight(consensus_constants.transaction_weight()) >
+            400,
+        "If this is not more than 400, then the next line should fail"
+    );
+    let err = validator.validate_body(new_block).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ValidationError::BlockError(BlockValidationError::BlockTooLarge { actual_weight, max_weight }) if
+            actual_weight == 449 && max_weight == 400
+        ),
+        "{}",
+        err
+    );
 
     // lets break spend rules
     let (template, _) =

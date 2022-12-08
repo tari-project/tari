@@ -860,6 +860,24 @@ pub fn check_validator_node_registration_utxo(
     Ok(())
 }
 
+pub fn check_output_feature(output: &TransactionOutput, max_coinbase_extra_size: u32) -> Result<(), TransactionError> {
+    // This field is optional for coinbases (mining pools and
+    // other merge mined coins can use it), but must be empty for non-coinbases
+    if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
+        return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
+    }
+
+    // For coinbases, the maximum length should be 64 bytes (2x hashes),
+    // so that arbitrary data cannot be included
+    if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_extra_size as usize {
+        return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
+            len: output.features.coinbase_extra.len(),
+            max: max_coinbase_extra_size,
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use tari_test_utils::unpack_enum;

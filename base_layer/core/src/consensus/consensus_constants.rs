@@ -97,7 +97,7 @@ pub struct ConsensusConstants {
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
-    coinbase_output_features_extra_max_length: usize,
+    coinbase_output_features_extra_max_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
@@ -217,7 +217,7 @@ impl ConsensusConstants {
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
 
-    pub fn coinbase_output_features_extra_max_length(&self) -> usize {
+    pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
         self.coinbase_output_features_extra_max_length
     }
 

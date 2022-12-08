@@ -74,7 +74,7 @@ pub enum TransactionError {
     #[error("Only coinbase outputs may have extra coinbase info")]
     NonCoinbaseHasOutputFeaturesCoinbaseExtra,
     #[error("Coinbase extra size is {len} but the maximum is {max}")]
-    InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: usize },
+    InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
 }
 
 impl From<CovenantError> for TransactionError {
