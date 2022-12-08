@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.43.0](https://github.com/tari-project/tari/compare/v0.42.0...v0.43.0) (2022-12-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* input and output signatures (#4983)
+
+### Features
+
+* add utxo import and export for ffi ([#4999](https://github.com/tari-project/tari/issues/4999)) ([9cda0bb](https://github.com/tari-project/tari/commit/9cda0bb985c995958c6b33bbb41690776129e2ac))
+* improve logging of dropped channel ([#5013](https://github.com/tari-project/tari/issues/5013)) ([4650153](https://github.com/tari-project/tari/commit/46501539e2e3cc377a2dc46a8cfed02f24790bcc))
+* remove duplicate errors  ([#5009](https://github.com/tari-project/tari/issues/5009)) ([0c9477b](https://github.com/tari-project/tari/commit/0c9477b51f2e50a8323c498e27af440d21b4ea16))
+* revalidate invalid utxo ([#5020](https://github.com/tari-project/tari/issues/5020)) ([f418d73](https://github.com/tari-project/tari/commit/f418d73eefbdca10c3adcea8c597df627368cef6))
+
+
+### Bug Fixes
+
+* **base_layer/core:** fixes incorrect validator node merkle root calculation ([#5005](https://github.com/tari-project/tari/issues/5005)) ([951c0d6](https://github.com/tari-project/tari/commit/951c0d6b247da782082c5f98ad9c43de4110cc66))
+* **ci:** wallet ffi build fix ([#4993](https://github.com/tari-project/tari/issues/4993)) ([5145368](https://github.com/tari-project/tari/commit/5145368a66643dba88742252099b1dcf1932928e))
+* coinbase extra info is not checked ([#4995](https://github.com/tari-project/tari/issues/4995)) ([af95b45](https://github.com/tari-project/tari/commit/af95b45935c2ea0ac0f66ccbeaeee6a40d408fca))
+* currently newly created wallet does not prompt seed words ([#5019](https://github.com/tari-project/tari/issues/5019)) ([#5022](https://github.com/tari-project/tari/issues/5022)) ([96cf8aa](https://github.com/tari-project/tari/commit/96cf8aaaa4cc3a0b209baa49763bbe18893ab2ae))
+* improve key handling  ([#4994](https://github.com/tari-project/tari/issues/4994)) ([f069b14](https://github.com/tari-project/tari/commit/f069b14527d269562976413b3c56d0f3725fa707))
+* input and output signatures ([#4983](https://github.com/tari-project/tari/issues/4983)) ([a0f1d95](https://github.com/tari-project/tari/commit/a0f1d9588bef9d872f747a59eadffcad7d2effc9))
+* remove optionals from wallet set up ([#4984](https://github.com/tari-project/tari/issues/4984)) ([33e6dbf](https://github.com/tari-project/tari/commit/33e6dbfdf3f08b0e5e299396b0beb4fdc0b8970d))
+* seed words should be used in wallet recovery (see issue [#4894](https://github.com/tari-project/tari/issues/4894)) ([#5010](https://github.com/tari-project/tari/issues/5010)) ([68a9f76](https://github.com/tari-project/tari/commit/68a9f7617c1b0a7d8ddc8eaaf5d3980f1e71ea2c))
+* show mined timestamp for import tx ([#5012](https://github.com/tari-project/tari/issues/5012)) ([49a11d9](https://github.com/tari-project/tari/commit/49a11d9c2c5aff2ab8a17f5671523b9540739ab5))
+* update randomx-rs dependency  ([#5011](https://github.com/tari-project/tari/issues/5011)) ([5361dd9](https://github.com/tari-project/tari/commit/5361dd902070403c283b8e6a4f89fe9fff235b53))
+
 ## [0.42.0](https://github.com/tari-project/tari/compare/v0.41.0...v0.42.0) (2022-12-02)
 
 
