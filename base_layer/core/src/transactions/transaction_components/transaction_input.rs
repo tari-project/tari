@@ -171,6 +171,7 @@ impl TransactionInput {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
+                    .chain(&version)
                     .chain(ephemeral_commitment)
                     .chain(ephemeral_pubkey)
                     .chain(script)

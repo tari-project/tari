@@ -288,6 +288,7 @@ impl TransactionOutput {
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
+            .chain(&version)
             .chain(ephemeral_pubkey)
             .chain(ephemeral_commitment)
             .chain(script)
