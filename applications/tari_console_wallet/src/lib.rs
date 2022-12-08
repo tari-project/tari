@@ -32,15 +32,7 @@ mod utils;
 mod wallet_modes;
 
 pub use cli::Cli;
-use init::{
-    boot,
-    change_password,
-    get_base_node_peer_config,
-    init_wallet,
-    start_wallet,
-    tari_splash_screen,
-    WalletBoot,
-};
+use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
@@ -48,8 +40,7 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_crypto::tari_utilities::Hidden;
-use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
+use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
@@ -58,7 +49,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::wallet_mode;
+use crate::init::{boot_with_password, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -111,7 +102,7 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&cli, &config.wallet)?;
+    let (mut boot_mode, password) = boot_with_password(&cli, &config.wallet)?;
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
@@ -213,16 +204,7 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
 
 fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
-        let seed = if cli.seed_words.is_some() {
-            // need to zeroize first, to clean up memory of cli.seed_words clone
-            let seed_words: SeedWords = SeedWords::new(
-                cli.seed_words
-                    .as_ref()
-                    .unwrap()
-                    .split_whitespace()
-                    .map(|s| Hidden::hide(s.to_string()))
-                    .collect(),
-            );
+        let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words)?
         } else {
             prompt_private_key_from_seed_words()?

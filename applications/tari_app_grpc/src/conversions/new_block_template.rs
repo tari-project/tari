@@ -58,8 +58,8 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .body
                     .outputs()
                     .iter()
-                    .map(|output| grpc::TransactionOutput::from(output.clone()))
-                    .collect(),
+                    .map(|output| grpc::TransactionOutput::try_from(output.clone()))
+                    .collect::<Result<Vec<_>, _>>()?,
                 kernels: block
                     .body
                     .kernels()

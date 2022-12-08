@@ -189,6 +189,8 @@ pub enum OutputManagerStorageError {
     HexError(#[from] HexError),
     #[error("Key Manager Service Error: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
 }
 
 impl From<OutputManagerError> for ExitError {

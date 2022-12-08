@@ -23,6 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use chacha20poly1305::Key;
 pub use encrypted_value::{EncryptedValue, EncryptionError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
@@ -34,6 +35,7 @@ pub use output_type::OutputType;
 pub use side_chain::*;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
+use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
 pub use transaction_input::{SpentOutput, TransactionInput};
@@ -44,6 +46,7 @@ pub use transaction_output::TransactionOutput;
 pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
+use zeroize::Zeroize;
 
 mod encrypted_value;
 mod error;
@@ -73,6 +76,10 @@ mod test;
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
 pub const MAX_TRANSACTION_OUTPUTS: usize = 500;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
+pub(crate) const AEAD_KEY_LEN: usize = std::mem::size_of::<Key>();
+
+// Type for hiding aead key encryption
+hidden_type!(EncryptedValueKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 

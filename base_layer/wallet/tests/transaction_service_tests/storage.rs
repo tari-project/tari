@@ -473,23 +473,12 @@ pub fn test_transaction_service_sqlite_db() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection, None));
-}
-
-#[test]
-pub fn test_transaction_service_sqlite_db_encrypted() {
-    let db_name = format!("{}.sqlite3", random::string(8));
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
-
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection, cipher));
 }
 
 #[tokio::test]
@@ -504,7 +493,7 @@ async fn import_tx_and_read_it_from_db() {
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
-    let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
+    let sqlite_db = TransactionServiceSqliteDatabase::new(connection, cipher);
 
     let transaction = CompletedTransaction::new(
         TxId::from(1u64),

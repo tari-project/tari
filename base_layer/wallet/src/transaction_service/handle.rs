@@ -27,7 +27,6 @@ use std::{
     sync::Arc,
 };
 
-use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -127,8 +126,6 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
-    ApplyEncryption(Box<XChaCha20Poly1305>),
-    RemoveEncryption,
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     RestartTransactionProtocols,
     RestartBroadcastProtocols,
@@ -212,8 +209,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
-            Self::ApplyEncryption(_) => write!(f, "ApplyEncryption"),
-            Self::RemoveEncryption => write!(f, "RemoveEncryption"),
             Self::GenerateCoinbaseTransaction(_, _, bh) => {
                 write!(f, "GenerateCoinbaseTransaction (Blockheight {})", bh)
             },
@@ -245,8 +240,6 @@ pub enum TransactionServiceResponse {
     TransactionSubmitted,
     LowPowerModeSet,
     NormalPowerModeSet,
-    EncryptionApplied,
-    EncryptionRemoved,
     CoinbaseTransactionGenerated(Box<Transaction>),
     ProtocolsRestarted,
     AnyTransaction(Box<Option<WalletTransaction>>),
@@ -755,24 +748,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::NormalPowerModeSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::ApplyEncryption(Box::new(cipher)))
-            .await??
-        {
-            TransactionServiceResponse::EncryptionApplied => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn remove_encryption(&mut self) -> Result<(), TransactionServiceError> {
-        match self.handle.call(TransactionServiceRequest::RemoveEncryption).await?? {
-            TransactionServiceResponse::EncryptionRemoved => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

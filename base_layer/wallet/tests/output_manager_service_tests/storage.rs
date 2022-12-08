@@ -319,7 +319,12 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 pub fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    test_db_backend(OutputManagerSqliteDatabase::new(connection, None));
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    test_db_backend(OutputManagerSqliteDatabase::new(connection, cipher));
 }
 
 #[test]
@@ -331,14 +336,20 @@ pub fn test_output_manager_sqlite_db_encrypted() {
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
-    test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
+    test_db_backend(OutputManagerSqliteDatabase::new(connection, cipher));
 }
 
 #[tokio::test]
 pub async fn test_short_term_encumberance() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection, cipher);
     let db = OutputManagerDatabase::new(backend);
 
     let mut unspent_outputs = Vec::new();
@@ -395,7 +406,13 @@ pub async fn test_short_term_encumberance() {
 pub async fn test_no_duplicate_outputs() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection, cipher);
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
@@ -429,7 +446,13 @@ pub async fn test_no_duplicate_outputs() {
 pub async fn test_mark_as_unmined() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection, cipher);
     let db = OutputManagerDatabase::new(backend);
 
     // create an output

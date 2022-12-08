@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -575,7 +578,7 @@ async fn handle_outbound_block(
             exclude_peers,
             OutboundDomainMessage::new(
                 &TariMessageType::NewBlock,
-                shared_protos::core::NewBlock::from(new_block),
+                shared_protos::core::NewBlock::try_from(new_block).map_err(CommsInterfaceError::InternalError)?,
             ),
             "Outbound new block from base node".to_string(),
         )

@@ -42,7 +42,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::{epoch_time::EpochTime, ByteArray};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
@@ -160,8 +160,9 @@ async fn setup(
 
             let db_connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
+            let passphrase = SafePassword::from("my lovely secret passphrase");
             WalletDatabase::new(
-                WalletSqliteDatabase::new(db_connection, None).expect("Should be able to create wallet database"),
+                WalletSqliteDatabase::new(db_connection, passphrase).expect("Should be able to create wallet database"),
             )
         },
         Some(db) => db,

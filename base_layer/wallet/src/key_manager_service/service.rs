@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use chacha20poly1305::XChaCha20Poly1305;
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
@@ -108,16 +107,6 @@ where TBackend: KeyManagerBackend + 'static
             .await;
         let key = km.derive_key(index)?;
         Ok(key.k)
-    }
-
-    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
-        self.db.apply_encryption(cipher)?;
-        Ok(())
-    }
-
-    pub fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
-        self.db.remove_encryption()?;
-        Ok(())
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.

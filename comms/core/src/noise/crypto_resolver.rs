@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
+use digest::{generic_array::GenericArray, FixedOutput};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -33,7 +33,9 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_utilities::safe_array::SafeArray;
 
+use super::CommsNoiseKey;
 use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
@@ -66,9 +68,13 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
-fn noise_kdf(shared_key: &CommsDHKE) -> [u8; 32] {
-    let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
-    Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
+fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
+    let mut comms_noise_key = CommsNoiseKey::from(SafeArray::default());
+    DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh")
+        .chain(shared_key.as_bytes())
+        .finalize_into(GenericArray::from_mut_slice(comms_noise_key.reveal_mut()));
+
+    comms_noise_key
 }
 
 #[derive(Default)]
@@ -116,7 +122,7 @@ impl Dh for CommsDiffieHellman {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
-        copy_slice!(hash, out);
+        copy_slice!(hash.reveal(), out);
         Ok(())
     }
 }
@@ -125,7 +131,7 @@ impl Dh for CommsDiffieHellman {
 mod test {
     use snow::Keypair;
 
-    use super::*;
+    use super::{super::NOISE_KEY_LEN, *};
     use crate::noise::config::NOISE_IX_PARAMETER;
 
     fn build_keypair() -> Keypair {
@@ -162,6 +168,6 @@ mod test {
         let mut out = [0; 32];
         dh.dh(public_key2.as_bytes(), &mut out).unwrap();
 
-        assert_eq!(out, expected_shared);
+        assert_eq!(out, expected_shared.reveal().as_ref()[..NOISE_KEY_LEN]);
     }
 }

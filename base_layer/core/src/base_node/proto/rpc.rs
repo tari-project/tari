@@ -37,9 +37,11 @@ impl TryFrom<Block> for proto::BlockBodyResponse {
     }
 }
 
-impl From<PrunedOutput> for proto::SyncUtxo {
-    fn from(output: PrunedOutput) -> Self {
-        match output {
+impl TryFrom<PrunedOutput> for proto::SyncUtxo {
+    type Error = String;
+
+    fn try_from(output: PrunedOutput) -> Result<Self, Self::Error> {
+        Ok(match output {
             PrunedOutput::Pruned {
                 output_hash,
                 witness_hash,
@@ -50,9 +52,9 @@ impl From<PrunedOutput> for proto::SyncUtxo {
                 })),
             },
             PrunedOutput::NotPruned { output } => proto::SyncUtxo {
-                utxo: Some(proto::sync_utxo::Utxo::Output(output.into())),
+                utxo: Some(proto::sync_utxo::Utxo::Output(output.try_into()?)),
             },
-        }
+        })
     }
 }
 

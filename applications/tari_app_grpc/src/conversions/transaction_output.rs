@@ -76,12 +76,14 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl From<TransactionOutput> for grpc::TransactionOutput {
-    fn from(output: TransactionOutput) -> Self {
+impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
+    type Error = String;
+
+    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
         let hash = output.hash().to_vec();
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
-        grpc::TransactionOutput {
+        BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        Ok(grpc::TransactionOutput {
             hash,
             features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
@@ -99,6 +101,6 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
-        }
+        })
     }
 }

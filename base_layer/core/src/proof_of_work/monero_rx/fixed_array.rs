@@ -152,17 +152,6 @@ mod test {
         FixedByteArray::from_bytes(&[1u8; 64][..]).unwrap_err();
     }
 
-    // #[test]
-    // fn length_check() {
-    //     let mut buf = [0u8; MAX_ARR_SIZE + 1];
-    //     buf[0] = 63;
-    //     let arr = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap();
-    //     assert_eq!(arr.len(), MAX_ARR_SIZE);
-
-    //     buf[0] = 64;
-    //     let _err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
-    // }
-
     #[test]
     fn capacity_overflow_does_not_panic() {
         let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
