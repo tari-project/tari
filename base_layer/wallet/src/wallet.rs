@@ -433,39 +433,8 @@ where
             encrypted_value,
             minimum_value_promise,
         );
-
-        let tx_id = self
-            .transaction_service
-            .import_utxo_with_status(
-                amount,
-                source_address,
-                message,
-                Some(features.maturity),
-                ImportStatus::Imported,
-                None,
-                None,
-                None,
-            )
-            .await?;
-
-        let commitment_hex = unblinded_output
-            .as_transaction_input(&self.factories.commitment)?
-            .commitment()
-            .map_err(WalletError::TransactionError)?
-            .to_hex();
-
-        // As non-rewindable
-        self.output_manager_service
-            .add_unvalidated_output(tx_id, unblinded_output, None)
-            .await?;
-
-        info!(
-            target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
-            commitment_hex
-        );
-
-        Ok(tx_id)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
+            .await
     }
 
     /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be
@@ -493,7 +462,7 @@ where
 
         // As non-rewindable
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone(), None)
+            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
