@@ -39,8 +39,12 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     coinbase_value += transactions
         .iter()
         .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
-    let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
-        create_coinbase(&CryptoFactories::default(), coinbase_value, block_height + lock_height);
+    let (coinbase_utxo, coinbase_kernel, _coinbase_output) = create_coinbase(
+        &CryptoFactories::default(),
+        coinbase_value,
+        block_height + lock_height,
+        None,
+    );
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
     header.prev_hash = Vec::from([1u8; 32]).try_into().unwrap(); // Random
     header.height = block_height;

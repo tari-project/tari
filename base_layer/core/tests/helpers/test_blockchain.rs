@@ -91,6 +91,7 @@ impl TestBlockchain {
             block.transactions,
             &self.consensus_manager,
             &CryptoFactories::default(),
+            None,
         );
 
         let mut new_block = self.store.prepare_new_block(template).unwrap();

@@ -64,7 +64,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             version: features.version as u32,
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
-            metadata: features.metadata,
+            metadata: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
         }
     }

@@ -48,7 +48,12 @@ pub struct OutputFeatures {
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
-    pub metadata: Vec<u8>,
+    /// Additional data for coinbase transactions. This field MUST be empty if the output is not a coinbase
+    /// transaction. This is enforced in [AggregatedBody::check_output_features].
+    ///
+    /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
+    /// `coinbase_output_features_metadata_max_length`.
+    pub coinbase_extra: Vec<u8>,
     pub sidechain_feature: Option<SideChainFeature>,
 }
 
@@ -64,7 +69,7 @@ impl OutputFeatures {
             version,
             output_type,
             maturity,
-            metadata,
+            coinbase_extra: metadata,
             sidechain_feature,
         }
     }
@@ -84,10 +89,12 @@ impl OutputFeatures {
         )
     }
 
-    pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
+    pub fn create_coinbase(maturity_height: u64, extra: Option<Vec<u8>>) -> OutputFeatures {
+        let coinbase_extra = extra.unwrap_or_default();
         OutputFeatures {
             output_type: OutputType::Coinbase,
             maturity: maturity_height,
+            coinbase_extra,
             ..Default::default()
         }
     }

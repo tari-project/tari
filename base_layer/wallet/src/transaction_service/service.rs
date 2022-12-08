@@ -749,8 +749,13 @@ where
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
-            TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
-                .generate_coinbase_transaction(reward, fees, block_height)
+            TransactionServiceRequest::GenerateCoinbaseTransaction {
+                reward,
+                fees,
+                block_height,
+                extra,
+            } => self
+                .generate_coinbase_transaction(reward, fees, block_height, extra)
                 .await
                 .map(|tx| TransactionServiceResponse::CoinbaseTransactionGenerated(Box::new(tx))),
             TransactionServiceRequest::SetLowPowerMode => {
@@ -2599,6 +2604,7 @@ where
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
         let amount = reward + fees;
 
@@ -2607,66 +2613,61 @@ where
             .db
             .find_coinbase_transaction_at_block_height(block_height, amount)?;
 
-        let completed_transaction = match find_result {
-            Some(completed_tx) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Coinbase transaction (TxId: {}) for Block Height: {} found, with Amount {}.",
-                    completed_tx.tx_id,
-                    block_height,
-                    amount
-                );
-
-                completed_tx.transaction
-            },
-            None => {
-                // otherwise create a new coinbase tx
-                let tx_id = TxId::new_random();
-                let tx = self
-                    .output_manager_service
-                    .get_coinbase_transaction(tx_id, reward, fees, block_height)
-                    .await?;
-                self.db.insert_completed_transaction(
+        let mut completed_transaction = None;
+        if let Some(tx) = find_result {
+            if let Some(coinbase) = tx.transaction.body.outputs().first() {
+                if coinbase.features.coinbase_extra == extra {
+                    completed_transaction = Some(tx.transaction);
+                }
+            }
+        };
+        if completed_transaction.is_none() {
+            // otherwise create a new coinbase tx
+            let tx_id = TxId::new_random();
+            let tx = self
+                .output_manager_service
+                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
+                .await?;
+            self.db.insert_completed_transaction(
+                tx_id,
+                CompletedTransaction::new(
                     tx_id,
-                    CompletedTransaction::new(
-                        tx_id,
-                        self.resources.wallet_identity.address.clone(),
-                        self.resources.wallet_identity.address.clone(),
-                        amount,
-                        MicroTari::from(0),
-                        tx.clone(),
-                        TransactionStatus::Coinbase,
-                        format!("Coinbase Transaction for Block #{}", block_height),
-                        Utc::now().naive_utc(),
-                        TransactionDirection::Inbound,
-                        Some(block_height),
-                        None,
-                        None,
-                    ),
-                )?;
+                    self.resources.wallet_identity.address.clone(),
+                    self.resources.wallet_identity.address.clone(),
+                    amount,
+                    MicroTari::from(0),
+                    tx.clone(),
+                    TransactionStatus::Coinbase,
+                    format!("Coinbase Transaction for Block #{}", block_height),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    Some(block_height),
+                    None,
+                    None,
+                ),
+            )?;
 
-                let _size = self
-                    .resources
-                    .event_publisher
-                    .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
-                    .map_err(|e| {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Error sending event because there are no subscribers: {:?}",
-                            e
-                        );
+            let _size = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
                         e
-                    });
+                    );
+                    e
+                });
 
-                info!(
-                    target: LOG_TARGET,
-                    "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
-                );
-                tx
-            },
+            info!(
+                target: LOG_TARGET,
+                "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
+            );
+            completed_transaction = Some(tx);
         };
 
-        Ok(completed_transaction)
+        Ok(completed_transaction.unwrap())
     }
 
     /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in

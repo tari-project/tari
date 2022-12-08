@@ -8691,7 +8691,7 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert!((*output_features).metadata.is_empty());
+            assert!((*output_features).coinbase_extra.is_empty());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -8720,7 +8720,7 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).metadata, expected_metadata);
+            assert_eq!((*output_features).coinbase_extra, expected_metadata);
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -9321,9 +9321,12 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
 
+            let log_path: *const c_char =
+                CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
+                    as *const c_char;
             let recovered_wallet = wallet_create(
                 config,
-                passphrase,
+                log_path,
                 0,
                 0,
                 passphrase,

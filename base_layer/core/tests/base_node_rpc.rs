@@ -284,7 +284,9 @@ async fn test_get_height_at_time() {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let new_block = base_node
             .blockchain_db
-            .prepare_new_block(chain_block_with_new_coinbase(&prev_block, vec![], &consensus_manager, &factories).0)
+            .prepare_new_block(
+                chain_block_with_new_coinbase(&prev_block, vec![], &consensus_manager, &factories, None).0,
+            )
             .unwrap();
 
         prev_block = base_node

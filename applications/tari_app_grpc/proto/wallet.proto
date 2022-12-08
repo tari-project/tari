@@ -236,6 +236,7 @@ message GetCoinbaseRequest {
     uint64 reward = 1;
     uint64 fee = 2;
     uint64 height = 3;
+    bytes extra = 4;
 }
 
 message GetCoinbaseResponse {

@@ -83,7 +83,7 @@ impl MergeMiningProxyService {
         debug!(target: LOG_TARGET, "Config: {:?}", config);
         Self {
             inner: InnerService {
-                config,
+                config: Arc::new(config),
                 block_templates,
                 http_client,
                 base_node_client,
@@ -154,7 +154,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 
 #[derive(Debug, Clone)]
 struct InnerService {
-    config: MergeMiningProxyConfig,
+    config: Arc<MergeMiningProxyConfig>,
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
@@ -423,7 +423,8 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client);
+        let new_block_protocol =
+            BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client, self.config.clone());
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;

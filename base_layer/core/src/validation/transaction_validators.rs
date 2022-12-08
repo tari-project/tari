@@ -71,6 +71,10 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
             return Err(ValidationError::ErroneousCoinbaseOutput);
         }
 
+        // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
+        // only coinbases may have the extra field set (the only field that the fn argument affects).
+        tx.body.check_output_features(1)?;
+
         let tip = {
             let db = self.db.db_read_access()?;
             db.fetch_chain_metadata()

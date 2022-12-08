@@ -90,6 +90,7 @@ pub struct CoinbaseBuilder {
     private_nonce: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
     covenant: Covenant,
+    extra: Option<Vec<u8>>,
 }
 
 impl CoinbaseBuilder {
@@ -106,6 +107,7 @@ impl CoinbaseBuilder {
             private_nonce: None,
             rewind_data: None,
             covenant: Covenant::default(),
+            extra: None,
         }
     }
 
@@ -158,6 +160,13 @@ impl CoinbaseBuilder {
         self
     }
 
+    /// Provide some arbitrary additional information that will be stored in the coinbase output's `coinbase_extra`
+    /// field.
+    pub fn with_extra(mut self, extra: Vec<u8>) -> Self {
+        self.extra = Some(extra);
+        self
+    }
+
     /// Try and construct a Coinbase Transaction. The block reward is taken from the emission curve for the current
     /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
     /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
@@ -201,7 +210,7 @@ impl CoinbaseBuilder {
             .factories
             .commitment
             .commit_value(&spending_key, total_reward.as_u64());
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), self.extra);
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
