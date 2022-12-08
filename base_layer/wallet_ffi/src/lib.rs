@@ -9321,9 +9321,12 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
 
+            let log_path: *const c_char =
+                CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
+                    as *const c_char;
             let recovered_wallet = wallet_create(
                 config,
-                passphrase,
+                log_path,
                 0,
                 0,
                 passphrase,

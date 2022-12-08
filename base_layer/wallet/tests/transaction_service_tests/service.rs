@@ -3149,7 +3149,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
     // Create a coinbase Txn at the first block height
     let _tx1 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a)
+        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3177,7 +3177,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
     // the previous one should be cancelled
     let _tx1b = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a)
+        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3204,7 +3204,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
     // Create another coinbase Txn at the same block height; the previous one should not be cancelled
     let _tx2 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_a)
+        .generate_coinbase_transaction(reward2, fees2, block_height_a, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3231,7 +3231,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
     // Create a third coinbase Txn at the second block height; all the three should be valid
     let _tx3 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward3, fees3, block_height_b)
+        .generate_coinbase_transaction(reward3, fees3, block_height_b, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3287,7 +3287,7 @@ async fn test_coinbase_generation_and_monitoring() {
     // Create a coinbase Txn at the first block height
     let _tx1 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a)
+        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3314,7 +3314,7 @@ async fn test_coinbase_generation_and_monitoring() {
     // Create another coinbase Txn at the next block height
     let _tx2 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_b)
+        .generate_coinbase_transaction(reward2, fees2, block_height_b, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3341,7 +3341,7 @@ async fn test_coinbase_generation_and_monitoring() {
     // Take out a second one at the second height which should not overwrite the initial one
     let _tx2b = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2b, block_height_b)
+        .generate_coinbase_transaction(reward2, fees2b, block_height_b, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3530,7 +3530,7 @@ async fn test_coinbase_abandoned() {
 
     let tx1 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a)
+        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3654,7 +3654,7 @@ async fn test_coinbase_abandoned() {
 
     let tx2 = alice_ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_b)
+        .generate_coinbase_transaction(reward2, fees2, block_height_b, b"test".to_vec())
         .await
         .unwrap();
     let transactions = alice_ts_interface
@@ -3977,13 +3977,13 @@ async fn test_coinbase_transaction_reused_for_same_height() {
     // a requested coinbase transaction for the same height and amount should be the same
     let tx1 = ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, blockheight1)
+        .generate_coinbase_transaction(reward1, fees1, blockheight1, b"test".to_vec())
         .await
         .unwrap();
 
     let tx2 = ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, blockheight1)
+        .generate_coinbase_transaction(reward1, fees1, blockheight1, b"test".to_vec())
         .await
         .unwrap();
 
@@ -4013,7 +4013,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
     // a requested coinbase transaction for the same height but new amount should be different
     let tx3 = ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, blockheight1)
+        .generate_coinbase_transaction(reward2, fees2, blockheight1, b"test".to_vec())
         .await
         .unwrap();
 
@@ -4042,7 +4042,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
     // a requested coinbase transaction for a new height should be different
     let tx_height2 = ts_interface
         .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, blockheight2)
+        .generate_coinbase_transaction(reward2, fees2, blockheight2, b"test".to_vec())
         .await
         .unwrap();
 
