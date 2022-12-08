@@ -552,6 +552,10 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
         return Ok(WalletBoot::Recovery);
     }
 
+    if cli.seed_words.is_some() && !wallet_exists {
+        return Ok(WalletBoot::Recovery);
+    }
+
     if wallet_exists {
         // normal startup of existing wallet
         Ok(WalletBoot::Existing)
