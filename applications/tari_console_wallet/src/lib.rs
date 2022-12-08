@@ -135,11 +135,8 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         );
     }
 
-    let on_init = match boot_mode {
-        WalletBoot::New => true,
-        _ => false,
-    };
-    let on_recovery = recovery_seed.is_none();
+    let on_init = matches!(boot_mode, WalletBoot::New);
+    let not_recovery = recovery_seed.is_none();
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
@@ -152,7 +149,7 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
     ))?;
 
     // if wallet is being set for the first time, wallet seed words are prompted on the screen
-    if !cli.non_interactive_mode && on_recovery && on_init {
+    if !cli.non_interactive_mode && not_recovery && on_init {
         match confirm_seed_words(&mut wallet) {
             Ok(()) => {
                 print!("\x1Bc"); // Clear the screen
