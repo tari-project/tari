@@ -276,8 +276,14 @@ where
                 .get_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
-            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height)) => self
-                .get_coinbase_transaction(tx_id, reward, fees, block_height)
+            OutputManagerRequest::GetCoinbaseTransaction {
+                tx_id,
+                reward,
+                fees,
+                block_height,
+                extra,
+            } => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction {
@@ -1058,6 +1064,7 @@ where
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1087,6 +1094,7 @@ where
             .with_script(script!(Nop))
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
+            .with_extra(extra)
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(

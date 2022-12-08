@@ -22,7 +22,7 @@
 
 //! Methods for seting up a new block.
 
-use std::cmp;
+use std::{cmp, sync::Arc};
 
 use log::*;
 use tari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
@@ -32,6 +32,7 @@ use tari_wallet_grpc_client::WalletGrpcClient;
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
     common::merge_mining,
+    config::MergeMiningProxyConfig,
     error::MmProxyError,
 };
 
@@ -39,6 +40,7 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
+    config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
     wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
 }
@@ -47,10 +49,12 @@ impl<'a> BlockTemplateProtocol<'a> {
     pub fn new(
         base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
         wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
+        config: Arc<MergeMiningProxyConfig>,
     ) -> Self {
         Self {
             base_node_client,
             wallet_client,
+            config,
         }
     }
 }
@@ -180,6 +184,7 @@ impl BlockTemplateProtocol<'_> {
         let tari_height = template.height();
         let block_reward = miner_data.reward;
         let total_fees = miner_data.total_fees;
+        let extra = self.config.coinbase_extra.as_bytes().to_vec();
 
         let coinbase_response = self
             .wallet_client
@@ -187,6 +192,7 @@ impl BlockTemplateProtocol<'_> {
                 reward: block_reward,
                 fee: total_fees,
                 height: tari_height,
+                extra,
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {

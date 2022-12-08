@@ -31,7 +31,10 @@ use tari_app_grpc::tari_rpc::{
 use crate::errors::{err_empty, MinerError};
 
 /// Convert NewBlockTemplateResponse to GetCoinbaseRequest
-pub fn coinbase_request(template_response: &NewBlockTemplateResponse) -> Result<GetCoinbaseRequest, MinerError> {
+pub fn coinbase_request(
+    template_response: &NewBlockTemplateResponse,
+    extra: Vec<u8>,
+) -> Result<GetCoinbaseRequest, MinerError> {
     let template = template_response
         .new_block_template
         .as_ref()
@@ -47,7 +50,12 @@ pub fn coinbase_request(template_response: &NewBlockTemplateResponse) -> Result<
         .as_ref()
         .ok_or_else(|| err_empty("template.header"))?
         .height;
-    Ok(GetCoinbaseRequest { reward, fee, height })
+    Ok(GetCoinbaseRequest {
+        reward,
+        fee,
+        height,
+        extra,
+    })
 }
 
 pub fn extract_outputs_and_kernels(
