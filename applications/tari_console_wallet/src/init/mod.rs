@@ -482,7 +482,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     Ok(())
 }
 
-fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
 
     println!();
