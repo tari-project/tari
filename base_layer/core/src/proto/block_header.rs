@@ -54,7 +54,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             None => return Err("No proof of work provided".into()),
         };
         Ok(Self {
-            version: u16::try_from(header.version).unwrap(),
+            version: u16::try_from(header.version).map_err(|err| err.to_string())?,
             height: header.height,
             prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp,

@@ -82,9 +82,9 @@ pub enum WalletBoot {
 pub fn get_or_prompt_password(
     arg_password: Option<SafePassword>,
     config_password: Option<SafePassword>,
-) -> Result<Option<SafePassword>, ExitError> {
-    if arg_password.is_some() {
-        return Ok(arg_password);
+) -> Result<SafePassword, ExitError> {
+    if let Some(passphrase) = arg_password {
+        return Ok(passphrase);
     }
 
     let env = std::env::var_os(TARI_WALLET_PASSWORD);
@@ -92,16 +92,16 @@ pub fn get_or_prompt_password(
         let env_password = p
             .into_string()
             .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?;
-        return Ok(Some(env_password.into()));
+        return Ok(env_password.into());
     }
 
-    if config_password.is_some() {
-        return Ok(config_password);
+    if let Some(passphrase) = config_password {
+        return Ok(passphrase);
     }
 
     let password = prompt_password("Wallet password: ")?;
 
-    Ok(Some(password))
+    Ok(password)
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
@@ -121,7 +121,7 @@ fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &ApplicationConfig,
-    arg_password: Option<SafePassword>,
+    arg_password: SafePassword,
     shutdown_signal: ShutdownSignal,
     non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
@@ -134,15 +134,15 @@ pub async fn change_password(
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
-    wallet
-        .remove_encryption()
-        .await
-        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+    // wallet
+    //     .remove_encryption()
+    //     .await
+    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
-    wallet
-        .apply_encryption(passphrase)
-        .await
-        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+    // wallet
+    //     .apply_encryption(passphrase)
+    //     .await
+    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
     println!("Wallet password changed successfully.");
 
@@ -250,7 +250,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 #[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
     config: &ApplicationConfig,
-    arg_password: Option<SafePassword>,
+    arg_password: SafePassword,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
@@ -269,34 +269,16 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    // test encryption by initializing with no passphrase...
     let db_path = &config.wallet.db_file;
 
-    let result = initialize_sqlite_database_backends(db_path, None, config.wallet.db_connection_pool_size);
-    let (backends, wallet_encrypted) = match result {
-        Ok(backends) => {
-            // wallet is not encrypted
-            (backends, false)
-        },
-        Err(WalletStorageError::NoPasswordError) => {
-            // get supplied or prompt password
-            let passphrase = get_or_prompt_password(arg_password.clone(), config.wallet.password.clone())?;
-            let backends =
-                initialize_sqlite_database_backends(db_path, passphrase, config.wallet.db_connection_pool_size)?;
-            (backends, true)
-        },
-        Err(e) => {
-            return Err(e.into());
-        },
-    };
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
+    // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+        initialize_sqlite_database_backends(db_path, arg_password, config.wallet.db_connection_pool_size)?;
+
     let wallet_db = WalletDatabase::new(wallet_backend);
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
-    debug!(
-        target: LOG_TARGET,
-        "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
-    );
+    debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
     let node_address = match config.wallet.p2p.public_address.clone() {
         Some(addr) => addr,
@@ -362,43 +344,6 @@ pub async fn init_wallet(
             .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
     }
 
-    if !wallet_encrypted {
-        debug!(target: LOG_TARGET, "Wallet is not encrypted.");
-
-        // create using --password arg if supplied and skip seed words confirmation
-        let passphrase = match arg_password {
-            Some(password) => {
-                debug!(target: LOG_TARGET, "Setting password from command line argument.");
-                password
-            },
-            None => {
-                debug!(target: LOG_TARGET, "Prompting for password.");
-                let password = prompt_password("Create wallet password: ")?;
-                let confirmed = prompt_password("Confirm wallet password: ")?;
-
-                if password.reveal() != confirmed.reveal() {
-                    return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
-                }
-
-                password
-            },
-        };
-
-        wallet.apply_encryption(passphrase).await?;
-
-        debug!(target: LOG_TARGET, "Wallet encrypted.");
-
-        if !non_interactive_mode && recovery_seed.is_none() {
-            match confirm_seed_words(&mut wallet) {
-                Ok(()) => {
-                    print!("\x1Bc"); // Clear the screen
-                },
-                Err(error) => {
-                    return Err(error);
-                },
-            };
-        }
-    }
     if let Some(file_name) = seed_words_file_name {
         let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?.join(" ");
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
@@ -537,7 +482,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     Ok(())
 }
 
-fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
 
     println!();
@@ -590,7 +535,7 @@ pub fn tari_splash_screen(heading: &str) {
 
 /// Prompts the user for a new wallet or to recover an existing wallet.
 /// Returns the wallet bootmode indicating if it's a new or existing wallet, or if recovery is required.
-pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError> {
+fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError> {
     let wallet_exists = wallet_config.db_file.exists();
 
     // forced recovery
@@ -604,6 +549,10 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
                 ),
             ));
         }
+        return Ok(WalletBoot::Recovery);
+    }
+
+    if cli.seed_words.is_some() && !wallet_exists {
         return Ok(WalletBoot::Recovery);
     }
 
@@ -651,4 +600,38 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
             }
         }
     }
+}
+
+pub(crate) fn boot_with_password(
+    cli: &Cli,
+    wallet_config: &WalletConfig,
+) -> Result<(WalletBoot, SafePassword), ExitError> {
+    let boot_mode = boot(cli, wallet_config)?;
+
+    if cli.password.is_some() {
+        return Ok((boot_mode, cli.password.clone().unwrap()));
+    }
+    if wallet_config.password.is_some() {
+        return Ok((boot_mode, wallet_config.password.clone().unwrap()));
+    }
+
+    let password = match boot_mode {
+        WalletBoot::New => {
+            debug!(target: LOG_TARGET, "Prompting for password.");
+            let password = prompt_password("Create wallet password: ")?;
+            let confirmed = prompt_password("Confirm wallet password: ")?;
+
+            if password.reveal() != confirmed.reveal() {
+                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
+            }
+
+            password
+        },
+        WalletBoot::Existing | WalletBoot::Recovery => {
+            debug!(target: LOG_TARGET, "Prompting for password.");
+            prompt_password("Prompt wallet password: ")?
+        },
+    };
+
+    Ok((boot_mode, password))
 }

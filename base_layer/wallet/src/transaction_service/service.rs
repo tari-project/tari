@@ -761,16 +761,6 @@ where
                 self.set_power_mode(PowerMode::Normal).await?;
                 Ok(TransactionServiceResponse::NormalPowerModeSet)
             },
-            TransactionServiceRequest::ApplyEncryption(cipher) => self
-                .db
-                .apply_encryption(*cipher)
-                .map(|_| TransactionServiceResponse::EncryptionApplied)
-                .map_err(TransactionServiceError::TransactionStorageError),
-            TransactionServiceRequest::RemoveEncryption => self
-                .db
-                .remove_encryption()
-                .map(|_| TransactionServiceResponse::EncryptionRemoved)
-                .map_err(TransactionServiceError::TransactionStorageError),
             TransactionServiceRequest::RestartTransactionProtocols => self
                 .restart_transaction_negotiation_protocols(
                     send_transaction_join_handles,
@@ -942,15 +932,7 @@ where
 
             let (fee, transaction) = self
                 .output_manager_service
-                .create_pay_to_self_transaction(
-                    tx_id,
-                    amount,
-                    selection_criteria,
-                    output_features,
-                    fee_per_gram,
-                    None,
-                    message.clone(),
-                )
+                .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
                 .await?;
 
             // Notify that the transaction was successfully resolved.

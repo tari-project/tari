@@ -58,14 +58,16 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
     }
 }
 
-impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
-    fn from(message: RecipientSignedMessage) -> Self {
-        Self {
+impl TryFrom<RecipientSignedMessage> for proto::RecipientSignedMessage {
+    type Error = String;
+
+    fn try_from(message: RecipientSignedMessage) -> Result<Self, Self::Error> {
+        Ok(Self {
             tx_id: message.tx_id.into(),
-            output: Some(message.output.into()),
+            output: Some(message.output.try_into()?),
             public_spend_key: message.public_spend_key.to_vec(),
             partial_signature: Some(message.partial_signature.into()),
             metadata: Some(message.tx_metadata.into()),
-        }
+        })
     }
 }

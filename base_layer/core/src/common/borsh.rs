@@ -36,18 +36,6 @@ impl<T: BorshDeserialize> FromBytes<T> for T {
     }
 }
 
-pub trait ToBytes {
-    fn serialize_to_vec(&self) -> Vec<u8>;
-}
-
-impl<T: BorshSerialize> ToBytes for T {
-    fn serialize_to_vec(&self) -> Vec<u8> {
-        let mut buffer = Vec::new();
-        self.serialize(&mut buffer).unwrap();
-        buffer
-    }
-}
-
 pub trait SerializedSize {
     fn get_serialized_size(&self) -> usize;
 }
@@ -55,6 +43,9 @@ pub trait SerializedSize {
 impl<T: BorshSerialize> SerializedSize for T {
     fn get_serialized_size(&self) -> usize {
         let mut counter = ByteCounter::new();
+        // The [ByteCounter] never throws an error. But be aware that we can introduce an Error into custom serialize.
+        // e.g. MoneroPowData is using external functions that can throw an error. But we don't use this function for
+        // it.
         self.serialize(&mut counter).unwrap();
         counter.get()
     }

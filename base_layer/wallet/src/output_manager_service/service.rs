@@ -313,7 +313,6 @@ where
                 output_features,
                 fee_per_gram,
                 lock_height,
-                message,
             } => self
                 .create_pay_to_self_transaction(
                     tx_id,
@@ -322,7 +321,6 @@ where
                     *output_features,
                     fee_per_gram,
                     lock_height,
-                    message,
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -410,18 +408,6 @@ where
                 .create_coin_join(commitments, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::Transaction),
-            OutputManagerRequest::ApplyEncryption(cipher) => self
-                .resources
-                .db
-                .apply_encryption(*cipher)
-                .map(|_| OutputManagerResponse::EncryptionApplied)
-                .map_err(OutputManagerError::OutputManagerStorageError),
-            OutputManagerRequest::RemoveEncryption => self
-                .resources
-                .db
-                .remove_encryption()
-                .map(|_| OutputManagerResponse::EncryptionRemoved)
-                .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
@@ -1239,7 +1225,6 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
@@ -1267,7 +1252,6 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_message(message)
             .with_rewindable_outputs(self.resources.rewind_data.clone())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())

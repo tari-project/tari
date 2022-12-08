@@ -182,7 +182,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?,
                 &mut covenant,
             )
-            .unwrap();
+            .map_err(|err| err.to_string())?;
             Ok(Self {
                 features: Some(
                     input
@@ -278,11 +278,13 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl From<TransactionOutput> for proto::types::TransactionOutput {
-    fn from(output: TransactionOutput) -> Self {
+impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
+    type Error = String;
+
+    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.covenant, &mut covenant).unwrap();
-        Self {
+        BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        Ok(Self {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
@@ -293,7 +295,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
-        }
+        })
     }
 }
 
@@ -362,7 +364,10 @@ impl TryFrom<AggregateBody> for proto::types::AggregateBody {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<proto::types::TransactionInput>, _>>()?,
-            outputs: o.into_iter().map(Into::into).collect(),
+            outputs: o
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, String>>()?,
             kernels: k.into_iter().map(Into::into).collect(),
         })
     }

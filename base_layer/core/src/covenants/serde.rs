@@ -22,7 +22,6 @@
 
 use std::fmt;
 
-use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{
     de::{Error, Visitor},
     Deserialize,
@@ -37,8 +36,7 @@ use crate::covenants::Covenant;
 impl Serialize for Covenant {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        let mut bytes = Vec::new();
-        BorshSerialize::serialize(&self, &mut bytes).unwrap();
+        let bytes = self.to_bytes();
         if ser.is_human_readable() {
             ser.serialize_str(&bytes.to_hex())
         } else {
@@ -69,8 +67,8 @@ impl<'de> Visitor<'de> for CovenantVisitor {
 
     fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
     where E: Error {
-        let mut buffer = v;
-        BorshDeserialize::deserialize(&mut buffer).map_err(|e| E::custom(e.to_string()))
+        let mut v = v;
+        Covenant::from_bytes(&mut v).map_err(|e| E::custom(e.to_string()))
     }
 
     fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>

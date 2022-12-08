@@ -22,7 +22,6 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc};
 
-use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, HashOutput, PublicKey},
@@ -94,7 +93,6 @@ pub enum OutputManagerRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<UnblindedOutputBuilder>,
@@ -116,8 +114,6 @@ pub enum OutputManagerRequest {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     },
-    ApplyEncryption(Box<XChaCha20Poly1305>),
-    RemoveEncryption,
     FeeEstimate {
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
@@ -167,7 +163,7 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
-            CreatePayToSelfTransaction { message, .. } => write!(f, "CreatePayToSelfTransaction ({})", message),
+            CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
@@ -195,8 +191,6 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
                 commitments, fee_per_gram,
             ),
-            ApplyEncryption(_) => write!(f, "ApplyEncryption"),
-            RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
@@ -258,8 +252,6 @@ pub enum OutputManagerResponse {
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
-    EncryptionApplied,
-    EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
     FeeEstimate(MicroTari),
@@ -779,24 +771,6 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ApplyEncryption(Box::new(cipher)))
-            .await??
-        {
-            OutputManagerResponse::EncryptionApplied => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn remove_encryption(&mut self) -> Result<(), OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::RemoveEncryption).await?? {
-            OutputManagerResponse::EncryptionRemoved => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
@@ -860,7 +834,6 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
@@ -871,7 +844,6 @@ impl OutputManagerHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
-                message,
             })
             .await??
         {

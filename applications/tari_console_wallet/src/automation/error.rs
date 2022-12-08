@@ -29,7 +29,7 @@ use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{tari_amount::MicroTariError, transaction_components::TransactionError};
-use tari_utilities::hex::HexError;
+use tari_utilities::{hex::HexError, ByteArrayError};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     key_manager_service::KeyManagerServiceError,
@@ -82,6 +82,8 @@ pub enum CommandError {
     General(String),
     #[error("FixedHash size error `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("ByteArrayError {0}")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 impl From<CommandError> for ExitError {

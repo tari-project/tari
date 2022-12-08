@@ -25,7 +25,6 @@ use std::{
     sync::Arc,
 };
 
-use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -34,7 +33,6 @@ use tari_comms::{
     tor::TorIdentity,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
-use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
@@ -46,10 +44,6 @@ pub trait WalletBackend: Send + Sync + Clone {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
-    /// Apply encryption to the backend.
-    fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError>;
-    /// Remove encryption from the backend.
-    fn remove_encryption(&self) -> Result<(), WalletStorageError>;
 
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError>;
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError>;
@@ -240,14 +234,6 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError> {
-        self.db.apply_encryption(passphrase)
-    }
-
-    pub fn remove_encryption(&self) -> Result<(), WalletStorageError> {
-        self.db.remove_encryption()
-    }
-
     pub fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::ClientKeyValue(key, value)))?;
@@ -379,6 +365,7 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
 mod test {
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
+    use tari_utilities::SafePassword;
     use tempfile::tempdir;
 
     use crate::storage::{
@@ -393,7 +380,8 @@ mod test {
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
 
-        let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+        let passphrase = SafePassword::from("my secret lovely passphrase");
+        let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
         // Test wallet settings
         assert!(db.get_master_seed().unwrap().is_none());

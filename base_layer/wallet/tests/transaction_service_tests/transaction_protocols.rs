@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -129,7 +130,12 @@ pub async fn setup() -> (
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name), 16).unwrap();
 
-    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection, None));
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection, cipher));
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
     task::spawn(oms_reply_channel_task(oms_request_receiver));

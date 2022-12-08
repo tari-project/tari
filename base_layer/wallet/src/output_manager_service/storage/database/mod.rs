@@ -27,7 +27,6 @@ use std::{
 };
 
 pub use backend::OutputManagerBackend;
-use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
@@ -286,6 +285,11 @@ where T: OutputManagerBackend + 'static
         Ok(utxos)
     }
 
+    pub fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let utxos = self.db.fetch_invalid_outputs(timestamp)?;
+        Ok(utxos)
+    }
+
     pub fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
             Ok(None) => log_error(
@@ -322,14 +326,6 @@ where T: OutputManagerBackend + 'static
 
     pub fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         self.db.reinstate_cancelled_inbound_output(tx_id)
-    }
-
-    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
-        self.db.apply_encryption(cipher)
-    }
-
-    pub fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
-        self.db.remove_encryption()
     }
 
     pub fn get_all_known_one_sided_payment_scripts(
@@ -422,6 +418,12 @@ where T: OutputManagerBackend + 'static
     pub fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.set_outputs_to_be_revalidated()?;
+        Ok(())
+    }
+
+    pub fn update_last_validation_timestamp(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        db.update_last_validation_timestamp(hash)?;
         Ok(())
     }
 

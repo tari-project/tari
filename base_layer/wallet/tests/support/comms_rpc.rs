@@ -659,7 +659,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
         for hash in &message.output_hashes {
             if let Some(output) = utxos.iter().find(|o| &o.hash() == hash) {
-                result.push(TransactionOutputProto::from(output.clone()));
+                result.push(TransactionOutputProto::try_from(output.clone()).unwrap());
             }
         }
 
@@ -811,7 +811,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
                             .take(min(trigger_block, end) - current_block + 1)
                         {
                             let item = SyncUtxosByBlockResponse {
-                                outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
+                                outputs: b.utxos.clone().into_iter().map(|o| o.try_into().unwrap()).collect(),
                                 height: b.height,
                                 header_hash: b.header_hash.clone(),
                                 mined_timestamp: 0,
@@ -826,7 +826,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
                 } else {
                     for b in blocks.into_iter().skip(start).take(end - start + 1) {
                         let item = SyncUtxosByBlockResponse {
-                            outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
+                            outputs: b.utxos.clone().into_iter().map(|o| o.try_into().unwrap()).collect(),
                             height: b.height,
                             header_hash: b.header_hash.clone(),
                             mined_timestamp: 0,
