@@ -126,7 +126,16 @@ where
         let invalid_outputs = self
             .db
             .fetch_invalid_outputs(
-                (Utc::now() - Duration::seconds(self.config.num_of_seconds_to_revalidate_invalid_utxos)).timestamp(),
+                (Utc::now() -
+                    Duration::seconds(
+                        self.config
+                            .num_of_seconds_to_revalidate_invalid_utxos
+                            .try_into()
+                            .map_err(|_| {
+                                OutputManagerProtocolError::new(self.operation_id, OutputManagerError::InvalidConfig)
+                            })?,
+                    ))
+                .timestamp(),
             )
             .for_protocol(self.operation_id)?;
 

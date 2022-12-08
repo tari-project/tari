@@ -42,7 +42,7 @@ pub struct OutputManagerServiceConfig {
     /// inputs for further transactions, but can still be selected individually as specific outputs.
     pub autoignore_onesided_utxos: bool,
     /// The number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
-    pub num_of_seconds_to_revalidate_invalid_utxos: i64,
+    pub num_of_seconds_to_revalidate_invalid_utxos: u64,
 }
 
 impl Default for OutputManagerServiceConfig {
