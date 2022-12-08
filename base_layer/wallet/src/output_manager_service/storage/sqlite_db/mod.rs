@@ -26,7 +26,7 @@ use std::{
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use derivative::Derivative;
 use diesel::{
     prelude::*,
@@ -306,6 +306,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let outputs = OutputSql::index_invalid(&NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap(), &conn)?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - fetch_invalid_outputs: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        outputs
+            .into_iter()
+            .map(|o| o.to_db_unblinded_output(&cipher))
+            .collect::<Result<Vec<_>, _>>()
+    }
+
     fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -449,6 +472,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_timestamp.eq(timestamp),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::last_validation_timestamp.eq::<Option<NaiveDateTime>>(None),
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
@@ -516,6 +540,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             trace!(
                 target: LOG_TARGET,
                 "sqlite profile - set_outputs_to_be_revalidated: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn update_last_validation_timestamp(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let hash = hash.to_vec();
+        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
+            .set((outputs::last_validation_timestamp
+                .eq::<Option<NaiveDateTime>>(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0)),))
+            .execute(&conn)
+            .num_rows_affected_or_not_found(1)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_output_to_be_revalidated_in_the_future: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -703,7 +750,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             diesel::update(
                 outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeReceived as i32)),
             )
-            .set((outputs::status.eq(OutputStatus::CancelledInbound as i32),))
+            .set((
+                outputs::status.eq(OutputStatus::CancelledInbound as i32),
+                outputs::last_validation_timestamp
+                    .eq(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0).unwrap()),
+            ))
             .execute(&conn)?;
 
             diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeSpent as i32)))
@@ -813,6 +864,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     output.update(
                         UpdateOutput {
                             status: Some(OutputStatus::CancelledInbound),
+                            last_validation_timestamp: Some(Some(
+                                NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0).unwrap(),
+                            )),
                             ..Default::default()
                         },
                         &conn,
@@ -1104,6 +1158,7 @@ pub struct UpdateOutput {
     metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    last_validation_timestamp: Option<Option<NaiveDateTime>>,
 }
 
 #[derive(AsChangeset)]
@@ -1119,6 +1174,7 @@ pub struct UpdateOutputSql {
     metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    last_validation_timestamp: Option<Option<NaiveDateTime>>,
 }
 
 /// Map a Rust friendly UpdateOutput to the Sql data type form
@@ -1135,6 +1191,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             mined_height: u.mined_height.map(|t| t.map(|h| h as i64)),
             mined_in_block: u.mined_in_block,
+            last_validation_timestamp: u.last_validation_timestamp,
         }
     }
 }

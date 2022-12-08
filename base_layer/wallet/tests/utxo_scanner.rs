@@ -1028,13 +1028,7 @@ async fn test_birthday_timestamp_over_chain() {
         is_synced: true,
     });
 
-    let genesis_block_timestamp = genesis_block::get_esmeralda_genesis_block()
-        .header()
-        .timestamp()
-        .as_u64();
-
     // birthday duration from unix epoch should be at least the genesis block timestamp
-    assert!(birthday_epoch_time >= genesis_block_timestamp);
     let before_birthday_block_timestamp = block_headers
         .get(&(NUM_BLOCKS - BIRTHDAY_OFFSET - 1))
         .unwrap()

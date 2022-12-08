@@ -50,11 +50,6 @@ pub enum BlockHeaderSyncError {
     FailedToBan(ConnectivityError),
     #[error("Connectivity Error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error(
-        "Peer could not provide a stronger chain than the local chain. Claimed was {claimed} but validated was \
-         {actual} (local: {local})"
-    )]
-    WeakerChain { claimed: u128, actual: u128, local: u128 },
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
     #[error("Unable to locate start hash `{0}`")]
