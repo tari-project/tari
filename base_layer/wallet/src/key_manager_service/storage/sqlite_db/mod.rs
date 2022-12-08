@@ -27,8 +27,6 @@ use std::{
 
 use chacha20poly1305::XChaCha20Poly1305;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
-use log::*;
-use tokio::time::Instant;
 
 use crate::{
     key_manager_service::{
@@ -40,8 +38,6 @@ use crate::{
 };
 
 mod key_manager_state;
-
-const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -86,9 +82,7 @@ impl KeyManagerSqliteDatabase {
 
 impl KeyManagerBackend for KeyManagerSqliteDatabase {
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
             None => None,
@@ -97,44 +91,22 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
                 Some(KeyManagerState::try_from(km)?)
             },
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch key_manager: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(result)
     }
 
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         let mut km_sql = NewKeyManagerStateSql::from(key_manager);
         self.encrypt_if_necessary(&mut km_sql)?;
         km_sql.commit(&conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - write Insert key manager: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
         self.decrypt_if_necessary(&mut km)?;
         let mut bytes: [u8; 8] = [0u8; 8];
@@ -143,37 +115,17 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         km.primary_key_index = index.to_le_bytes().to_vec();
         self.encrypt_if_necessary(&mut km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - increment_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
         self.decrypt_if_necessary(&mut km)?;
         km.primary_key_index = index.to_le_bytes().to_vec();
         self.encrypt_if_necessary(&mut km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }

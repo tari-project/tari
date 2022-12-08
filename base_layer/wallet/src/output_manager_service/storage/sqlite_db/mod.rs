@@ -45,7 +45,6 @@ use tari_core::transactions::transaction_components::{OutputType, TransactionOut
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::Hidden;
-use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
@@ -133,9 +132,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let result = match key {
@@ -244,17 +241,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 ))
             },
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
-                key,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
         Ok(result)
     }
 
@@ -284,21 +270,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let outputs = OutputSql::index_marked_deleted_in_block_is_null(&conn)?;
         let cipher = acquire_read_lock!(self.cipher);
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_mined_unspent_outputs: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         outputs
             .into_iter()
@@ -307,21 +281,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let outputs = OutputSql::index_invalid(&NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap(), &conn)?;
         let cipher = acquire_read_lock!(self.cipher);
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_invalid_outputs: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         outputs
             .into_iter()
@@ -330,21 +292,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let outputs = OutputSql::index_unconfirmed(&conn)?;
         let cipher = acquire_read_lock!(self.cipher);
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_unspent_mined_unconfirmed_outputs: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         outputs
             .into_iter()
@@ -353,22 +303,17 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
-        let mut msg = "".to_string();
-        let result = match op {
+        match op {
             WriteOperation::Insert(kvp) => {
-                msg.push_str("Insert");
                 self.insert(kvp, &conn)?;
                 Ok(None)
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::AnyOutputByCommitment(commitment) => {
                     conn.transaction::<_, _, _>(|| {
-                        msg.push_str("Remove");
                         // Used by coinbase when mining.
                         match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
                             Ok(o) => {
@@ -392,25 +337,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::KnownOneSidedPaymentScripts => Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::OutputsByTxIdAndStatus(_, _) => Err(OutputManagerStorageError::OperationNotSupported),
             },
-        };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - write {}: lock {} + db_op {} = {} ms",
-                msg,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
         }
-
-        result
     }
 
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let mut outputs = OutputSql::index_status(OutputStatus::EncumberedToBeReceived, &conn)?;
@@ -420,15 +351,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         )?);
         outputs.extend(OutputSql::index_status(OutputStatus::UnspentMinedUnconfirmed, &conn)?);
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_pending_incoming_outputs: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         outputs
             .iter()
             .map(|o| o.clone().to_db_unblinded_output(&cipher))
@@ -444,9 +366,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let status = if confirmed {
             OutputStatus::Unspent as i32
         } else {
@@ -476,23 +396,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_received_output_mined_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
         diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((
@@ -506,23 +415,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_output_to_unmined: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let result = diesel::update(outputs::table)
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
@@ -536,38 +434,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .execute(&conn)?;
 
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_outputs_to_be_revalidated: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn update_last_validation_timestamp(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
         diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((outputs::last_validation_timestamp
                 .eq::<Option<NaiveDateTime>>(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0)),))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_output_to_be_revalidated_in_the_future: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
@@ -579,9 +457,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         mark_deleted_in_block: FixedHash,
         confirmed: bool,
     ) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
         let mark_deleted_in_block = mark_deleted_in_block.to_vec();
         let status = if confirmed {
@@ -597,23 +473,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - mark_output_as_spent: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn mark_output_as_unspent(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
         debug!(target: LOG_TARGET, "mark_output_as_unspent({})", hash.to_hex());
         diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
@@ -624,15 +489,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - mark_output_as_unspent: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
@@ -643,9 +499,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         outputs_to_send: &[DbUnblindedOutput],
         outputs_to_receive: &[DbUnblindedOutput],
     ) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let mut commitments = Vec::with_capacity(outputs_to_send.len());
@@ -692,24 +546,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )?;
             new_output.commit(&conn)?;
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - short_term_encumber_outputs (TxId: {}): lock {} + db_op {} = {} ms",
-                tx_id,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, _, _>(|| {
             update_outputs_with_tx_id_and_status_to_new_status(
@@ -726,25 +568,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::EncumberedToBeSpent,
             )
         })?;
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - confirm_encumbered_outputs (TxId: {}): lock {} + db_op {} = {} ms",
-                tx_id,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
         Ok(())
     }
 
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, _, _>(|| {
             diesel::update(
@@ -762,35 +590,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 .execute(&conn)
         })?;
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - clear_short_term_encumberances: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
         Ok(())
     }
 
     fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let output = OutputSql::first_by_mined_height_desc(&conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_last_mined_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         match output {
             Some(o) => Ok(Some(o.to_db_unblinded_output(&cipher)?)),
             None => Ok(None),
@@ -798,21 +605,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let output = OutputSql::first_by_marked_deleted_height_desc(&conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_last_spent_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         match output {
             Some(o) => Ok(Some(o.to_db_unblinded_output(&cipher)?)),
             None => Ok(None),
@@ -823,27 +619,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
     ) -> Result<Balance, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        let result = OutputSql::get_balance(current_tip_for_time_lock_calculation, &conn);
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_balance: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-        result
+        OutputSql::get_balance(current_tip_for_time_lock_calculation, &conn)
     }
 
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, _, _>(|| {
             let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
@@ -897,25 +678,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Ok(())
         })?;
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - cancel_pending_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
         Ok(())
     }
 
     // This is typically used by a receiver after the finalized transaction has been broadcast/returned by the sender
     // as the sender has to finalize the signature that was partially constructed by the receiver
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, OutputManagerStorageError, _>(|| {
             let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
@@ -932,23 +701,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
             Ok(())
         })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - update_output_metadata_signature: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, _, _>(|| {
             let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
@@ -966,22 +724,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
             Ok(())
         })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - revalidate_unspent_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         if abandoned {
             debug!(
@@ -1006,23 +753,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::EncumberedToBeReceived,
             )?;
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_coinbase_abandoned: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
 
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         update_outputs_with_tx_id_and_status_to_new_status(
             &conn,
@@ -1031,22 +767,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             OutputStatus::EncumberedToBeReceived,
         )?;
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn).is_ok() {
@@ -1055,15 +780,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id), None, &cipher)?;
         new_output.commit(&conn)?;
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - add_unvalidated_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
@@ -1074,20 +790,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         amount: u64,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
         let outputs = OutputSql::fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height, &conn)?;
 
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - fetch_unspent_outputs_for_spending: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
         outputs
             .iter()
             .map(|o| o.clone().to_db_unblinded_output(&cipher))

@@ -49,7 +49,6 @@ use tari_utilities::{
     Hidden,
 };
 use thiserror::Error;
-use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
@@ -236,10 +235,7 @@ impl TransactionServiceSqliteDatabase {
 impl TransactionBackend for TransactionServiceSqliteDatabase {
     #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
         let result = match key {
             DbKey::PendingOutboundTransaction(t) => match OutboundTransactionSql::find_by_cancelled(*t, false, &conn) {
                 Ok(mut o) => {
@@ -387,24 +383,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 }
             },
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
-                key,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
         Ok(result)
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         let result = match key {
             DbKey::PendingOutboundTransaction(k) => OutboundTransactionSql::find_by_cancelled(*k, false, &conn).is_ok(),
@@ -428,67 +411,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     OutboundTransactionSql::find(*k, &conn).is_ok()
             },
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - contains '{}': lock {} + db_op {} = {} ms",
-                key,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(result)
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        let key_text;
-
-        let result = match op {
-            WriteOperation::Insert(kvp) => {
-                key_text = "Insert";
-                self.insert(kvp, &conn).map(|_| None)
-            },
-            WriteOperation::Remove(key) => {
-                key_text = "Remove";
-                self.remove(key, &conn)
-            },
-        };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - write '{}': lock {} + db_op {} = {} ms",
-                key_text,
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
+        match op {
+            WriteOperation::Insert(kvp) => self.insert(kvp, &conn).map(|_| None),
+            WriteOperation::Remove(key) => self.remove(key, &conn),
         }
-
-        result
     }
 
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         let result = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() ||
             InboundTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() ||
             CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok();
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - transaction_exists: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(result)
     }
 
@@ -496,38 +436,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         tx_id: TxId,
     ) -> Result<TariAddress, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
         if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             self.decrypt_if_necessary(&mut outbound_tx_sql)?;
             let outbound_tx = OutboundTransaction::try_from(outbound_tx_sql)?;
-            if start.elapsed().as_millis() > 0 {
-                trace!(
-                    target: LOG_TARGET,
-                    "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
-                     ms",
-                    acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
-                    start.elapsed().as_millis()
-                );
-            }
             return Ok(outbound_tx.destination_address);
         }
         if let Ok(mut inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             self.decrypt_if_necessary(&mut inbound_tx_sql)?;
             let inbound_tx = InboundTransaction::try_from(inbound_tx_sql)?;
-            if start.elapsed().as_millis() > 0 {
-                trace!(
-                    target: LOG_TARGET,
-                    "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
-                     ms",
-                    acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
-                    start.elapsed().as_millis()
-                );
-            }
             return Ok(inbound_tx.source_address);
         }
 
@@ -539,7 +456,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
     ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
-
         match OutboundTransactionSql::find_by_cancelled(tx_id, true, &conn) {
             Ok(mut o) => {
                 self.decrypt_if_necessary(&mut o)?;
@@ -577,10 +493,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
@@ -601,15 +514,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
             Ok(())
         })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - complete_outbound_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
@@ -618,9 +522,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
@@ -642,22 +544,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
             Ok(())
         })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - complete_inbound_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         conn.transaction::<_, _, _>(|| {
             match CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn) {
@@ -685,15 +576,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             Ok(())
         })?;
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - broadcast_completed_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
@@ -702,9 +584,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
         reason: TxCancellationReason,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         match CompletedTransactionSql::reject_completed_transaction(tx_id, reason, &conn) {
             Ok(_) => {},
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -714,15 +594,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
@@ -731,9 +602,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
         cancelled: bool,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         match InboundTransactionSql::find_and_set_cancelled(tx_id, cancelled, &conn) {
             Ok(_) => {},
@@ -747,23 +616,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 };
             },
         }
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_pending_transaction_cancellation_status: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         match InboundTransactionSql::mark_direct_send_success(tx_id, &conn) {
             Ok(_) => {},
@@ -777,38 +634,17 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 };
             },
         };
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - mark_direct_send_success: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         CompletedTransactionSql::reject_coinbases_at_block_height(
             block_height as i64,
             TxCancellationReason::AbandonedCoinbase,
             &conn,
         )?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - cancel_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(())
     }
@@ -818,9 +654,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         block_height: u64,
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
         for c in &mut coinbase_txs {
@@ -830,39 +664,18 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 return Ok(Some(completed_tx));
             }
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - find_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(None)
     }
 
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
 
         if CompletedTransactionSql::increment_send_count(tx_id, &conn).is_err() &&
             OutboundTransactionSql::increment_send_count(tx_id, &conn).is_err() &&
             InboundTransactionSql::increment_send_count(tx_id, &conn).is_err()
         {
             return Err(TransactionStorageError::ValuesNotFound);
-        }
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - increment_send_count: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
         }
 
         Ok(())
@@ -878,9 +691,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         is_confirmed: bool,
         is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let status = if is_confirmed {
             if is_faux {
                 TransactionStatus::FauxConfirmed
@@ -910,23 +721,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let tx = completed_transactions::table
             // Note: Check 'mined_in_block' as well as 'mined_height' is populated for faux transactions before it is confirmed
             .filter(completed_transactions::mined_in_block.is_not_null())
@@ -942,23 +741,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             None => None,
         };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_last_mined_transaction: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(result)
     }
 
     // This method returns completed but unconfirmed transactions that were not imported
     fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
         match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&*conn) {
             Ok(info) => {
@@ -968,23 +756,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_unconfirmed_transactions_info: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(tx_info)
     }
 
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let txs = completed_transactions::table
             .filter(
                 completed_transactions::status
@@ -1005,23 +782,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             self.decrypt_if_necessary(&mut tx)?;
             result.push(tx.try_into()?);
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_transactions_to_be_broadcast: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
 
         Ok(result)
     }
 
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table)
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
@@ -1031,22 +797,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .execute(&conn)?;
 
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         match CompletedTransactionSql::set_as_unmined(tx_id, &conn) {
             Ok(_) => {},
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -1056,24 +811,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_transaction_as_unmined: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
     fn get_pending_inbound_transaction_sender_info(
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let mut sender_info: Vec<InboundTransactionSenderInfo> = vec![];
         match InboundTransactionSenderInfoSql::get_pending_inbound_transaction_sender_info(&conn) {
             Ok(info) => {
@@ -1082,15 +826,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 }
             },
             Err(e) => return Err(e),
-        }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_pending_inbound_transaction_sender_info: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
         }
         Ok(sender_info)
     }
