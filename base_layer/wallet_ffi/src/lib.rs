@@ -8093,7 +8093,6 @@ mod test {
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_core::{
-        borsh::ToBytes,
         covenant,
         transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
     };
@@ -8958,6 +8957,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
+            assert_eq!(error, 0);
             assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
 
             assert_eq!(*error_ptr, 0, "No error expected");
@@ -9068,6 +9068,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
+            assert_eq!(error, 0);
 
             let client_key_values = vec![
                 ("key1".to_string(), "value1".to_string()),
@@ -9290,6 +9291,7 @@ mod test {
                 error_ptr,
             );
 
+            assert_eq!(error, 0);
             let seed_words = wallet_get_seed_words(wallet, error_ptr);
             assert_eq!(error, 0);
             let public_address = wallet_get_tari_address(wallet, error_ptr);
@@ -9422,6 +9424,7 @@ mod test {
                 error_ptr,
             );
 
+            assert_eq!(error, 0);
             (0..10).for_each(|i| {
                 let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
                 (*alice_wallet)
@@ -9565,6 +9568,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
+            assert_eq!(error, 0);
 
             (0..10).for_each(|i| {
                 let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
@@ -9677,6 +9681,7 @@ mod test {
                 error_ptr,
             );
 
+            assert_eq!(error, 0);
             (1..=5).for_each(|i| {
                 (*alice_wallet)
                     .runtime
@@ -9869,7 +9874,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
-
+            assert_eq!(error, 0);
             (1..=5).for_each(|i| {
                 (*alice_wallet)
                     .runtime
@@ -10188,13 +10193,13 @@ mod test {
                 10800,
                 error_ptr,
             );
-
+            let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let wallet_ptr = wallet_create(
                 config,
                 ptr::null(),
                 0,
                 0,
-                ptr::null(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -10216,7 +10221,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
-
+            assert_eq!(error, 0);
             let node_identity =
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));

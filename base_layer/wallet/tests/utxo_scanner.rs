@@ -34,7 +34,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
-    blocks::{genesis_block, BlockHeader},
+    blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
 };

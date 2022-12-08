@@ -802,8 +802,6 @@ enum BanReason {
     ValidationFailed(#[from] ValidationError),
     #[error("Peer could not find the location of a chain split")]
     ChainSplitNotFound,
-    #[error("Failed to synchronize headers from peer: {0}")]
-    GeneralHeaderSyncFailure(BlockHeaderSyncError),
     #[error("Peer did not respond timeously during RPC negotiation")]
     RpcNegotiationTimedOut,
     #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
