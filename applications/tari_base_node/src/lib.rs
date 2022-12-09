@@ -24,7 +24,7 @@
 mod table;
 
 mod bootstrap;
-mod builder;
+pub mod builder;
 pub mod cli;
 mod commands;
 pub mod config;
@@ -49,7 +49,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::Server;
 
-use crate::cli::Cli;
+use crate::{builder::BaseNodeContext, cli::Cli};
 pub use crate::{
     config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
     metrics::MetricsConfig,
@@ -82,6 +82,29 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
+}
+
+pub async fn init_node(
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+) -> Result<BaseNodeContext, ExitError> {
+    let shutdown = Shutdown::new();
+
+    // just initializing the node
+    let cx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
+
+    if config.base_node.grpc_enabled {
+        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        });
+
+        // Go, GRPC, go go
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&cx);
+        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+    }
+
+    Ok(cx)
 }
 
 /// Sets up the base node and runs the cli_loop
