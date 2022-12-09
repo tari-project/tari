@@ -41,7 +41,7 @@ use crate::{
             check_validator_node_registration_utxo,
             validate_versions,
         },
-        OrphanValidation,
+        InternalConsistencyValidator,
         ValidationError,
     },
 };
@@ -64,14 +64,14 @@ impl OrphanBlockValidator {
     }
 }
 
-impl OrphanValidation for OrphanBlockValidator {
+impl InternalConsistencyValidator for OrphanBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block weight of the block under the prescribed limit?
     /// 1. Does it contain only unique inputs and outputs?
     /// 1. Where all the rules for the spent outputs followed?
     /// 1. Is there precisely one Coinbase output and is it correctly defined with the correct amount?
     /// 1. Is the accounting correct?
-    fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+    fn validate_internal_consistency(&self, block: &Block) -> Result<(), ValidationError> {
         let height = block.header.height;
 
         if height == 0 {

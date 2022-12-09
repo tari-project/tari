@@ -39,24 +39,19 @@ pub trait BlockSyncBodyValidation: Send + Sync {
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
-pub trait PostOrphanBodyValidation<B>: Send + Sync {
-    fn validate_body_for_valid_orphan(
-        &self,
-        backend: &B,
-        block: &ChainBlock,
-        metadata: &ChainMetadata,
-    ) -> Result<(), ValidationError>;
+pub trait CandidateBlockValidator<B>: Send + Sync {
+    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError>;
 }
 
-pub trait MempoolTransactionValidation: Send + Sync {
+pub trait MempoolTransactionValidator: Send + Sync {
     fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError>;
 }
 
-pub trait OrphanValidation: Send + Sync {
-    fn validate(&self, item: &Block) -> Result<(), ValidationError>;
+pub trait InternalConsistencyValidator: Send + Sync {
+    fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
+pub trait HeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
         db: &TBackend,

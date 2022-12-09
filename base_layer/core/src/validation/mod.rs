@@ -35,11 +35,11 @@ pub(crate) mod helpers;
 mod traits;
 pub use traits::{
     BlockSyncBodyValidation,
+    CandidateBlockValidator,
     FinalHorizonStateValidation,
-    HeaderValidation,
-    MempoolTransactionValidation,
-    OrphanValidation,
-    PostOrphanBodyValidation,
+    HeaderValidator,
+    InternalConsistencyValidator,
+    MempoolTransactionValidator,
 };
 
 pub mod block_validators;

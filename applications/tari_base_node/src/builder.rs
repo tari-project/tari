@@ -38,7 +38,7 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        header_validator::DefaultHeaderValidator,
         transaction_validators::{
             MempoolValidator,
             TxConsensusValidator,
@@ -212,7 +212,7 @@ async fn build_node_context(
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
             app_config.base_node.bypass_range_proof_verification,

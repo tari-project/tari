@@ -53,9 +53,9 @@ use tari_core::{
     validation::{
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
-        HeaderValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        CandidateBlockValidator,
+        HeaderValidator,
+        InternalConsistencyValidator,
     },
 };
 use tari_p2p::{
@@ -157,9 +157,9 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl PostOrphanBodyValidation<TempDatabase> + 'static,
-        header: impl HeaderValidation<TempDatabase> + 'static,
-        orphan: impl OrphanValidation + 'static,
+        block: impl CandidateBlockValidator<TempDatabase> + 'static,
+        header: impl HeaderValidator<TempDatabase> + 'static,
+        orphan: impl InternalConsistencyValidator + 'static,
     ) -> Self {
         let validators = Validators::new(block, header, orphan);
         self.validators = Some(validators);

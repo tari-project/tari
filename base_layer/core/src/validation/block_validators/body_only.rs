@@ -32,7 +32,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     validation::{
         helpers::{self, check_header_timestamp_greater_than_median},
-        PostOrphanBodyValidation,
+        CandidateBlockValidator,
         ValidationError,
     },
 };
@@ -77,19 +77,14 @@ impl BodyOnlyValidator {
     }
 }
 
-impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
+impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
     /// 1. Are all inputs and outputs not in the STXO set?
     /// 1. Are all kernels excesses unique?
     /// 1. Are the block header MMR roots valid?
-    fn validate_body_for_valid_orphan(
-        &self,
-        backend: &B,
-        block: &ChainBlock,
-        metadata: &ChainMetadata,
-    ) -> Result<(), ValidationError> {
+    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
         let constants = self.rules.consensus_constants(block.header().height);
 
         if block.header().prev_hash != *metadata.best_block() {

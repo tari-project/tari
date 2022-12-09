@@ -44,13 +44,13 @@ use crate::{
     tx,
     validation::{
         header_iter::HeaderIter,
-        header_validator::HeaderValidator,
+        header_validator::DefaultHeaderValidator,
         transaction_validators::TxInternalConsistencyValidator,
         ChainBalanceValidator,
         DifficultyCalculator,
         FinalHorizonStateValidation,
-        HeaderValidation,
-        MempoolTransactionValidation,
+        HeaderValidator,
+        MempoolTransactionValidator,
         ValidationError,
     },
 };
@@ -107,7 +107,7 @@ mod header_validators {
     }
 
     #[test]
-    fn it_validates_that_version_is_in_range() {
+    fn test_it_validates_that_version_is_in_range() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
         let db = create_store_with_consensus(consensus_manager.clone());
 
@@ -116,7 +116,7 @@ mod header_validators {
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
 
-        let validator = HeaderValidator::new(consensus_manager.clone());
+        let validator = DefaultHeaderValidator::new(consensus_manager.clone());
 
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
         let err = validator

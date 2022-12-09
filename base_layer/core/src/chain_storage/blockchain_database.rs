@@ -84,10 +84,10 @@ use crate::{
     transactions::transaction_components::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
+        CandidateBlockValidator,
         DifficultyCalculator,
-        HeaderValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        HeaderValidator,
+        InternalConsistencyValidator,
     },
     MutablePrunedOutputMmr,
     PrunedInputMmr,
@@ -128,16 +128,16 @@ impl Default for BlockchainDatabaseConfig {
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B> {
-    pub block: Arc<dyn PostOrphanBodyValidation<B>>,
-    pub header: Arc<dyn HeaderValidation<B>>,
-    pub orphan: Arc<dyn OrphanValidation>,
+    pub block: Arc<dyn CandidateBlockValidator<B>>,
+    pub header: Arc<dyn HeaderValidator<B>>,
+    pub orphan: Arc<dyn InternalConsistencyValidator>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
     pub fn new(
-        block: impl PostOrphanBodyValidation<B> + 'static,
-        header: impl HeaderValidation<B> + 'static,
-        orphan: impl OrphanValidation + 'static,
+        block: impl CandidateBlockValidator<B> + 'static,
+        header: impl HeaderValidator<B> + 'static,
+        orphan: impl InternalConsistencyValidator + 'static,
     ) -> Self {
         Self {
             block: Arc::new(block),
@@ -912,7 +912,7 @@ where B: BlockchainBackend
             return Ok(BlockAddResult::BlockExists);
         }
         // Perform orphan block validation.
-        if let Err(e) = self.validators.orphan.validate(&block) {
+        if let Err(e) = self.validators.orphan.validate_internal_consistency(&block) {
             warn!(
                 target: LOG_TARGET,
                 "Block #{} ({}) failed validation - {}",
@@ -1489,8 +1489,8 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    block_validator: &dyn PostOrphanBodyValidation<T>,
-    header_validator: &dyn HeaderValidation<T>,
+    block_validator: &dyn CandidateBlockValidator<T>,
+    header_validator: &dyn HeaderValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     difficulty_calculator: &DifficultyCalculator,
     block: Arc<Block>,
@@ -1892,8 +1892,8 @@ fn rewind_to_hash<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    block_validator: &dyn PostOrphanBodyValidation<T>,
-    header_validator: &dyn HeaderValidation<T>,
+    block_validator: &dyn CandidateBlockValidator<T>,
+    header_validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
@@ -1906,7 +1906,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 /// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height highest to lowest).
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
-    block_validator: &dyn PostOrphanBodyValidation<T>,
+    block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     chain: &VecDeque<Arc<ChainBlock>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
@@ -1928,7 +1928,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         let block_hash = *block.hash();
         txn.delete_orphan(block_hash);
         let chain_metadata = backend.fetch_chain_metadata()?;
-        if let Err(e) = block_validator.validate_body_for_valid_orphan(backend, block, &chain_metadata) {
+        if let Err(e) = block_validator.validate_body(backend, block, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -1964,7 +1964,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    block_validator: &dyn PostOrphanBodyValidation<T>,
+    block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
@@ -2098,7 +2098,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
-    validator: &dyn HeaderValidation<T>,
+    validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
 ) -> Result<(), ChainStorageError> {
     let hash = block.hash();
@@ -2192,7 +2192,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
-    validator: &dyn HeaderValidation<T>,
+    validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
@@ -2486,7 +2486,7 @@ mod test {
             },
             BlockSpecs,
         },
-        validation::{header_validator::HeaderValidator, mocks::MockValidator},
+        validation::{header_validator::DefaultHeaderValidator, mocks::MockValidator},
     };
 
     #[test]
@@ -3192,21 +3192,21 @@ mod test {
         config: BlockchainDatabaseConfig,
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         difficulty_calculator: DifficultyCalculator,
-        post_orphan_body_validator: Box<dyn PostOrphanBodyValidation<TempDatabase>>,
-        header_validator: Box<dyn HeaderValidation<TempDatabase>>,
+        post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
+        header_validator: Box<dyn HeaderValidator<TempDatabase>>,
     }
 
     impl TestHarness {
         pub fn setup() -> Self {
             let consensus = create_consensus_rules();
-            let header_validator = Box::new(HeaderValidator::new(consensus));
+            let header_validator = Box::new(DefaultHeaderValidator::new(consensus));
             let mock_validator = Box::new(MockValidator::new(true));
             Self::new(header_validator, mock_validator)
         }
 
         pub fn new(
-            header_validator: Box<dyn HeaderValidation<TempDatabase>>,
-            post_orphan_body_validator: Box<dyn PostOrphanBodyValidation<TempDatabase>>,
+            header_validator: Box<dyn HeaderValidator<TempDatabase>>,
+            post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
         ) -> Self {
             let db = create_new_blockchain();
             let consensus = create_consensus_rules();

@@ -36,12 +36,12 @@ use crate::{
     validation::{
         error::ValidationError,
         BlockSyncBodyValidation,
+        CandidateBlockValidator,
         DifficultyCalculator,
         FinalHorizonStateValidation,
-        HeaderValidation,
-        MempoolTransactionValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        HeaderValidator,
+        InternalConsistencyValidator,
+        MempoolTransactionValidator,
     },
 };
 
@@ -83,8 +83,8 @@ impl BlockSyncBodyValidation for MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
-    fn validate_body_for_valid_orphan(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
+    fn validate_body(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -96,8 +96,8 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
 }
 
 // #[async_trait]
-impl OrphanValidation for MockValidator {
-    fn validate(&self, _item: &Block) -> Result<(), ValidationError> {
+impl InternalConsistencyValidator for MockValidator {
+    fn validate_internal_consistency(&self, _item: &Block) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -108,7 +108,7 @@ impl OrphanValidation for MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
+impl<B: BlockchainBackend> HeaderValidator<B> for MockValidator {
     fn validate(
         &self,
         _: &B,
@@ -130,7 +130,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
     }
 }
 
-impl MempoolTransactionValidation for MockValidator {
+impl MempoolTransactionValidator for MockValidator {
     fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

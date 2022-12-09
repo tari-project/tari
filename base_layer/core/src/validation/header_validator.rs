@@ -12,24 +12,24 @@ use crate::{
     validation::{
         helpers::{check_blockchain_version, check_not_bad_block, check_pow_data, check_timestamp_ftl},
         DifficultyCalculator,
-        HeaderValidation,
+        HeaderValidator,
         ValidationError,
     },
 };
 
 pub const LOG_TARGET: &str = "c::val::header_validators";
 
-pub struct HeaderValidator {
+pub struct DefaultHeaderValidator {
     rules: ConsensusManager,
 }
 
-impl HeaderValidator {
+impl DefaultHeaderValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         Self { rules }
     }
 }
 
-impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator {
+impl<TBackend: BlockchainBackend> HeaderValidator<TBackend> for DefaultHeaderValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block timestamp within the Future Time Limit (FTL)?
     /// 1. Is the Proof of Work struct valid? Note it does not check the actual PoW here
@@ -46,14 +46,9 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
-        trace!(
-            target: LOG_TARGET,
-            "BlockHeader validation: FTL timestamp is ok for {} ",
-            header_id
-        );
+        check_not_bad_block(backend, header.hash())?;
         check_pow_data(header, &self.rules, backend)?;
         let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(backend, header)?;
-        check_not_bad_block(backend, header.hash())?;
 
         trace!(
             target: LOG_TARGET,

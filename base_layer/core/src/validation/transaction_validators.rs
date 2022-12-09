@@ -35,7 +35,7 @@ use crate::{
             check_validator_node_registration_utxo,
             validate_versions,
         },
-        MempoolTransactionValidation,
+        MempoolTransactionValidator,
         ValidationError,
     },
 };
@@ -65,7 +65,7 @@ impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistencyValidator<B> {
+impl<B: BlockchainBackend> MempoolTransactionValidator for TxInternalConsistencyValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
             return Err(ValidationError::ErroneousCoinbaseOutput);
@@ -128,7 +128,7 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator<B> {
+impl<B: BlockchainBackend> MempoolTransactionValidator for TxConsensusValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
@@ -162,7 +162,7 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
+impl<B: BlockchainBackend> MempoolTransactionValidator for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let constants = self.db.consensus_constants()?;
         let tip_height = {
@@ -206,16 +206,16 @@ fn verify_no_duplicated_inputs_outputs(tx: &Transaction) -> Result<(), Validatio
 }
 
 pub struct MempoolValidator {
-    validators: Vec<Box<dyn MempoolTransactionValidation>>,
+    validators: Vec<Box<dyn MempoolTransactionValidator>>,
 }
 
 impl MempoolValidator {
-    pub fn new(validators: Vec<Box<dyn MempoolTransactionValidation>>) -> Self {
+    pub fn new(validators: Vec<Box<dyn MempoolTransactionValidator>>) -> Self {
         Self { validators }
     }
 }
 
-impl MempoolTransactionValidation for MempoolValidator {
+impl MempoolTransactionValidator for MempoolValidator {
     fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError> {
         for v in &self.validators {
             v.validate(transaction)?;

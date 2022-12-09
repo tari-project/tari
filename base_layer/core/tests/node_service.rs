@@ -48,7 +48,7 @@ use tari_core::{
     txn_schema,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        header_validator::DefaultHeaderValidator,
         mocks::MockValidator,
     },
 };
@@ -489,7 +489,7 @@ async fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[tokio::test]
-async fn local_get_new_block_with_zero_conf() {
+async fn test_local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
@@ -503,7 +503,7 @@ async fn local_get_new_block_with_zero_conf() {
         .with_consensus_manager(rules.clone())
         .with_validators(
             BodyOnlyValidator::new(rules.clone()),
-            HeaderValidator::new(rules.clone()),
+            DefaultHeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
@@ -567,7 +567,7 @@ async fn local_get_new_block_with_zero_conf() {
 }
 
 #[tokio::test]
-async fn local_get_new_block_with_combined_transaction() {
+async fn test_local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
@@ -581,7 +581,7 @@ async fn local_get_new_block_with_combined_transaction() {
         .with_consensus_manager(rules.clone())
         .with_validators(
             BodyOnlyValidator::new(rules.clone()),
-            HeaderValidator::new(rules.clone()),
+            DefaultHeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
