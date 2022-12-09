@@ -319,6 +319,7 @@ impl SenderTransactionInitializer {
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
+    #[allow(clippy::too_many_lines)]
     fn add_change_if_required(
         &mut self,
         factories: &CryptoFactories,

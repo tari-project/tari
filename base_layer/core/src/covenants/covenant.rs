@@ -181,8 +181,7 @@ mod test {
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
-            @field::features_maturity,
-            @field::features_metadata))
+            @field::features_maturity))
         );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
@@ -198,8 +197,7 @@ mod test {
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
-            @field::features_maturity,
-            @field::features_metadata))
+            @field::features_maturity))
         );
         let mut buf = Vec::new();
         covenant.serialize(&mut buf).unwrap();
