@@ -62,14 +62,14 @@ impl OutputFeatures {
         version: OutputFeaturesVersion,
         output_type: OutputType,
         maturity: u64,
-        metadata: Vec<u8>,
+        coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
             output_type,
             maturity,
-            coinbase_extra: metadata,
+            coinbase_extra,
             sidechain_feature,
         }
     }
@@ -77,14 +77,14 @@ impl OutputFeatures {
     pub fn new_current_version(
         flags: OutputType,
         maturity: u64,
-        metadata: Vec<u8>,
+        coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
             flags,
             maturity,
-            metadata,
+            coinbase_extra,
             sidechain_feature,
         )
     }

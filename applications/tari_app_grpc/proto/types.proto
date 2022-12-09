@@ -67,7 +67,7 @@ message WeightParams {
     uint64 kernel_weight = 1;
     uint64 input_weight = 2;
     uint64 output_weight = 3;
-    uint64 metadata_bytes_per_gram = 4;
+    uint64 features_and_scripts_bytes_per_gram = 4;
 }
 
 /// Output version

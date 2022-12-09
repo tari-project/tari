@@ -734,7 +734,7 @@ mod test {
             1,
             1,
             1,
-            test_params.get_size_for_default_metadata(1),
+            test_params.get_size_for_default_features_and_scripts(1),
         );
 
         let utxo = test_params.create_unblinded_output(UtxoTestParams {

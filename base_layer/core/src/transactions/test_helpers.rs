@@ -232,12 +232,11 @@ impl TestParams {
         (input, unblinded)
     }
 
-    pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
+    pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> usize {
         let output_features = OutputFeatures { ..Default::default() };
-        self.fee()
-            .weighting()
-            .round_up_metadata_size(script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
-            num_outputs
+        self.fee().weighting().round_up_features_and_scripts_size(
+            script![Nop].get_serialized_size() + output_features.get_serialized_size(),
+        ) * num_outputs
     }
 
     pub fn commit_value(&self, value: MicroTari) -> Commitment {
@@ -517,12 +516,18 @@ pub fn create_unblinded_txos(
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
-    let output_metadata_size = weighting.round_up_metadata_size(
+    let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
         output_features.get_serialized_size() +
             output_script.get_serialized_size() +
             output_covenant.get_serialized_size(),
     ) * output_count;
-    let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
+    let estimated_fee = Fee::new(weighting).calculate(
+        fee_per_gram,
+        1,
+        input_count,
+        output_count,
+        output_features_and_scripts_size,
+    );
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
 
