@@ -120,7 +120,7 @@ mod header_validators {
 
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
         let err = validator
-            .validate(&*db.db_read_access().unwrap(), &header, &difficulty_calculator)
+            .validate(&*db.db_read_access().unwrap(), &vec![], &header, &difficulty_calculator)
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX

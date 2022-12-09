@@ -1,16 +1,24 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::cmp;
+
 use log::*;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::BlockHeader,
+    blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     proof_of_work::AchievedTargetDifficulty,
     validation::{
-        helpers::{check_blockchain_version, check_not_bad_block, check_pow_data, check_timestamp_ftl},
+        helpers::{
+            check_blockchain_version,
+            check_header_timestamp_greater_than_median,
+            check_not_bad_block,
+            check_pow_data,
+            check_timestamp_ftl,
+        },
         DifficultyCalculator,
         HeaderValidator,
         ValidationError,
@@ -38,27 +46,50 @@ impl<TBackend: BlockchainBackend> HeaderValidator<TBackend> for DefaultHeaderVal
     fn validate(
         &self,
         backend: &TBackend,
+        last_x_headers: &[&BlockHeader],
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
-        check_blockchain_version(constants, header.version)?;
-
-        check_timestamp_ftl(header, &self.rules)?;
-        let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
+        if header.height != last_x_headers[0].height + 1 {
+            let result = Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidHeight {
+                    expected: last_x_headers[0].height + 1,
+                    actual: header.height,
+                },
+            ));
+            return result;
+        }
+        if header.prev_hash != last_x_headers[0].hash() {
+            return Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidPreviousHash {
+                    expected: last_x_headers[0].hash(),
+                    actual: header.prev_hash,
+                },
+            ));
+        }
         check_not_bad_block(backend, header.hash())?;
+        check_blockchain_version(constants, header.version)?;
+        check_timestamp_ftl(header, &self.rules)?;
+        let timestamps = last_x_headers
+            .iter()
+            .map(|h| h.timestamp)
+            .take(constants.get_median_timestamp_count() as usize)
+            .collect::<Vec<_>>();
+        if timestamps.len() <
+            cmp::min(
+                constants.get_median_timestamp_count() as usize,
+                header.height as usize - 1,
+            )
+        {
+            return Err(ValidationError::NotEnoughTimestamps {
+                actual: timestamps.len() as usize,
+                expected: constants.get_median_timestamp_count() as usize,
+            });
+        }
+        check_header_timestamp_greater_than_median(header, &timestamps)?;
         check_pow_data(header, &self.rules, backend)?;
         let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(backend, header)?;
-
-        trace!(
-            target: LOG_TARGET,
-            "BlockHeader validation: Achieved difficulty is ok for {} ",
-            header_id
-        );
-        debug!(
-            target: LOG_TARGET,
-            "Block header validation: BlockHeader is VALID for {}", header_id
-        );
         Ok(achieved_target)
     }
 }

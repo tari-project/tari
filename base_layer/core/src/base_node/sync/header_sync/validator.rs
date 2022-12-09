@@ -115,15 +115,15 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
-        check_blockchain_version(constants, header.version)?;
+        // check_blockchain_version(constants, header.version)?;
 
-        let expected_height = state.current_height + 1;
-        if header.height != expected_height {
-            return Err(BlockHeaderSyncError::InvalidBlockHeight {
-                expected: expected_height,
-                actual: header.height,
-            });
-        }
+        // let expected_height = state.current_height + 1;
+        // if header.height != expected_height {
+        //     return Err(BlockHeaderSyncError::InvalidBlockHeight {
+        //         expected: expected_height,
+        //         actual: header.height,
+        //     });
+        // }
         if header.prev_hash != state.previous_accum.hash {
             return Err(BlockHeaderSyncError::ChainLinkBroken {
                 height: header.height,

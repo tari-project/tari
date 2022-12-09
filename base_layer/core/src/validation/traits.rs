@@ -55,6 +55,7 @@ pub trait HeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
         db: &TBackend,
+        last_x_headers: &[&BlockHeader],
         header: &BlockHeader,
         difficulty: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;

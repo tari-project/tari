@@ -924,6 +924,7 @@ where B: BlockchainBackend
         }
         let block_add_result = add_block(
             &mut *db,
+            &self.consensus_manager,
             &self.config,
             &*self.validators.block,
             &*self.validators.header,
@@ -1488,6 +1489,7 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
+    consensus_manager: &ConsensusManager,
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderValidator<T>,
@@ -1498,6 +1500,7 @@ fn add_block<T: BlockchainBackend>(
     handle_possible_reorg(
         db,
         config,
+        consensus_manager,
         block_validator,
         header_validator,
         difficulty_calculator,
@@ -1892,13 +1895,20 @@ fn rewind_to_hash<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
+    consensus_manager: &ConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    insert_orphan_and_find_new_tips(db, new_block, header_validator, difficulty_calculator)?;
+    insert_orphan_and_find_new_tips(
+        db,
+        new_block,
+        header_validator,
+        difficulty_calculator,
+        consensus_manager,
+    )?;
     swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer)
 }
 
@@ -2100,6 +2110,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     block: Arc<Block>,
     validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
+    rules: &ConsensusManager,
 ) -> Result<(), ChainStorageError> {
     let hash = block.hash();
 
@@ -2157,7 +2168,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         },
     };
 
-    let achieved_target_diff = validator.validate(db, &block.header, difficulty_calculator)?;
+    let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, &block.header)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
         .with_hash(hash)
@@ -2177,7 +2188,18 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
     db.write(txn)?;
 
-    let tips = find_orphan_descendant_tips_of(db, chain_header, validator, difficulty_calculator)?;
+    let x = rules
+        .consensus_constants(chain_header.height())
+        .get_median_timestamp_count();
+    let mut last_x_headers = Vec::with_capacity(x);
+    let mut curr_header = *chain_header.hash();
+    for i in 0..x {
+        let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
+        curr_header = h.header().prev_hash;
+        last_x_headers.push(Arc::new(h));
+    }
+    let last_x_headers_ref = last_x_headers.iter().map(|h| h.header()).collect::<Vec<_>>();
+    let tips = find_orphan_descendant_tips_of(db, chain_header, &last_x_headers_ref, validator, difficulty_calculator)?;
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
     for new_tip in &tips {
@@ -2192,6 +2214,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
+    last_x_headers: &[&BlockHeader],
     validator: &dyn HeaderValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
@@ -2216,7 +2239,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             prev_chain_header.height(),
             prev_chain_header.hash().to_hex()
         );
-        match validator.validate(db, &child.header, difficulty_calculator) {
+        // we need to validate the header here because it may never have been validated.
+        match validator.validate(db, last_x_headers, &child.header, difficulty_calculator) {
             Ok(achieved_target) => {
                 let child_hash = child.hash();
                 let accum_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
@@ -2236,7 +2260,14 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 let mut txn = DbTransaction::new();
                 txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
                 db.write(txn)?;
-                let children = find_orphan_descendant_tips_of(db, chain_header, validator, difficulty_calculator)?;
+                let new_last_x_headers = [&last_x_headers[1..], &[chain_header.header()]].concat();
+                let children = find_orphan_descendant_tips_of(
+                    db,
+                    chain_header.clone(),
+                    &new_last_x_headers,
+                    validator,
+                    difficulty_calculator,
+                )?;
                 res.extend(children);
             },
             Err(e) => {
@@ -3189,6 +3220,7 @@ mod test {
 
     struct TestHarness {
         db: BlockchainDatabase<TempDatabase>,
+        consensus: ConsensusManager,
         config: BlockchainDatabaseConfig,
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         difficulty_calculator: DifficultyCalculator,
@@ -3201,20 +3233,21 @@ mod test {
             let consensus = create_consensus_rules();
             let header_validator = Box::new(DefaultHeaderValidator::new(consensus));
             let mock_validator = Box::new(MockValidator::new(true));
-            Self::new(header_validator, mock_validator)
+            Self::new(header_validator, mock_validator, consensus)
         }
 
         pub fn new(
             header_validator: Box<dyn HeaderValidator<TempDatabase>>,
             post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
+            consensus: ConsensusManager,
         ) -> Self {
             let db = create_new_blockchain();
-            let consensus = create_consensus_rules();
             let difficulty_calculator = DifficultyCalculator::new(consensus, Default::default());
             let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
             Self {
                 db,
                 config: Default::default(),
+                consensus,
                 chain_strength_comparer,
                 difficulty_calculator,
                 header_validator,
@@ -3231,6 +3264,7 @@ mod test {
             handle_possible_reorg(
                 &mut *access,
                 &self.config,
+                &self.consensus,
                 &*self.post_orphan_body_validator,
                 &*self.header_validator,
                 &self.difficulty_calculator,

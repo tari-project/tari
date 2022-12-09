@@ -74,6 +74,10 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
+    #[error("Incorrect height: Expected {expected} but got {actual}")]
+    InvalidHeight { expected: u64, actual: u64 },
+    #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
+    InvalidPreviousHash { expected: BlockHash, actual: BlockHash },
 }
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block

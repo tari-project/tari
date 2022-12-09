@@ -50,31 +50,6 @@ impl BodyOnlyValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         Self { rules }
     }
-
-    /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
-    fn check_median_timestamp<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        constants: &ConsensusConstants,
-        block_header: &BlockHeader,
-    ) -> Result<(), ValidationError> {
-        if block_header.height == 0 {
-            return Ok(()); // Its the genesis block, so we dont have to check median
-        }
-
-        let height = block_header.height - 1;
-        let min_height = block_header
-            .height
-            .saturating_sub(constants.get_median_timestamp_count() as u64);
-        let timestamps = fetch_headers(db, min_height, height)?
-            .iter()
-            .map(|h| h.timestamp)
-            .collect::<Vec<_>>();
-
-        check_header_timestamp_greater_than_median(block_header, &timestamps)?;
-
-        Ok(())
-    }
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
@@ -87,20 +62,20 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
     fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
         let constants = self.rules.consensus_constants(block.header().height);
 
-        if block.header().prev_hash != *metadata.best_block() {
-            return Err(ValidationError::IncorrectPreviousHash {
-                expected: metadata.best_block().to_hex(),
-                block_hash: block.hash().to_hex(),
-            });
-        }
-        if block.height() != metadata.height_of_longest_chain() + 1 {
-            return Err(ValidationError::IncorrectNextTipHeight {
-                expected: metadata.height_of_longest_chain() + 1,
-                block_height: block.height(),
-            });
-        }
+        // The header must be valid before this is called
 
-        self.check_median_timestamp(backend, constants, block.header())?;
+        // if block.header().prev_hash != *metadata.best_block() {
+        //     return Err(ValidationError::IncorrectPreviousHash {
+        //         expected: metadata.best_block().to_hex(),
+        //         block_hash: block.hash().to_hex(),
+        //     });
+        // }
+        // if block.height() != metadata.height_of_longest_chain() + 1 {
+        //     return Err(ValidationError::IncorrectNextTipHeight {
+        //         expected: metadata.height_of_longest_chain() + 1,
+        //         block_height: block.height(),
+        //     });
+        // }
 
         let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
         helpers::check_inputs_are_utxos(backend, &block.block().body)?;

@@ -112,6 +112,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> for MockValidator {
     fn validate(
         &self,
         _: &B,
+        _: &[&BlockHeader],
         header: &BlockHeader,
         _: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
