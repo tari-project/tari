@@ -186,7 +186,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -239,7 +239,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -342,7 +342,7 @@ fn chain_balance_validation_burned() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -422,6 +422,7 @@ fn chain_balance_validation_burned() {
 
 mod transaction_validator {
     use super::*;
+    use crate::transactions::transaction_components::TransactionError;
 
     #[test]
     fn it_rejects_coinbase_outputs() {
@@ -429,9 +430,25 @@ mod transaction_validator {
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
         let validator = TxInternalConsistencyValidator::new(factories, true, db);
-        let features = OutputFeatures::create_coinbase(0);
+        let features = OutputFeatures::create_coinbase(0, None);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate(&tx).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
+    }
+
+    #[test]
+    fn coinbase_extra_must_be_empty() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let db = create_store_with_consensus(consensus_manager);
+        let factories = CryptoFactories::default();
+        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let mut features = OutputFeatures { ..Default::default() };
+        features.coinbase_extra = b"deadbeef".to_vec();
+        let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
+        let err = validator.validate(&tx).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)
+        ));
     }
 }

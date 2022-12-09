@@ -669,7 +669,7 @@ where T: TransactionBackend + 'static
             ),
             TransactionStatus::try_from(import_status)?,
             message,
-            Utc::now().naive_utc(),
+            mined_timestamp.unwrap_or_else(|| Utc::now().naive_utc()),
             TransactionDirection::Inbound,
             maturity,
             current_height,

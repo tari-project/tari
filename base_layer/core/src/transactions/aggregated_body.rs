@@ -45,21 +45,24 @@ use tari_crypto::{
 };
 use tari_script::ScriptContext;
 
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    tari_amount::MicroTari,
-    transaction_components::{
-        transaction_output::batch_verify_range_proofs,
-        KernelFeatures,
-        KernelSum,
-        OutputType,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroTari,
+        transaction_components::{
+            transaction_output::batch_verify_range_proofs,
+            KernelFeatures,
+            KernelSum,
+            OutputType,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
     },
-    weight::TransactionWeight,
+    validation::helpers,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -325,22 +328,9 @@ impl AggregateBody {
         Ok(())
     }
 
-    pub fn check_output_features(&self, max_coinbase_metadata_size: usize) -> Result<(), TransactionError> {
+    pub fn check_output_features(&self, max_coinbase_metadata_size: u32) -> Result<(), TransactionError> {
         for output in self.outputs() {
-            // This field should be optional for coinbases (mining pools and
-            // other merge mined coins can use it), but it should be empty for non-coinbases
-            if !output.is_coinbase() && !output.features.metadata.is_empty() {
-                return Err(TransactionError::NonCoinbaseHasOutputFeaturesMetadata);
-            }
-
-            // For coinbases, the maximum length should be 64 bytes (2x hashes),
-            // so that arbitrary data cannot be included
-            if output.is_coinbase() && output.features.metadata.len() > max_coinbase_metadata_size {
-                return Err(TransactionError::InvalidOutputFeaturesMetadataSize {
-                    len: output.features.metadata.len(),
-                    max: max_coinbase_metadata_size,
-                });
-            }
+            helpers::check_output_feature(output, max_coinbase_metadata_size)?;
         }
 
         Ok(())

@@ -72,7 +72,13 @@ pub enum OutputManagerRequest {
     AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64)),
+    GetCoinbaseTransaction {
+        tx_id: TxId,
+        reward: MicroTari,
+        fees: MicroTari,
+        block_height: u64,
+        extra: Vec<u8>,
+    },
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
         tx_id: TxId,
@@ -191,7 +197,7 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
                 commitments, fee_per_gram,
             ),
-            GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
+            GetCoinbaseTransaction { .. } => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
                 selection_criteria,
@@ -511,15 +517,17 @@ impl OutputManagerHandle {
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::GetCoinbaseTransaction((
+            .call(OutputManagerRequest::GetCoinbaseTransaction {
                 tx_id,
                 reward,
                 fees,
                 block_height,
-            )))
+                extra,
+            })
             .await??
         {
             OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),

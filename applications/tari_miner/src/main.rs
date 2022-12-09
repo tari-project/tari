@@ -248,7 +248,7 @@ async fn mining_cycle(
     }
 
     debug!(target: LOG_TARGET, "Getting coinbase");
-    let request = coinbase_request(&template)?;
+    let request = coinbase_request(&template, config.coinbase_extra.as_bytes().to_vec())?;
     let coinbase = wallet_conn.get_coinbase(request).await?.into_inner();
     let (output, kernel) = extract_outputs_and_kernels(coinbase)?;
     let body = block_template

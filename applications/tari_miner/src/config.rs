@@ -69,6 +69,10 @@ pub struct MinerConfig {
     pub mining_wallet_address: String,
     /// Stratum Mode configuration - mining worker name
     pub mining_worker_name: String,
+    /// The extra data to store in the coinbase, usually some data about the mining pool.
+    /// Note that this data is publicly readable, but it is suggested you populate it so that
+    /// pool dominance can be seen before any one party has more than 51%.
+    pub coinbase_extra: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -96,6 +100,7 @@ impl Default for MinerConfig {
             mining_pool_address: String::new(),
             mining_wallet_address: String::new(),
             mining_worker_name: String::new(),
+            coinbase_extra: "tari_miner".to_string(),
         }
     }
 }

@@ -35,6 +35,37 @@ struct Balance;
 
 struct ByteVector;
 
+/**
+ * # Commitment and public key (CAPK) signatures
+ *
+ * Given a commitment `commitment = a*H + x*G` and group element `pubkey = y*G`, a CAPK signature is based on
+ * a representation proof of both openings: `(a, x)` and `y`. It additionally binds to arbitrary message data `m`
+ * via the challenge to produce a signature construction.
+ *
+ * It is used in Tari protocols as part of transaction authorization.
+ *
+ * The construction works as follows:
+ * - Sample scalar nonces `r_a, r_x, r_y` uniformly at random.
+ * - Compute ephemeral values `ephemeral_commitment = r_a*H + r_x*G` and `ephemeral_pubkey = r_y*G`.
+ * - Use strong Fiat-Shamir to produce a challenge `e`. If `e == 0` (this is unlikely), abort and start over.
+ * - Compute the responses `u_a = r_a + e*a` and `u_x = r_x + e*x` and `u_y = r_y + e*y`.
+ *
+ * The signature is the tuple `(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y)`.
+ *
+ * To verify:
+ * - The verifier computes the challenge `e` and rejects the signature if `e == 0` (this is unlikely).
+ * - Verification succeeds if and only if the following equations hold: `u_a*H + u*x*G == ephemeral_commitment +
+ *   e*commitment` `u_y*G == ephemeral_pubkey + e*pubkey`
+ *
+ * We note that it is possible to make verification slightly more efficient. To do so, the verifier selects a nonzero
+ * scalar weight `w` uniformly at random (not through Fiat-Shamir!) and accepts the signature if and only if the
+ * following equation holds:
+ *     `u_a*H + (u_x + w*u_y)*G - ephemeral_commitment - w*ephemeral_pubkey - e*commitment - (w*e)*pubkey == 0`
+ * The use of efficient multiscalar multiplication algorithms may also be useful for efficiency.
+ * The use of precomputation tables for `G` and `H` may also be useful for efficiency.
+ */
+struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
+
 struct CompletedTransaction;
 
 struct Contact;
@@ -136,6 +167,8 @@ struct TariPublicKeys;
 
 struct TariSeedWords;
 
+struct TariUnblindedOutputs;
+
 struct TariWallet;
 
 /**
@@ -150,6 +183,12 @@ struct TransactionKernel;
 struct TransactionSendStatus;
 
 struct TransportConfig;
+
+/**
+ * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
+ * build both inputs and outputs (every input comes from an output)
+ */
+struct UnblindedOutput;
 
 /**
  * -------------------------------- Vector ------------------------------------------------ ///
@@ -184,11 +223,84 @@ typedef PrivateKey TariPrivateKey;
 
 typedef struct TariAddress TariWalletAddress;
 
+/**
+ * # A commitment and public key (CAPK) signature implementation on Ristretto
+ *
+ * `RistrettoComAndPubSig` utilises the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek1)
+ * implementation of `ristretto255` to provide CAPK signature functionality.
+ *
+ * ## Examples
+ *
+ * You can create a `RistrettoComAndPubSig` from its component parts:
+ *
+ * ```edition2018
+ * # use tari_crypto::ristretto::*;
+ * # use tari_crypto::keys::*;
+ * # use tari_crypto::commitment::HomomorphicCommitment;
+ * # use tari_utilities::ByteArray;
+ * # use tari_utilities::hex::Hex;
+ *
+ * let ephemeral_commitment = HomomorphicCommitment::from_hex(
+ *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
+ * )
+ * .unwrap();
+ * let ephemeral_pubkey = RistrettoPublicKey::from_hex(
+ *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
+ * )
+ * .unwrap();
+ * let u_a = RistrettoSecretKey::from_bytes(b"10000000000000000000000010000000").unwrap();
+ * let u_x = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
+ * let u_y = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
+ * let sig = RistrettoComAndPubSig::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y);
+ * ```
+ *
+ * or you can create a signature for a commitment by signing a message with knowledge of the commitment and then
+ * verify it by calling the `verify_challenge` method:
+ *
+ * ```rust
+ * # use tari_crypto::ristretto::*;
+ * # use tari_crypto::keys::*;
+ * # use tari_crypto::hash::blake2::Blake256;
+ * # use digest::Digest;
+ * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
+ * # use tari_crypto::ristretto::pedersen::*;
+ * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
+ * use tari_utilities::hex::Hex;
+ *
+ * let mut rng = rand::thread_rng();
+ * let a_val = RistrettoSecretKey::random(&mut rng);
+ * let x_val = RistrettoSecretKey::random(&mut rng);
+ * let y_val = RistrettoSecretKey::random(&mut rng);
+ * let a_nonce = RistrettoSecretKey::random(&mut rng);
+ * let x_nonce = RistrettoSecretKey::random(&mut rng);
+ * let y_nonce = RistrettoSecretKey::random(&mut rng);
+ * let e = Blake256::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
+ * let factory = PedersenCommitmentFactory::default();
+ * let commitment = factory.commit(&x_val, &a_val);
+ * let pubkey = RistrettoPublicKey::from_secret_key(&y_val);
+ * let sig = RistrettoComAndPubSig::sign(
+ *     &a_val, &x_val, &y_val, &a_nonce, &x_nonce, &y_nonce, &e, &factory,
+ * )
+ * .unwrap();
+ * assert!(sig.verify_challenge(&commitment, &pubkey, &e, &factory, &mut rng));
+ * ```
+ */
+typedef struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey RistrettoComAndPubSig;
+
+/**
+ * Define the explicit Commitment Signature implementation for the Tari base layer.
+ */
+typedef RistrettoComAndPubSig ComAndPubSignature;
+
+typedef ComAndPubSignature TariComAndPubSignature;
+
+typedef struct UnblindedOutput TariUnblindedOutput;
+
+typedef struct OutputFeatures TariOutputFeatures;
+
 typedef struct Covenant TariCovenant;
 
 typedef struct EncryptedValue TariEncryptedValue;
-
-typedef struct OutputFeatures TariOutputFeatures;
 
 typedef struct Contact TariContact;
 
@@ -656,6 +768,211 @@ char *tari_address_to_emoji_id(TariWalletAddress *address,
  */
 TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
                                             int *error_out);
+
+/**
+ * -------------------------------------------------------------------------------------------- ///
+ *
+ * ------------------------------- ComAndPubSignature Signature ---------------------------------------///
+ * Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
+ * ByteVectors
+ *
+ * ## Arguments
+ * `ephemeral_commitment_bytes` - The public ephemeral commitment component as a ByteVector
+ * `ephemeral_pubkey_bytes` - The public ephemeral pubkey component as a ByteVector
+ * `u_a_bytes` - The u_a signature component as a ByteVector
+ * `u_x_bytes` - The u_x signature component as a ByteVector
+ * `u_y_bytes` - The u_y signature component as a ByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `TariComAndPubSignature` - Returns a ComAndPubS signature. Note that it will be ptr::null_mut() if any argument is
+ * null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```commitment_signature_destroy``` function must be called when finished with a TariComAndPubSignature to
+ * prevent a memory leak
+ */
+TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const struct ByteVector *ephemeral_commitment_bytes,
+                                                                          const struct ByteVector *ephemeral_pubkey_bytes,
+                                                                          const struct ByteVector *u_a_bytes,
+                                                                          const struct ByteVector *u_x_bytes,
+                                                                          const struct ByteVector *u_y_bytes,
+                                                                          int *error_out);
+
+/**
+ * Frees memory for a TariComAndPubSignature
+ *
+ * ## Arguments
+ * `compub_sig` - The pointer to a TariComAndPubSignature
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig);
+
+/**
+ * -------------------------------------------------------------------------------------------- ///
+ * -------------------------------- Unblinded utxo -------------------------------------------- ///
+ * Creates an unblinded output
+ *
+ * ## Arguments
+ * `amount` - The value of the UTXO in MicroTari
+ * `spending_key` - The private spending key
+ * `source_address` - The tari address of the source of the transaction
+ * `features` - Options for an output's structure or use
+ * `metadata_signature` - UTXO signature with the script offset private key, k_O
+ * `sender_offset_public_key` - Tari script offset pubkey, K_O
+ * `script_private_key` - Tari script private key, k_S, is used to create the script signature
+ * `covenant` - The covenant that will be executed when spending this output
+ * `message` - The message that the transaction will have
+ * `encrypted_value` - Encrypted value.
+ * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * TariUnblindedOutput -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+ * transaction is null
+ *
+ * # Safety
+ * None
+ */
+TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
+                                                  TariPrivateKey *spending_key,
+                                                  TariOutputFeatures *features,
+                                                  const char *script,
+                                                  const char *input_data,
+                                                  TariComAndPubSignature *metadata_signature,
+                                                  TariPublicKey *sender_offset_public_key,
+                                                  TariPrivateKey *script_private_key,
+                                                  TariCovenant *covenant,
+                                                  TariEncryptedValue *encrypted_value,
+                                                  unsigned long long minimum_value_promise,
+                                                  unsigned long long script_lock_height,
+                                                  int *error_out);
+
+/**
+ * Frees memory for a TariUnblindedOutput
+ *
+ * ## Arguments
+ * `output` - The pointer to a TariUnblindedOutput
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void tari_unblinded_output_destroy(TariUnblindedOutput *output);
+
+/**
+ * -------------------------------------------------------------------------------------------- ///
+ * ----------------------------------- TariUnblindedOutputs ------------------------------------///
+ * Gets the length of TariUnblindedOutputs
+ *
+ * ## Arguments
+ * `outputs` - The pointer to a TariUnblindedOutputs
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uint` - Returns number of elements in , zero if outputs is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
+                                          int *error_out);
+
+/**
+ * Gets a TariUnblindedOutput from TariUnblindedOutputs at position
+ *
+ * ## Arguments
+ * `outputs` - The pointer to a TariUnblindedOutputs
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
+ * TariUnblindedOutputs is null or position is invalid
+ *
+ * # Safety
+ * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+ */
+TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outputs,
+                                              unsigned int position,
+                                              int *error_out);
+
+/**
+ * Frees memory for a TariUnblindedOutputs
+ *
+ * ## Arguments
+ * `outputs` - The pointer to a TariUnblindedOutputs
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
+
+/**
+ * Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+ * UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `amount` - The value of the UTXO in MicroTari
+ * `spending_key` - The private spending key
+ * `source_address` - The tari address of the source of the transaction
+ * `features` - Options for an output's structure or use
+ * `metadata_signature` - UTXO signature with the script offset private key, k_O
+ * `sender_offset_public_key` - Tari script offset pubkey, K_O
+ * `script_private_key` - Tari script private key, k_S, is used to create the script signature
+ * `covenant` - The covenant that will be executed when spending this output
+ * `message` - The message that the transaction will have
+ * `encrypted_value` - Encrypted value.
+ * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+ * transaction is null
+ *
+ * # Safety
+ * None
+ */
+unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
+                                                                 TariUnblindedOutput *output,
+                                                                 TariWalletAddress *source_address,
+                                                                 const char *message,
+                                                                 int *error_out);
+
+/**
+ * Get the TariUnblindedOutputs from a TariWallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
+ * wallet is null
+ *
+ * # Safety
+ * The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutput to prevent a
+ * memory leak
+ */
+struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *wallet,
+                                                        int *error_out);
 
 /**
  * -------------------------------------------------------------------------------------------- ///

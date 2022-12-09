@@ -346,7 +346,7 @@ where B: BlockchainBackend + 'static
             if let Err(res) = result {
                 error!(
                     target: LOG_TARGET,
-                    "BaseNodeService failed to send reply to local block submitter {:?}",
+                    "BaseNodeService Caller dropped the oneshot receiver before reply could be sent. Reply: {:?}",
                     res.map(|r| r.to_string()).map_err(|e| e.to_string())
                 );
             }

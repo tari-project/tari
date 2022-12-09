@@ -708,7 +708,7 @@ async fn test_utxo_selection_with_tx_priority() {
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::create_coinbase(1)),
+        Some(OutputFeatures::create_coinbase(1, None)),
     )
     .await;
     oms.add_rewindable_output(uo, Some(SpendingPriority::HtlcSpendAsap), None)
@@ -1312,7 +1312,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let _transaction = oms
         .output_manager_handle
-        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1328,7 +1328,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let _tx2 = oms
         .output_manager_handle
-        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
+        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1342,7 +1342,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
     );
     let tx3 = oms
         .output_manager_handle
-        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2)
+        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1515,7 +1515,13 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms.output_manager_handle
-        .get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+        .get_coinbase_transaction(
+            6u64.into(),
+            MicroTari::from(15_000_000),
+            MicroTari::from(1_000_000),
+            2,
+            b"test".to_vec(),
+        )
         .await
         .unwrap();
 
@@ -1667,7 +1673,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
-    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 2);
+    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 5);
 
     assert!(oms.output_manager_handle.get_spent_outputs().await.unwrap().is_empty());
 

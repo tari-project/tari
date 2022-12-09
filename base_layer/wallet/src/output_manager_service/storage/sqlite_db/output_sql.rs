@@ -106,6 +106,7 @@ pub struct OutputSql {
     pub encrypted_value: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
+    pub last_validation_timestamp: Option<NaiveDateTime>,
 }
 
 impl OutputSql {
@@ -116,10 +117,12 @@ impl OutputSql {
 
     /// Return all outputs with a given status
     pub fn index_status(
-        status: OutputStatus,
+        statuses: Vec<OutputStatus>,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+        Ok(outputs::table
+            .filter(outputs::status.eq_any::<Vec<i32>>(statuses.into_iter().map(|s| s as i32).collect()))
+            .load(conn)?)
     }
 
     /// Retrieves UTXOs by a set of given rules
@@ -321,6 +324,25 @@ impl OutputSql {
             .filter(outputs::marked_deleted_in_block.is_null().or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)))
             // Only return mined
             .filter(outputs::mined_in_block.is_not_null().and(outputs::mined_height.is_not_null()))
+            .order(outputs::id.asc())
+            .load(conn)?)
+    }
+
+    pub fn index_invalid(
+        timestamp: &NaiveDateTime,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::status
+                    .eq(OutputStatus::Invalid as i32)
+                    .or(outputs::status.eq(OutputStatus::CancelledInbound as i32)),
+            )
+            .filter(
+                outputs::last_validation_timestamp
+                    .le(timestamp)
+                    .or(outputs::last_validation_timestamp.is_null()),
+            )
             .order(outputs::id.asc())
             .load(conn)?)
     }

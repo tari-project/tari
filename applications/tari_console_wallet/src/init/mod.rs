@@ -482,7 +482,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     Ok(())
 }
 
-fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
 
     println!();
@@ -549,6 +549,10 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                 ),
             ));
         }
+        return Ok(WalletBoot::Recovery);
+    }
+
+    if cli.seed_words.is_some() && !wallet_exists {
         return Ok(WalletBoot::Recovery);
     }
 

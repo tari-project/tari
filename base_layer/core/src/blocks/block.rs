@@ -126,7 +126,7 @@ impl Block {
     /// 1. coinbase metadata length does not exceed its limit
     pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         self.body
-            .check_output_features(consensus_constants.coinbase_output_features_metadata_max_length())?;
+            .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
 
         Ok(())
     }

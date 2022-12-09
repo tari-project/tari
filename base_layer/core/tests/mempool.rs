@@ -1065,9 +1065,9 @@ async fn consensus_validation_versions() {
     assert_eq!(output_v0_features_v0.features.version, OutputFeaturesVersion::V0);
 
     let test_params = TestParams::new();
-    let params = UtxoTestParams::with_value(1 * T);
-    let mut output_v1_features_v0 = test_params.create_unblinded_output(params);
-    output_v1_features_v0.version = TransactionOutputVersion::V1;
+    let mut params = UtxoTestParams::with_value(1 * T);
+    params.output_version = Some(TransactionOutputVersion::V1);
+    let output_v1_features_v0 = test_params.create_unblinded_output(params);
     assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
     assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
 

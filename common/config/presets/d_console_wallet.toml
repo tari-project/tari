@@ -157,6 +157,10 @@ event_channel_size = 3500
 # The number of batches the unconfirmed outputs will be divided into before being queried from the base node
 # (default = 100)
 #tx_validator_batch_size = 100
+# Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
+# If you set it to zero, the revalidation will be on every wallet rerun. Default is 3 days.
+#num_of_seconds_to_revalidate_invalid_utxos = 259200
+
 
 [wallet.base_node]
 # Configuration for the wallet's base node service

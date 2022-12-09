@@ -126,7 +126,12 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
-    GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
+    GenerateCoinbaseTransaction {
+        reward: MicroTari,
+        fees: MicroTari,
+        block_height: u64,
+        extra: Vec<u8>,
+    },
     RestartTransactionProtocols,
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
@@ -209,8 +214,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
-            Self::GenerateCoinbaseTransaction(_, _, bh) => {
-                write!(f, "GenerateCoinbaseTransaction (Blockheight {})", bh)
+            Self::GenerateCoinbaseTransaction { block_height, .. } => {
+                write!(f, "GenerateCoinbaseTransaction (Blockheight {})", block_height)
             },
             Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
@@ -776,17 +781,19 @@ impl TransactionServiceHandle {
 
     pub async fn generate_coinbase_transaction(
         &mut self,
-        rewards: MicroTari,
+        reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GenerateCoinbaseTransaction(
-                rewards,
+            .call(TransactionServiceRequest::GenerateCoinbaseTransaction {
+                reward,
                 fees,
                 block_height,
-            ))
+                extra,
+            })
             .await??
         {
             TransactionServiceResponse::CoinbaseTransactionGenerated(tx) => Ok(*tx),

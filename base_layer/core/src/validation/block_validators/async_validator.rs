@@ -436,6 +436,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         helpers::validate_output_version(&constants, output)?;
                         helpers::check_permitted_output_types(&constants, output)?;
                         helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
+                        helpers::check_output_feature(output, constants.coinbase_output_features_extra_max_length())?;
                         output.verify_metadata_signature()?;
                         output.verify_validator_node_signature()?;
                         helpers::check_not_duplicate_txo(&*db, output)?;

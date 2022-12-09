@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 use borsh::BorshSerialize;
 use monero::blockdata::block::Block as MoneroBlock;
@@ -42,7 +42,7 @@ use tari_core::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
-        transaction_components::OutputFeatures,
+        transaction_components::{OutputFeatures, TransactionError},
         CryptoFactories,
     },
     txn_schema,
@@ -107,20 +107,20 @@ fn test_monero_blocks() {
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
     );
     let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
-    let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);
+    let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories, None);
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
 
     // Now we have block 1, lets add monero data to it
     add_monero_data(&mut block_1, seed1);
     let cb_1 = db.add_block(Arc::new(block_1)).unwrap().assert_added();
     // Now lets add a second faulty block using the same seed hash
-    let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, &factories);
+    let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, &factories, None);
     let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
 
     add_monero_data(&mut block_2, seed1);
     let cb_2 = db.add_block(Arc::new(block_2)).unwrap().assert_added();
     // Now lets add a third faulty block using the same seed hash. This should fail.
-    let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, &factories);
+    let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, &factories, None);
     let mut block_3 = db.prepare_new_block(block_3_t).unwrap();
     let mut block_3_broken = block_3.clone();
     add_monero_data(&mut block_3_broken, seed1);
@@ -273,27 +273,34 @@ OutputFeatures::default()),
         txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features:
 OutputFeatures::default()),
     );
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
     assert!(orphan_validator.validate(&new_block).is_ok());
 
     // lets break the block weight
-    let (template, _) =
-        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone(), tx03], &rules, &factories);
+    let (template, _) = chain_block_with_new_coinbase(
+        &genesis,
+        vec![tx01.clone(), tx02.clone(), tx03],
+        &rules,
+        &factories,
+        None,
+    );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break the sorting
     let (mut template, _) =
-        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let outputs = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break spend rules
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories);
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
@@ -302,6 +309,7 @@ OutputFeatures::default()),
         &factories,
         10000000.into(),
         1 + rules.consensus_constants(0).coinbase_lock_height(),
+        None,
     );
     let template = chain_block_with_coinbase(
         &genesis,
@@ -318,6 +326,7 @@ OutputFeatures::default()),
         &factories,
         rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
         1,
+        None,
     );
     let template = chain_block_with_coinbase(
         &genesis,
@@ -330,7 +339,7 @@ OutputFeatures::default()),
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break accounting
-    let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
+    let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
@@ -385,7 +394,7 @@ OutputFeatures::default()),
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
+    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
@@ -580,7 +589,7 @@ OutputFeatures::default()),
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
+    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
@@ -642,12 +651,12 @@ async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(321)
+        .with_max_block_transaction_weight(400)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
@@ -682,32 +691,80 @@ async fn test_block_sync_body_validator() {
     let (tx04, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
     );
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+
+    // Coinbase extra field is too large
+    let extra = iter::repeat(1u8).take(65).collect();
+    let (template, _) = chain_block_with_new_coinbase(
+        &genesis,
+        vec![tx01.clone(), tx02.clone()],
+        &rules,
+        &factories,
+        Some(extra),
+    );
+    let new_block = db.prepare_new_block(template).unwrap();
+    let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
+    let err = validator.validate_body(new_block).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ValidationError::TransactionError(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize{len, max }) if
+            len == 65 && max == max_len
+        ),
+        "{}",
+        err
+    );
+
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
     validator.validate_body(new_block).await.unwrap();
 
     // lets break the block weight
-    let (template, _) =
-        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone(), tx03], &rules, &factories);
+    let (template, _) = chain_block_with_new_coinbase(
+        &genesis,
+        vec![tx01.clone(), tx02.clone(), tx03],
+        &rules,
+        &factories,
+        None,
+    );
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+
+    assert!(
+        new_block
+            .body
+            .calculate_weight(consensus_constants.transaction_weight()) >
+            400,
+        "If this is not more than 400, then the next line should fail"
+    );
+    let err = validator.validate_body(new_block).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ValidationError::BlockError(BlockValidationError::BlockTooLarge { actual_weight, max_weight }) if
+            actual_weight == 449 && max_weight == 400
+        ),
+        "{}",
+        err
+    );
 
     // lets break spend rules
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories);
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     validator.validate_body(new_block).await.unwrap_err();
 
     // lets break the sorting
     let (mut template, _) =
-        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let output = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), output, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     validator.validate_body(new_block).await.unwrap_err();
 
     // lets have unknown inputs;
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     let test_params1 = TestParams::new();
     let test_params2 = TestParams::new();
@@ -725,7 +782,8 @@ async fn test_block_sync_body_validator() {
     validator.validate_body(new_block).await.unwrap_err();
 
     // lets check duplicate txos
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+    let (template, _) =
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
@@ -738,6 +796,7 @@ async fn test_block_sync_body_validator() {
         &factories,
         10000000.into(),
         1 + rules.consensus_constants(0).coinbase_lock_height(),
+        None,
     );
     let template = chain_block_with_coinbase(
         &genesis,
@@ -754,6 +813,7 @@ async fn test_block_sync_body_validator() {
         &factories,
         rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
         1 + rules.consensus_constants(1).coinbase_lock_height(),
+        None,
     );
     let template = chain_block_with_coinbase(
         &genesis,
@@ -767,14 +827,14 @@ async fn test_block_sync_body_validator() {
 
     // lets break accounting
     let (mut template, _) =
-        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
+        chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     validator.validate_body(new_block).await.unwrap_err();
 
     // lets the mmr root
-    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
+    let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.output_mr = FixedHash::zero();
     validator.validate_body(new_block).await.unwrap_err();

@@ -128,6 +128,7 @@ diesel::table! {
         encrypted_value -> Binary,
         minimum_value_promise -> BigInt,
         source -> Integer,
+        last_validation_timestamp -> Nullable<Timestamp>,
     }
 }
 

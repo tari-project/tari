@@ -208,20 +208,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     warn!(target: LOG_TARGET, "Chain link broken: {}", reason);
                     self.ban_peer_long(node_id, reason).await?;
                 },
-                Err(ref err @ BlockHeaderSyncError::WeakerChain { claimed, actual, local }) => {
-                    warn!(target: LOG_TARGET, "{}", err);
-                    self.ban_peer_long(node_id, BanReason::PeerCouldNotProvideStrongerChain {
-                        claimed,
-                        actual,
-                        local,
-                    })
-                    .await?;
-                },
-                Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
-                    warn!(target: LOG_TARGET, "{}", err);
-                    self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
-                        .await?;
-                },
                 Err(err @ BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ BlockHeaderSyncError::MaxLatencyExceeded { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
@@ -604,9 +590,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // headers.
             debug!(target: LOG_TARGET, "No further headers to download");
             if !has_better_pow {
-                return Err(BlockHeaderSyncError::WeakerChain {
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: total_accumulated_difficulty,
+                    actual: Some(total_accumulated_difficulty),
                     local: split_info
                         .local_tip_header
                         .accumulated_data()
@@ -702,13 +688,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         if !has_switched_to_new_chain {
-            return Err(BlockHeaderSyncError::WeakerChain {
+            return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                 claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                 actual: self
                     .header_validator
                     .current_valid_chain_tip_header()
-                    .map(|h| h.accumulated_data().total_accumulated_difficulty)
-                    .unwrap_or(0),
+                    .map(|h| h.accumulated_data().total_accumulated_difficulty),
                 local: split_info
                     .local_tip_header
                     .accumulated_data()
@@ -817,14 +802,8 @@ enum BanReason {
     ValidationFailed(#[from] ValidationError),
     #[error("Peer could not find the location of a chain split")]
     ChainSplitNotFound,
-    #[error("Failed to synchronize headers from peer: {0}")]
-    GeneralHeaderSyncFailure(BlockHeaderSyncError),
     #[error("Peer did not respond timeously during RPC negotiation")]
     RpcNegotiationTimedOut,
-    #[error(
-        "Peer claimed an accumulated difficulty of {claimed} but validated difficulty was {actual} <= local: {local}"
-    )]
-    PeerCouldNotProvideStrongerChain { claimed: u128, actual: u128, local: u128 },
     #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken {
         height: u64,
