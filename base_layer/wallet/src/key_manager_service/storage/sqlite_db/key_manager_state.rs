@@ -22,19 +22,13 @@
 
 use std::convert::TryFrom;
 
-use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
-use tari_utilities::Hidden;
-use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState},
     schema::key_manager_states,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
+    util::diesel_ext::ExpectedRowsExtension,
 };
 
 /// Represents a row in the key_manager_states table.
@@ -150,56 +144,4 @@ impl KeyManagerStateSql {
 pub struct KeyManagerStateUpdateSql {
     branch_seed: Option<String>,
     primary_key_index: Option<Vec<u8>>,
-}
-
-impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
-    fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
-    }
-
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.primary_key_index = encrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("primary_key_index"),
-            Hidden::hide(self.primary_key_index),
-        )?;
-
-        Ok(output)
-    }
-
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.primary_key_index =
-            decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), &self.primary_key_index)?;
-
-        Ok(output)
-    }
-}
-
-impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
-    fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
-    }
-
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.primary_key_index = encrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("primary_key_index"),
-            Hidden::hide(self.primary_key_index.clone()),
-        )?;
-
-        Zeroizing::new(self.primary_key_index).zeroize();
-
-        Ok(output)
-    }
-
-    fn decrypt(self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        unimplemented!("Not supported")
-    }
 }

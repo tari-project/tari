@@ -20,12 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    sync::{Arc, RwLock},
-};
+use std::convert::TryFrom;
 
-use chacha20poly1305::XChaCha20Poly1305;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
 use tokio::time::Instant;
@@ -36,7 +32,6 @@ use crate::{
         storage::database::{KeyManagerBackend, KeyManagerState},
     },
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::encryption::Encryptable,
 };
 
 mod key_manager_state;
@@ -47,36 +42,15 @@ const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct KeyManagerSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<XChaCha20Poly1305>>,
 }
 
 impl KeyManagerSqliteDatabase {
     /// Creates a new sql backend from provided wallet db connection
     /// * `cipher` is used to encrypt the sensitive fields in the database, if no cipher is provided, the database will
     ///   not encrypt sensitive fields
-    pub fn new(
-        database_connection: WalletDbConnection,
-        cipher: XChaCha20Poly1305,
-    ) -> Result<Self, KeyManagerStorageError> {
-        let db = Self {
-            database_connection,
-            cipher: Arc::new(RwLock::new(cipher)),
-        };
+    pub fn new(database_connection: WalletDbConnection) -> Result<Self, KeyManagerStorageError> {
+        let db = Self { database_connection };
         Ok(db)
-    }
-
-    fn decrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, KeyManagerStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        o.decrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))
-    }
-
-    fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, KeyManagerStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        o.encrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))
     }
 }
 
@@ -88,10 +62,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
         let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
             None => None,
-            Some(km) => {
-                let km = self.decrypt_value(km)?;
-                Some(KeyManagerState::try_from(km)?)
-            },
+            Some(km) => Some(KeyManagerState::try_from(km)?),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -112,7 +83,6 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let km_sql = NewKeyManagerStateSql::from(key_manager);
-        let km_sql = self.encrypt_value(km_sql)?;
         km_sql.commit(&conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -131,13 +101,11 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        let mut km = self.decrypt_value(km)?;
+        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&km.primary_key_index[..8]);
         let index = u64::from_le_bytes(bytes) + 1;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        let km = self.encrypt_value(km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -156,10 +124,8 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        let mut km = self.decrypt_value(km)?;
+        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        let km = self.encrypt_value(km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(

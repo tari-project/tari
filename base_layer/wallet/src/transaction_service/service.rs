@@ -2205,6 +2205,7 @@ where
         >,
     ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Restarting transaction negotiation protocols");
+        println!("FLAG: ASOIDJFIOADSJFPAOSIDJFPASODIJFPAOSJIDFAPODIJF");
         self.restart_all_send_transaction_protocols(send_transaction_join_handles)
             .map_err(|resp| {
                 error!(

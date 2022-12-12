@@ -126,6 +126,7 @@ impl WalletSqliteDatabase {
         Ok(o)
     }
 
+    #[allow(dead_code)]
     fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         o.encrypt(&cipher)
@@ -206,6 +207,7 @@ impl WalletSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
         let kvp_text;
         match kvp {
             DbKeyValuePair::MasterSeed(seed) => {
@@ -229,8 +231,7 @@ impl WalletSqliteDatabase {
                     None
                 };
 
-                let client_key_value = ClientKeyValueSql::new(k, v);
-                let client_key_value = self.encrypt_value(client_key_value)?;
+                let client_key_value = ClientKeyValueSql::new(k, v, &cipher)?;
 
                 client_key_value.set(&conn)?;
                 if start.elapsed().as_millis() > 0 {
@@ -616,8 +617,9 @@ struct ClientKeyValueSql {
 }
 
 impl ClientKeyValueSql {
-    pub fn new(key: String, value: String) -> Self {
-        Self { key, value }
+    pub fn new(key: String, value: String, cipher: &XChaCha20Poly1305) -> Result<Self, WalletStorageError> {
+        let output = Self { key, value };
+        output.encrypt(cipher).map_err(WalletStorageError::AeadError)
     }
 
     #[allow(dead_code)]
@@ -779,18 +781,19 @@ mod test {
         let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
         let seed = CipherSeed::new();
-        let mut key_values = vec![
-            ClientKeyValueSql::new("key1".to_string(), "value1".to_string()),
-            ClientKeyValueSql::new("key2".to_string(), "value2".to_string()),
-            ClientKeyValueSql::new("key3".to_string(), "value3".to_string()),
-        ];
         let passphrase = "a very very secret key example.".to_string().into();
         let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
+        let cipher = db.cipher();
+
+        let mut key_values = vec![
+            ClientKeyValueSql::new("key1".to_string(), "value1".to_string(), &cipher).unwrap(),
+            ClientKeyValueSql::new("key2".to_string(), "value2".to_string(), &cipher).unwrap(),
+            ClientKeyValueSql::new("key3".to_string(), "value3".to_string(), &cipher).unwrap(),
+        ];
         {
             let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
             for kv in &mut key_values {
-                *kv = kv.clone().encrypt(&db.cipher()).unwrap();
                 kv.set(&conn).unwrap();
             }
         }
@@ -865,27 +868,39 @@ mod test {
         let key2 = "key2".to_string();
         let value2 = "value2".to_string();
 
-        ClientKeyValueSql::new(key1.clone(), value1.clone()).set(&conn).unwrap();
+        let passphrase = "a very very secret key example.".to_string().into();
+        let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
+        let cipher = db.cipher();
+
+        ClientKeyValueSql::new(key1.clone(), value1.clone(), &cipher)
+            .unwrap()
+            .set(&conn)
+            .unwrap();
         assert!(ClientKeyValueSql::get(&key2, &conn).unwrap().is_none());
         if let Some(ckv) = ClientKeyValueSql::get(&key1, &conn).unwrap() {
+            let ckv = ckv.decrypt(&cipher).unwrap();
             assert_eq!(ckv.value, value1);
         } else {
             panic!("Should find value");
         }
         assert!(!ClientKeyValueSql::clear(&key2, &conn).unwrap());
 
-        ClientKeyValueSql::new(key2.clone(), value2.clone()).set(&conn).unwrap();
+        ClientKeyValueSql::new(key2.clone(), value2.clone(), &cipher)
+            .unwrap()
+            .set(&conn)
+            .unwrap();
 
         let values = ClientKeyValueSql::index(&conn).unwrap();
         assert_eq!(values.len(), 2);
 
-        assert_eq!(values[0].value, value1);
-        assert_eq!(values[1].value, value2);
+        assert_eq!(values[0].clone().decrypt(&cipher).unwrap().value, value1);
+        assert_eq!(values[1].clone().decrypt(&cipher).unwrap().value, value2);
 
         assert!(ClientKeyValueSql::clear(&key1, &conn).unwrap());
         assert!(ClientKeyValueSql::get(&key1, &conn).unwrap().is_none());
 
         if let Some(ckv) = ClientKeyValueSql::get(&key2, &conn).unwrap() {
+            let ckv = ckv.decrypt(&cipher).unwrap();
             assert_eq!(ckv.value, value2);
         } else {
             panic!("Should find value2");

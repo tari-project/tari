@@ -197,7 +197,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), cipher.clone());
-    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, cipher).unwrap();
+    let kms_backend = KeyManagerSqliteDatabase::new(db_connection).unwrap();
     let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
     let cipher = CipherSeed::new();
@@ -4368,11 +4368,17 @@ async fn test_resend_on_startup() {
         .restart_broadcast_protocols()
         .await
         .is_ok());
-    assert!(alice_ts_interface
+
+    alice_ts_interface
         .transaction_service_handle
         .restart_transaction_protocols()
         .await
-        .is_ok());
+        .unwrap();
+    // assert!(alice_ts_interface
+    //     .transaction_service_handle
+    //     .restart_transaction_protocols()
+    //     .await
+    //     .is_ok());
 
     // Check that if the cooldown is not done that a message will not be sent.
     assert!(alice_ts_interface
