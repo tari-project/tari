@@ -22,14 +22,16 @@
 
 use std::time::Duration;
 
+use blake2::Digest;
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
-    chain_metadata::{random_peer_metadata, MockChainMetadata},
     nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
 };
 use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_core::{
     base_node::{
+        chain_metadata_service::PeerChainMetadata,
         state_machine_service::{
             states::{Listening, StateEvent, StatusInfo},
             BaseNodeStateMachine,
@@ -44,14 +46,19 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::mocks::MockValidator,
 };
+use tari_crypto::hash::blake2::Blake256;
 use tari_p2p::services::liveness::config::LivenessConfig;
 use tari_shutdown::Shutdown;
+use tari_test_utils::unpack_enum;
+use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, watch},
     task,
     time,
 };
+
+use crate::helpers::{chain_metadata::MockChainMetadata, nodes::random_node_identity};
 
 #[allow(dead_code)]
 mod helpers;
@@ -152,7 +159,17 @@ async fn test_event_channel() {
 
     task::spawn(state_machine.run());
 
-    let peer_chain_metadata = random_peer_metadata(10, 5_000);
+    let node_identity = random_node_identity();
+    let block_hash = Blake256::digest(node_identity.node_id().as_bytes()).into();
+    let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000, 0);
+
+    node.comms
+        .peer_manager()
+        .add_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+
+    let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
     mock.publish_chain_metadata(
         peer_chain_metadata.node_id(),
         peer_chain_metadata.claimed_chain_metadata(),
@@ -163,5 +180,5 @@ async fn test_event_channel() {
     assert_eq!(*event.unwrap(), StateEvent::Initialized);
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
-    assert!(matches!(*event, StateEvent::FallenBehind(_)));
+    unpack_enum!(StateEvent::FallenBehind(_) = &*event);
 }
