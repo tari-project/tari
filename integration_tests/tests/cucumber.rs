@@ -174,7 +174,6 @@ async fn node_pending_connection_to(
     for i in 0..100 {
         let res = first_node.list_connected_peers(Empty {}).await?;
         let res = res.into_inner();
-        dbg!(&res);
 
         if res
             .connected_peers
