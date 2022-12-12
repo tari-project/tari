@@ -82,7 +82,7 @@ impl NewOutputSql {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant)?;
 
-        let mut output = Self {
+        let output = Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
@@ -117,7 +117,7 @@ impl NewOutputSql {
             source: output.source as i32,
         };
 
-        output
+        let output = output
             .encrypt(cipher)
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
 
@@ -137,29 +137,32 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()].concat()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key = encrypt_bytes_integral_nonce(
+    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+
+        output.spending_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("spending_key"),
             Hidden::hide(self.spending_key.clone()),
         )?;
 
-        self.script_private_key = encrypt_bytes_integral_nonce(
+        output.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            Hidden::hide(self.script_private_key.clone()),
+            Hidden::hide(self.script_private_key),
         )?;
 
-        Ok(())
+        Ok(output)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
+    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+        output.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
-        self.script_private_key =
+        output.script_private_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
-        Ok(())
+        Ok(output)
     }
 }
 

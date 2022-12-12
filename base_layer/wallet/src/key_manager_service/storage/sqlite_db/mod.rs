@@ -65,22 +65,18 @@ impl KeyManagerSqliteDatabase {
         Ok(db)
     }
 
-    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
+    fn decrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
 
         o.decrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))?;
-
-        Ok(())
+            .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))
     }
 
-    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
+    fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
 
         o.encrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-
-        Ok(())
+            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))
     }
 }
 
@@ -92,8 +88,8 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
         let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
             None => None,
-            Some(mut km) => {
-                self.decrypt_if_necessary(&mut km)?;
+            Some(km) => {
+                let km = self.decrypt_value(km)?;
                 Some(KeyManagerState::try_from(km)?)
             },
         };
@@ -115,8 +111,8 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let mut km_sql = NewKeyManagerStateSql::from(key_manager);
-        self.encrypt_if_necessary(&mut km_sql)?;
+        let km_sql = NewKeyManagerStateSql::from(key_manager);
+        let km_sql = self.encrypt_value(km_sql)?;
         km_sql.commit(&conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -135,13 +131,13 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        self.decrypt_if_necessary(&mut km)?;
+        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        let mut km = self.decrypt_value(km)?;
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&km.primary_key_index[..8]);
         let index = u64::from_le_bytes(bytes) + 1;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        self.encrypt_if_necessary(&mut km)?;
+        let km = self.encrypt_value(km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -160,10 +156,10 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        self.decrypt_if_necessary(&mut km)?;
+        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        let mut km = self.decrypt_value(km)?;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        self.encrypt_if_necessary(&mut km)?;
+        let km = self.encrypt_value(km)?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(

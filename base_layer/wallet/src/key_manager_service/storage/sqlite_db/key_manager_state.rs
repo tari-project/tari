@@ -26,6 +26,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
 use tari_utilities::Hidden;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState},
@@ -158,21 +159,23 @@ impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.primary_key_index = encrypt_bytes_integral_nonce(
+    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+        output.primary_key_index = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("primary_key_index"),
-            Hidden::hide(self.primary_key_index.clone()),
+            Hidden::hide(self.primary_key_index),
         )?;
 
-        Ok(())
+        Ok(output)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.primary_key_index =
+    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+        output.primary_key_index =
             decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), &self.primary_key_index)?;
 
-        Ok(())
+        Ok(output)
     }
 }
 
@@ -183,17 +186,20 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.primary_key_index = encrypt_bytes_integral_nonce(
+    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+        output.primary_key_index = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("primary_key_index"),
             Hidden::hide(self.primary_key_index.clone()),
         )?;
 
-        Ok(())
+        Zeroizing::new(self.primary_key_index).zeroize();
+
+        Ok(output)
     }
 
-    fn decrypt(&mut self, _cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         unimplemented!("Not supported")
     }
 }

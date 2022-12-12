@@ -118,18 +118,18 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
+    fn decrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        o.decrypt(&cipher)
+        let o = o
+            .decrypt(&cipher)
             .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
-        Ok(())
+        Ok(o)
     }
 
-    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
+    fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         o.encrypt(&cipher)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
-        Ok(())
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))
     }
 
     fn get_comms_address(&self, conn: &SqliteConnection) -> Result<Option<Multiaddr>, WalletStorageError> {
@@ -222,15 +222,15 @@ impl WalletSqliteDatabase {
             },
             DbKeyValuePair::ClientKeyValue(k, v) => {
                 // First see if we will overwrite a value so we can return the old value
-                let value_to_return = if let Some(mut found_value) = ClientKeyValueSql::get(&k, &conn)? {
-                    self.decrypt_if_necessary(&mut found_value)?;
+                let value_to_return = if let Some(found_value) = ClientKeyValueSql::get(&k, &conn)? {
+                    let found_value = self.decrypt_value(found_value)?;
                     Some(found_value)
                 } else {
                     None
                 };
 
-                let mut client_key_value = ClientKeyValueSql::new(k, v);
-                self.encrypt_if_necessary(&mut client_key_value)?;
+                let client_key_value = ClientKeyValueSql::new(k, v);
+                let client_key_value = self.encrypt_value(client_key_value)?;
 
                 client_key_value.set(&conn)?;
                 if start.elapsed().as_millis() > 0 {
@@ -326,8 +326,8 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::MasterSeed => self.get_master_seed(&conn)?.map(DbValue::MasterSeed),
             DbKey::ClientKey(k) => match ClientKeyValueSql::get(k, &conn)? {
                 None => None,
-                Some(mut v) => {
-                    self.decrypt_if_necessary(&mut v)?;
+                Some(v) => {
+                    let v = self.decrypt_value(v)?;
                     Some(DbValue::ClientValue(v.value))
                 },
             },
@@ -660,33 +660,37 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
     }
 
     #[allow(unused_assignments)]
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.value = encrypt_bytes_integral_nonce(
+    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+
+        output.value = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
             Hidden::hide(self.value.as_bytes().to_vec()),
         )?
         .to_hex();
 
-        Ok(())
+        Ok(output)
     }
 
     #[allow(unused_assignments)]
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut output = self.clone();
+
         let mut decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
             &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.value = from_utf8(decrypted_value.as_slice())
+        output.value = from_utf8(decrypted_value.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
         // we zeroize the decrypted value
         decrypted_value.zeroize();
 
-        Ok(())
+        Ok(output)
     }
 }
 
@@ -786,7 +790,7 @@ mod test {
             let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
             for kv in &mut key_values {
-                kv.encrypt(&db.cipher()).unwrap();
+                let kv = kv.clone().encrypt(&db.cipher()).unwrap();
                 kv.set(&conn).unwrap();
             }
         }
@@ -807,7 +811,7 @@ mod test {
         };
 
         for kv in &mut key_values {
-            kv.decrypt(&db.cipher()).unwrap();
+            let kv = kv.clone().decrypt(&db.cipher()).unwrap();
             match db.fetch(&DbKey::ClientKey(kv.key.clone())).unwrap().unwrap() {
                 DbValue::ClientValue(v) => {
                     assert_eq!(kv.value, v);
