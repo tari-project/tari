@@ -30,7 +30,7 @@ use tari_utilities::{ByteArray, Hidden};
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{models::DbUnblindedOutput, sqlite_db::OutputSql, OutputStatus},
+        storage::{models::DbUnblindedOutput, OutputStatus},
     },
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
@@ -163,36 +163,5 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
             decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
         Ok(output)
-    }
-}
-
-impl From<OutputSql> for NewOutputSql {
-    fn from(o: OutputSql) -> Self {
-        Self {
-            commitment: o.commitment,
-            spending_key: o.spending_key,
-            value: o.value,
-            output_type: o.output_type,
-            maturity: o.maturity,
-            status: o.status,
-            hash: o.hash,
-            script: o.script,
-            input_data: o.input_data,
-            script_private_key: o.script_private_key,
-            metadata: o.metadata,
-            sender_offset_public_key: o.sender_offset_public_key,
-            metadata_signature_ephemeral_commitment: o.metadata_signature_ephemeral_commitment,
-            metadata_signature_ephemeral_pubkey: o.metadata_signature_ephemeral_pubkey,
-            metadata_signature_u_a: o.metadata_signature_u_a,
-            metadata_signature_u_x: o.metadata_signature_u_x,
-            metadata_signature_u_y: o.metadata_signature_u_y,
-            received_in_tx_id: o.received_in_tx_id,
-            coinbase_block_height: o.coinbase_block_height,
-            features_json: o.features_json,
-            covenant: o.covenant,
-            encrypted_value: o.encrypted_value,
-            minimum_value_promise: o.minimum_value_promise,
-            source: 0,
-        }
     }
 }
