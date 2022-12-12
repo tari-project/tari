@@ -54,7 +54,7 @@ use tari_core::{
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
         CandidateBlockValidator,
-        HeaderValidator,
+        ChainLinkedHeaderValidator,
         InternalConsistencyValidator,
     },
 };
@@ -158,7 +158,7 @@ impl BaseNodeBuilder {
     pub fn with_validators(
         mut self,
         block: impl CandidateBlockValidator<TempDatabase> + 'static,
-        header: impl HeaderValidator<TempDatabase> + 'static,
+        header: impl ChainLinkedHeaderValidator<TempDatabase> + 'static,
         orphan: impl InternalConsistencyValidator + 'static,
     ) -> Self {
         let validators = Validators::new(block, header, orphan);

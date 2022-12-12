@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock, ChainHeader},
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     transactions::transaction_components::Transaction,
@@ -51,14 +54,21 @@ pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
+pub trait HeaderInternalConsistencyValidator: Send + Sync {
+    fn validate_internal_consistency(&self, item: &BlockHeader) -> Result<UnlinkedValidBlockHeader, ValidationError>;
+}
+
+pub struct UnlinkedValidBlockHeader(Arc<BlockHeader>);
+
+pub trait ChainLinkedHeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
         db: &TBackend,
-        last_x_headers: &[&BlockHeader],
-        header: &BlockHeader,
+        last_x_timestamps: &[EpochTime],
+        prev_header: &BlockHeader,
+        header: &UnlinkedValidBlockHeader,
         difficulty: &DifficultyCalculator,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>;
+    ) -> Result<(AchievedTargetDifficulty, ChainHeader), ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

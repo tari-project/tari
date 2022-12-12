@@ -49,7 +49,7 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    validation::ValidationError,
+    validation::{header_validator::DefaultHeaderValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -78,7 +78,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Self {
         Self {
             config,
-            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
+            header_validator: BlockHeaderSyncValidator::new(
+                db.clone(),
+                consensus_rules.clone(),
+                randomx_factory,
+                Box::new(DefaultHeaderValidator::new(consensus_rules)),
+            ),
             db,
             connectivity,
             sync_peers,

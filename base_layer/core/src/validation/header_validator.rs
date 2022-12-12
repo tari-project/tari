@@ -4,7 +4,7 @@
 use std::cmp;
 
 use log::*;
-use tari_utilities::hex::Hex;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
@@ -19,8 +19,8 @@ use crate::{
             check_pow_data,
             check_timestamp_ftl,
         },
+        ChainLinkedHeaderValidator,
         DifficultyCalculator,
-        HeaderValidator,
         ValidationError,
     },
 };
@@ -37,7 +37,7 @@ impl DefaultHeaderValidator {
     }
 }
 
-impl<TBackend: BlockchainBackend> HeaderValidator<TBackend> for DefaultHeaderValidator {
+impl<TBackend: BlockchainBackend> ChainLinkedHeaderValidator<TBackend> for DefaultHeaderValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block timestamp within the Future Time Limit (FTL)?
     /// 1. Is the Proof of Work struct valid? Note it does not check the actual PoW here
@@ -46,24 +46,25 @@ impl<TBackend: BlockchainBackend> HeaderValidator<TBackend> for DefaultHeaderVal
     fn validate(
         &self,
         backend: &TBackend,
-        last_x_headers: &[&BlockHeader],
+        last_x_headers: &[EpochTime],
+        prev_header: &BlockHeader,
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
-        if header.height != last_x_headers[0].height + 1 {
+        if header.height != prev_header.height + 1 {
             let result = Err(ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::InvalidHeight {
-                    expected: last_x_headers[0].height + 1,
+                    expected: prev_header.height + 1,
                     actual: header.height,
                 },
             ));
             return result;
         }
-        if header.prev_hash != last_x_headers[0].hash() {
+        if header.prev_hash != prev_header.hash() {
             return Err(ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::InvalidPreviousHash {
-                    expected: last_x_headers[0].hash(),
+                    expected: prev_header.hash(),
                     actual: header.prev_hash,
                 },
             ));

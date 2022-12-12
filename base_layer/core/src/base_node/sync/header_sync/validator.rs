@@ -32,13 +32,16 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::helpers::{
-        check_blockchain_version,
-        check_header_timestamp_greater_than_median,
-        check_not_bad_block,
-        check_pow_data,
-        check_target_difficulty,
-        check_timestamp_ftl,
+    validation::{
+        helpers::{
+            check_blockchain_version,
+            check_header_timestamp_greater_than_median,
+            check_not_bad_block,
+            check_pow_data,
+            check_target_difficulty,
+            check_timestamp_ftl,
+        },
+        ChainLinkedHeaderValidator,
     },
 };
 
@@ -49,6 +52,8 @@ pub struct BlockHeaderSyncValidator<B> {
     db: AsyncBlockchainDb<B>,
     state: Option<State>,
     consensus_rules: ConsensusManager,
+    unlinked_header_validator: Box<dyn HeaderInternalConsistencyValidator>,
+    linked_header_validator: Box<dyn ChainLinkedHeaderValidator<B>>,
     randomx_factory: RandomXFactory,
 }
 
@@ -62,12 +67,18 @@ struct State {
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+    pub fn new(
+        db: AsyncBlockchainDb<B>,
+        consensus_rules: ConsensusManager,
+        randomx_factory: RandomXFactory,
+        header_validator: Box<dyn ChainLinkedHeaderValidator<B>>,
+    ) -> Self {
         Self {
             db,
             state: None,
             consensus_rules,
             randomx_factory,
+            header_validator,
         }
     }
 
@@ -115,8 +126,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
+        self.header_validator
+            .validate(&self.db, state.timestamps, &header, constants)?;
         // check_blockchain_version(constants, header.version)?;
-
+        todo!("put header validator in here");
         // let expected_height = state.current_height + 1;
         // if header.height != expected_height {
         //     return Err(BlockHeaderSyncError::InvalidBlockHeight {
@@ -124,16 +137,16 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         //         actual: header.height,
         //     });
         // }
-        if header.prev_hash != state.previous_accum.hash {
-            return Err(BlockHeaderSyncError::ChainLinkBroken {
-                height: header.height,
-                actual: header.prev_hash.to_hex(),
-                expected: state.previous_accum.hash.to_hex(),
-            });
-        }
-        check_timestamp_ftl(&header, &self.consensus_rules)?;
+        // if header.prev_hash != state.previous_accum.hash {
+        //     return Err(BlockHeaderSyncError::ChainLinkBroken {
+        //         height: header.height,
+        //         actual: header.prev_hash.to_hex(),
+        //         expected: state.previous_accum.hash.to_hex(),
+        //     });
+        // }
+        // check_timestamp_ftl(&header, &self.consensus_rules)?;
 
-        check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
+        // check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
         let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate(
             constants.min_pow_difficulty(header.pow_algo()),
