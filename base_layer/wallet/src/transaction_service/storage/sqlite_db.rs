@@ -1089,11 +1089,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
             .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                if let Err(e) = self.decrypt_value(ct.clone()) {
-                    return Err(e);
-                }
-                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            .map(|ct: CompletedTransactionSql| match self.decrypt_value(ct) {
+                Ok(ct) => CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from),
+                Err(e) => Err(e),
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1102,11 +1100,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::FauxUnconfirmed, false, &conn)?
             .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                if let Err(e) = self.decrypt_value(ct.clone()) {
-                    return Err(e);
-                }
-                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            .map(|ct: CompletedTransactionSql| match self.decrypt_value(ct) {
+                Ok(ct) => CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from),
+                Err(e) => Err(e),
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1123,11 +1119,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             &conn,
         )?
         .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            if let Err(e) = self.decrypt_value(ct.clone()) {
-                return Err(e);
-            }
-            CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+        .map(|ct: CompletedTransactionSql| match self.decrypt_value(ct) {
+            Ok(ct) => CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from),
+            Err(e) => Err(e),
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }

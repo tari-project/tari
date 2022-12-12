@@ -790,7 +790,7 @@ mod test {
             let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
             for kv in &mut key_values {
-                let kv = kv.clone().encrypt(&db.cipher()).unwrap();
+                *kv = kv.clone().encrypt(&db.cipher()).unwrap();
                 kv.set(&conn).unwrap();
             }
         }
@@ -811,7 +811,7 @@ mod test {
         };
 
         for kv in &mut key_values {
-            let kv = kv.clone().decrypt(&db.cipher()).unwrap();
+            *kv = kv.clone().decrypt(&db.cipher()).unwrap();
             match db.fetch(&DbKey::ClientKey(kv.key.clone())).unwrap().unwrap() {
                 DbValue::ClientValue(v) => {
                     assert_eq!(kv.value, v);
