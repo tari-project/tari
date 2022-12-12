@@ -80,8 +80,17 @@ impl Display for PeerChainMetadata {
 
 #[derive(Debug)]
 pub enum ChainMetadataEvent {
-    PeerChainMetadataReceived(Vec<PeerChainMetadata>),
+    PeerChainMetadataReceived(PeerChainMetadata),
     NetworkSilence,
+}
+
+impl ChainMetadataEvent {
+    pub fn peer_metadata(&self) -> Option<PeerChainMetadata> {
+        match self {
+            Self::PeerChainMetadataReceived(metadata) => Some(metadata.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]
