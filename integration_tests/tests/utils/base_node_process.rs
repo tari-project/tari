@@ -31,12 +31,20 @@ use std::{
 use rand::rngs::OsRng;
 use tari_base_node::{builder::BaseNodeContext, init_node, run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_common::configuration::CommonConfig;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_common_types::types::PublicKey;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{Peer, PeerFeatures},
+    NodeIdentity,
+};
 use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_validator_node::error::GrpcBaseNodeError;
 use tempfile::tempdir;
-use tokio::{sync::Mutex, task};
+use tokio::{
+    sync::{MappedMutexGuard, Mutex, MutexGuard},
+    task,
+};
 
 use crate::{
     utils::{base_node::BaseNodeClient, base_node_client::GrpcBaseNodeClient},
@@ -155,5 +163,18 @@ pub async fn get_base_node_client(port: u64) -> GrpcBaseNodeClient {
 }
 
 impl BaseNodeProcess {
-    //
+    pub async fn connected_peers(&self) -> Result<Box<[Peer]>, GrpcBaseNodeError> {
+        Ok(self
+            .cx
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .base_node_comms()
+            .peer_manager()
+            .all()
+            .await
+            .map_err(GrpcBaseNodeError::PeerManagerError)?
+            .into_boxed_slice())
+    }
 }
