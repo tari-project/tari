@@ -1,7 +1,6 @@
 [package]
-name = "tari_validator_node"
+name = "tari_integration_tests"
 authors = ["The Tari Development Community"]
-description = "The Tari validator node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "0.35.1"
@@ -10,7 +9,6 @@ edition = "2018"
 [dependencies]
 tari_app_utilities = { path = "../applications/tari_app_utilities" }
 tari_app_grpc = { path = "../applications/tari_app_grpc" }
-#tari_app_grpc = { git = "https://github.com/tari-project/tari.git", branch = "development", package = "tari_app_grpc" }
 tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 tari_core = { path = "../base_layer/core" }

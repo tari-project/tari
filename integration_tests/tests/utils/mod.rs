@@ -21,7 +21,6 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod base_node;
-pub mod base_node_client;
 pub mod base_node_process;
 pub mod miner;
 pub mod wallet;

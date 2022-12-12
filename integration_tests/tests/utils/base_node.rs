@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::{blocks::BlockHeader, transactions::transaction_components::TransactionOutput};
-use tari_validator_node::{error::GrpcBaseNodeError, types::BaseLayerMetadata};
+use tari_integration_tests::{error::GrpcBaseNodeError, types::BaseLayerMetadata};
 
 #[async_trait]
 pub trait BaseNodeClient: Send + Sync + Clone {
