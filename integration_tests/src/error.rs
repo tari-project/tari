@@ -1,4 +1,5 @@
 use tari_common_types::types::FixedHashSizeError;
+use tari_comms::peer_manager::PeerManagerError;
 use thiserror::Error;
 
 use crate::optional::IsNotFoundError;
@@ -17,6 +18,8 @@ pub enum GrpcBaseNodeError {
     HashSizeError(#[from] FixedHashSizeError),
     #[error("Node not found: {0}")]
     NodeNotFound(String),
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
 }
 
 impl IsNotFoundError for GrpcBaseNodeError {

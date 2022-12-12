@@ -10,6 +10,7 @@ edition = "2018"
 [dependencies]
 tari_app_utilities = { path = "../applications/tari_app_utilities" }
 tari_app_grpc = { path = "../applications/tari_app_grpc" }
+#tari_app_grpc = { git = "https://github.com/tari-project/tari.git", branch = "development", package = "tari_app_grpc" }
 tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 tari_core = { path = "../base_layer/core" }
@@ -62,7 +63,8 @@ tower-http = { version = "0.3.0", features = ["cors"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.5" }
 
 # FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
-cucumber = { version = "0.13.0", features = ["default"] }
+#cucumber = { version = "0.13.0", features = ["default"] }
+cucumber = { version = "0.18.0", features = ["default", "libtest"] }
 tempfile = "3.3.0"
 indexmap = "1.9.1"
 

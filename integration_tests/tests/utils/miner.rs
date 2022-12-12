@@ -38,7 +38,7 @@ use tari_app_grpc::{
     },
 };
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
-use tari_wallet_grpc_client::GrpcAuthentication;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
@@ -128,6 +128,7 @@ async fn create_block_template_with_coinbase(
         }),
         max_weight: 0,
     };
+
     let template_res = base_client
         .get_new_block_template(template_req)
         .await
@@ -139,6 +140,7 @@ async fn create_block_template_with_coinbase(
     // add the coinbase outputs and kernels to the block template
     let (output, kernel) = get_coinbase_outputs_and_kernels(wallet_client, template_res).await;
     let body = block_template.body.as_mut().unwrap();
+
     body.outputs.push(output);
     body.kernels.push(kernel);
 
@@ -160,7 +162,12 @@ fn coinbase_request(template_response: &NewBlockTemplateResponse) -> GetCoinbase
     let fee = miner_data.total_fees;
     let reward = miner_data.reward;
     let height = template.header.as_ref().unwrap().height;
-    GetCoinbaseRequest { reward, fee, height }
+    GetCoinbaseRequest {
+        reward,
+        fee,
+        height,
+        extra: vec![],
+    }
 }
 
 fn extract_outputs_and_kernels(coinbase: GetCoinbaseResponse) -> (TransactionOutput, TransactionKernel) {

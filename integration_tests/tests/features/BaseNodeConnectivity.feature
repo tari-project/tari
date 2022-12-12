@@ -6,7 +6,7 @@ Feature: Base Node Connectivity
     @base-node
     Scenario: Basic connectivity between 2 nodes
         Given I have a seed node SEED_A
-        And I have a base node NODE_A connected to all seed nodes
+        When I have a base node NODE_A connected to all seed nodes
         When I wait for NODE_A to connect to SEED_A
         Then SEED_A is connected to NODE_A
 
