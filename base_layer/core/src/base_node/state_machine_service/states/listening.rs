@@ -135,6 +135,20 @@ impl Listening {
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
+                        Ok(true) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Ignoring chain metadata from banned peer {}",
+                                peer_metadata.node_id()
+                            );
+                            continue;
+                        },
+                        Ok(false) => {},
+                        Err(e) => {
+                            return FatalError(format!("Error checking if peer is banned: {}", e));
+                        },
+                    }
                     let peer_data = PeerMetadata {
                         metadata: peer_metadata.claimed_chain_metadata().clone(),
                         last_updated: EpochTime::now(),
