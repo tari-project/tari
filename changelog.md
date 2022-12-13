@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.43.1](https://github.com/tari-project/tari/compare/v0.43.0...v0.43.1) (2022-12-12)
+
+
+### Bug Fixes
+
+* **ci:** workaround - lock linux-x86_64 to ubuntu 20.04 ([#5032](https://github.com/tari-project/tari/issues/5032)) ([dc2cd82](https://github.com/tari-project/tari/commit/dc2cd82c3f1d03a8922f56fde9bfef3c289297c1))
+
 ## [0.43.0](https://github.com/tari-project/tari/compare/v0.42.0...v0.43.0) (2022-12-08)
 
 

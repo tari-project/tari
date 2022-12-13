@@ -437,6 +437,7 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone()).await,
                     };
                     let submit_time = Instant::now();
 
