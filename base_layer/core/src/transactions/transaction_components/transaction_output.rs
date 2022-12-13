@@ -505,7 +505,7 @@ pub fn batch_verify_range_proofs(
 ) -> Result<(), RangeProofError> {
     // An empty batch is valid
     if outputs.is_empty() {
-        return Ok(())
+        return Ok(());
     }
 
     let mut statements = Vec::with_capacity(outputs.len());
