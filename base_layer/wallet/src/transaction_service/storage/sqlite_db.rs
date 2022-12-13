@@ -50,7 +50,7 @@ use tari_utilities::{
 };
 use thiserror::Error;
 use tokio::time::Instant;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use crate::{
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
@@ -1593,7 +1593,7 @@ impl OutboundTransactionSql {
     }
 
     fn try_from(o: OutboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
-        let output = Self {
+        let outbound_tx = Self {
             tx_id: o.tx_id.as_u64() as i64,
             destination_address: o.destination_address.to_bytes().to_vec(),
             amount: u64::from(o.amount) as i64,
@@ -1607,7 +1607,7 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp,
         };
 
-        output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
+        outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
 }
 
@@ -1623,19 +1623,19 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
     }
 
     fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.sender_protocol = encrypt_bytes_integral_nonce(
+        let mut outbound_tx = self.clone();
+        outbound_tx.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
             Hidden::hide(self.sender_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
 
-        Ok(output)
+        Ok(outbound_tx)
     }
 
     fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
+        let mut outbound_tx = self.clone();
 
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
@@ -1643,22 +1643,22 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
             &from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        output.sender_protocol = from_utf8(decrypted_protocol.as_slice())
+        outbound_tx.sender_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
         // zeroize the decrypted protocol data buffer
         decrypted_protocol.zeroize();
 
-        Ok(output)
+        Ok(outbound_tx)
     }
 }
 
 impl OutboundTransaction {
     fn try_from(o: OutboundTransactionSql, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
-        let o = o.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
+        let mut o = o.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
 
-        let output = Self {
+        let outbound_tx = Self {
             tx_id: (o.tx_id as u64).into(),
             destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
@@ -1675,9 +1675,9 @@ impl OutboundTransaction {
         };
 
         // zeroize decrypted data
-        Zeroizing::new(o.sender_protocol).zeroize();
+        o.sender_protocol.zeroize();
 
-        Ok(output)
+        Ok(outbound_tx)
     }
 }
 
@@ -2100,7 +2100,7 @@ impl CompletedTransaction {
         c: CompletedTransactionSql,
         cipher: &XChaCha20Poly1305,
     ) -> Result<Self, CompletedTransactionConversionError> {
-        let c = c
+        let mut c = c
             .decrypt(cipher)
             .map_err(CompletedTransactionConversionError::AeadError)?;
         let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
@@ -2144,7 +2144,7 @@ impl CompletedTransaction {
         };
 
         // zeroize sensitive data
-        Zeroizing::new(c.transaction_protocol).zeroize();
+        c.transaction_protocol.zeroize();
 
         Ok(output)
     }

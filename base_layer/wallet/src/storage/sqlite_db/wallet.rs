@@ -47,7 +47,7 @@ use tari_utilities::{
     SafePassword,
 };
 use tokio::time::Instant;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use crate::{
     error::WalletStorageError,
@@ -554,16 +554,16 @@ fn get_cipher_for_db_encryption(
     .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
     // Hash the passphrase to produce a ChaCha20-Poly1305 key
-    let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
+    let mut derived_encryption_key = Hidden::hide([0u8; size_of::<Key>()]);
     argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
         .hash_password_into(
             passphrase.reveal(),
             encryption_salt.as_bytes(),
-            derived_encryption_key.as_mut(),
+            derived_encryption_key.reveal_mut(),
         )
         .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref())))
+    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.reveal())))
 }
 
 /// A Sql version of the wallet setting key-value table
@@ -618,8 +618,8 @@ struct ClientKeyValueSql {
 
 impl ClientKeyValueSql {
     pub fn new(key: String, value: String, cipher: &XChaCha20Poly1305) -> Result<Self, WalletStorageError> {
-        let output = Self { key, value };
-        output.encrypt(cipher).map_err(WalletStorageError::AeadError)
+        let client_kv = Self { key, value };
+        client_kv.encrypt(cipher).map_err(WalletStorageError::AeadError)
     }
 
     #[allow(dead_code)]
@@ -663,21 +663,21 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
     #[allow(unused_assignments)]
     fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
+        let mut client_kv = self.clone();
 
-        output.value = encrypt_bytes_integral_nonce(
+        client_kv.value = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
             Hidden::hide(self.value.as_bytes().to_vec()),
         )?
         .to_hex();
 
-        Ok(output)
+        Ok(client_kv)
     }
 
     #[allow(unused_assignments)]
     fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
+        let mut client_kv = self.clone();
 
         let mut decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
@@ -685,14 +685,14 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
             &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        output.value = from_utf8(decrypted_value.as_slice())
+        client_kv.value = from_utf8(decrypted_value.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 
         // we zeroize the decrypted value
         decrypted_value.zeroize();
 
-        Ok(output)
+        Ok(client_kv)
     }
 }
 

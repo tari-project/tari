@@ -1332,7 +1332,7 @@ impl KnownOneSidedPaymentScriptSql {
         let script = known_script.script.to_bytes().to_vec();
         let input = known_script.input.to_bytes().to_vec();
 
-        let output = KnownOneSidedPaymentScriptSql {
+        let payment_script = KnownOneSidedPaymentScriptSql {
             script_hash,
             private_key,
             script,
@@ -1340,10 +1340,11 @@ impl KnownOneSidedPaymentScriptSql {
             script_lock_height,
         };
 
-        // encrypt in place the output, so no private_key memory leaks remain
-        let output = output.encrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
+        let payment_script = payment_script
+            .encrypt(cipher)
+            .map_err(OutputManagerStorageError::AeadError)?;
 
-        Ok(output)
+        Ok(payment_script)
     }
 }
 

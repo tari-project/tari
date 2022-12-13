@@ -268,7 +268,7 @@ impl CipherSeed {
 
         // Parse secret data
         let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
-        let entropy: Zeroizing<[u8; CIPHER_SEED_ENTROPY_BYTES]> = Zeroizing::new(
+        let entropy: Hidden<[u8; CIPHER_SEED_ENTROPY_BYTES]> = Hidden::hide(
             secret_data
                 .split_off(CIPHER_SEED_BIRTHDAY_BYTES)
                 .try_into()
@@ -279,7 +279,7 @@ impl CipherSeed {
         let birthday = u16::from_le_bytes(birthday_bytes);
 
         // Generate the MAC
-        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.as_ref(), version, salt.as_ref(), &mac_key)?;
+        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.reveal(), version, salt.as_ref(), &mac_key)?;
 
         // Verify the MAC in constant time to avoid leaking data
         if mac.ct_eq(&expected_mac).unwrap_u8() == 0 {
@@ -289,7 +289,7 @@ impl CipherSeed {
         Ok(Self {
             version,
             birthday,
-            entropy: Box::from(*entropy),
+            entropy: Box::from(*entropy.reveal()),
             salt,
         })
     }
