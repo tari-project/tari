@@ -31,7 +31,7 @@ env:
 jobs:
   cucumber_tests:
     name: Cucumber tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
