@@ -503,6 +503,11 @@ pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
+    // An empty batch is valid
+    if outputs.is_empty() {
+        return Ok(())
+    }
+
     let mut statements = Vec::with_capacity(outputs.len());
     let mut proofs = Vec::with_capacity(outputs.len());
     for output in outputs.iter() {
