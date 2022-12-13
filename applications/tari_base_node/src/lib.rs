@@ -24,7 +24,7 @@
 mod table;
 
 mod bootstrap;
-mod builder;
+pub mod builder;
 pub mod cli;
 mod commands;
 pub mod config;
@@ -34,7 +34,7 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{process, sync::Arc};
+use std::{path::PathBuf, process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
@@ -49,7 +49,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::Server;
 
-use crate::cli::Cli;
+use crate::{builder::BaseNodeContext, cli::Cli};
 pub use crate::{
     config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
     metrics::MetricsConfig,
@@ -57,7 +57,11 @@ pub use crate::{
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
-pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<ApplicationConfig>) -> Result<(), ExitError> {
+pub async fn run_base_node(
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+    log_config: Option<PathBuf>,
+) -> Result<BaseNodeContext, ExitError> {
     let shutdown = Shutdown::new();
 
     let data_dir = config.base_node.data_dir.clone();
@@ -70,7 +74,7 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
         common: CommonCliArgs {
             base_path: data_dir_str,
             config: config_path.into_os_string().into_string().unwrap(),
-            log_config: None,
+            log_config,
             log_level: None,
             config_property_overrides: vec![],
         },
@@ -81,7 +85,32 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
         network: None,
     };
 
-    run_base_node_with_cli(node_identity, config, cli, shutdown).await
+    run_base_node_with_cli(node_identity, config, cli, shutdown)
+        .await
+        .map(|e| e.unwrap())
+}
+
+pub async fn init_node(
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+) -> Result<BaseNodeContext, ExitError> {
+    let shutdown = Shutdown::new();
+
+    // just initializing the node
+    let cx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
+
+    if config.base_node.grpc_enabled {
+        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        });
+
+        // Go, GRPC, go go
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&cx);
+        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+    }
+
+    Ok(cx)
 }
 
 /// Sets up the base node and runs the cli_loop
@@ -90,7 +119,7 @@ pub async fn run_base_node_with_cli(
     config: Arc<ApplicationConfig>,
     cli: Cli,
     shutdown: Shutdown,
-) -> Result<(), ExitError> {
+) -> Result<Option<BaseNodeContext>, ExitError> {
     #[cfg(feature = "metrics")]
     {
         metrics::install(
@@ -110,7 +139,7 @@ pub async fn run_base_node_with_cli(
         recovery::run_recovery(&config.base_node)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
-        return Ok(());
+        return Ok(None);
     };
 
     // Build, node, build!
@@ -145,12 +174,13 @@ pub async fn run_base_node_with_cli(
     }
 
     info!(target: LOG_TARGET, "Tari base node has STARTED");
-    main_loop.cli_loop().await;
+    task::spawn(main_loop.cli_loop());
 
-    ctx.wait_for_shutdown().await;
-
-    println!("Goodbye!");
-    Ok(())
+    Ok(Some(ctx))
+    // ctx.wait_for_shutdown().await;
+    //
+    // println!("Goodbye!");
+    // Ok(())
 }
 
 /// Runs the gRPC server

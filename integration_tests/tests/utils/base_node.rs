@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,62 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use async_trait::async_trait;
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_comms::types::CommsPublicKey;
+use tari_core::{blocks::BlockHeader, transactions::transaction_components::TransactionOutput};
+use tari_integration_tests::{error::GrpcBaseNodeError, types::BaseLayerMetadata};
 
-use serde::{Deserialize, Serialize};
-
-use crate::SubConfigPath;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct CommonConfig {
-    override_from: Option<String>,
-    pub base_path: PathBuf,
-}
-
-impl Default for CommonConfig {
-    fn default() -> Self {
-        let base_path = dirs_next::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(PathBuf::from(".tari"));
-        Self {
-            override_from: None,
-            base_path,
-        }
-    }
-}
-
-impl SubConfigPath for CommonConfig {
-    fn main_key_prefix() -> &'static str {
-        "common"
-    }
-}
-
-impl CommonConfig {
-    pub fn base_path(&self) -> &PathBuf {
-        &self.base_path
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn default_common_config() {
-        let default_common_config = CommonConfig::default();
-
-        assert!(matches!(default_common_config.override_from, None));
-        assert_eq!(
-            *default_common_config.base_path(),
-            dirs_next::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(PathBuf::from(".tari"))
-        );
-    }
-
-    #[test]
-    fn main_key_prefix_test() {
-        assert_eq!(CommonConfig::main_key_prefix(), "common");
-    }
+#[async_trait]
+pub trait BaseNodeClient: Send + Sync + Clone {
+    async fn test_connection(&mut self) -> Result<(), GrpcBaseNodeError>;
+    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, GrpcBaseNodeError>;
+    async fn get_header_by_hash(&mut self, block_hash: FixedHash) -> Result<BlockHeader, GrpcBaseNodeError>;
 }
