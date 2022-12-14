@@ -104,9 +104,10 @@ use crate::support::{
     utils::{make_input, make_input_with_features, TestParams},
 };
 
-fn default_metadata_byte_size() -> usize {
-    TransactionWeight::latest()
-        .round_up_metadata_size(OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size())
+fn default_features_and_scripts_size_byte_size() -> usize {
+    TransactionWeight::latest().round_up_features_and_scripts_size(
+        OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size(),
+    )
 }
 
 struct TestOmsService<U> {
@@ -371,7 +372,7 @@ async fn fee_estimate() {
         .unwrap();
     assert_eq!(
         fee,
-        fee_calc.calculate(fee_per_gram, 1, 1, 2, 2 * default_metadata_byte_size())
+        fee_calc.calculate(fee_per_gram, 1, 1, 2, 2 * default_features_and_scripts_size_byte_size())
     );
 
     let fee_per_gram = MicroTari::from(5);
@@ -395,7 +396,7 @@ async fn fee_estimate() {
                 1,
                 1,
                 outputs + 1,
-                default_metadata_byte_size() * (outputs + 1)
+                default_features_and_scripts_size_byte_size() * (outputs + 1)
             )
         );
     }
@@ -503,7 +504,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_metadata_byte_size() * 3);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_features_and_scripts_size_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
     let spendable_amount = (3..=10).sum::<u64>() * amount;
@@ -522,7 +523,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_features_and_scripts_size_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
     assert_eq!(utxos_total_value, MicroTari::from(5_000));
 
@@ -601,7 +602,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_metadata_byte_size() * 3);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_features_and_scripts_size_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
     let spendable_amount = (1..=6).sum::<u64>() * amount;
@@ -614,7 +615,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
     assert_eq!(utxos_total_value, MicroTari::from(5_000));
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_features_and_scripts_size_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
 
     // test that largest spendable utxo was encumbered
@@ -816,8 +817,13 @@ async fn send_no_change() {
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change =
-        Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, default_metadata_byte_size());
+    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(
+        fee_per_gram,
+        1,
+        2,
+        1,
+        default_features_and_scripts_size_byte_size(),
+    );
     let value1 = 5000;
     oms.output_manager_handle
         .add_output(
@@ -1235,7 +1241,7 @@ async fn coin_split_with_change() {
         1,
         2,
         split_count + 1,
-        (split_count + 1) * default_metadata_byte_size(),
+        (split_count + 1) * default_features_and_scripts_size_byte_size(),
     );
     assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
     // NOTE: assuming the LargestFirst strategy is used
@@ -1265,7 +1271,7 @@ async fn coin_split_no_change() {
         1,
         3,
         split_count,
-        split_count * default_metadata_byte_size(),
+        split_count * default_features_and_scripts_size_byte_size(),
     );
 
     let val1 = 4_000 * uT;

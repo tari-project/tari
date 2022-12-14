@@ -45,24 +45,21 @@ use tari_crypto::{
 };
 use tari_script::ScriptContext;
 
-use crate::{
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroTari,
-        transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelFeatures,
-            KernelSum,
-            OutputType,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
+use crate::transactions::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroTari,
+    transaction_components::{
+        transaction_output::batch_verify_range_proofs,
+        KernelFeatures,
+        KernelSum,
+        OutputType,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
-    validation::helpers,
+    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -330,7 +327,16 @@ impl AggregateBody {
 
     pub fn check_output_features(&self, max_coinbase_metadata_size: u32) -> Result<(), TransactionError> {
         for output in self.outputs() {
-            helpers::check_output_feature(output, max_coinbase_metadata_size)?;
+            if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
+                return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
+            }
+
+            if output.is_coinbase() && output.features.coinbase_extra.len() as u32 > max_coinbase_metadata_size {
+                return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
+                    len: output.features.coinbase_extra.len(),
+                    max: max_coinbase_metadata_size,
+                });
+            }
         }
 
         Ok(())
@@ -505,8 +511,8 @@ impl AggregateBody {
         transaction_weight.calculate_body(self)
     }
 
-    pub fn sum_metadata_size(&self) -> usize {
-        self.outputs.iter().map(|o| o.get_metadata_size()).sum()
+    pub fn sum_features_and_scripts_size(&self) -> usize {
+        self.outputs.iter().map(|o| o.get_features_and_scripts_size()).sum()
     }
 
     pub fn is_sorted(&self) -> bool {

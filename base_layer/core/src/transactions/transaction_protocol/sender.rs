@@ -1041,9 +1041,10 @@ mod test {
         let (utxo, input) = create_test_input(MicroTari(25000), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let expected_fee = builder
-            .fee()
-            .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
+        let expected_fee =
+            builder
+                .fee()
+                .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_features_and_scripts(2));
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))

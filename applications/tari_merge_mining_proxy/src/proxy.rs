@@ -194,7 +194,7 @@ impl InnerService {
             .metadata
             .as_ref()
             .map(|meta| meta.height_of_longest_chain)
-            .ok_or(MmProxyError::GrpcResponseMissingField("metadata"))?;
+            .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
         if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::Relaxed) {
             self.initial_sync_achieved
                 .store(result.get_ref().initial_sync_achieved, Ordering::Relaxed);

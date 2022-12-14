@@ -173,6 +173,8 @@ pub struct MakeItRainArgs {
     pub one_sided: bool,
     #[clap(long, alias = "stealth-one-sided")]
     pub stealth: bool,
+    #[clap(short, long)]
+    pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
 }
@@ -183,6 +185,8 @@ impl MakeItRainArgs {
             MakeItRainTransactionType::StealthOneSided
         } else if self.one_sided {
             MakeItRainTransactionType::OneSided
+        } else if self.burn_tari {
+            MakeItRainTransactionType::BurnTari
         } else {
             MakeItRainTransactionType::Interactive
         }
@@ -194,6 +198,7 @@ pub enum MakeItRainTransactionType {
     Interactive,
     OneSided,
     StealthOneSided,
+    BurnTari,
 }
 
 impl Display for MakeItRainTransactionType {

@@ -70,13 +70,13 @@ impl CommandContext {
                 }
             } else {
                 println!(
-                    "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
+                    "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, features_and_scripts: {} bytes",
                     tx_sig,
                     tx.body.get_total_fee(),
                     tx.body.outputs().len(),
                     tx.body.kernels().len(),
                     tx.body.inputs().len(),
-                    tx.body.sum_metadata_size(),
+                    tx.body.sum_features_and_scripts_size(),
                 );
             }
         }
