@@ -63,7 +63,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: nightly
           profile: minimal
           override: true
       - name: ubuntu dependencies
