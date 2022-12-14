@@ -285,12 +285,16 @@ impl SenderTransactionInitializer {
         self
     }
 
-    fn get_total_metadata_size_for_outputs(&self) -> usize {
+    fn get_total_features_and_scripts_size_for_outputs(&self) -> usize {
         let mut size = 0;
         size += self
             .sender_custom_outputs
             .iter()
-            .map(|o| self.fee.weighting().round_up_metadata_size(o.metadata_byte_size()))
+            .map(|o| {
+                self.fee
+                    .weighting()
+                    .round_up_features_and_scripts_size(o.features_and_scripts_byte_size())
+            })
             .sum::<usize>();
 
         size += self
@@ -298,7 +302,7 @@ impl SenderTransactionInitializer {
             .iter()
             .filter_map(|script| {
                 script.map(|s| {
-                    self.fee.weighting().round_up_metadata_size(
+                    self.fee.weighting().round_up_features_and_scripts_size(
                         self.get_recipient_output_features().get_serialized_size() + s.get_serialized_size(),
                     )
                 })
@@ -315,6 +319,7 @@ impl SenderTransactionInitializer {
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
+    #[allow(clippy::too_many_lines)]
     fn add_change_if_required(
         &mut self,
         factories: &CryptoFactories,
@@ -335,21 +340,30 @@ impl SenderTransactionInitializer {
             ));
         }
 
-        let metadata_size_without_change = self.get_total_metadata_size_for_outputs();
-        let fee_without_change =
-            self.fee()
-                .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
+        let features_and_scripts_size_without_change = self.get_total_features_and_scripts_size_for_outputs();
+        let fee_without_change = self.fee().calculate(
+            fee_per_gram,
+            1,
+            num_inputs,
+            num_outputs,
+            features_and_scripts_size_without_change,
+        );
 
         let output_features = self.get_recipient_output_features();
-        let change_metadata_size = self
+        let change_features_and_scripts_size = self
             .change_script
             .as_ref()
             .map(|script| script.get_serialized_size())
             .unwrap_or(0) +
             output_features.get_serialized_size();
-        let change_metadata_size = self.fee().weighting().round_up_metadata_size(change_metadata_size);
+        let change_features_and_scripts_size = self
+            .fee()
+            .weighting()
+            .round_up_features_and_scripts_size(change_features_and_scripts_size);
 
-        let change_fee = self.fee().calculate(fee_per_gram, 0, 0, 1, change_metadata_size);
+        let change_fee = self
+            .fee()
+            .calculate(fee_per_gram, 0, 0, 1, change_features_and_scripts_size);
         // Subtract with a check on going negative
         let total_input_value = total_to_self + total_amount + fee_without_change;
         let change_amount = total_being_spent.checked_sub(total_input_value);
@@ -749,9 +763,10 @@ mod test {
                 MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let expected_fee = builder
-            .fee()
-            .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_metadata(2));
+        let expected_fee =
+            builder
+                .fee()
+                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2));
         // We needed a change input, so this should fail
         let err = builder.build(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
@@ -786,7 +801,7 @@ mod test {
             1,
             1,
             1,
-            p.get_size_for_default_metadata(1),
+            p.get_size_for_default_features_and_scripts(1),
         );
 
         let output = create_unblinded_output(
@@ -905,7 +920,7 @@ mod test {
         let p = TestParams::new();
         let tx_fee = p
             .fee()
-            .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_metadata(1));
+            .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_features_and_scripts(1));
         let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500));
@@ -1038,7 +1053,7 @@ mod test {
             1,
             2,
             3,
-            p.get_size_for_default_metadata(3),
+            p.get_size_for_default_features_and_scripts(3),
         );
         let output = create_unblinded_output(
             script.clone(),

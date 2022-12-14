@@ -138,7 +138,6 @@ fn get_igor_genesis_block_raw() -> Block {
             script!(Nop),
             // Script offset never checked for coinbase, thus can use default
             PublicKey::from_hex("88c4d5dafaeb529d70d594cdb43a0fad2842a6cfdc47ac579b09b2e6478d3a4f").unwrap(),
-            // For genesis block: Metadata signature will never be checked
             coinbase_meta_sig,
             Covenant::default(),
             EncryptedValue::default(),
@@ -303,7 +302,6 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         script!(Nop),
         // The Sender offset public key is not checked for coinbase outputs
         PublicKey::from_hex("0ad98e0eab0d736a52b607c1136bed6c4c0a6b47331b6dee22fadf8b6fa41011").unwrap(),
-        // For genesis block: Metadata signature will never be checked
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),

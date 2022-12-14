@@ -44,11 +44,14 @@ impl Fee {
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
-        rounded_metadata_byte_size: usize,
+        rounded_features_and_scripts_byte_size: usize,
     ) -> MicroTari {
-        let weight = self
-            .weighting()
-            .calculate(num_kernels, num_inputs, num_outputs, rounded_metadata_byte_size);
+        let weight = self.weighting().calculate(
+            num_kernels,
+            num_inputs,
+            num_outputs,
+            rounded_features_and_scripts_byte_size,
+        );
         MicroTari::from(weight) * fee_per_gram
     }
 
@@ -100,8 +103,8 @@ mod test {
             f1.weighting().params().output_weight
         );
         assert_eq!(
-            f0.weighting().params().metadata_bytes_per_gram,
-            f1.weighting().params().metadata_bytes_per_gram
+            f0.weighting().params().features_and_scripts_bytes_per_gram,
+            f1.weighting().params().features_and_scripts_bytes_per_gram
         );
     }
 

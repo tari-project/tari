@@ -52,7 +52,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            features.metadata,
+            features.coinbase_extra,
             sidechain_feature,
         ))
     }
@@ -64,7 +64,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             version: features.version as u32,
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
-            metadata: features.coinbase_extra,
+            coinbase_extra: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
         }
     }

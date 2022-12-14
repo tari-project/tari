@@ -54,7 +54,7 @@ pub struct NewOutputSql {
     pub input_data: Vec<u8>,
     #[derivative(Debug = "ignore")]
     pub script_private_key: Vec<u8>,
-    pub metadata: Option<Vec<u8>>,
+    pub coinbase_extra: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_ephemeral_commitment: Vec<u8>,
     pub metadata_signature_ephemeral_pubkey: Vec<u8>,
@@ -94,7 +94,7 @@ impl NewOutputSql {
             script: output.unblinded_output.script.to_bytes(),
             input_data: output.unblinded_output.input_data.to_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
-            metadata: Some(output.unblinded_output.features.coinbase_extra.clone()),
+            coinbase_extra: Some(output.unblinded_output.features.coinbase_extra.clone()),
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
             metadata_signature_ephemeral_commitment: output
                 .unblinded_output
