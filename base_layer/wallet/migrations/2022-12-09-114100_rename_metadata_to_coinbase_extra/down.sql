@@ -1,0 +1,1 @@
+ALTER TABLE outputs RENAME COLUMN coinbase_extra TO metadata;

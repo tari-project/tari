@@ -440,7 +440,7 @@ impl TransactionOutput {
             .into()
     }
 
-    pub fn get_metadata_size(&self) -> usize {
+    pub fn get_features_and_scripts_size(&self) -> usize {
         self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
 }

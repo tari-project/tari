@@ -46,16 +46,17 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max: u64::from(valid_blockchain_version_range.1),
         };
         let transaction_weight = cc.transaction_weight();
-        let metadata_bytes_per_gram = if let Some(val) = transaction_weight.params().metadata_bytes_per_gram {
-            u64::from(val)
-        } else {
-            0u64
-        };
+        let features_and_scripts_bytes_per_gram =
+            if let Some(val) = transaction_weight.params().features_and_scripts_bytes_per_gram {
+                u64::from(val)
+            } else {
+                0u64
+            };
         let transaction_weight = grpc::WeightParams {
             kernel_weight: cc.transaction_weight().params().kernel_weight,
             input_weight: cc.transaction_weight().params().input_weight,
             output_weight: cc.transaction_weight().params().output_weight,
-            metadata_bytes_per_gram,
+            features_and_scripts_bytes_per_gram,
         };
         let output_version_range = cc.output_version_range();
         let outputs = grpc::Range {

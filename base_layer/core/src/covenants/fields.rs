@@ -53,7 +53,6 @@ pub enum OutputField {
     Features = byte_codes::FIELD_FEATURES,
     FeaturesOutputType = byte_codes::FIELD_FEATURES_OUTPUT_TYPE,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
-    FeaturesCoinbaseExtra = byte_codes::FIELD_FEATURES_COINBASE_EXTRA,
     FeaturesSideChainFeatures = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES,
 }
 
@@ -71,7 +70,6 @@ impl OutputField {
             FIELD_FEATURES_OUTPUT_TYPE => Ok(FeaturesOutputType),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
             FIELD_FEATURES_SIDE_CHAIN_FEATURES => Ok(FeaturesSideChainFeatures),
-            FIELD_FEATURES_COINBASE_EXTRA => Ok(FeaturesCoinbaseExtra),
 
             _ => Err(CovenantDecodeError::UnknownByteCode { code: byte }),
         }
@@ -93,7 +91,6 @@ impl OutputField {
             FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesSideChainFeatures => &output.features.sidechain_feature as &dyn Any,
-            FeaturesCoinbaseExtra => &output.features.coinbase_extra as &dyn Any,
         };
         val.downcast_ref::<T>()
     }
@@ -112,7 +109,6 @@ impl OutputField {
             FeaturesOutputType => BorshSerialize::serialize(&output.features.output_type, &mut writer),
             FeaturesMaturity => BorshSerialize::serialize(&output.features.maturity, &mut writer),
             FeaturesSideChainFeatures => BorshSerialize::serialize(&output.features.sidechain_feature, &mut writer),
-            FeaturesCoinbaseExtra => BorshSerialize::serialize(&output.features.coinbase_extra, &mut writer),
         }
         .unwrap();
         writer
@@ -150,10 +146,6 @@ impl OutputField {
             FeaturesSideChainFeatures => input
                 .features()
                 .map(|features| features.sidechain_feature == output.features.sidechain_feature)
-                .unwrap_or(false),
-            FeaturesCoinbaseExtra => input
-                .features()
-                .map(|features| features.coinbase_extra == output.features.coinbase_extra)
                 .unwrap_or(false),
         }
     }
@@ -235,11 +227,6 @@ impl OutputField {
     pub fn features_sidechain_feature() -> Self {
         OutputField::FeaturesSideChainFeatures
     }
-
-    #[allow(dead_code)]
-    pub fn features_metadata() -> Self {
-        OutputField::FeaturesCoinbaseExtra
-    }
 }
 
 impl Display for OutputField {
@@ -254,7 +241,6 @@ impl Display for OutputField {
             Features => write!(f, "field::features"),
             FeaturesOutputType => write!(f, "field::features_flags"),
             FeaturesSideChainFeatures => write!(f, "field::features_sidechain_feature"),
-            FeaturesCoinbaseExtra => write!(f, "field::features_metadata"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
         }
     }
@@ -386,9 +372,6 @@ mod test {
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_feature.as_ref().unwrap())
                     .unwrap());
-                assert!(OutputField::FeaturesCoinbaseExtra
-                    .is_eq(&output, &output.features.coinbase_extra)
-                    .unwrap());
                 assert!(OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &output.sender_offset_public_key)
                     .unwrap());
@@ -419,7 +402,6 @@ mod test {
                 assert!(!OutputField::FeaturesOutputType
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
-                assert!(!OutputField::FeaturesCoinbaseExtra.is_eq(&output, &vec![123u8]).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
@@ -464,7 +446,6 @@ mod test {
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesOutputType.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesCoinbaseExtra.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
             }
         }
@@ -476,7 +457,6 @@ mod test {
                 OutputField::Features,
                 OutputField::FeaturesOutputType,
                 OutputField::FeaturesSideChainFeatures,
-                OutputField::FeaturesCoinbaseExtra,
                 OutputField::FeaturesMaturity,
                 OutputField::SenderOffsetPublicKey,
                 OutputField::Script,

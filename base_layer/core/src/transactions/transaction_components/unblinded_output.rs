@@ -334,7 +334,7 @@ impl UnblindedOutput {
         Ok(output)
     }
 
-    pub fn metadata_byte_size(&self) -> usize {
+    pub fn features_and_scripts_byte_size(&self) -> usize {
         self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
 
