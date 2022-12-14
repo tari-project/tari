@@ -10,14 +10,14 @@ Feature: Base Node Connectivity
         When I wait for NODE_A to connect to SEED_A
         Then SEED_A is connected to NODE_A
 
-#    @base-node @wallet
-#    Scenario: Basic connectivity between nodes and wallet
-#        Given I have a seed node SEED_A
-#        And I have wallet WALLET_A connected to all seed nodes
-#        Then I wait for WALLET_A to connect to SEED_A
-#        Then I wait for WALLET_A to have 1 node connections
-#        Then I wait for WALLET_A to have ONLINE connectivity
-#        Then SEED_A is connected to WALLET_A
+    @base-node @wallet
+    Scenario: Basic connectivity between nodes and wallet
+        Given I have a seed node SEED_A
+        When I have wallet WALLET_A connected to all seed nodes
+        Then I wait for WALLET_A to connect to SEED_A
+        Then I wait for WALLET_A to have 1 node connections
+        Then I wait for WALLET_A to have ONLINE connectivity
+        Then SEED_A is connected to WALLET_A
 #
 #    Scenario: Base node lists heights
 #        Given I have a seed node N1
