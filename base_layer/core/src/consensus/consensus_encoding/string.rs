@@ -156,7 +156,7 @@ mod tests {
 
         #[test]
         fn it_returns_none_if_size_exceeded() {
-            let s = MaxSizeString::<10>::from_utf8_bytes_checked(&[0u8; 11]);
+            let s = MaxSizeString::<10>::from_utf8_bytes_checked([0u8; 11]);
             assert_eq!(s, None);
         }
 
@@ -169,7 +169,7 @@ mod tests {
 
         #[test]
         fn it_returns_none_if_invalid_utf8() {
-            let s = MaxSizeString::<10>::from_utf8_bytes_checked(&[255u8; 10]);
+            let s = MaxSizeString::<10>::from_utf8_bytes_checked([255u8; 10]);
             assert_eq!(s, None);
         }
     }

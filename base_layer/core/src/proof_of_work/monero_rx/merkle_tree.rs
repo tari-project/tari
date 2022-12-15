@@ -224,8 +224,8 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
             if h != hash {
                 return None;
             }
-            let i = if pos == 0 { 1 } else { 0 };
-            MerkleProof::try_construct(vec![hashes[i]], 1, if pos == 0 { 0 } else { 1 })
+            let i = usize::from(pos == 0);
+            MerkleProof::try_construct(vec![hashes[i]], 1, u32::from(pos != 0))
         }),
         len => {
             let mut idx = hashes.iter().position(|node| node == hash)?;
@@ -246,7 +246,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
                     let ii = if idx == i { i + 1 } else { i };
                     branch.push(hashes[ii]);
                     depth += 1;
-                    path = (path << 1) | (if idx == i { 0 } else { 1 });
+                    path = (path << 1) | u32::from(idx != i);
                     idx = j;
                 }
                 *val = cn_fast_hash2(&hashes[i], &hashes[i + 1]);
@@ -263,7 +263,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
                         let ii = if idx == i { i + 1 } else { i };
                         branch.push(ints[ii]);
                         depth += 1;
-                        path = (path << 1) | (if idx == i { 0 } else { 1 });
+                        path = (path << 1) | u32::from(idx != i);
                         idx = j;
                     }
                     ints[j] = cn_fast_hash2(&ints[i], &ints[i + 1]);
@@ -272,10 +272,10 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
             }
 
             if idx == 0 || idx == 1 {
-                let ii = if idx == 0 { 1 } else { 0 };
+                let ii = usize::from(idx == 0);
                 branch.push(ints[ii]);
                 depth += 1;
-                path = (path << 1) | (if idx == 0 { 0 } else { 1 });
+                path = (path << 1) | u32::from(idx != 0);
             }
 
             MerkleProof::try_construct(branch, depth, path)

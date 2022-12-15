@@ -518,7 +518,7 @@ impl LMDBDatabase {
         let tx = WriteTransaction::new(env)?;
         {
             let mut accessor = tx.access();
-            accessor.put(&*self.db, key, value, put::Flags::empty())?;
+            accessor.put(&self.db, key, value, put::Flags::empty())?;
         }
         tx.commit()?;
         Ok(())
@@ -533,7 +533,7 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         for<'t> V: DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
-        let env = &(*self.db.env());
+        let env = self.db.env();
         let txn = ReadTransaction::new(env)?;
         let accessor = txn.access();
         let val = accessor.get(&self.db, key).to_opt();
@@ -542,7 +542,7 @@ impl LMDBDatabase {
 
     /// Return statistics about the database, See [Stat](lmdb_zero/struct.Stat.html) for more details.
     pub fn get_stats(&self) -> Result<Stat, LMDBError> {
-        let env = &(*self.db.env());
+        let env = self.db.env();
         Ok(ReadTransaction::new(env).and_then(|txn| txn.db_stat(&self.db))?)
     }
 
@@ -630,7 +630,7 @@ impl LMDBDatabase {
     /// Checks whether a key exists in this database
     pub fn contains_key<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let txn = ReadTransaction::new(&(*self.db.env()))?;
+        let txn = ReadTransaction::new(self.db.env())?;
         let accessor = txn.access();
         let res: error::Result<&Ignore> = accessor.get(&self.db, key);
         let res = res.to_opt()?.is_some();
@@ -640,7 +640,7 @@ impl LMDBDatabase {
     /// Delete a record associated with `key` from the database. If the key is not found,
     pub fn remove<K>(&self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let tx = WriteTransaction::new(&(*self.db.env()))?;
+        let tx = WriteTransaction::new(self.db.env())?;
         {
             let mut accessor = tx.access();
             accessor.del_key(&self.db, key)?;

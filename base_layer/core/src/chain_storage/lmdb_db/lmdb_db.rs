@@ -343,7 +343,7 @@ impl LMDBDatabase {
                     kernel,
                     mmr_position,
                 } => {
-                    self.insert_kernel(&write_txn, header_hash, &**kernel, *mmr_position)?;
+                    self.insert_kernel(&write_txn, header_hash, kernel, *mmr_position)?;
                 },
                 InsertOutput {
                     header_hash,
@@ -356,7 +356,7 @@ impl LMDBDatabase {
                         &write_txn,
                         header_hash,
                         *header_height,
-                        &*output,
+                        output,
                         *mmr_position,
                         *timestamp,
                     )?;
@@ -584,7 +584,7 @@ impl LMDBDatabase {
 
         lmdb_insert(
             txn,
-            &*self.utxo_commitment_index,
+            &self.utxo_commitment_index,
             output.commitment.as_bytes(),
             &output_hash,
             "utxo_commitment_index",
@@ -592,14 +592,14 @@ impl LMDBDatabase {
 
         lmdb_insert(
             txn,
-            &*self.txos_hash_to_index_db,
+            &self.txos_hash_to_index_db,
             output_hash.as_slice(),
             &(mmr_position, output_key.to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
-            &*self.utxos_db,
+            &self.utxos_db,
             &output_key,
             &TransactionOutputRowData {
                 output: Some(output.clone()),
@@ -635,14 +635,14 @@ impl LMDBDatabase {
         let key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_le_bytes().as_slice()])?;
         lmdb_insert(
             txn,
-            &*self.txos_hash_to_index_db,
+            &self.txos_hash_to_index_db,
             output_hash.as_slice(),
             &(mmr_position, key.to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
-            &*self.utxos_db,
+            &self.utxos_db,
             &key,
             &TransactionOutputRowData {
                 output: None,
@@ -673,7 +673,7 @@ impl LMDBDatabase {
 
         lmdb_insert(
             txn,
-            &*self.kernel_excess_index,
+            &self.kernel_excess_index,
             kernel.excess.as_bytes(),
             &(*header_hash, mmr_position, hash),
             "kernel_excess_index",
@@ -684,7 +684,7 @@ impl LMDBDatabase {
         excess_sig_key.extend(kernel.excess_sig.get_signature().as_bytes());
         lmdb_insert(
             txn,
-            &*self.kernel_excess_sig_index,
+            &self.kernel_excess_sig_index,
             excess_sig_key.as_slice(),
             &(*header_hash, mmr_position, hash),
             "kernel_excess_sig_index",
@@ -692,7 +692,7 @@ impl LMDBDatabase {
 
         lmdb_insert(
             txn,
-            &*self.kernels_db,
+            &self.kernels_db,
             &key,
             &TransactionKernelRowData {
                 kernel: kernel.clone(),
@@ -739,7 +739,7 @@ impl LMDBDatabase {
         ])?;
         lmdb_insert(
             txn,
-            &*self.inputs_db,
+            &self.inputs_db,
             &key,
             &TransactionInputRowDataRef {
                 input: &input.to_compact(),
@@ -1007,7 +1007,7 @@ impl LMDBDatabase {
                 }
                 lmdb_delete(
                     txn,
-                    &*self.utxo_commitment_index,
+                    &self.utxo_commitment_index,
                     output.commitment.as_bytes(),
                     "utxo_commitment_index",
                 )?;
@@ -1063,7 +1063,7 @@ impl LMDBDatabase {
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
                 txn,
-                &*self.utxo_commitment_index,
+                &self.utxo_commitment_index,
                 input.commitment()?.as_bytes(),
                 &input.output_hash(),
                 "utxo_commitment_index",
@@ -1198,7 +1198,7 @@ impl LMDBDatabase {
         let data = if header.height == 0 {
             BlockAccumulatedData::default()
         } else {
-            self.fetch_block_accumulated_data(&*txn, header.height - 1)?
+            self.fetch_block_accumulated_data(txn, header.height - 1)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "BlockAccumulatedData",
                     field: "height",
@@ -1272,7 +1272,7 @@ impl LMDBDatabase {
         // unique_id_index expects inputs to be inserted before outputs
         for input in &inputs {
             let output_hash = input.output_hash();
-            let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &output_hash)? {
+            let index = match self.fetch_mmr_leaf_index(txn, MmrTree::Utxo, &output_hash)? {
                 Some(index) => index,
                 None => match output_mmr.find_leaf_index(output_hash.as_slice())? {
                     Some(index) => {
@@ -1469,7 +1469,7 @@ impl LMDBDatabase {
         )?;
 
         let mut block_accum_data = self
-            .fetch_block_accumulated_data(&*write_txn, height)?
+            .fetch_block_accumulated_data(write_txn, height)?
             .unwrap_or_default();
 
         if let Some(deleted_diff) = values.deleted_diff {
@@ -1612,7 +1612,7 @@ impl LMDBDatabase {
 
         lmdb_replace(txn, &self.bad_blocks, hash.deref(), &height)?;
         // Clean up bad blocks that are far from the tip
-        let metadata = fetch_metadata(&*txn, &self.metadata_db)?;
+        let metadata = fetch_metadata(txn, &self.metadata_db)?;
         let deleted_before_height = metadata
             .height_of_longest_chain()
             .saturating_sub(CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT);
@@ -2110,7 +2110,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
-        self.fetch_output_in_txn(&*txn, output_hash.as_slice())
+        self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -2118,7 +2118,7 @@ impl BlockchainBackend for LMDBDatabase {
         commitment: &Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())
+        lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
@@ -2155,7 +2155,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_mmr_leaf_index(&*txn, tree, hash)
+        self.fetch_mmr_leaf_index(&txn, tree, hash)
     }
 
     /// Returns the number of blocks in the block orphan pool.
@@ -2802,7 +2802,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
-    let val = lmdb_get::<_, MetadataValue>(&*txn, &db.metadata_db, &k.as_u32())?;
+    let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
     let n = match val {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,

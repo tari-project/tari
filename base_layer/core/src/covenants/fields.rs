@@ -300,7 +300,7 @@ impl OutputFields {
         let mut challenge = Blake256::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
         for field in &self.fields {
-            challenge.update(&field.get_field_value_bytes(output).as_slice());
+            challenge.update(field.get_field_value_bytes(output).as_slice());
         }
         challenge
     }

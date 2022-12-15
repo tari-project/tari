@@ -58,7 +58,7 @@ impl DhtRpcServiceImpl {
 
         // A maximum buffer size of 10 is selected arbitrarily and is to allow the producer/consumer some room to
         // buffer.
-        let (tx, rx) = mpsc::channel(cmp::min(10, peers.len() as usize));
+        let (tx, rx) = mpsc::channel(cmp::min(10, peers.len()));
         task::spawn(async move {
             let iter = peers
                 .into_iter()

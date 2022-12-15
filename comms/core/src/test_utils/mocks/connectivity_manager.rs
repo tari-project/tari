@@ -194,7 +194,7 @@ impl ConnectivityManagerMockState {
     pub(self) async fn with_state<F, R>(&self, f: F) -> R
     where F: FnOnce(&mut State) -> R {
         let mut lock = self.inner.lock().await;
-        (f)(&mut *lock)
+        (f)(&mut lock)
     }
 }
 

@@ -266,7 +266,7 @@ pub async fn coin_split(
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
     let (tx_id, tx, amount) = output_service
-        .create_coin_split(vec![], amount_per_split, num_splits as usize, fee_per_gram)
+        .create_coin_split(vec![], amount_per_split, num_splits, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)

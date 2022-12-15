@@ -161,7 +161,7 @@ impl std::str::FromStr for MicroTari {
     type Err = MicroTariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let processed = s.replace(',', "").replace(' ', "").to_ascii_lowercase();
+        let processed = s.replace([',', ' '], "").to_ascii_lowercase();
         // Is this Tari or MicroTari
         let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
             true

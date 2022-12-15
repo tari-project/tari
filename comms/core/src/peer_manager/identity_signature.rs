@@ -148,7 +148,7 @@ impl IdentitySignature {
             .chain(features.bits().to_le_bytes());
         addresses
             .into_iter()
-            .fold(challenge, |challenge, addr| challenge.chain(&addr))
+            .fold(challenge, |challenge, addr| challenge.chain(addr))
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {

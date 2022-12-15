@@ -34,10 +34,7 @@ use crate::storage::sqlite_utilities::{
 };
 
 pub fn random_string(len: usize) -> String {
-    iter::repeat(())
-        .map(|_| OsRng.sample(Alphanumeric) as char)
-        .take(len)
-        .collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 /// A test helper to create a temporary wallet service databases
@@ -54,8 +51,7 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
     let db_path = Path::new(&path_string).join(db_name);
 
     let connection =
-        run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path"), 16)
-            .unwrap();
+        run_migration_and_create_sqlite_connection(db_path.to_str().expect("Should be able to make path"), 16).unwrap();
     (connection, temp_dir)
 }
 

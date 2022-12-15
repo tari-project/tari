@@ -158,7 +158,7 @@ async fn setup(
             let db_path = format!("{}/{}", path_string, db_name);
             // let db_path = "/tmp/test.sqlite3";
 
-            let db_connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
+            let db_connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
             let passphrase = SafePassword::from("my lovely secret passphrase");
             WalletDatabase::new(

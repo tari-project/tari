@@ -123,7 +123,7 @@ where
         }
         let count = max(1, count);
         let last_leaf_index = min(leaf_index + count - 1, leaf_count);
-        let mut leaf_hashes = Vec::with_capacity((last_leaf_index - leaf_index + 1) as usize);
+        let mut leaf_hashes = Vec::with_capacity(last_leaf_index - leaf_index + 1);
         for leaf_index in leaf_index..=last_leaf_index {
             if let Some(hash) = self.get_leaf_hash(leaf_index)? {
                 leaf_hashes.push(hash);

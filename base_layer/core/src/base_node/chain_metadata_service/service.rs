@@ -95,7 +95,7 @@ impl ChainMetadataService {
                     log_if_error!(
                         target: LOG_TARGET,
                         "Failed to handle liveness event because '{}'",
-                        self.handle_liveness_event(&*event).await
+                        self.handle_liveness_event(&event).await
                     );
                 },
 

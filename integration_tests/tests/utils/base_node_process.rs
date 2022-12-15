@@ -22,19 +22,16 @@
 
 use std::{
     fmt::{Debug, Formatter},
-    net::SocketAddr,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
-use axum::extract::Path;
 use rand::rngs::OsRng;
-use tari_base_node::{builder::BaseNodeContext, init_node, run_base_node, BaseNodeConfig, MetricsConfig};
+use tari_base_node::{builder::BaseNodeContext, run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::CommonConfig;
-use tari_common_types::types::PublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
@@ -43,11 +40,7 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
-use tempfile::tempdir;
-use tokio::{
-    sync::{MappedMutexGuard, Mutex, MutexGuard},
-    task,
-};
+use tokio::{sync::Mutex, task};
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -94,7 +87,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
     let temp_dir = PathBuf::from(format!("base_nodes/{}", port));
     let temp_dir_path = temp_dir.display().to_string();
 
-    let mut process = BaseNodeProcess {
+    let process = BaseNodeProcess {
         name: bn_name.clone(),
         port,
         grpc_port,
@@ -118,7 +111,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir.clone();
-    let mut cx_cloned = process.cx.clone();
+    let cx_cloned = process.cx.clone();
     task::spawn(async move {
         let mut base_node_config = tari_base_node::ApplicationConfig {
             common: common_config,

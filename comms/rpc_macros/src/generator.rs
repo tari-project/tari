@@ -164,7 +164,7 @@ impl RpcCodeGenerator {
                 let method_num = m.method_num;
                 let request_type = &m.request_type;
                 let result_type = &m.return_type;
-                let is_unit = m.request_type.as_ref().filter(|ty| is_unit_type(*ty)).is_some();
+                let is_unit = m.request_type.as_ref().filter(|ty| is_unit_type(ty)).is_some();
 
                 let var = if is_unit { quote!(()) } else { quote!(request) };
 

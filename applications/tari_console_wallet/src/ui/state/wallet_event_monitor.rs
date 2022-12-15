@@ -97,7 +97,7 @@ impl WalletEventMonitor {
                             );
                             self.app_state_inner.write().await.add_event(EventListItem{
                                 event_type: "TransactionEvent".to_string(),
-                                desc: (&*msg).to_string()
+                                desc: (*msg).to_string()
                             });
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {

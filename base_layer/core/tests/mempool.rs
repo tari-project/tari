@@ -1190,7 +1190,6 @@ async fn consensus_validation_unique_excess_sig() {
     // trying to submit a transaction with an existing excess signature already in the chain is an error
     let tx = Arc::new(tx1);
     let response = mempool.insert(tx).await.unwrap();
-    dbg!(&response);
     assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
 }
 

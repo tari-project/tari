@@ -164,7 +164,7 @@ impl Mempool {
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-            callback(&*lock)
+            callback(&lock)
         })
         .await?
     }
@@ -177,7 +177,7 @@ impl Mempool {
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
-            callback(&mut *lock)
+            callback(&mut lock)
         })
         .await?
     }

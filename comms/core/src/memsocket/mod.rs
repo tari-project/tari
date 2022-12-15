@@ -65,7 +65,7 @@ impl<T> Slot<T> {
 struct SwitchBoard(HashMap<NonZeroU16, Slot<UnboundedSender<MemorySocket>>>, u16);
 
 pub fn acquire_next_memsocket_port() -> NonZeroU16 {
-    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    let mut switchboard = (*SWITCHBOARD).lock().unwrap();
     let port = loop {
         let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
 
@@ -93,7 +93,7 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
 }
 
 pub fn release_memsocket_port(port: NonZeroU16) {
-    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    let mut switchboard = (*SWITCHBOARD).lock().unwrap();
     if let Entry::Occupied(entry) = switchboard.0.entry(port) {
         match *entry.get() {
             Slot::Acquired => {
@@ -149,7 +149,7 @@ pub struct MemoryListener {
 
 impl Drop for MemoryListener {
     fn drop(&mut self) {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
         // Remove the Sending side of the channel in the switchboard when
         // MemoryListener is dropped
         switchboard.0.remove(&self.port);
@@ -179,7 +179,7 @@ impl MemoryListener {
     ///
     /// [`local_addr`]: #method.local_addr
     pub fn bind(port: u16) -> io::Result<Self> {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
 
         // Get the port we should bind to.  If 0 was given, use a random port
         let port = if let Some(port) = NonZeroU16::new(port) {
@@ -381,7 +381,7 @@ impl MemorySocket {
     /// # Ok(())}
     /// ```
     pub fn connect(port: u16) -> io::Result<MemorySocket> {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
 
         // Find port to connect to
         let port = NonZeroU16::new(port).ok_or(ErrorKind::AddrNotAvailable)?;

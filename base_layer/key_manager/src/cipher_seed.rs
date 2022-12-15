@@ -190,7 +190,7 @@ impl CipherSeed {
         let mut secret_data = Zeroizing::new(Vec::<u8>::with_capacity(
             CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES,
         ));
-        secret_data.extend(&self.birthday.to_le_bytes());
+        secret_data.extend(self.birthday.to_le_bytes());
         secret_data.extend(self.entropy.iter());
         secret_data.extend(&mac);
 
@@ -207,7 +207,7 @@ impl CipherSeed {
         let mut crc_hasher = CrcHasher::new();
         crc_hasher.update(encrypted_seed.as_slice());
         let checksum = crc_hasher.finalize().to_le_bytes();
-        encrypted_seed.extend(&checksum);
+        encrypted_seed.extend(checksum);
 
         Ok(encrypted_seed)
     }
@@ -348,7 +348,7 @@ impl CipherSeed {
         Ok(mac_domain_hasher::<Blake256>(LABEL_MAC_GENERATION)
             .chain(birthday)
             .chain(entropy)
-            .chain(&[cipher_seed_version])
+            .chain([cipher_seed_version])
             .chain(salt)
             .chain(mac_key.reveal())
             .finalize()
