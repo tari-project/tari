@@ -29,9 +29,11 @@ use std::{
     ops::DerefMut,
     path::{Path, PathBuf},
     sync::Arc,
+    thread::sleep,
     time::Duration,
 };
 
+use anyhow::bail;
 use async_trait::async_trait;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
@@ -131,11 +133,6 @@ async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String
     register_miner_process(world, miner_name, bn_name, wallet_name);
 }
 
-#[when(expr = "miner {word} mines {int} new blocks")]
-async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
-    mine_blocks(world, miner_name, num_blocks).await;
-}
-
 #[when(expr = "I wait {int} seconds")]
 async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
     tokio::time::sleep(Duration::from_secs(seconds)).await;
@@ -166,6 +163,45 @@ async fn node_pending_connection_to(
     }
 
     panic!("Peer was not connected in time");
+}
+
+#[when(expr = "mining node {word} mines {int} blocks")]
+#[given(expr = "mining node {word} mines {int} blocks")]
+async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
+    mine_blocks(world, miner_name, num_blocks).await;
+}
+
+#[then(expr = "all nodes are at height {int}")]
+#[when(expr = "all nodes are at height {int}")]
+async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::Result<()> {
+    let mut num_retries = 100;
+    let mut already_sync = true;
+
+    for retry in 0..num_retries {
+        for (_, bn) in world.base_nodes.iter() {
+            let mut client = bn.get_grpc_client().await?;
+
+            let chain_tip = client.get_tip_info(Empty {}).await?.into_inner();
+            let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
+
+            if chain_hgt < height {
+                already_sync = false;
+            }
+        }
+
+        if already_sync {
+            return Ok(());
+        }
+
+        already_sync = true;
+        tokio::time::sleep(Duration::from_secs(5));
+    }
+
+    if !already_sync {
+        bail!("base nodes not successfully synchronized at height {}", height);
+    }
+
+    Ok(())
 }
 
 #[when(expr = "I print the cucumber world")]
