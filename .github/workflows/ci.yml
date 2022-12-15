@@ -15,7 +15,7 @@ name: CI
       - synchronize
 
 env:
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   PROTOC: protoc
@@ -34,7 +34,6 @@ jobs:
         with:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
-          override: true
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -63,7 +62,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: nightly
           profile: minimal
           override: true
       - name: ubuntu dependencies
