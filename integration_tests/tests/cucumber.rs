@@ -85,6 +85,7 @@ impl TariWorld {
             .await
     }
 
+    #[allow(dead_code)]
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: S,
