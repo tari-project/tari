@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 @merge-mining @base-node
-  Feature: Merge Mining
+Feature: Merge Mining
 
     Scenario: Merge Mining Functionality Test Without Submitting To Origin
       # Given I have a seed node NODE
