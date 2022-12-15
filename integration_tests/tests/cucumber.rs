@@ -174,22 +174,17 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::Result<()> {
-    let base_node_pxs = world
-        .base_nodes
-        .iter()
-        .map(|(_, bn)| bn)
-        .collect::<Vec<_>>();
-
-    let num_retries = 100;
+    let mut num_retries = 100;
     let mut already_sync = true;
 
     for retry in 0..num_retries {
-        for bn in &base_node_pxs {
-            let mut bn_cli = bn.get_grpc_client().await?;
-            let chain_tip = bn_cli.get_tip_info(Empty {}).await?.into_inner();
+        for (_, bn) in world.base_nodes.iter() {
+            let mut client = bn.get_grpc_client().await?;
+
+            let chain_tip = client.get_tip_info(Empty {}).await?.into_inner();
             let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
-            if chain_hgt < height { 
+            if chain_hgt < height {
                 already_sync = false;
             }
         }
