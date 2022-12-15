@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, thread, thread::JoinHandle, time::Duration};
+use std::{str::FromStr, sync::Arc, thread, thread::JoinHandle, time::Duration};
 
 use tari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
@@ -33,14 +33,13 @@ use tari_comms_dht::DhtConfig;
 use tari_console_wallet::run_wallet;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_wallet::WalletConfig;
+use tari_wallet_grpc_client::WalletGrpcClient;
 use tempfile::tempdir;
-use tokio::runtime;
+use tokio::{runtime, sync::Mutex};
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
 };
-
-type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 use crate::TariWorld;
 
@@ -53,36 +52,52 @@ pub struct WalletProcess {
     pub temp_dir_path: String,
 }
 
-pub async fn spawn_wallet(world: &mut TariWorld, wallet_name: String, base_node_name: String) {
+pub async fn spawn_wallet(
+    world: &mut TariWorld,
+    wallet_name: String,
+    base_node_name: Option<String>,
+    peer_seeds: Vec<String>,
+) {
     // each spawned wallet will use different ports
     let (port, grpc_port) = match world.base_nodes.values().last() {
         Some(v) => (v.port + 1, v.grpc_port + 1),
         None => (48000, 48500), // default ports if it's the first wallet to be spawned
     };
 
-    let base_node_public_key = world
-        .base_nodes
-        .get(&base_node_name)
-        .unwrap()
-        .identity
-        .public_key()
-        .clone();
+    let base_node = base_node_name.map(|name| {
+        let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
+        let port = world.base_nodes.get(&name).unwrap().port;
+        let set_base_node_request = SetBaseNodeRequest {
+            net_address: format! {"/ip4/127.0.0.1/tcp/{}", port},
+            public_key_hex: pubkey.clone().to_string(),
+        };
 
-    let base_node_port = world.base_nodes.get(&base_node_name).unwrap().port;
-    let set_base_node_request = SetBaseNodeRequest {
-        net_address: format! {"/ip4/127.0.0.1/tcp/{}", base_node_port},
-        public_key_hex: base_node_public_key.clone().to_string(),
-    };
+        (pubkey, port, set_base_node_request)
+    });
 
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path().display().to_string();
 
+    let mut peer_addresses = vec![];
+    for peer in peer_seeds {
+        let peer = world.base_nodes.get(peer.as_str()).unwrap();
+        peer_addresses.push(format!(
+            "{}::{}",
+            peer.identity.public_key(),
+            peer.identity.public_address()
+        ));
+    }
+
+    let base_node_cloned = base_node.clone();
     let handle = thread::spawn(move || {
         let mut wallet_config = tari_console_wallet::ApplicationConfig {
             common: CommonConfig::default(),
             auto_update: AutoUpdateConfig::default(),
             wallet: WalletConfig::default(),
-            peer_seeds: PeerSeedsConfig::default(),
+            peer_seeds: PeerSeedsConfig {
+                peer_seeds: peer_addresses.into(),
+                ..Default::default()
+            },
         };
 
         eprintln!("Using wallet temp_dir: {}", temp_dir.path().display());
@@ -100,10 +115,10 @@ pub async fn spawn_wallet(world: &mut TariWorld, wallet_name: String, base_node_
         wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
         wallet_config.wallet.p2p.datastore_path = temp_dir.path().join("peer_db/wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
-        wallet_config.wallet.custom_base_node = Some(format!(
-            "{}::/ip4/127.0.0.1/tcp/{}",
-            base_node_public_key, base_node_port
-        ));
+
+        // FIXME: wallet doesn't pick up the custom base node for some reason atm
+        wallet_config.wallet.custom_base_node =
+            base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
@@ -123,22 +138,32 @@ pub async fn spawn_wallet(world: &mut TariWorld, wallet_name: String, base_node_
 
     // We need to give it time for the wallet to startup
     // TODO: it would be better to scan the wallet to detect when it has started
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
-    let mut wallet_client: WalletGrpcClient = create_wallet_client(world, wallet_name).await;
-    let _resp = wallet_client.set_base_node(set_base_node_request).await.unwrap();
+    if let Some((_, _, hacky_request)) = base_node {
+        let mut wallet_client = create_wallet_client(world, wallet_name)
+            .await
+            .expect("wallet grpc client");
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+        let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
 }
 
-pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> WalletGrpcClient {
+pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
     let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+
     eprintln!("Wallet GRPC at {}", wallet_addr);
-    let channel = Endpoint::from_str(&wallet_addr).unwrap().connect().await.unwrap();
-    WalletClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&GrpcAuthentication::default()).unwrap(),
-    )
+
+    Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
+}
+
+impl WalletProcess {
+    pub async fn get_grpc_client(&self) -> anyhow::Result<WalletGrpcClient<Channel>> {
+        let wallet_addr = format!("http://127.0.0.1:{}", self.grpc_port);
+        Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
+    }
 }

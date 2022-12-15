@@ -211,10 +211,10 @@ impl ConsensusConstants {
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
         let output_features = OutputFeatures { ..Default::default() };
-        let metadata_size = self
-            .transaction_weight
-            .round_up_metadata_size(output_features.get_serialized_size() + script![Nop].get_serialized_size());
-        self.transaction_weight.calculate(1, 0, 1, metadata_size)
+        let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
+            output_features.get_serialized_size() + script![Nop].get_serialized_size(),
+        );
+        self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
     }
 
     pub fn coinbase_output_features_extra_max_length(&self) -> u32 {

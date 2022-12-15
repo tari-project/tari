@@ -76,12 +76,7 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node<S: AsRef<str>, P: IntoIterator<Item = S>>(
-    world: &mut TariWorld,
-    is_seed_node: bool,
-    bn_name: String,
-    peers: P,
-) {
+pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
     // each spawned base node will use different ports
     let (port, grpc_port) = match world.base_nodes.values().last() {
         Some(v) => (v.port + 1, v.grpc_port + 1),
@@ -113,18 +108,13 @@ pub async fn spawn_base_node<S: AsRef<str>, P: IntoIterator<Item = S>>(
 
     let mut peer_addresses = vec![];
     for peer in peers {
-        let peer = world.base_nodes.get(peer.as_ref()).unwrap();
+        let peer = world.base_nodes.get(peer.as_str()).unwrap();
         peer_addresses.push(format!(
             "{}::{}",
             peer.identity.public_key(),
             peer.identity.public_address()
         ));
     }
-    let mut peer_seeds = PeerSeedsConfig {
-        peer_seeds: peer_addresses.into(),
-        ..Default::default()
-    };
-    dbg!(&peer_seeds);
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir.clone();
@@ -134,8 +124,11 @@ pub async fn spawn_base_node<S: AsRef<str>, P: IntoIterator<Item = S>>(
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             base_node: BaseNodeConfig::default(),
-            peer_seeds,
             metrics: MetricsConfig::default(),
+            peer_seeds: PeerSeedsConfig {
+                peer_seeds: peer_addresses.into(),
+                ..Default::default()
+            },
         };
 
         println!("Using base_node temp_dir: {}", temp_dir.as_path().display());

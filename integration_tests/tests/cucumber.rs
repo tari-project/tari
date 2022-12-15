@@ -44,7 +44,6 @@ use tari_comms::peer_manager::{PeerFeatures, PeerFlags};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use utils::{
     miner::{mine_blocks, register_miner_process},
     wallet_process::spawn_wallet,
@@ -60,6 +59,8 @@ use crate::utils::{
 pub enum TariWorldError {
     #[error("Base node process not found: {0}")]
     BaseNodeProcessNotFound(String),
+    #[error("Wallet process not found: {0}")]
+    WalletProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
 }
@@ -75,14 +76,24 @@ pub struct TariWorld {
 impl TariWorld {
     async fn get_node_client<S: AsRef<str>>(
         &self,
-        node_name: S,
+        name: S,
     ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
-        let base_node = self
-            .base_nodes
-            .get(node_name.as_ref())
-            .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?;
-        let client = base_node.get_grpc_client().await?;
-        Ok(client)
+        self.base_nodes
+            .get(name.as_ref())
+            .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(name.as_ref().to_string()))?
+            .get_grpc_client()
+            .await
+    }
+
+    async fn get_wallet_client<S: AsRef<str>>(
+        &self,
+        name: S,
+    ) -> anyhow::Result<tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
+        self.wallets
+            .get(name.as_ref())
+            .ok_or_else(|| TariWorldError::WalletProcessNotFound(name.as_ref().to_string()))?
+            .get_grpc_client()
+            .await
     }
 
     fn get_node<S: AsRef<str>>(&self, node_name: S) -> anyhow::Result<&BaseNodeProcess> {
@@ -92,40 +103,6 @@ impl TariWorld {
             .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?)
     }
 
-    async fn add_peer(world: &mut TariWorld, name: String, peer_name: String, is_seed_peer: bool) {
-        let mut peer = world
-            .base_nodes
-            .get(peer_name.as_str())
-            .expect("peer node")
-            .cx
-            .lock()
-            .await
-            .as_ref()
-            .expect("peer node context")
-            .base_node_identity()
-            .to_peer();
-
-        if is_seed_peer {
-            world.seed_nodes.push(name.clone());
-            peer.add_flags(PeerFlags::SEED);
-        }
-
-        world
-            .base_nodes
-            .get_mut(name.as_str())
-            .expect("node")
-            .cx
-            .lock()
-            .await
-            .as_ref()
-            .expect("node context lock")
-            .base_node_comms()
-            .peer_manager()
-            .add_peer(peer)
-            .await
-            .expect("added peer");
-    }
-
     pub fn all_seed_nodes(&self) -> &[String] {
         self.seed_nodes.as_slice()
     }
@@ -133,19 +110,22 @@ impl TariWorld {
 
 #[given(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
-    spawn_base_node::<&'static str, _>(world, true, name.clone(), vec![]).await;
+    spawn_base_node(world, true, name, vec![]).await;
 }
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
-    spawn_wallet(world, wallet_name, node_name.clone()).await;
+    spawn_wallet(world, wallet_name, Some(node_name), world.all_seed_nodes().to_vec()).await;
 }
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
-async fn connect_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    let seed_nodes = world.all_seed_nodes().to_vec();
-    dbg!(seed_nodes.clone());
-    spawn_base_node(world, false, name.clone(), seed_nodes).await;
+async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
+    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
+}
+
+#[when(expr = "I have wallet {word} connected to all seed nodes")]
+async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
+    spawn_wallet(world, name, None, world.all_seed_nodes().to_vec()).await;
 }
 
 #[given(expr = "a miner {word} connected to base node {word} and wallet {word}")]

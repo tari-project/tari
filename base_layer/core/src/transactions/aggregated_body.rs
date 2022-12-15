@@ -511,8 +511,8 @@ impl AggregateBody {
         transaction_weight.calculate_body(self)
     }
 
-    pub fn sum_metadata_size(&self) -> usize {
-        self.outputs.iter().map(|o| o.get_metadata_size()).sum()
+    pub fn sum_features_and_scripts_size(&self) -> usize {
+        self.outputs.iter().map(|o| o.get_features_and_scripts_size()).sum()
     }
 
     pub fn is_sorted(&self) -> bool {

@@ -24,12 +24,11 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
-    cmp::{min, Ordering},
+    cmp::Ordering,
     fmt::{Display, Formatter},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -441,7 +440,7 @@ impl TransactionOutput {
             .into()
     }
 
-    pub fn get_metadata_size(&self) -> usize {
+    pub fn get_features_and_scripts_size(&self) -> usize {
         self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
 }
@@ -499,70 +498,29 @@ impl Ord for TransactionOutput {
     }
 }
 
-/// Performs batched range proof verification for an arbitrary number of outputs. Batched range proof verification gains
-/// above batch sizes of 2^8 = 256 gives diminishing returns, see <https://github.com/tari-project/bulletproofs-plus>,
-/// so the batch sizes are limited to 2^8.
+/// Performs batched range proof verification for an arbitrary number of outputs
 pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
-    // We need optimized power of two chunks, for example if we have 15 outputs, then we need chunks of 8, 4, 2, 1.
-    let power_of_two_vec = power_of_two_chunk_sizes(outputs.len(), 8);
-    debug!(
-        target: LOG_TARGET,
-        "Queueing range proof batch verify output(s): {:?}", &power_of_two_vec
-    );
-    let mut index = 0;
-    for power_of_two in power_of_two_vec {
-        let mut statements = Vec::with_capacity(power_of_two);
-        let mut proofs = Vec::with_capacity(power_of_two);
-        for output in outputs.iter().skip(index).take(power_of_two) {
-            statements.push(RistrettoAggregatedPublicStatement {
-                statements: vec![Statement {
-                    commitment: output.commitment.clone(),
-                    minimum_value_promise: output.minimum_value_promise.into(),
-                }],
-            });
-            proofs.push(output.proof.to_vec().clone());
-        }
-        index += power_of_two;
-        prover.verify_batch(proofs.iter().collect(), statements.iter().collect())?;
+    // An empty batch is valid
+    if outputs.is_empty() {
+        return Ok(());
     }
+
+    let mut statements = Vec::with_capacity(outputs.len());
+    let mut proofs = Vec::with_capacity(outputs.len());
+    for output in outputs.iter() {
+        statements.push(RistrettoAggregatedPublicStatement {
+            statements: vec![Statement {
+                commitment: output.commitment.clone(),
+                minimum_value_promise: output.minimum_value_promise.into(),
+            }],
+        });
+        proofs.push(output.proof.to_vec().clone());
+    }
+    prover.verify_batch(proofs.iter().collect(), statements.iter().collect())?;
     Ok(())
-}
-
-// This function will create a vector of integers whose contents will all be powers of two; the entries will sum to the
-// given length and each entry will be limited to the maximum power of two provided.
-// Examples: A length of 15 without restrictions will produce chunks of [8, 4, 2, 1]; a length of 32 limited to 2^3 will
-// produce chunks of [8, 8, 8, 8].
-fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
-    // This function will search for the highest power of two contained within an integer number
-    fn highest_power_of_two(n: usize) -> usize {
-        let mut res = 0;
-        for i in (1..=n).rev() {
-            if i.is_power_of_two() {
-                res = i;
-                break;
-            }
-        }
-        res
-    }
-
-    if len == 0 {
-        Vec::new()
-    } else {
-        let mut res_vec = Vec::new();
-        let mut n = len;
-        loop {
-            let chunk = min(2usize.pow(u32::from(max_power)), highest_power_of_two(n));
-            res_vec.push(chunk);
-            n = n.saturating_sub(chunk);
-            if n == 0 {
-                break;
-            }
-        }
-        res_vec
-    }
 }
 
 #[cfg(test)]
@@ -571,33 +529,8 @@ mod test {
     use crate::transactions::{
         tari_amount::MicroTari,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::transaction_output::power_of_two_chunk_sizes,
         CryptoFactories,
     };
-
-    #[test]
-    fn it_creates_power_of_two_chunks() {
-        let p2vec = power_of_two_chunk_sizes(0, 7);
-        assert!(p2vec.is_empty());
-        let p2vec = power_of_two_chunk_sizes(1, 7);
-        assert_eq!(p2vec, vec![1]);
-        let p2vec = power_of_two_chunk_sizes(2, 7);
-        assert_eq!(p2vec, vec![2]);
-        let p2vec = power_of_two_chunk_sizes(3, 0);
-        assert_eq!(p2vec, vec![1, 1, 1]);
-        let p2vec = power_of_two_chunk_sizes(4, 2);
-        assert_eq!(p2vec, vec![4]);
-        let p2vec = power_of_two_chunk_sizes(15, 7);
-        assert_eq!(p2vec, vec![8, 4, 2, 1]);
-        let p2vec = power_of_two_chunk_sizes(32, 3);
-        assert_eq!(p2vec, vec![8, 8, 8, 8]);
-        let p2vec = power_of_two_chunk_sizes(1007, 8);
-        assert_eq!(p2vec, vec![256, 256, 256, 128, 64, 32, 8, 4, 2, 1]);
-        let p2vec = power_of_two_chunk_sizes(10307, 10);
-        assert_eq!(p2vec, vec![
-            1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 64, 2, 1
-        ]);
-    }
 
     #[test]
     fn it_builds_correctly_from_unblinded_output() {
