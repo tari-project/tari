@@ -184,7 +184,7 @@ async fn test_insert_and_process_published_block() {
         1,
         1,
         2,
-        TestParams::new().get_size_for_default_metadata(2),
+        TestParams::new().get_size_for_default_features_and_scripts(2),
     );
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 

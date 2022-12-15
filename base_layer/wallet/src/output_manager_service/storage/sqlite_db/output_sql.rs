@@ -98,7 +98,7 @@ pub struct OutputSql {
     pub received_in_tx_id: Option<i64>,
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
-    pub metadata: Option<Vec<u8>>,
+    pub coinbase_extra: Option<Vec<u8>>,
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
