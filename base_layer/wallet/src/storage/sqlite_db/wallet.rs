@@ -210,15 +210,15 @@ impl WalletSqliteDatabase {
         match kvp {
             DbKeyValuePair::MasterSeed(seed) => {
                 kvp_text = "MasterSeed";
-                self.set_master_seed(&seed, &(*conn))?;
+                self.set_master_seed(&seed, &conn)?;
             },
             DbKeyValuePair::TorId(node_id) => {
                 kvp_text = "TorId";
-                self.set_tor_id(node_id, &(*conn))?;
+                self.set_tor_id(node_id, &conn)?;
             },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
                 kvp_text = "BaseNodeChainMetadata";
-                self.set_chain_metadata(metadata, &(*conn))?;
+                self.set_chain_metadata(metadata, &conn)?;
             },
             DbKeyValuePair::ClientKeyValue(k, v) => {
                 // First see if we will overwrite a value so we can return the old value
@@ -717,7 +717,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
         let secret_seed1 = CipherSeed::new();
 
         {
@@ -740,7 +740,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
@@ -772,7 +772,7 @@ mod test {
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}/{}", db_folder, db_name);
-        let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         let seed = CipherSeed::new();
         let mut key_values = vec![
@@ -853,7 +853,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
         let conn = connection.get_pooled_connection().unwrap();
 
         let key1 = "key1".to_string();
@@ -893,7 +893,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 

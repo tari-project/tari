@@ -101,7 +101,7 @@ where
             .ok_or(TransactionServiceError::Shutdown)
             .for_protocol(self.operation_id)?;
 
-        self.check_for_reorgs(&mut *base_node_wallet_client).await?;
+        self.check_for_reorgs(&mut base_node_wallet_client).await?;
         debug!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
@@ -116,7 +116,7 @@ where
         let mut state_changed = false;
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
-                .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
+                .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             debug!(

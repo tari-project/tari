@@ -323,7 +323,7 @@ where
 
         if !(response.is_synced ||
             (response.location == TxLocation::Mined &&
-                response.confirmations >= self.resources.config.num_confirmations_required as u64))
+                response.confirmations >= self.resources.config.num_confirmations_required))
         {
             info!(
                 target: LOG_TARGET,

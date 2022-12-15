@@ -138,7 +138,7 @@ pub fn create_blockhashing_blob_from_block(block: &monero::Block) -> Result<Stri
     let tx_hashes = create_ordered_transaction_hashes_from_block(block);
     let root = tree_hash(&tx_hashes)?;
     let blob = create_block_hashing_blob(&block.header, &root, tx_hashes.len() as u64);
-    Ok(hex::encode(&blob))
+    Ok(hex::encode(blob))
 }
 
 pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Vec<monero::Hash> {
@@ -252,7 +252,7 @@ mod test {
             hex::encode(transaction.hash().0.to_vec()).as_bytes().to_vec()
         );
         let hex = hex::encode(consensus::serialize::<Transaction>(&transaction));
-        deserialize::<Transaction>(&hex::decode(&hex).unwrap()).unwrap();
+        deserialize::<Transaction>(&hex::decode(hex).unwrap()).unwrap();
     }
 
     // This tests checks the blockhashing blob of monero-rs

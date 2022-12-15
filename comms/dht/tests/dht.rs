@@ -450,7 +450,7 @@ async fn dht_store_forward() {
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
     let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &*event.get(0).unwrap().as_ref());
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.get(0).unwrap().as_ref());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -479,7 +479,7 @@ async fn dht_store_forward() {
 
     // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
     let event = collect_try_recv!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &*event.get(0).unwrap().as_ref());
+    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = event.get(0).unwrap().as_ref());
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -1129,7 +1129,7 @@ fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId])
         .iter()
         .filter(|event| {
             unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
-            node_ids.iter().any(|n| &*recv_node_id == *n)
+            node_ids.iter().any(|n| recv_node_id == *n)
         })
         .count()
 }

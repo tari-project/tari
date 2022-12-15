@@ -23,9 +23,6 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use tari_common_types::types::{PublicKey, Signature};
-use tari_comms::NodeIdentity;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_components::ValidatorNodeSignature};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_wallet_grpc_client::Client as GrpcWallet;
 

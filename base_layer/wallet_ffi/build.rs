@@ -42,7 +42,7 @@ fn main() {
 
     cbindgen::generate_with_config(&crate_dir, config)
         .unwrap()
-        .write_to_file(&output_file);
+        .write_to_file(output_file);
 }
 
 // /// Find the location of the `target/` directory. Note that this may be

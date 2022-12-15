@@ -163,7 +163,7 @@ pub async fn get_base_node_peer_config(
     let mut selected_base_node = match config.wallet.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed custom base node: {}", err)))?,
+            .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
         None => get_custom_base_node_peer_from_db(wallet),
     };
 
@@ -257,7 +257,7 @@ pub async fn init_wallet(
     non_interactive_mode: bool,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
-        &config
+        config
             .wallet
             .db_file
             .parent()
@@ -332,10 +332,7 @@ pub async fn init_wallet(
     .await
     .map_err(|e| match e {
         WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
-        e => ExitError::new(
-            ExitCode::WalletError,
-            &format!("Error creating Wallet Container: {}", e),
-        ),
+        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
     if let Some(hs) = wallet.comms.hidden_service() {
         wallet
@@ -349,7 +346,7 @@ pub async fn init_wallet(
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
-                &format!("Problem writing seed words to file: {}", e),
+                format!("Problem writing seed words to file: {}", e),
             )
         });
     };
@@ -446,7 +443,7 @@ pub async fn start_wallet(
         .map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
-                &format!("Error setting wallet base node peer. {}", e),
+                format!("Error setting wallet base node peer. {}", e),
             )
         })?;
 

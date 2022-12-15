@@ -110,7 +110,7 @@ impl PeerConfig {
         } else {
             Err(ExitError::new(
                 ExitCode::ConfigError,
-                &"No peer seeds or base node peer defined in config!",
+                "No peer seeds or base node peer defined in config!",
             ))
         }
     }
@@ -171,7 +171,7 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
         if !command.trim().is_empty() && !command.trim().starts_with('#') {
             let command_trimmed = cli_parse_prefix.to_owned() + " " + command.trim();
             let parse_vec: Vec<&str> = command_trimmed.split(' ').collect();
-            let cli_parsed = Cli::try_parse_from(&parse_vec);
+            let cli_parsed = Cli::try_parse_from(parse_vec);
             match cli_parsed {
                 Ok(result) => {
                     if let Some(sub_command) = result.command2 {
@@ -361,7 +361,7 @@ pub fn recovery_mode(
         WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
-            &"Unsupported post recovery mode",
+            "Unsupported post recovery mode",
         )),
     }
 }

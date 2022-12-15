@@ -73,7 +73,7 @@ where
     }
     .to_encoded_bytes();
 
-    write_protocol_frame(socket, network_info.major_version as u8, &msg_bytes).await?;
+    write_protocol_frame(socket, network_info.major_version, &msg_bytes).await?;
     socket.flush().await?;
 
     // Receive the connecting node's identity

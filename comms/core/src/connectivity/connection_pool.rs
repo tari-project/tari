@@ -181,7 +181,7 @@ impl ConnectionPool {
     where P: FnMut(&PeerConnectionState) -> bool {
         self.connections
             .values()
-            .filter(|c| (predicate)(*c))
+            .filter(|c| (predicate)(c))
             .filter_map(|c| c.connection())
             .collect()
     }
@@ -191,7 +191,7 @@ impl ConnectionPool {
         self.connections
             .values_mut()
             .filter_map(|c| c.connection_mut())
-            .filter(|c| (predicate)(*c))
+            .filter(|c| (predicate)(c))
             .collect()
     }
 
@@ -246,6 +246,6 @@ impl ConnectionPool {
 
     pub(in crate::connectivity) fn count_filtered<P>(&self, mut predicate: P) -> usize
     where P: FnMut(&PeerConnectionState) -> bool {
-        self.connections.values().filter(|c| (predicate)(*c)).count()
+        self.connections.values().filter(|c| (predicate)(c)).count()
     }
 }

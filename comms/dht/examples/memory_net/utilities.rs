@@ -740,7 +740,7 @@ impl TestNode {
                 match event.as_deref() {
                     Ok(MessageReceived(peer_node_id, _)) => {
                         messaging_events_tx
-                            .send((Clone::clone(&*peer_node_id), node_id.clone()))
+                            .send((Clone::clone(peer_node_id), node_id.clone()))
                             .unwrap();
                     },
                     Err(broadcast::error::RecvError::Closed) => {
@@ -918,7 +918,7 @@ async fn setup_comms_dht(
     }
 
     let db_name = iter::repeat(())
-        .map(|_| OsRng.sample(distributions::Alphanumeric) as char)
+        .map(|_| OsRng.sample(distributions::Alphanumeric))
         .take(8)
         .collect::<String>();
 

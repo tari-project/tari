@@ -54,7 +54,7 @@ jobs:
           command: lints
           args: clippy --all-targets --all-features
   build:
-    name: check nightly
+    name: cargo check
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
@@ -62,7 +62,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: ${{ env.toolchain }}
           profile: minimal
           override: true
       - name: ubuntu dependencies
@@ -80,7 +80,7 @@ jobs:
           command: check
           args: --release --package tari_wallet_ffi
   build-stable:
-    name: check stable
+    name: cargo check stable
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout

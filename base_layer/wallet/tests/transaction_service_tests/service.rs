@@ -567,7 +567,7 @@ async fn manage_single_transaction() {
     loop {
         tokio::select! {
             _event = alice_event_stream.recv() => {
-                println!("alice: {:?}", &*_event.as_ref().unwrap());
+                println!("alice: {:?}", _event.as_ref().unwrap());
                 count+=1;
                 if count>=2 {
                     break;

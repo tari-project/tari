@@ -125,7 +125,7 @@ fn find_git_root() -> Result<PathBuf, anyhow::Error> {
 
 fn get_commit() -> Result<String, anyhow::Error> {
     let git_root = find_git_root()?;
-    let repo = git2::Repository::open(&git_root)?;
+    let repo = git2::Repository::open(git_root)?;
     let head = repo.revparse_single("HEAD")?;
     let id = format!("{:?}", head.id());
     id.split_at(7).0.to_string();
