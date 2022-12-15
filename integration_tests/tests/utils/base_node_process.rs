@@ -190,6 +190,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
 // }
 
 impl BaseNodeProcess {
+    #[allow(dead_code)]
     pub async fn connected_peers(&self) -> Result<Box<[Peer]>, GrpcBaseNodeError> {
         Ok(self
             .cx

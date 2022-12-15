@@ -162,6 +162,7 @@ pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> any
 }
 
 impl WalletProcess {
+    #[allow(dead_code)]
     pub async fn get_grpc_client(&self) -> anyhow::Result<WalletGrpcClient<Channel>> {
         let wallet_addr = format!("http://127.0.0.1:{}", self.grpc_port);
         Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
