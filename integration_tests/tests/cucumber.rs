@@ -37,7 +37,7 @@ use anyhow::bail;
 use async_trait::async_trait;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
-use tari_base_node_grpc_client::grpc::Empty;
+use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_common_types::types::PublicKey;
 use tari_comms::peer_manager::{PeerFeatures, PeerFlags};
@@ -174,10 +174,10 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::Result<()> {
-    let mut num_retries = 100;
+    let num_retries = 100;
     let mut already_sync = true;
 
-    for retry in 0..num_retries {
+    for _ in 0..num_retries {
         for (_, bn) in world.base_nodes.iter() {
             let mut client = bn.get_grpc_client().await?;
 
@@ -202,6 +202,74 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
     }
 
     Ok(())
+}
+
+#[when(expr = "node {word} is at height {int}")]
+#[then(expr = "node {word} is at height {int}")]
+async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) -> anyhow::Result<()> {
+    let num_retries = 100;
+
+    let mut client = world.base_nodes.get(&base_node).unwrap().get_grpc_client().await?;
+    let mut chain_hgt = 0;
+
+    for _ in 0..=num_retries {
+        let chain_tip = client.get_tip_info(Empty {}).await?.into_inner();
+        chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
+
+        if chain_hgt >= height {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_secs(5));
+    }
+
+    // base node didn't synchronize successfully at height, so we bail out
+    bail!(
+        "base node didn't synchronize successfully with height {}, current chain height {}",
+        height,
+        chain_hgt
+    );
+}
+
+#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
+async fn miner_connected_to_base_node_and_wallet(
+    world: &mut TariWorld,
+    miner: String,
+    base_node: String,
+    wallet: String,
+) {
+    register_miner_process(world, miner, base_node, wallet);
+}
+
+#[when(expr = "I wait for wallet {word} to have at least {int} uT")]
+async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) -> anyhow::Result<()> {
+    let wallet = world.wallets.get(&wallet).unwrap();
+    let num_retries = 100;
+
+    let mut client = wallet.get_grpc_client().await.unwrap();
+    let mut curr_amount = 0;
+
+    for _ in 0..=100 {
+        curr_amount = client
+            .get_balance(GetBalanceRequest {})
+            .await
+            .unwrap()
+            .into_inner()
+            .available_balance;
+
+        if curr_amount >= amount {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_secs(5));
+    }
+
+    // failed to get wallet right amount, so we bail out
+    bail!(
+        "wallet failed to get right amount {}, current amount is {}",
+        amount,
+        curr_amount
+    );
 }
 
 #[when(expr = "I print the cucumber world")]
