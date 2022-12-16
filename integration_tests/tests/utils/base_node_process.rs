@@ -24,9 +24,10 @@ use std::{
     fmt::{Debug, Formatter},
     str::FromStr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
+use chrono::Local;
 use rand::rngs::OsRng;
 use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
