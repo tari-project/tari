@@ -151,7 +151,31 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -v --all-features --release
+          args: -v --all-features --release --workspace --exclude tari_integration_tests
+  integration_tests:
+    name: integration tests
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: cargo test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-run --locked --all-features --release
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -v --all-features --release --package tari_integration_tests
 
   # Allows other workflows to know the PR number
   artifacts:
