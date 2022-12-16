@@ -27,7 +27,7 @@ use std::{io, path::PathBuf, time::Duration};
 use anyhow::bail;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
-use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest, GetPeersRequest};
+use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
@@ -208,11 +208,11 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     let mut chain_hgt = 0;
 
     for _ in 0..=num_retries {
-        let chain_tip = client.get_tip_info(Empty {}).await.into_inner();
+        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
         if chain_hgt >= height {
-            return Ok(());
+            return;
         }
 
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -294,11 +294,11 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String,
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
-    world: &mut TariWorld,
-    miner: String,
-    block: u64,
-    min_difficulty: u64,
-    max_difficulty: u64,
+   _world: &mut TariWorld,
+    _miner: String,
+    _block: u64,
+    _min_difficulty: u64,
+    _max_difficulty: u64,
 ) {
 }
 
