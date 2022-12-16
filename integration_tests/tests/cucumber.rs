@@ -94,6 +94,13 @@ impl TariWorld {
     pub fn all_seed_nodes(&self) -> &[String] {
         self.seed_nodes.as_slice()
     }
+
+    pub async fn after(&mut self, scenario: &Scenario) {
+        for node in self.seed_nodes.iter() {
+            let mut bnode = self.base_nodes.get_mut(node).unwrap();
+            bnode.kill().await;
+        }
+    }
 }
 
 #[given(expr = "I have a seed node {word}")]
@@ -236,6 +243,11 @@ async fn main() {
                 .summarized()
                 .assert_normalized(),
         )
+        .after(|feature,rule,scenario,_ev,maybe_world| {
+            Box::pin(async move {
+                maybe_world.unwrap().after(scenario).await;
+            })
+        })
         .run_and_exit("tests/features/")
         .await;
 }
