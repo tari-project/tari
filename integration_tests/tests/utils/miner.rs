@@ -71,8 +71,6 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
     world.miners.insert(miner_name, miner);
 }
 
-pub async fn create_miner_client(world: &mut TariWorld, miner_name: String) {}
-
 pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
     let mut base_client = create_base_node_client(world, &miner_name).await;
     let mut wallet_client = create_wallet_client(world, &miner_name).await;
