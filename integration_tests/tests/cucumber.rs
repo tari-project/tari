@@ -183,7 +183,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
         }
 
         already_sync = true;
-        tokio::time::sleep(Duration::from_secs(retry)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     if !already_sync {
