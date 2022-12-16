@@ -34,7 +34,7 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{path::PathBuf, process, sync::Arc};
+use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
@@ -49,7 +49,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::Server;
 
-use crate::{builder::BaseNodeContext, cli::Cli};
+use crate::cli::Cli;
 pub use crate::{
     config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
     metrics::MetricsConfig,

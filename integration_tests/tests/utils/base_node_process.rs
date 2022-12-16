@@ -22,26 +22,20 @@
 
 use std::{
     fmt::{Debug, Formatter},
-    path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
 use rand::rngs::OsRng;
-use tari_base_node::{builder::BaseNodeContext, run_base_node, BaseNodeConfig, MetricsConfig};
+use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::CommonConfig;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures},
-    NodeIdentity,
-};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::DhtConfig;
-use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tempfile::tempdir;
-use tokio::{sync::Mutex, task};
+use tokio::task;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
