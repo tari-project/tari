@@ -22,25 +22,20 @@
 
 use std::{
     fmt::{Debug, Formatter},
-    path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
 use rand::rngs::OsRng;
-use tari_base_node::{builder::BaseNodeContext, run_base_node, BaseNodeConfig, MetricsConfig};
+use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::CommonConfig;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures},
-    NodeIdentity,
-};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::DhtConfig;
-use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
-use tokio::{sync::Mutex, task};
+use tempfile::tempdir;
+use tokio::task;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -53,7 +48,6 @@ pub struct BaseNodeProcess {
     pub temp_dir_path: String,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
-    pub cx: Arc<Mutex<Option<BaseNodeContext>>>,
 }
 
 // NOTE: implemented to skip `cx`, because BaseNodeContext doesn't implement Debug
@@ -76,17 +70,12 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         Some(v) => (v.port + 1, v.grpc_port + 1),
         None => (19000, 19500), // default ports if it's the first base node to be spawned
     };
-
     let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     let base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
-
     println!("Base node identity: {}", base_node_identity);
-
     let identity = base_node_identity.clone();
-    // let temp_dir = tempdir().unwrap();
-    // let temp_dir_path = temp_dir.path().display().to_string();
-    let temp_dir = PathBuf::from(format!("base_nodes/{}", port));
-    let temp_dir_path = temp_dir.display().to_string();
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path().display().to_string();
 
     let process = BaseNodeProcess {
         name: bn_name.clone(),
@@ -96,7 +85,6 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         temp_dir_path,
         is_seed_node,
         seed_nodes: peers.clone(),
-        cx: Default::default(),
     };
 
     let name_cloned = bn_name.clone();
@@ -112,8 +100,8 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
     }
 
     let mut common_config = CommonConfig::default();
-    common_config.base_path = temp_dir.clone();
-    let cx_cloned = process.cx.clone();
+    common_config.base_path = temp_dir.as_ref().to_path_buf();
+
     task::spawn(async move {
         let mut base_node_config = tari_base_node::ApplicationConfig {
             common: common_config,
@@ -126,23 +114,24 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
             },
         };
 
-        println!("Using base_node temp_dir: {}", temp_dir.as_path().display());
+        println!("Using base_node temp_dir: {}", temp_dir.path().display());
         base_node_config.base_node.network = Network::LocalNet;
         base_node_config.base_node.grpc_enabled = true;
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
 
-        base_node_config.base_node.data_dir = temp_dir.clone();
-        base_node_config.base_node.identity_file = temp_dir.join("base_node_id.json");
-        base_node_config.base_node.tor_identity_file = temp_dir.join("base_node_tor_id.json");
+        base_node_config.base_node.data_dir = temp_dir.path().to_path_buf();
+        base_node_config.base_node.identity_file = temp_dir.path().join("base_node_id.json");
+        base_node_config.base_node.tor_identity_file = temp_dir.path().join("base_node_tor_id.json");
 
-        base_node_config.base_node.lmdb_path = temp_dir.clone();
+        base_node_config.base_node.lmdb_path = temp_dir.path().to_path_buf();
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
         base_node_config.base_node.p2p.transport.tcp.listener_address =
-            format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
-        base_node_config.base_node.p2p.public_address = Some(format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap());
-        base_node_config.base_node.p2p.datastore_path = temp_dir.join("p2p");
-        base_node_config.base_node.p2p.dht = DhtConfig::default_testnet();
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
+        base_node_config.base_node.p2p.public_address =
+            Some(base_node_config.base_node.p2p.transport.tcp.listener_address.clone());
+        base_node_config.base_node.p2p.datastore_path = temp_dir.path().to_path_buf();
+        base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.allow_test_addresses = true;
 
         println!(
@@ -150,21 +139,10 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
             name_cloned, port, grpc_port, is_seed_node
         );
 
-        let cx = run_base_node(
-            Arc::new(base_node_identity),
-            Arc::new(base_node_config),
-            Some(PathBuf::from("log4rs/base_node.yml")),
-        )
-        .await
-        .expect("initialized base node");
-
-        // passing base node context outside of this scope so
-        // that it can be attached to the base node process
-        *cx_cloned.lock().await = Some(cx);
-
-        // cx.wait_for_shutdown().await;
-        // FIXME: wire up properly to the signal used inside the context
-        tokio::time::sleep(Duration::from_secs(100)).await
+        let result = run_base_node(Arc::new(base_node_identity), Arc::new(base_node_config)).await;
+        if let Err(e) = result {
+            panic!("{:?}", e);
+        }
     });
 
     // make the new base node able to be referenced by other processes
@@ -185,22 +163,6 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
 // }
 
 impl BaseNodeProcess {
-    #[allow(dead_code)]
-    pub async fn connected_peers(&self) -> Result<Box<[Peer]>, GrpcBaseNodeError> {
-        Ok(self
-            .cx
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .base_node_comms()
-            .peer_manager()
-            .all()
-            .await
-            .map_err(GrpcBaseNodeError::PeerManagerError)?
-            .into_boxed_slice())
-    }
-
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
         Ok(BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port)).await?)
     }

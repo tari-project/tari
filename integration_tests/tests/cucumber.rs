@@ -24,7 +24,6 @@ mod utils;
 
 use std::{io, path::PathBuf, time::Duration};
 
-use anyhow::bail;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
@@ -188,7 +187,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
     }
 
     if !already_sync {
-        bail!("base nodes not successfully synchronized at height {}", height);
+        panic!("base nodes not successfully synchronized at height {}", height);
     }
 
     Ok(())
