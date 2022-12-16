@@ -24,10 +24,9 @@ use std::{
     fmt::{Debug, Formatter},
     str::FromStr,
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
-use chrono::Local;
 use rand::rngs::OsRng;
 use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
@@ -36,7 +35,10 @@ use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity}
 use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tempfile::tempdir;
-use tokio::task;
+use tokio::{
+    task,
+    time::{sleep_until, Instant},
+};
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -108,7 +110,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
     }
 
     let mut common_config = CommonConfig::default();
-    common_config.base_path = temp_dir.clone();
+    common_config.base_path = temp_dir.as_ref().to_path_buf();
     task::spawn(futures::future::select(
         kill_signal_receiver,
         Box::pin(async move {
@@ -123,43 +125,44 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
                 },
             };
 
-            println!("Using base_node temp_dir: {}", temp_dir.as_path().display());
+            println!("Using base_node temp_dir: {}", temp_dir.path().display());
             base_node_config.base_node.network = Network::LocalNet;
             base_node_config.base_node.grpc_enabled = true;
             base_node_config.base_node.grpc_address =
                 Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
             base_node_config.base_node.report_grpc_error = true;
 
-            base_node_config.base_node.data_dir = temp_dir.clone();
-            base_node_config.base_node.identity_file = temp_dir.join("base_node_id.json");
-            base_node_config.base_node.tor_identity_file = temp_dir.join("base_node_tor_id.json");
+            base_node_config.base_node.data_dir = temp_dir.path().to_path_buf();
+            base_node_config.base_node.identity_file = temp_dir.path().join("base_node_id.json");
+            base_node_config.base_node.tor_identity_file = temp_dir.path().join("base_node_tor_id.json");
 
-            base_node_config.base_node.lmdb_path = temp_dir.clone();
+            base_node_config.base_node.lmdb_path = temp_dir.path().to_path_buf();
             base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
             base_node_config.base_node.p2p.transport.tcp.listener_address =
-                format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
+                format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
             base_node_config.base_node.p2p.public_address =
-                Some(format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap());
-            base_node_config.base_node.p2p.datastore_path = temp_dir.join("p2p");
-            base_node_config.base_node.p2p.dht = DhtConfig::default_testnet();
+                Some(base_node_config.base_node.p2p.transport.tcp.listener_address.clone());
+            base_node_config.base_node.p2p.datastore_path = temp_dir.path().to_path_buf();
+            base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
             base_node_config.base_node.p2p.allow_test_addresses = true;
 
             println!(
                 "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
                 name_cloned, port, grpc_port, is_seed_node
             );
-
-        let result = run_base_node(Arc::new(base_node_identity), Arc::new(base_node_config)).await;
-        if let Err(e) = result {
-            panic!("{:?}", e);
-        }
-    });
+            let result = run_base_node(Arc::new(base_node_identity), Arc::new(base_node_config)).await;
+            if let Err(e) = result {
+                panic!("{:?}", e);
+            }
+        }),
+    ));
 
     // make the new base node able to be referenced by other processes
     world.base_nodes.insert(bn_name.clone(), process);
     if is_seed_node {
         world.seed_nodes.push(bn_name);
     }
+
     // We need to give it time for the base node to startup
     // TODO: it would be better to scan the base node to detect when it has started
     tokio::time::sleep(Duration::from_secs(5)).await;

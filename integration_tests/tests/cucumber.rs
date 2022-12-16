@@ -24,7 +24,7 @@ mod utils;
 
 use std::{io, path::PathBuf, time::Duration};
 
-use cucumber::{given, then, when, writer, World as _, WriterExt as _};
+use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_base_node_grpc_client::grpc::Empty;
 use tari_common::initialize_logging;
@@ -95,7 +95,7 @@ impl TariWorld {
         self.seed_nodes.as_slice()
     }
 
-    pub async fn after(&mut self, scenario: &Scenario) {
+    pub async fn after(&mut self, _scenario: &Scenario) {
         self.base_nodes.clear();
         self.seed_nodes.clear();
         self.wallets.clear();
