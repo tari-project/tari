@@ -37,7 +37,7 @@ use anyhow::bail;
 use async_trait::async_trait;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
-use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
+use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest, GetPeersRequest};
 use tari_common::initialize_logging;
 use tari_common_types::types::PublicKey;
 use tari_comms::peer_manager::{PeerFeatures, PeerFlags};
@@ -45,7 +45,7 @@ use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
-    miner::{mine_blocks, register_miner_process},
+    miner::{mine_blocks, register_miner_process, mine_blocks_without_wallet},
     wallet_process::spawn_wallet,
 };
 
@@ -270,6 +270,26 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
         amount,
         curr_amount
     );
+}
+
+#[given(expr = "I have a base node {word} connected to seed {word}")]
+#[when(expr = "I have a base node {word} connected to seed {word}")]
+async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
+    spawn_base_node(world, false, base_node, vec![seed]).await;
+}
+
+#[then(expr = "I mine {int} blocks on {word}")]
+#[when(expr = "I mine {int} blocks on {word}")]
+async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
+    let mut client = world.base_nodes.get(&base_node).unwrap().get_grpc_client().await.unwrap();
+    mine_blocks_without_wallet(world, &mut client, blocks);
+}
+
+#[when(expr = "I have wallet {word} connected to base node {word}")]
+async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
+    let bn = world.base_nodes.get(&base_node).unwrap();
+    let peer_seeds = bn.seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
 }
 
 #[when(expr = "I print the cucumber world")]
