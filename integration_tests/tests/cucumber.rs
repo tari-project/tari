@@ -96,10 +96,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, scenario: &Scenario) {
-        for node in self.seed_nodes.iter() {
-            let mut bnode = self.base_nodes.get_mut(node).unwrap();
-            bnode.kill().await;
-        }
+        self.base_nodes.clear();
+        self.seed_nodes.clear();
+        self.wallets.clear();
+        self.miners.clear();
     }
 }
 

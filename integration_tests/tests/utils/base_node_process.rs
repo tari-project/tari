@@ -50,6 +50,12 @@ pub struct BaseNodeProcess {
     pub kill_signal: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
+impl Drop for BaseNodeProcess {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
 // NOTE: implemented to skip `cx`, because BaseNodeContext doesn't implement Debug
 impl Debug for BaseNodeProcess {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -171,6 +177,7 @@ impl BaseNodeProcess {
 
     pub async fn kill(&mut self) {
         self.kill_signal.take().unwrap().send(());
+        // This value is arbitrary. If there is no sleep the file might still be locked.
         sleep_until(Instant::now() + Duration::from_secs(5)).await;
     }
 }
