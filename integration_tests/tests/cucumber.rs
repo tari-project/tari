@@ -294,7 +294,7 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String,
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
-   _world: &mut TariWorld,
+    _world: &mut TariWorld,
     _miner: String,
     _block: u64,
     _min_difficulty: u64,
