@@ -195,28 +195,33 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
-async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) -> anyhow::Result<()> {
+async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
     let num_retries = 100;
 
-    let mut client = world.base_nodes.get(&base_node).unwrap().get_grpc_client().await?;
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
     let mut chain_hgt = 0;
 
     for _ in 0..=num_retries {
-        let chain_tip = client.get_tip_info(Empty {}).await?.into_inner();
+        let chain_tip = client.get_tip_info(Empty {}).await.into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
         if chain_hgt >= height {
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_secs(5));
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     // base node didn't synchronize successfully at height, so we bail out
-    bail!(
+    panic!(
         "base node didn't synchronize successfully with height {}, current chain height {}",
-        height,
-        chain_hgt
+        height, chain_hgt
     );
 }
 
@@ -238,7 +243,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     let mut client = wallet.get_grpc_client().await.unwrap();
     let mut curr_amount = 0;
 
-    for _ in 0..=100 {
+    for _ in 0..=num_retries {
         curr_amount = client
             .get_balance(GetBalanceRequest {})
             .await
@@ -250,7 +255,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_secs(5));
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     // failed to get wallet right amount, so we bail out
@@ -277,7 +282,7 @@ async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
         .get_grpc_client()
         .await
         .unwrap();
-    mine_blocks_without_wallet(world, &mut client, blocks);
+    mine_blocks_without_wallet(&mut client, blocks).await;
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
@@ -285,6 +290,16 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String,
     let bn = world.base_nodes.get(&base_node).unwrap();
     let peer_seeds = bn.seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
+}
+
+#[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
+async fn mining_node_mines_blocks_with_difficulty(
+    world: &mut TariWorld,
+    miner: String,
+    block: u64,
+    min_difficulty: u64,
+    max_difficulty: u64,
+) {
 }
 
 #[when(expr = "I print the cucumber world")]

@@ -84,7 +84,7 @@ pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
-pub async fn mine_blocks_without_wallet(world: &mut TariWorld, base_client: &mut BaseNodeClient, num_blocks: u64) {
+pub async fn mine_blocks_without_wallet(base_client: &mut BaseNodeClient, num_blocks: u64) {
     for _ in 0..num_blocks {
         mine_block_without_wallet(base_client).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -238,17 +238,17 @@ fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput, Tr
     let (tx, _) = CoinbaseBuilder::new(CryptoFactories::default())
         .with_block_height(height)
         .with_fees(fee.into())
-        .with_spend_key(spending_key.clone())
-        .with_script_key(script_private_key.clone())
+        .with_spend_key(spending_key)
+        .with_script_key(script_private_key)
         .with_nonce(nonce)
         .with_extra(extra)
-        .build_with_reward(&ConsensusConstants::localnet().first().unwrap(), reward.into())
+        .build_with_reward(ConsensusConstants::localnet().first().unwrap(), reward.into())
         .unwrap();
 
     let tx_out = tx.body().outputs().first().unwrap().clone();
     let tx_krnl = tx.body().kernels().first().unwrap().clone();
 
-    return (tx_out.try_into().unwrap(), tx_krnl.into());
+    (tx_out.try_into().unwrap(), tx_krnl.into())
 }
 
 fn coinbase_request(template_response: &NewBlockTemplateResponse) -> GetCoinbaseRequest {
