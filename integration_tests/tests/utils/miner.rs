@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, time::Duration, convert::TryInto};
+use std::{convert::TryInto, str::FromStr, time::Duration};
 
 use rand::rngs::OsRng;
 use tari_app_grpc::{
@@ -38,10 +38,12 @@ use tari_app_grpc::{
         TransactionOutput,
     },
 };
-use tari_core::consensus::consensus_constants::ConsensusConstants;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
-use tari_core::transactions::{CoinbaseBuilder, CryptoFactories};
+use tari_core::{
+    consensus::consensus_constants::ConsensusConstants,
+    transactions::{CoinbaseBuilder, CryptoFactories},
+};
 use tari_crypto::keys::SecretKey;
 use tonic::{
     codegen::InterceptedService,
@@ -216,7 +218,9 @@ async fn get_coinbase_outputs_and_kernels(
     extract_outputs_and_kernels(coinbase_res)
 }
 
-fn get_coinbase_without_wallet_client(template_res: NewBlockTemplateResponse) -> (TransactionOutput, TransactionKernel) {
+fn get_coinbase_without_wallet_client(
+    template_res: NewBlockTemplateResponse,
+) -> (TransactionOutput, TransactionKernel) {
     let coinbase_req = coinbase_request(&template_res);
     generate_coinbase(coinbase_req)
 }
@@ -244,7 +248,7 @@ fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput, Tr
     let tx_out = tx.body().outputs().first().unwrap().clone();
     let tx_krnl = tx.body().kernels().first().unwrap().clone();
 
-    return (tx_out.try_into().unwrap(), tx_krnl.into())
+    return (tx_out.try_into().unwrap(), tx_krnl.into());
 }
 
 fn coinbase_request(template_response: &NewBlockTemplateResponse) -> GetCoinbaseRequest {

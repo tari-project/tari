@@ -33,7 +33,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
-    miner::{mine_blocks, register_miner_process, mine_blocks_without_wallet},
+    miner::{mine_blocks, mine_blocks_without_wallet, register_miner_process},
     wallet_process::spawn_wallet,
 };
 
@@ -270,7 +270,13 @@ async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, s
 #[then(expr = "I mine {int} blocks on {word}")]
 #[when(expr = "I mine {int} blocks on {word}")]
 async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
-    let mut client = world.base_nodes.get(&base_node).unwrap().get_grpc_client().await.unwrap();
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
     mine_blocks_without_wallet(world, &mut client, blocks);
 }
 
