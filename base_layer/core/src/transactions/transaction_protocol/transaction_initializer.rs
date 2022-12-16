@@ -497,19 +497,19 @@ impl SenderTransactionInitializer {
         }
         if !self.amounts.is_full() {
             let size = self.amounts.size();
-            return self.build_err(&*format!("Missing all {} amounts", size));
+            return self.build_err(&format!("Missing all {} amounts", size));
         }
         if !self.recipient_sender_offset_private_keys.is_full() {
             let size = self.recipient_sender_offset_private_keys.size();
-            return self.build_err(&*format!("Missing {} recipient script offset private key/s", size));
+            return self.build_err(&format!("Missing {} recipient script offset private key/s", size));
         }
         if !self.private_commitment_nonces.is_full() {
             let size = self.private_commitment_nonces.size();
-            return self.build_err(&*format!("Missing {} private commitment nonce/s", size));
+            return self.build_err(&format!("Missing {} private commitment nonce/s", size));
         }
         if !self.recipient_scripts.is_full() {
             let size = self.recipient_scripts.size();
-            return self.build_err(&*format!("Missing all {} recipient scripts", size));
+            return self.build_err(&format!("Missing all {} recipient scripts", size));
         }
         if self.inputs.is_empty() {
             return self.build_err("A transaction cannot have zero inputs");

@@ -341,7 +341,7 @@ impl Opcode {
     /// Take a byte slice and read the next opcode from it, including any associated data. `read_next` returns a tuple
     /// of the deserialised opcode, and an updated slice that has the Opcode and data removed.
     fn read_next(bytes: &[u8]) -> Result<(Opcode, &[u8]), ScriptError> {
-        let code = bytes.get(0).ok_or(ScriptError::InvalidOpcode)?;
+        let code = bytes.first().ok_or(ScriptError::InvalidOpcode)?;
         #[allow(clippy::enum_glob_use)]
         use Opcode::*;
         match *code {

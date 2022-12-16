@@ -204,7 +204,7 @@ impl TariScript {
     pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
         let b = Blake256::new()
             .chain(pub_key.as_bytes())
-            .chain(&self.to_bytes())
+            .chain(self.to_bytes())
             .finalize();
         RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
     }

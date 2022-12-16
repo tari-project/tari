@@ -445,6 +445,6 @@ async fn dial_cancelled() {
 
     assert_eq!(events1.len(), 1);
     unpack_enum!(ConnectionManagerEvent::PeerConnectFailed(node_id, err) = &*events1[0]);
-    assert_eq!(&*node_id, node_identity2.node_id());
+    assert_eq!(node_id, node_identity2.node_id());
     unpack_enum!(ConnectionManagerError::DialCancelled = err);
 }

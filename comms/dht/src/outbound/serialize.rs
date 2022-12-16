@@ -88,10 +88,10 @@ where
             destination_node_id.short_str()
         );
         let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
-            major: protocol_version.as_major() as u32,
+            major: protocol_version.as_major(),
             message_signature: message_signature.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
             ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
-            message_type: dht_message_type as i32,
+            message_type: dht_message_type.into(),
             flags: dht_flags.bits(),
             destination: Some(destination.into()),
             message_tag: tag.as_value(),

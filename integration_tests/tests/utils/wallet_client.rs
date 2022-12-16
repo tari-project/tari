@@ -23,14 +23,11 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use tari_common_types::types::{PublicKey, Signature};
-use tari_comms::NodeIdentity;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_components::ValidatorNodeSignature};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_wallet_grpc_client::Client as GrpcWallet;
 
 use crate::utils::wallet::WalletClient;
-const LOG_TARGET: &str = "tari::validator_node::app";
+// const LOG_TARGET: &str = "tari::validator_node::app";
 
 type Client = GrpcWallet<tonic::transport::Channel>;
 
@@ -41,10 +38,12 @@ pub struct GrpcWalletClient {
 }
 
 impl GrpcWalletClient {
+    #[allow(dead_code)]
     pub fn new(endpoint: SocketAddr) -> GrpcWalletClient {
         Self { endpoint, client: None }
     }
 
+    #[allow(dead_code)]
     async fn connection(&mut self) -> Result<&mut Client, GrpcBaseNodeError> {
         if self.client.is_none() {
             let url = format!("http://{}", self.endpoint);

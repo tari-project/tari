@@ -177,7 +177,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (*status_watch.borrow()).state_info {
+        let is_synced = match (status_watch.borrow()).state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
         };
@@ -274,7 +274,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (*status_watch.borrow()).state_info {
+        let is_synced = match (status_watch.borrow()).state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
         };
@@ -319,7 +319,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let state_machine = self.state_machine();
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (*status_watch.borrow()).state_info {
+        let is_synced = match (status_watch.borrow()).state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
         };

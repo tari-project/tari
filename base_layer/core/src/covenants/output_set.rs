@@ -54,7 +54,7 @@ impl<'a> OutputSet<'a> {
     pub fn retain<F>(&mut self, mut f: F) -> Result<(), CovenantError>
     where F: FnMut(&'a TransactionOutput) -> Result<bool, CovenantError> {
         let mut err = None;
-        self.0.retain(|output| match f(**output) {
+        self.0.retain(|output| match f(output) {
             Ok(b) => b,
             Err(e) => {
                 // Theres no way to stop retain early, so keep the error for when this completes
@@ -82,7 +82,7 @@ impl<'a> OutputSet<'a> {
 
     pub fn find_inplace<F>(&mut self, mut pred: F)
     where F: FnMut(&TransactionOutput) -> bool {
-        match self.0.iter().find(|indexed| pred(&**indexed)) {
+        match self.0.iter().find(|indexed| pred(indexed)) {
             Some(output) => {
                 let output = *output;
                 self.clear();

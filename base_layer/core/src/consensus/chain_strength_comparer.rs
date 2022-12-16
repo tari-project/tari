@@ -94,19 +94,19 @@ impl ChainStrengthComparerBuilder {
     }
 
     pub fn by_accumulated_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::new(AccumulatedDifficultySquaredComparer::default()))
+        self.add_comparer_as_then(Box::<AccumulatedDifficultySquaredComparer>::default())
     }
 
     pub fn by_monero_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::new(MoneroDifficultyComparer::default()))
+        self.add_comparer_as_then(Box::<MoneroDifficultyComparer>::default())
     }
 
     pub fn by_sha3_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::new(Sha3DifficultyComparer::default()))
+        self.add_comparer_as_then(Box::<Sha3DifficultyComparer>::default())
     }
 
     pub fn by_height(self) -> Self {
-        self.add_comparer_as_then(Box::new(HeightComparer::default()))
+        self.add_comparer_as_then(Box::<HeightComparer>::default())
     }
 
     pub fn then(self) -> Self {

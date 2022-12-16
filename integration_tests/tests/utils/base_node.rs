@@ -21,9 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey};
-use tari_comms::types::CommsPublicKey;
-use tari_core::{blocks::BlockHeader, transactions::transaction_components::TransactionOutput};
+use tari_common_types::types::FixedHash;
+use tari_core::blocks::BlockHeader;
 use tari_integration_tests::{error::GrpcBaseNodeError, types::BaseLayerMetadata};
 
 #[async_trait]

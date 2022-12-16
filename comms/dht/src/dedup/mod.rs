@@ -63,7 +63,7 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
     let result = comms_dht_dedup_message_hash::<CommsChallenge>(DEDUP_MESSAGE_HASH_LABEL)
         .chain(message_signature)
-        .chain(&body)
+        .chain(body)
         .finalize();
 
     let mut out = [0u8; 32];

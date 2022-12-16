@@ -22,26 +22,14 @@
 
 mod utils;
 
-use std::{
-    borrow::Borrow,
-    convert::{Infallible, TryFrom},
-    io,
-    ops::DerefMut,
-    path::{Path, PathBuf},
-    sync::Arc,
-    thread::sleep,
-    time::Duration,
-};
+use std::{io, path::PathBuf, time::Duration};
 
 use anyhow::bail;
-use async_trait::async_trait;
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest, GetPeersRequest};
 use tari_common::initialize_logging;
-use tari_common_types::types::PublicKey;
-use tari_comms::peer_manager::{PeerFeatures, PeerFlags};
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
@@ -85,6 +73,7 @@ impl TariWorld {
             .await
     }
 
+    #[allow(dead_code)]
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: S,
@@ -148,7 +137,7 @@ async fn node_pending_connection_to(
     let mut first_node = world.get_node_client(first_node).await?;
     let second_node = world.get_node(second_node)?;
 
-    for i in 0..100 {
+    for _i in 0..100 {
         let res = first_node.list_connected_peers(Empty {}).await?;
         let res = res.into_inner();
 
@@ -194,7 +183,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
         }
 
         already_sync = true;
-        tokio::time::sleep(Duration::from_secs(5));
+        tokio::time::sleep(Duration::from_secs(retry)).await;
     }
 
     if !already_sync {

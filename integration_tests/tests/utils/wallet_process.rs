@@ -20,14 +20,10 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, sync::Arc, thread, thread::JoinHandle, time::Duration};
+use std::{str::FromStr, thread, thread::JoinHandle, time::Duration};
 
-use tari_app_grpc::{
-    authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{wallet_client::WalletClient, SetBaseNodeRequest},
-};
+use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_common::configuration::CommonConfig;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 use tari_console_wallet::run_wallet;
@@ -35,11 +31,8 @@ use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, Transpor
 use tari_wallet::WalletConfig;
 use tari_wallet_grpc_client::WalletGrpcClient;
 use tempfile::tempdir;
-use tokio::{runtime, sync::Mutex};
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Channel, Endpoint},
-};
+use tokio::runtime;
+use tonic::transport::Channel;
 
 use crate::TariWorld;
 
@@ -69,7 +62,7 @@ pub async fn spawn_wallet(
         let port = world.base_nodes.get(&name).unwrap().port;
         let set_base_node_request = SetBaseNodeRequest {
             net_address: format! {"/ip4/127.0.0.1/tcp/{}", port},
-            public_key_hex: pubkey.clone().to_string(),
+            public_key_hex: pubkey.to_string(),
         };
 
         (pubkey, port, set_base_node_request)
@@ -162,6 +155,7 @@ pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> any
 }
 
 impl WalletProcess {
+    #[allow(dead_code)]
     pub async fn get_grpc_client(&self) -> anyhow::Result<WalletGrpcClient<Channel>> {
         let wallet_addr = format!("http://127.0.0.1:{}", self.grpc_port);
         Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)

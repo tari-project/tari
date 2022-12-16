@@ -128,7 +128,7 @@ impl<TSubstream> Protocols<TSubstream> {
 
     /// Returns an iterator of currently registered [ProtocolId](self::ProtocolId)
     pub fn iter(&self) -> impl Iterator<Item = &ProtocolId> {
-        self.protocols.iter().map(|(protocol_id, _)| protocol_id)
+        self.protocols.keys()
     }
 }
 

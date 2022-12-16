@@ -333,7 +333,7 @@ mod test {
     #[test]
     fn sanity_check() {
         let domain_separated_hash = comms_dht_hash_domain_key_signature()
-            .chain(&[10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
+            .chain([10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
             .finalize();
 
         let domain_separated_hash = domain_separated_hash.as_ref();

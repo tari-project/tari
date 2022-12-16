@@ -960,7 +960,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
-        match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&*conn) {
+        match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&conn) {
             Ok(info) => {
                 for item in info {
                     tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
@@ -1100,9 +1100,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
             .into_iter()
             .map(|mut ct: CompletedTransactionSql| {
-                if let Err(e) = self.decrypt_if_necessary(&mut ct) {
-                    return Err(e);
-                }
+                self.decrypt_if_necessary(&mut ct)?;
                 CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
@@ -1113,9 +1111,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::FauxUnconfirmed, false, &conn)?
             .into_iter()
             .map(|mut ct: CompletedTransactionSql| {
-                if let Err(e) = self.decrypt_if_necessary(&mut ct) {
-                    return Err(e);
-                }
+                self.decrypt_if_necessary(&mut ct)?;
                 CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
@@ -1134,9 +1130,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|mut ct: CompletedTransactionSql| {
-            if let Err(e) = self.decrypt_if_necessary(&mut ct) {
-                return Err(e);
-            }
+            self.decrypt_if_necessary(&mut ct)?;
             CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
@@ -1170,7 +1164,7 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: TxId::from(i.tx_id as u64),
-            source_address: TariAddress::from_bytes(&*i.source_address)
+            source_address: TariAddress::from_bytes(&i.source_address)
                 .map_err(TransactionStorageError::TariAddressError)?,
         })
     }
@@ -2258,7 +2252,7 @@ impl UnconfirmedTransactionInfoSql {
             )
             .filter(completed_transactions::cancelled.is_null())
             .order_by(completed_transactions::tx_id)
-            .load::<UnconfirmedTransactionInfoSql>(&*conn)?;
+            .load::<UnconfirmedTransactionInfoSql>(conn)?;
         Ok(query_result)
     }
 }
@@ -3153,7 +3147,7 @@ mod test {
         for txn in &txn_list {
             assert!(txn.status == TransactionStatus::Completed || txn.status == TransactionStatus::Broadcast);
             assert!(txn.cancelled.is_none());
-            assert!(txn.coinbase_block_height == None || txn.coinbase_block_height == Some(0));
+            assert!(txn.coinbase_block_height.is_none() || txn.coinbase_block_height == Some(0));
         }
 
         let info_list = db1.get_pending_inbound_transaction_sender_info().unwrap();
