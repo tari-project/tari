@@ -258,11 +258,10 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    // failed to get wallet right amount, so we bail out
+    // failed to get wallet right amount, so we panic
     panic!(
         "wallet failed to get right amount {}, current amount is {}",
-        amount,
-        curr_amount
+        amount, curr_amount
     );
 }
 
@@ -296,7 +295,7 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String,
 async fn mining_node_mines_blocks_with_difficulty(
     _world: &mut TariWorld,
     _miner: String,
-    _block: u64,
+    _blocks: u64,
     _min_difficulty: u64,
     _max_difficulty: u64,
 ) {
