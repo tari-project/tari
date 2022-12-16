@@ -30,7 +30,6 @@ use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
-use tari_wallet::connectivity_service::WalletConnectivityInterface;
 use thiserror::Error;
 use utils::{
     miner::{mine_blocks, mine_blocks_without_wallet, register_miner_process},
@@ -104,7 +103,8 @@ async fn start_base_node(world: &mut TariWorld, name: String) {
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
-    spawn_wallet(world, wallet_name, Some(node_name), world.base_nodes.get(&node_name).unwrap().seed_nodes.clone()).await;
+    let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
 }
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
@@ -236,7 +236,7 @@ async fn miner_connected_to_base_node_and_wallet(
 }
 
 #[when(expr = "I wait for wallet {word} to have at least {int} uT")]
-async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) -> anyhow::Result<()> {
+async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     let wallet = world.wallets.get(&wallet).unwrap();
     let num_retries = 100;
 
@@ -252,14 +252,14 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
             .available_balance;
 
         if curr_amount >= amount {
-            return Ok(());
+            return;
         }
 
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     // failed to get wallet right amount, so we bail out
-    bail!(
+    panic!(
         "wallet failed to get right amount {}, current amount is {}",
         amount,
         curr_amount
@@ -302,28 +302,22 @@ async fn mining_node_mines_blocks_with_difficulty(
 ) {
 }
 
-#[when("I wait {int} seconds")]
-#[then("I wait {int} seconds")]
-async fn wait_seconds(world: &mut TariWorld, seconds: u64) {
-    tokio::time::sleep(Duration::from_secs(seconds)).await;
-}
-
-#[when("I have a base node {word}")]
-#[given("I have a base node {word}")]
+#[when(expr = "I have a base node {word}")]
+#[given(expr = "I have a base node {word}")]
 async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
-    spawn_base_node(world, false, name, vec![]).await;
+    spawn_base_node(world, false, base_node, vec![]).await;
 }
 
-#[given("I have {int} seed nodes")]
+#[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
         spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
     }
 }
 
-#[when("I have wallet {word} connected to seed node {word}")]
+#[when(expr = "I have wallet {word} connected to seed node {word}")]
 async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
-    spawn_wallet(world, wallet_name, None, vec![seed_node]).await;
+    spawn_wallet(world, wallet, None, vec![seed_node]).await;
 }
 
 #[when(expr = "I print the cucumber world")]
