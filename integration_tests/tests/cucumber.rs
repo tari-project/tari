@@ -24,7 +24,7 @@ mod utils;
 
 use std::{io, path::PathBuf, time::Duration};
 
-use cucumber::{given, then, when, writer, World as _, WriterExt as _};
+use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_base_node_grpc_client::grpc::Empty;
 use tari_common::initialize_logging;
@@ -93,6 +93,13 @@ impl TariWorld {
 
     pub fn all_seed_nodes(&self) -> &[String] {
         self.seed_nodes.as_slice()
+    }
+
+    pub async fn after(&mut self, _scenario: &Scenario) {
+        self.base_nodes.clear();
+        self.seed_nodes.clear();
+        self.wallets.clear();
+        self.miners.clear();
     }
 }
 
@@ -236,6 +243,11 @@ async fn main() {
                 .summarized()
                 .assert_normalized(),
         )
+        .after(|feature,rule,scenario,_ev,maybe_world| {
+            Box::pin(async move {
+                maybe_world.unwrap().after(scenario).await;
+            })
+        })
         .run_and_exit("tests/features/")
         .await;
 }
