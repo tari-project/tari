@@ -31,6 +31,7 @@ use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
+use tari_wallet_grpc_client::grpc::GetIdentityRequest;
 use thiserror::Error;
 use utils::{
     miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
@@ -51,6 +52,8 @@ pub enum TariWorldError {
     WalletProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
+    #[error("No base node, or wallet client found: {0}")]
+    ClientNotFound(String),
 }
 
 #[derive(Debug, Default, cucumber::World)]
@@ -60,6 +63,11 @@ pub struct TariWorld {
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
     coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
+}
+
+enum NodeClient {
+    BaseNode(tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
 }
 
 impl TariWorld {
@@ -74,7 +82,19 @@ impl TariWorld {
             .await
     }
 
-    #[allow(dead_code)]
+    async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
+        &self,
+        name: S,
+    ) -> anyhow::Result<NodeClient> {
+        match self.get_node_client(&name).await {
+            Ok(client) => Ok(NodeClient::BaseNode(client)),
+            Err(_) => match self.get_wallet_client(&name).await {
+                Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
+                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+            },
+        }
+    }
+
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: S,
@@ -86,6 +106,7 @@ impl TariWorld {
             .await
     }
 
+    #[allow(dead_code)]
     fn get_node<S: AsRef<str>>(&self, node_name: S) -> anyhow::Result<&BaseNodeProcess> {
         Ok(self
             .base_nodes
@@ -137,26 +158,36 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 }
 
 #[when(expr = "I wait for {word} to connect to {word}")]
+#[then(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(
     world: &mut TariWorld,
     first_node: String,
     second_node: String,
 ) -> anyhow::Result<()> {
-    let mut first_node = world.get_node_client(first_node).await?;
-    let second_node = world.get_node(second_node)?;
+    let mut first_node = world.get_base_node_or_wallet_client(first_node).await?;
+    let mut second_node = world.get_base_node_or_wallet_client(second_node).await?;
 
     for _i in 0..100 {
-        let res = first_node.list_connected_peers(Empty {}).await?;
+        let res = match first_node {
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await?,
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await?,
+        };
         let res = res.into_inner();
+
+        let public_key = match second_node {
+            NodeClient::BaseNode(ref mut client) => client.identify(Empty {}).await?.into_inner().public_key,
+            NodeClient::Wallet(ref mut client) => client.identify(GetIdentityRequest {}).await?.into_inner().public_key,
+        };
 
         if res
             .connected_peers
             .iter()
-            .any(|p| p.public_key == second_node.identity.public_key().as_bytes())
+            .any(|p| p.public_key == public_key.as_bytes())
         {
             return Ok(());
         }
+
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
