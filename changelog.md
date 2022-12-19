@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.43.2](https://github.com/tari-project/tari/compare/v0.43.1...v0.43.2) (2022-12-19)
+
+
+### Features
+
+* add burn-tari to make-it-rain ([#5038](https://github.com/tari-project/tari/issues/5038)) ([62dfd38](https://github.com/tari-project/tari/commit/62dfd383b3bfae40440a60ec0b11a2d71bafd691))
+
+
+### Bug Fixes
+
+* **ci:** pin ci to ubuntu 20.04 ([#5047](https://github.com/tari-project/tari/issues/5047)) ([1cafba7](https://github.com/tari-project/tari/commit/1cafba73950349b19181f612633040804fe1800d))
+* **core:** fix build issues and add ban check listening ([#5041](https://github.com/tari-project/tari/issues/5041)) ([774ab7a](https://github.com/tari-project/tari/commit/774ab7ad4e6033df315efe900b6f3f2b91f059ea))
+* **core:** fixes stale chain metadata being sent to listening state ([#5039](https://github.com/tari-project/tari/issues/5039)) ([aaf99b7](https://github.com/tari-project/tari/commit/aaf99b7183b0977076684bd1128ab32322efaa79))
+* support arbitrary range proof batching ([#5049](https://github.com/tari-project/tari/issues/5049)) ([3dd10bd](https://github.com/tari-project/tari/commit/3dd10bdfda21d241b53c3cf2bf9c1b96c373cdeb))
+
 ### [0.43.1](https://github.com/tari-project/tari/compare/v0.43.0...v0.43.1) (2022-12-12)
 
 
