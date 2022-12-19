@@ -41,6 +41,7 @@ use tari_app_grpc::{
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
 use tari_core::{
+    blocks::NewBlock,
     consensus::consensus_constants::ConsensusConstants,
     transactions::{CoinbaseBuilder, CryptoFactories},
 };
@@ -135,7 +136,10 @@ async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut Wallet
 
 async fn mine_block_without_wallet(base_client: &mut BaseNodeClient) {
     let block_template = create_block_template_with_coinbase_without_wallet(base_client).await;
+    mine_block_without_wallet_with_template(base_client, block_template);
+}
 
+async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClient, block_template: NewBlockTemplate) {
     // Ask the base node for a valid block using the template
     let block_result = base_client
         .get_new_block(block_template.clone())

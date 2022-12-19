@@ -24,7 +24,7 @@ mod utils;
 
 use std::{io, path::PathBuf, time::Duration};
 
-use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
+use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
@@ -32,7 +32,15 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
-    miner::{mine_blocks, mine_blocks_without_wallet, register_miner_process},
+    miner::{
+        coinbase_request,
+        create_block_template_with_coinbase_without_wallet,
+        generate_coinbase,
+        mine_block_without_wallet_with_template,
+        mine_blocks,
+        mine_blocks_without_wallet,
+        register_miner_process,
+    },
     wallet_process::spawn_wallet,
 };
 
@@ -58,6 +66,7 @@ pub struct TariWorld {
     base_nodes: IndexMap<String, BaseNodeProcess>,
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
+    coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
 }
 
 impl TariWorld {
@@ -93,13 +102,6 @@ impl TariWorld {
 
     pub fn all_seed_nodes(&self) -> &[String] {
         self.seed_nodes.as_slice()
-    }
-
-    pub async fn after(&mut self, _scenario: &Scenario) {
-        self.base_nodes.clear();
-        self.seed_nodes.clear();
-        self.wallets.clear();
-        self.miners.clear();
     }
 }
 
@@ -326,6 +328,22 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
     spawn_wallet(world, wallet, None, vec![seed_node]).await;
 }
 
+#[when(expr = "I mine a block on {word} with coinbase {word}")]
+async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
+    let template = create_block_template_with_coinbase_without_wallet(client);
+    let output = template_res.body.outputs.last().unwrap();
+    let kernel = template_res.body.kernels.last().unwrap();
+    world.coinbases.insert(coinbase_name, (output, kernel));
+    mine_block_without_wallet_with_template(world, template);
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
@@ -370,11 +388,6 @@ async fn main() {
                 .summarized()
                 .assert_normalized(),
         )
-        .after(|feature,rule,scenario,_ev,maybe_world| {
-            Box::pin(async move {
-                maybe_world.unwrap().after(scenario).await;
-            })
-        })
         .run_and_exit("tests/features/")
         .await;
 }
