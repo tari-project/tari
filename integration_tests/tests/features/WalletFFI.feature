@@ -88,7 +88,7 @@ Feature: Wallet FFI
     # TODO: Was broken due to #4525 - fix underway
     @critical @broken
     Scenario: As a client I want to receive contact liveness events
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
         # And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
         # And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
@@ -109,9 +109,9 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
         # And I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
         # And I have wallet RECEIVER connected to base node BASE2
@@ -140,9 +140,9 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
         # And I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE1
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER
@@ -162,9 +162,9 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to send a one-sided transaction
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
         # And I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
         # And I have wallet RECEIVER connected to base node BASE2
@@ -188,9 +188,9 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to receive a one-sided transaction
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
         # And I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_RECEIVER connected to base node BASE2
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER

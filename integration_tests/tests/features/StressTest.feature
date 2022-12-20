@@ -5,7 +5,7 @@
 Feature: Stress Test
 
     Scenario Outline: Ramped Stress Test
-        # Given I have a seed node NODE1
+        Given I have a seed node NODE1
         # And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout <MonitoringTimeout>
         # And I have mining node MINER connected to base node NODE1 and wallet WALLET_A
         # # We mine some blocks before starting the other nodes to avoid a spinning sync state when all the nodes are at height 0

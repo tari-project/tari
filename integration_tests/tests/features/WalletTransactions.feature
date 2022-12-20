@@ -6,11 +6,11 @@ Feature: Wallet Transactions
 
   @critical @flaky
   Scenario: Wallet sending and receiving one-sided transactions
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
     # Then all nodes are at height 15
@@ -35,11 +35,11 @@ Feature: Wallet Transactions
 
   @critical
   Scenario: Wallet sending and receiving one-sided stealth transactions
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
     # Then all nodes are at height 15
@@ -63,11 +63,11 @@ Feature: Wallet Transactions
     # Then I wait for wallet WALLET_C to have at least 1500000 uT
 
   Scenario: Wallet imports unspent output
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
     # Then all nodes are at height 5
@@ -84,9 +84,9 @@ Feature: Wallet Transactions
     # Then I check if last imported transactions are valid in wallet WALLET_C
 
   Scenario: Wallet has two connected miners, coinbase's are computed correctly
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # And I have mining node MINER2 connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 2 blocks
@@ -98,11 +98,11 @@ Feature: Wallet Transactions
 
   @flaky
   Scenario: Wallet imports spent outputs that become invalidated
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
     # Then all nodes are at height 5
@@ -128,7 +128,7 @@ Feature: Wallet Transactions
   @flaky
   Scenario: Wallet imports reorged outputs that become invalidated
     # # Chain 1
-    # Given I have a seed node SEED_B
+    Given I have a seed node SEED_B
     # And I have a base node B connected to seed SEED_B
     # And I have wallet WB connected to base node B
     # And I have wallet WALLET_RECEIVE_TX connected to base node B
@@ -146,7 +146,7 @@ Feature: Wallet Transactions
     # # This triggers a validation of the imported outputs
     # Then I restart wallet WALLET_IMPORTED
     # # Chain 2
-    # Given I have a seed node SEED_C
+    Given I have a seed node SEED_C
     # And I have a base node C connected to seed SEED_C
     # And I have wallet WC connected to base node C
     # And I have mining node CM connected to base node C and wallet WC
@@ -169,11 +169,11 @@ Feature: Wallet Transactions
   # Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   Scenario: Wallet imports faucet UTXO
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
     # Then all nodes are at height 5
@@ -191,10 +191,10 @@ Feature: Wallet Transactions
     # Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 10 blocks
     # Then all nodes are at height 10
@@ -217,7 +217,7 @@ Feature: Wallet Transactions
     # #   Collects 7 coinbases into one wallet, send 7 transactions
     # #   Stronger chain
     # #
-    # Given I have a seed node SEED_A
+    Given I have a seed node SEED_A
     # And I have a base node NODE_A1 connected to seed SEED_A
     # And I have wallet WALLET_A1 connected to seed node SEED_A
     # And I have wallet WALLET_A2 connected to seed node SEED_A
@@ -263,7 +263,7 @@ Feature: Wallet Transactions
     # Then all nodes are at height 16
 
   Scenario: Wallet send transactions while offline
-    # Given I have a seed node SEED
+    Given I have a seed node SEED
     # And I have wallet WALLET_A connected to seed node SEED
     # And I have wallet WALLET_B connected to seed node SEED
     # And I have mining node MINER_A connected to base node SEED and wallet WALLET_A
@@ -293,7 +293,7 @@ Feature: Wallet Transactions
     # #   Collects 7 coinbases into one wallet, send 7 transactions
     # #   Stronger chain
     # #
-    # Given I have a seed node SEED_A
+    Given I have a seed node SEED_A
     # And I have a base node NODE_A1 connected to seed SEED_A
     # And I have wallet WALLET_A1 connected to seed node SEED_A
     # And I have wallet WALLET_A2 connected to seed node SEED_A
@@ -340,10 +340,10 @@ Feature: Wallet Transactions
 
   @flaky @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_RECV connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_RECV connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # And mining node MINER mines 5 blocks
     # Then all nodes are at height 5
@@ -384,10 +384,10 @@ Feature: Wallet Transactions
 
   @critical
   Scenario: Wallet should cancel stale transactions
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 1 base nodes connected to all seed nodes
     # And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
-    # And I have wallet WALLET_RECV connected to all seed nodes
+    When I have wallet WALLET_RECV connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_SENDER
     # And mining node MINER mines 5 blocks
     # Then all nodes are at height 5
@@ -402,10 +402,10 @@ Feature: Wallet Transactions
 
 @critical 
   Scenario: Create burn transaction
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have 2 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
     # And I have mining node MINER_A connected to base node NODE and wallet WALLET_A
     # And I have mining node MINER_B connected to base node NODE and wallet WALLET_B
     # When mining node MINER_A mines 12 blocks

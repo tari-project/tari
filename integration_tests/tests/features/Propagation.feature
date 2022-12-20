@@ -33,7 +33,7 @@ Feature: Block Propagation
 
   Scenario: Duplicate block is rejected
     # Given I have 1 seed nodes
-    # And I have a base node MINER connected to all seed nodes
+    When I have a base node MINER connected to all seed nodes
     # When I mine but do not submit a block BLOCKA on MINER
     # When I submit block BLOCKA to MINER
     # Then all nodes are at height 1
@@ -47,7 +47,7 @@ Feature: Block Propagation
 
   Scenario: Submit orphan
     # Given I have 1 seed nodes
-    # And I have a base node MINER connected to all seed nodes
+    When I have a base node MINER connected to all seed nodes
     # When I mine but do not submit a block BLOCKA on MINER
     # # TODO: Step is missing, so I commented it out
     # # And I update the parent of block BLOCKA to be an orphan
@@ -94,7 +94,7 @@ Feature: Block Propagation
   @critical @pruned
   Scenario: Pruned node should prune outputs
     # Given I have 1 seed nodes
-    # And I have a base node SENDER connected to all seed nodes
+    When I have a base node SENDER connected to all seed nodes
     # Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
     # When I mine a block on SENDER with coinbase CB1
     # When I mine 2 blocks on SENDER

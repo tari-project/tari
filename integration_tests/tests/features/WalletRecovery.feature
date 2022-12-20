@@ -8,8 +8,8 @@ Feature: Wallet Recovery
     Scenario: Wallet recovery with connected base node staying online
       #   Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
-      #   And I have wallet WALLET_A connected to all seed nodes
-      #   And I have wallet WALLET_B connected to all seed nodes
+      When I have wallet WALLET_A connected to all seed nodes
+      When I have wallet WALLET_B connected to all seed nodes
       #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
       #   When mining node MINER mines 10 blocks
       #   When I mine 5 blocks on NODE
@@ -23,7 +23,7 @@ Feature: Wallet Recovery
       #   Then I stop wallet WALLET_B
       #   When I recover wallet WALLET_B into wallet WALLET_C connected to all seed nodes
       #   When I wait for wallet WALLET_C to have at least 10000200000 uT
-      #   And I have wallet WALLET_D connected to all seed nodes
+      When I have wallet WALLET_D connected to all seed nodes
       #   And I send 100000 uT from wallet WALLET_C to wallet WALLET_D at fee 25
       #   When I mine 5 blocks on NODE
       #   Then all nodes are at height 27
@@ -55,8 +55,8 @@ Feature: Wallet Recovery
     Scenario: Recover one-sided payments
       #   Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
-      #   And I have wallet WALLET_A connected to all seed nodes
-      #   And I have wallet WALLET_B connected to all seed nodes
+      When I have wallet WALLET_A connected to all seed nodes
+      When I have wallet WALLET_B connected to all seed nodes
       #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
       #   When mining node MINER mines 10 blocks
       #   Then all nodes are at height 10

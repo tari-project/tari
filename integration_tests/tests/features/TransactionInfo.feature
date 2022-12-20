@@ -6,10 +6,10 @@ Feature: Transaction Info
 
 @long-running
 Scenario: Get Transaction Info
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # And I have a SHA3 miner MINER connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     #     # We need to ensure the coinbase lock heights are gone; mine enough blocks
     # When mining node MINER mines 4 blocks

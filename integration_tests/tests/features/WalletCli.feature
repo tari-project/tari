@@ -5,8 +5,8 @@
 Feature: Wallet CLI
 
     Scenario: As a user I want to change base node for a wallet via command line
-        # Given I have a base node NODE1 connected to all seed nodes
-        # And I have a base node NODE2 connected to all seed nodes
+        When I have a base node NODE1 connected to all seed nodes
+        When I have a base node NODE2 connected to all seed nodes
         # And I have wallet WALLET connected to base node NODE1
         # Then I change base node of WALLET to NODE2 via command line
 
@@ -18,8 +18,8 @@ Feature: Wallet CLI
         # And I clear custom base node of wallet WALLET via command line
 
     Scenario: As a user I want to change password via command line
-        # Given I have a seed node SEED
-        # Given I have wallet WALLET connected to all seed nodes
+        Given I have a seed node SEED
+        When I have wallet WALLET connected to all seed nodes
         # When I stop wallet WALLET
         # And I change the password of wallet WALLET to changedpwd via command line
         # Then the password of wallet WALLET is not kensentme
@@ -36,7 +36,7 @@ Feature: Wallet CLI
 
     @long-running
     Scenario: As a user I want to send tari via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have a base node BASE connected to seed SEED
         # And I have wallet SENDER connected to base node BASE
         # And I have wallet RECEIVER connected to base node BASE
@@ -55,7 +55,7 @@ Feature: Wallet CLI
 
     @critical
     Scenario: As a user I want to burn tari via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have a base node BASE connected to seed SEED
         # And I have wallet WALLET connected to base node BASE
         # And I have mining node MINER connected to base node BASE and wallet WALLET
@@ -71,7 +71,7 @@ Feature: Wallet CLI
         #
     @long-running
     Scenario: As a user I want to send one-sided via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have a base node BASE connected to seed SEED
         # And I have wallet SENDER connected to base node BASE
         # And I have wallet RECEIVER connected to base node BASE
@@ -89,7 +89,7 @@ Feature: Wallet CLI
 
     @long-running
     Scenario: As a user I want to make-it-rain via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have a base node BASE connected to seed SEED
         # And I have wallet SENDER connected to base node BASE
         # And I have wallet RECEIVER connected to base node BASE
@@ -108,7 +108,7 @@ Feature: Wallet CLI
 
     @long-running
     Scenario: As a user I want to coin-split via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have a base node BASE connected to seed SEED
         # And I have wallet WALLET connected to base node BASE
         # And I have mining node MINE connected to base node BASE and wallet WALLET
@@ -144,7 +144,7 @@ Feature: Wallet CLI
 
     @flaky
     Scenario: As a user I want to discover-peer via command line
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # And I have wallet WALLET connected to seed node SEED
         # And I have a base node BASE1 connected to seed SEED
         # And I have a base node BASE2 connected to seed SEED

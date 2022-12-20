@@ -11,7 +11,7 @@ Feature: Wallet Monitoring
     #     # Chain 1:
     #     #   Collects 10 coinbases into one wallet
     #     #
-    # Given I have a seed node SEED_A
+    Given I have a seed node SEED_A
     #     # Add multiple base nodes to ensure more robust comms
     # And I have a base node NODE_A1 connected to seed SEED_A
     # And I have wallet WALLET_A1 connected to seed node SEED_A
@@ -119,7 +119,7 @@ Feature: Wallet Monitoring
     # When I wait 1 seconds
 
   Scenario Outline: Verify all coinbases in hybrid mining are accounted for
-    # Given I have a seed node SEED_A
+    Given I have a seed node SEED_A
     # And I have a SHA3 miner MINER_SEED_A connected to seed node SEED_A
 
     # And I have a base node NODE1 connected to seed SEED_A
