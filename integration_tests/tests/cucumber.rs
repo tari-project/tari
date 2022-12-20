@@ -24,7 +24,7 @@ mod utils;
 
 use std::{io, path::PathBuf, time::Duration};
 
-use cucumber::{given, then, when, writer, World as _, WriterExt as _, gherkin::Scenario};
+use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput};
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
@@ -33,12 +33,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
-    miner::{
-        mine_blocks_without_wallet,
-        mine_blocks,
-        register_miner_process,
-        mine_block_with_coinbase_on_node,
-    },
+    miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
     wallet_process::spawn_wallet,
 };
 
@@ -103,10 +98,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-    //     self.base_nodes.clear();
-    //     self.seed_nodes.clear();
-    //     self.wallets.clear();
-    //     self.miners.clear();
+        //     self.base_nodes.clear();
+        //     self.seed_nodes.clear();
+        //     self.wallets.clear();
+        //     self.miners.clear();
     }
 }
 
