@@ -8,12 +8,12 @@ Feature: Wallet Transfer
   # BROKEN: Runs fine when run by itself, but not with other tests - or maybe is flaky
   @critical
   Scenario: As a wallet send to a wallet connected to a different base node
-    # Given I have a seed node SEED_A
-    # And I have a seed node SEED_B
-    # And I have a base node NODE_A connected to all seed nodes
-    # And I have a base node NODE_B connected to all seed nodes
-    # And I have wallet WALLET_A with 10T connected to base node NODE_A
-    # And I have wallet WALLET_B connected to base node NODE_B
+    Given I have a seed node SEED_A
+    When I have a seed node SEED_B
+    When I have a base node NODE_A connected to all seed nodes
+    When I have a base node NODE_B connected to all seed nodes
+    When I have wallet WALLET_A with 10T connected to base node NODE_A
+    When I have wallet WALLET_B connected to base node NODE_B
     # When I transfer 5T from WALLET_A to WALLET_B
     # And I mine 4 blocks on SEED_A
     # # BREAKS HERE
@@ -21,13 +21,13 @@ Feature: Wallet Transfer
     # And wallet WALLET_B has 5T
 
   Scenario: As a wallet I want to submit multiple transfers
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet Wallet_A connected to all seed nodes
+    When I have wallet Wallet_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet Wallet_A
-    # And I have wallet Wallet_B connected to all seed nodes
-    # And I have wallet Wallet_C connected to all seed nodes
+    When I have wallet Wallet_B connected to all seed nodes
+    When I have wallet Wallet_C connected to all seed nodes
     # When mining node MINER mines 2 blocks
     # Then all nodes are at height 2
     #   # Ensure the coinbase lock heights have expired
@@ -42,10 +42,10 @@ Feature: Wallet Transfer
     # Then all wallets detect all transactions as Mined_Confirmed
 
   Scenario: As a wallet I want to submit transfers to myself
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet Wallet_A connected to all seed nodes
+    When I have wallet Wallet_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet Wallet_A
     # When mining node MINER mines 10 blocks
     # Then all nodes are at height 10
@@ -55,11 +55,11 @@ Feature: Wallet Transfer
     # Then all wallets detect all transactions as Mined_Confirmed
 
   Scenario: As a wallet I want to create a HTLC transaction
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 10 blocks
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
@@ -70,12 +70,12 @@ Feature: Wallet Transfer
     # Then I wait for wallet WALLET_B to have at least 4000000000 uT
 
   Scenario: As a wallet I want to claim a HTLC refund transaction
-    # Given I have a seed node NODE
+    Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     # And I have 1 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
-    # And I have wallet WALLET_B connected to all seed nodes
-    # And I have wallet WALLET_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # And I have mining node MINER_2 connected to base node NODE and wallet WALLET_C
     # When mining node MINER mines 10 blocks

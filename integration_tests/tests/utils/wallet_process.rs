@@ -35,7 +35,7 @@ use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::TariWorld;
+use crate::{utils::get_port, TariWorld};
 
 #[derive(Debug)]
 pub struct WalletProcess {
@@ -59,10 +59,8 @@ pub async fn spawn_wallet(
     peer_seeds: Vec<String>,
 ) {
     // each spawned wallet will use different ports
-    let (port, grpc_port) = match world.base_nodes.values().last() {
-        Some(v) => (v.port + 1, v.grpc_port + 1),
-        None => (48000, 48500), // default ports if it's the first wallet to be spawned
-    };
+    let port = get_port(18000..18499).unwrap();
+    let grpc_port = get_port(18500..18999).unwrap();
 
     let base_node = base_node_name.map(|name| {
         let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
@@ -140,7 +138,7 @@ pub async fn spawn_wallet(
 
     // We need to give it time for the wallet to startup
     // TODO: it would be better to scan the wallet to detect when it has started
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
     if let Some((_, _, hacky_request)) = base_node {
@@ -151,7 +149,7 @@ pub async fn spawn_wallet(
         let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
     }
 
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {

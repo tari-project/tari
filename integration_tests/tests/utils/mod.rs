@@ -20,9 +20,26 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{net::TcpListener, ops::Range};
+
+use rand::Rng;
+
 pub mod base_node;
 pub mod base_node_process;
 pub mod miner;
 pub mod wallet;
 pub mod wallet_client;
 pub mod wallet_process;
+
+pub fn get_port(range: Range<u16>) -> Option<u64> {
+    let min = range.clone().min().expect("A minimum possible port number");
+    let max = range.max().expect("A maximum possible port number");
+
+    loop {
+        let port = rand::thread_rng().gen_range(min, max);
+
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(port as u64);
+        }
+    }
+}

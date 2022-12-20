@@ -15,16 +15,16 @@ Feature: Base Node Connectivity
         Given I have a seed node SEED_A
         When I have wallet WALLET_A connected to all seed nodes
         Then I wait for WALLET_A to connect to SEED_A
-        Then I wait for WALLET_A to have 1 node connections
-        Then I wait for WALLET_A to have ONLINE connectivity
+        # Then I wait for WALLET_A to have 1 node connections
+        # Then I wait for WALLET_A to have ONLINE connectivity
         Then SEED_A is connected to WALLET_A
 
     Scenario: Base node lists heights
-        # Given I have a seed node N1
+        Given I have a seed node N1
         # When I mine 5 blocks on N1
         # Then node N1 lists heights 1 to 5
 
     Scenario: Base node lists headers
-        # Given I have a seed node BN1
+        Given I have a seed node BN1
         # When I mine 5 blocks on BN1
         # Then node BN1 lists headers 1 to 5 with correct heights

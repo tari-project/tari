@@ -6,10 +6,10 @@ Feature: Wallet Recovery
 
     @critical
     Scenario: Wallet recovery with connected base node staying online
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
-      #   And I have wallet WALLET_A connected to all seed nodes
-      #   And I have wallet WALLET_B connected to all seed nodes
+      When I have wallet WALLET_A connected to all seed nodes
+      When I have wallet WALLET_B connected to all seed nodes
       #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
       #   When mining node MINER mines 10 blocks
       #   When I mine 5 blocks on NODE
@@ -23,14 +23,14 @@ Feature: Wallet Recovery
       #   Then I stop wallet WALLET_B
       #   When I recover wallet WALLET_B into wallet WALLET_C connected to all seed nodes
       #   When I wait for wallet WALLET_C to have at least 10000200000 uT
-      #   And I have wallet WALLET_D connected to all seed nodes
+      When I have wallet WALLET_D connected to all seed nodes
       #   And I send 100000 uT from wallet WALLET_C to wallet WALLET_D at fee 25
       #   When I mine 5 blocks on NODE
       #   Then all nodes are at height 27
       #   Then I wait for wallet WALLET_D to have at least 100000 uT
 
     Scenario Outline: Multiple Wallet recovery from seed node
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using DirectAndStoreAndForward
       #   And I have individual mining nodes connected to each wallet and base node NODE
       #   Then I have each mining node mine 3 blocks
@@ -53,10 +53,10 @@ Feature: Wallet Recovery
     # BROKEN: recovery scans 15 blocks but does not actually recover any value. Tested manually and recovery works. Suspect something to do with using localnet (just a guess).
     @critical @broken
     Scenario: Recover one-sided payments
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
-      #   And I have wallet WALLET_A connected to all seed nodes
-      #   And I have wallet WALLET_B connected to all seed nodes
+      When I have wallet WALLET_A connected to all seed nodes
+      When I have wallet WALLET_B connected to all seed nodes
       #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
       #   When mining node MINER mines 10 blocks
       #   Then all nodes are at height 10

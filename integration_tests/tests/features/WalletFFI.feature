@@ -27,7 +27,7 @@ Feature: Wallet FFI
     @broken
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         # Given I have a base node BASE
-        # And I have wallet SPECTATOR connected to base node BASE
+        When I have wallet SPECTATOR connected to base node BASE
         # And I have mining node MINER connected to base node BASE and wallet SPECTATOR
         # And mining node MINER mines 10 blocks
         # Then I wait for wallet SPECTATOR to have at least 1000000 uT
@@ -58,7 +58,7 @@ Feature: Wallet FFI
 
     Scenario: As a client I want to cancel a transaction
         # Given I have a base node BASE
-        # And I have wallet SENDER connected to base node BASE
+        When I have wallet SENDER connected to base node BASE
         # And I have a ffi wallet FFI_WALLET connected to base node BASE
         # And I have mining node MINER connected to base node BASE and wallet SENDER
         # And mining node MINER mines 10 blocks
@@ -68,7 +68,7 @@ Feature: Wallet FFI
         # And wallet SENDER detects all transactions are at least Broadcast
         # And mining node MINER mines 10 blocks
         # Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
-        # And I have wallet RECEIVER connected to base node BASE
+        When I have wallet RECEIVER connected to base node BASE
         # And I stop wallet RECEIVER
         # And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         # Then I wait for ffi wallet FFI_WALLET to have 1 pending outbound transaction
@@ -78,7 +78,7 @@ Feature: Wallet FFI
     Scenario: As a client I want to manage contacts
         # Given I have a base node BASE
         # And I have a ffi wallet FFI_WALLET connected to base node BASE
-        # And I have wallet WALLET connected to base node BASE
+        When I have wallet WALLET connected to base node BASE
         # And I add contact with alias ALIAS and pubkey WALLET to ffi wallet FFI_WALLET
         # Then I have contact with alias ALIAS and pubkey WALLET in ffi wallet FFI_WALLET
         # When I remove contact with alias ALIAS from ffi wallet FFI_WALLET
@@ -88,7 +88,7 @@ Feature: Wallet FFI
     # TODO: Was broken due to #4525 - fix underway
     @critical @broken
     Scenario: As a client I want to receive contact liveness events
-        # Given I have a seed node SEED
+        Given I have a seed node SEED
         # # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
         # And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
         # And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
@@ -109,12 +109,12 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
-        # And I have wallet SENDER connected to base node BASE1
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
-        # And I have wallet RECEIVER connected to base node BASE2
+        When I have wallet RECEIVER connected to base node BASE2
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER
         # And mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 1000000 uT
@@ -140,10 +140,10 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
-        # And I have wallet SENDER connected to base node BASE1
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE1
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER
         # And mining node MINER mines 10 blocks
@@ -162,12 +162,12 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to send a one-sided transaction
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
-        # And I have wallet SENDER connected to base node BASE1
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
-        # And I have wallet RECEIVER connected to base node BASE2
+        When I have wallet RECEIVER connected to base node BASE2
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER
         # And mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 5000000 uT
@@ -188,10 +188,10 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to receive a one-sided transaction
-        # Given I have a seed node SEED
-        # And I have a base node BASE1 connected to all seed nodes
-        # And I have a base node BASE2 connected to all seed nodes
-        # And I have wallet SENDER connected to base node BASE1
+        Given I have a seed node SEED
+        When I have a base node BASE1 connected to all seed nodes
+        When I have a base node BASE2 connected to all seed nodes
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_RECEIVER connected to base node BASE2
         # And I have mining node MINER connected to base node BASE1 and wallet SENDER
         # And mining node MINER mines 10 blocks
@@ -210,11 +210,11 @@ Feature: Wallet FFI
 
     Scenario: As a client I want to get fee per gram stats
         # Given I have a base node BASE
-        # And I have wallet WALLET_A connected to base node BASE
-        # And I have wallet WALLET_B connected to base node BASE
+        When I have wallet WALLET_A connected to base node BASE
+        When I have wallet WALLET_B connected to base node BASE
         # And I have mining node MINER connected to base node BASE and wallet WALLET_A
         # And mining node MINER mines 7 blocks
-        # And I have wallet WALLET_B connected to base node BASE
+        When I have wallet WALLET_B connected to base node BASE
         # Then I wait for wallet WALLET_A to have at least 10000000 uT
         # And I have a ffi wallet FFI_WALLET connected to base node BASE
         # And The fee per gram stats for FFI_WALLET are 1, 1, 1

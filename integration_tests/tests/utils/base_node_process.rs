@@ -39,7 +39,7 @@ use tempfile::tempdir;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::TariWorld;
+use crate::{utils::get_port, TariWorld};
 
 pub struct BaseNodeProcess {
     pub name: String,
@@ -74,10 +74,9 @@ impl Debug for BaseNodeProcess {
 
 pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
     // each spawned base node will use different ports
-    let (port, grpc_port) = match world.base_nodes.values().last() {
-        Some(v) => (v.port + 1, v.grpc_port + 1),
-        None => (19000, 19500), // default ports if it's the first base node to be spawned
-    };
+    let port = get_port(19000..19499).unwrap();
+    let grpc_port = get_port(19500..19999).unwrap();
+
     let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     let base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     println!("Base node identity: {}", base_node_identity);
