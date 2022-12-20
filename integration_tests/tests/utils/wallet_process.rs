@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, time::Duration};
+use std::{str::FromStr, thread, time::Duration};
 
 use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_common::configuration::CommonConfig;
@@ -28,10 +28,11 @@ use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 use tari_console_wallet::run_wallet;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_shutdown::Shutdown;
 use tari_wallet::WalletConfig;
 use tari_wallet_grpc_client::WalletGrpcClient;
 use tempfile::tempdir;
-use tokio::{runtime, task};
+use tokio::runtime;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -42,7 +43,7 @@ pub struct WalletProcess {
     pub port: u64,
     pub grpc_port: u64,
     pub temp_dir_path: String,
-    pub kill_signal: Option<tokio::sync::oneshot::Sender<()>>,
+    pub kill_signal: Shutdown,
 }
 
 impl Drop for WalletProcess {
@@ -88,48 +89,45 @@ pub async fn spawn_wallet(
     }
 
     let base_node_cloned = base_node.clone();
-    let (kill_signal_sender, kill_signal_receiver) = tokio::sync::oneshot::channel::<()>();
-    task::spawn(futures::future::select(
-        kill_signal_receiver,
-        Box::pin(async move {
-            let mut wallet_config = tari_console_wallet::ApplicationConfig {
-                common: CommonConfig::default(),
-                auto_update: AutoUpdateConfig::default(),
-                wallet: WalletConfig::default(),
-                peer_seeds: PeerSeedsConfig {
-                    peer_seeds: peer_addresses.into(),
-                    ..Default::default()
-                },
-            };
+    let shutdown = Shutdown::new();
+    let mut send_to_thread_shutdown = shutdown.clone();
+    thread::spawn(move || {
+        let mut wallet_config = tari_console_wallet::ApplicationConfig {
+            common: CommonConfig::default(),
+            auto_update: AutoUpdateConfig::default(),
+            wallet: WalletConfig::default(),
+            peer_seeds: PeerSeedsConfig {
+                peer_seeds: peer_addresses.into(),
+                ..Default::default()
+            },
+        };
 
-            eprintln!("Using wallet temp_dir: {}", temp_dir.path().display());
+        eprintln!("Using wallet temp_dir: {}", temp_dir.path().display());
 
-            wallet_config.wallet.network = Network::LocalNet;
-            wallet_config.wallet.password = Some("test".into());
-            wallet_config.wallet.grpc_enabled = true;
-            wallet_config.wallet.grpc_address =
-                Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
-            wallet_config.wallet.data_dir = temp_dir.path().join("data/wallet");
-            wallet_config.wallet.db_file = temp_dir.path().join("db/console_wallet.db");
-            wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
-            wallet_config.wallet.p2p.transport.tcp.listener_address =
-                Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-            wallet_config.wallet.p2p.public_address =
-                Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
-            wallet_config.wallet.p2p.datastore_path = temp_dir.path().join("peer_db/wallet");
-            wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        wallet_config.wallet.network = Network::LocalNet;
+        wallet_config.wallet.password = Some("test".into());
+        wallet_config.wallet.grpc_enabled = true;
+        wallet_config.wallet.grpc_address =
+            Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
+        wallet_config.wallet.data_dir = temp_dir.path().join("data/wallet");
+        wallet_config.wallet.db_file = temp_dir.path().join("db/console_wallet.db");
+        wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
+        wallet_config.wallet.p2p.transport.tcp.listener_address =
+            Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
+        wallet_config.wallet.p2p.datastore_path = temp_dir.path().join("peer_db/wallet");
+        wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
 
-            // FIXME: wallet doesn't pick up the custom base node for some reason atm
-            wallet_config.wallet.custom_base_node =
-                base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
+        // FIXME: wallet doesn't pick up the custom base node for some reason atm
+        wallet_config.wallet.custom_base_node =
+            base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
 
-            let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
-            if let Err(e) = run_wallet(rt, &mut wallet_config) {
-                panic!("{:?}", e);
-            }
-        }),
-    ));
+        if let Err(e) = run_wallet(&mut send_to_thread_shutdown, rt, &mut wallet_config) {
+            panic!("{:?}", e);
+        }
+    });
 
     // make the new wallet able to be referenced by other processes
     world.wallets.insert(wallet_name.clone(), WalletProcess {
@@ -137,7 +135,7 @@ pub async fn spawn_wallet(
         port,
         grpc_port,
         temp_dir_path,
-        kill_signal: Some(kill_signal_sender),
+        kill_signal: shutdown,
     });
 
     // We need to give it time for the wallet to startup
@@ -172,7 +170,7 @@ impl WalletProcess {
         Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
     }
 
-    pub async fn kill(&mut self) {
-        self.kill_signal.take().unwrap().send(());
+    pub fn kill(&mut self) {
+        self.kill_signal.trigger();
     }
 }

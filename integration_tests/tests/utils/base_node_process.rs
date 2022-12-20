@@ -34,11 +34,9 @@ use tari_common::configuration::CommonConfig;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_shutdown::Shutdown;
 use tempfile::tempdir;
-use tokio::{
-    task,
-    time::{sleep_until, Instant},
-};
+use tokio::task;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -51,7 +49,7 @@ pub struct BaseNodeProcess {
     pub temp_dir_path: String,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
-    pub kill_signal: Option<tokio::sync::oneshot::Sender<()>>,
+    pub kill_signal: Shutdown,
 }
 
 impl Drop for BaseNodeProcess {
@@ -87,7 +85,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path().display().to_string();
 
-    let (kill_signal_sender, kill_signal_receiver) = tokio::sync::oneshot::channel::<()>();
+    let shutdown = Shutdown::new();
     let process = BaseNodeProcess {
         name: bn_name.clone(),
         port,
@@ -96,7 +94,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         temp_dir_path,
         is_seed_node,
         seed_nodes: peers.clone(),
-        kill_signal: Some(kill_signal_sender),
+        kill_signal: shutdown.clone(),
     };
 
     let name_cloned = bn_name.clone();
@@ -113,51 +111,47 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir.as_ref().to_path_buf();
-    task::spawn(futures::future::select(
-        kill_signal_receiver,
-        Box::pin(async move {
-            let mut base_node_config = tari_base_node::ApplicationConfig {
-                common: common_config,
-                auto_update: AutoUpdateConfig::default(),
-                base_node: BaseNodeConfig::default(),
-                metrics: MetricsConfig::default(),
-                peer_seeds: PeerSeedsConfig {
-                    peer_seeds: peer_addresses.into(),
-                    ..Default::default()
-                },
-            };
+    task::spawn(async move {
+        let mut base_node_config = tari_base_node::ApplicationConfig {
+            common: common_config,
+            auto_update: AutoUpdateConfig::default(),
+            base_node: BaseNodeConfig::default(),
+            metrics: MetricsConfig::default(),
+            peer_seeds: PeerSeedsConfig {
+                peer_seeds: peer_addresses.into(),
+                ..Default::default()
+            },
+        };
 
-            println!("Using base_node temp_dir: {}", temp_dir.path().display());
-            base_node_config.base_node.network = Network::LocalNet;
-            base_node_config.base_node.grpc_enabled = true;
-            base_node_config.base_node.grpc_address =
-                Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
-            base_node_config.base_node.report_grpc_error = true;
+        println!("Using base_node temp_dir: {}", temp_dir.path().display());
+        base_node_config.base_node.network = Network::LocalNet;
+        base_node_config.base_node.grpc_enabled = true;
+        base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
+        base_node_config.base_node.report_grpc_error = true;
 
-            base_node_config.base_node.data_dir = temp_dir.path().to_path_buf();
-            base_node_config.base_node.identity_file = temp_dir.path().join("base_node_id.json");
-            base_node_config.base_node.tor_identity_file = temp_dir.path().join("base_node_tor_id.json");
+        base_node_config.base_node.data_dir = temp_dir.path().to_path_buf();
+        base_node_config.base_node.identity_file = temp_dir.path().join("base_node_id.json");
+        base_node_config.base_node.tor_identity_file = temp_dir.path().join("base_node_tor_id.json");
 
-            base_node_config.base_node.lmdb_path = temp_dir.path().to_path_buf();
-            base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
-            base_node_config.base_node.p2p.transport.tcp.listener_address =
-                format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
-            base_node_config.base_node.p2p.public_address =
-                Some(base_node_config.base_node.p2p.transport.tcp.listener_address.clone());
-            base_node_config.base_node.p2p.datastore_path = temp_dir.path().to_path_buf();
-            base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
-            base_node_config.base_node.p2p.allow_test_addresses = true;
+        base_node_config.base_node.lmdb_path = temp_dir.path().to_path_buf();
+        base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
+        base_node_config.base_node.p2p.transport.tcp.listener_address =
+            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
+        base_node_config.base_node.p2p.public_address =
+            Some(base_node_config.base_node.p2p.transport.tcp.listener_address.clone());
+        base_node_config.base_node.p2p.datastore_path = temp_dir.path().to_path_buf();
+        base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
+        base_node_config.base_node.p2p.allow_test_addresses = true;
 
-            println!(
-                "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
-                name_cloned, port, grpc_port, is_seed_node
-            );
-            let result = run_base_node(Arc::new(base_node_identity), Arc::new(base_node_config)).await;
-            if let Err(e) = result {
-                panic!("{:?}", e);
-            }
-        }),
-    ));
+        println!(
+            "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
+            name_cloned, port, grpc_port, is_seed_node
+        );
+        let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
+        if let Err(e) = result {
+            panic!("{:?}", e);
+        }
+    });
 
     // make the new base node able to be referenced by other processes
     world.base_nodes.insert(bn_name.clone(), process);
@@ -181,9 +175,7 @@ impl BaseNodeProcess {
         Ok(BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port)).await?)
     }
 
-    pub async fn kill(&mut self) {
-        self.kill_signal.take().unwrap().send(());
-        // This value is arbitrary. If there is no sleep the file might still be locked.
-        sleep_until(Instant::now() + Duration::from_secs(5)).await;
+    pub fn kill(&mut self) {
+        self.kill_signal.trigger();
     }
 }
