@@ -107,7 +107,7 @@ impl TariWorld {
 
 #[given(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, true, name, vec![]).await;
+    spawn_base_node(world, true, name, vec![], None).await;
 }
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
@@ -118,7 +118,7 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
 async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
+    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec(), None).await;
 }
 
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
@@ -277,7 +277,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
 #[given(expr = "I have a base node {word} connected to seed {word}")]
 #[when(expr = "I have a base node {word} connected to seed {word}")]
 async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
-    spawn_base_node(world, false, base_node, vec![seed]).await;
+    spawn_base_node(world, false, base_node, vec![seed], None).await;
 }
 
 #[then(expr = "I mine {int} blocks on {word}")]
@@ -313,13 +313,13 @@ async fn mining_node_mines_blocks_with_difficulty(
 #[when(expr = "I have a base node {word}")]
 #[given(expr = "I have a base node {word}")]
 async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
-    spawn_base_node(world, false, base_node, vec![]).await;
+    spawn_base_node(world, false, base_node, vec![], None).await;
 }
 
 #[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
-        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
+        spawn_base_node(world, true, format!("seed_node_{}", node), vec![], None).await;
     }
 }
 
@@ -331,6 +331,11 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
 async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node: String, coinbase_name: String) {
     mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
+}
+
+#[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
+async fn prune_node_connected_to_base_node(world: &mut TariWorld, pruned_node: String, base_node: String, pruning_horizon: u64) {
+    spawn_base_node(world, false, pruned_node, vec![base_node], Some(pruning_horizon)).await;
 }
 
 #[when(expr = "I print the cucumber world")]

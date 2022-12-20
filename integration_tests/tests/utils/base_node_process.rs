@@ -49,6 +49,7 @@ pub struct BaseNodeProcess {
     pub temp_dir_path: String,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
+    pub pruning_horizon: u64,
     pub kill_signal: Shutdown,
 }
 
@@ -72,7 +73,7 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
+pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>, pruning_horizon: Option<u64>) {
     // each spawned base node will use different ports
     let (port, grpc_port) = match world.base_nodes.values().last() {
         Some(v) => (v.port + 1, v.grpc_port + 1),
@@ -94,6 +95,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         temp_dir_path,
         is_seed_node,
         seed_nodes: peers.clone(),
+        pruning_horizon: pruning_horizon.unwrap_or_default(),
         kill_signal: shutdown.clone(),
     };
 
@@ -142,6 +144,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         base_node_config.base_node.p2p.datastore_path = temp_dir.path().to_path_buf();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.allow_test_addresses = true;
+        base_node_config.base_node.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
 
         println!(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
