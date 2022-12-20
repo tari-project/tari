@@ -137,7 +137,7 @@ async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut Wallet
 
 async fn mine_block_without_wallet(base_client: &mut BaseNodeClient) {
     let block_template = create_block_template_with_coinbase_without_wallet(base_client).await;
-    mine_block_without_wallet_with_template(base_client, block_template);
+    mine_block_without_wallet_with_template(base_client, block_template).await;
 }
 
 async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClient, block_template: NewBlockTemplate) {
@@ -290,5 +290,5 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
     let output = body.outputs.last().unwrap();
     let kernel = body.kernels.last().unwrap();
     world.coinbases.insert(coinbase_name, (output.clone(), kernel.clone()));
-    mine_block_without_wallet_with_template(&mut client, template);
+    mine_block_without_wallet_with_template(&mut client, template).await;
 }
