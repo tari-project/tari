@@ -39,7 +39,7 @@ pub fn get_port(range: Range<u16>) -> Option<u64> {
         let port = rand::thread_rng().gen_range(min, max);
 
         if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return Some(port as u64);
+            return Some(u64::from(port));
         }
     }
 }
