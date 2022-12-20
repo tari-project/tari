@@ -20,58 +20,56 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use std::sync::Arc;
+
+use tari_common_types::types::BlindingFactor;
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
-    chain_storage::BlockchainBackend,
-    proof_of_work::AchievedTargetDifficulty,
-    transactions::transaction_components::Transaction,
-    validation::{error::ValidationError, DifficultyCalculator},
+    blocks::{BlockHeader, ChainHeader},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{TransactionKernel, TransactionOutput},
+    },
+    validation::ValidationError,
 };
 
-/// A validator that determines if a block body is valid, assuming that the header has already been
-/// validated
-#[async_trait]
-pub trait BlockSyncBodyValidation: Send + Sync {
-    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError>;
+#[allow(dead_code)]
+pub struct InternallyValidHeader(pub Arc<BlockHeader>);
+
+pub trait InternalConsistencyHeaderValidator {
+    /// Validates a header in isolation, i.e. without looking at previous headers
+    fn validate(&self, header: &BlockHeader) -> Result<InternallyValidHeader, ValidationError>;
 }
 
-/// A validator that validates a body after it has been determined to be a valid orphan
-pub trait PostOrphanBodyValidation<B>: Send + Sync {
-    fn validate_body_for_valid_orphan(
+pub trait ChainLinkedHeaderValidator {
+    /// Takes an (internally) valid header and validates it in context of previous headers in the chain
+    fn validate(
         &self,
-        backend: &B,
-        block: &ChainBlock,
-        metadata: &ChainMetadata,
+        header: &InternallyValidHeader, // ... state from the db needed for validation...
+    ) -> Result<ChainHeader, ValidationError>;
+}
+
+pub trait InternalConsistencyOutputValidator {
+    fn validate(&self, output: &TransactionOutput) -> Result<(), ValidationError>;
+}
+
+pub trait InternalConsistencyKernelValidator {
+    fn validate(&self, kernel: &TransactionKernel) -> Result<(), ValidationError>;
+}
+
+pub trait InternalConsistencyAggregateBodyValidator {
+    fn validate(
+        &self,
+        body: AggregateBody,
+        offset: BlindingFactor,
+        script_offset: BlindingFactor,
     ) -> Result<(), ValidationError>;
 }
 
-pub trait MempoolTransactionValidation: Send + Sync {
-    fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError>;
-}
-
-pub trait OrphanValidation: Send + Sync {
-    fn validate(&self, item: &Block) -> Result<(), ValidationError>;
-}
-
-pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
+pub trait ChainLinkedAggregateBodyValidator {
     fn validate(
         &self,
-        db: &TBackend,
-        header: &BlockHeader,
-        difficulty: &DifficultyCalculator,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>;
-}
-
-pub trait FinalHorizonStateValidation<B>: Send + Sync {
-    fn validate(
-        &self,
-        backend: &B,
-        height: u64,
-        total_utxo_sum: &Commitment,
-        total_kernel_sum: &Commitment,
-        total_burned_sum: &Commitment,
+        body: AggregateBody,
+        header: ChainHeader, // .... state or db needed to validate....
     ) -> Result<(), ValidationError>;
 }
