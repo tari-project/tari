@@ -48,6 +48,7 @@ pub struct BaseNodeProcess {
     pub identity: NodeIdentity,
     pub temp_dir_path: String,
     pub is_seed_node: bool,
+    pub seed_nodes: Vec<String>,
     pub kill_signal: Shutdown,
 }
 
@@ -92,13 +93,14 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
         identity,
         temp_dir_path,
         is_seed_node,
+        seed_nodes: peers.clone(),
         kill_signal: shutdown.clone(),
     };
 
     let name_cloned = bn_name.clone();
 
     let mut peer_addresses = vec![];
-    for peer in peers {
+    for peer in &peers {
         let peer = world.base_nodes.get(peer.as_str()).unwrap();
         peer_addresses.push(format!(
             "{}::{}",

@@ -26,13 +26,14 @@ use std::{io, path::PathBuf, time::Duration};
 
 use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
-use tari_base_node_grpc_client::grpc::Empty;
+use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput};
+use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
-    miner::{mine_blocks, register_miner_process},
+    miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
     wallet_process::spawn_wallet,
 };
 
@@ -58,6 +59,7 @@ pub struct TariWorld {
     base_nodes: IndexMap<String, BaseNodeProcess>,
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
+    coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
 }
 
 impl TariWorld {
@@ -96,10 +98,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-        // self.base_nodes.clear();
-        // self.seed_nodes.clear();
-        // self.wallets.clear();
-        // self.miners.clear();
+        //     self.base_nodes.clear();
+        //     self.seed_nodes.clear();
+        //     self.wallets.clear();
+        //     self.miners.clear();
     }
 }
 
@@ -110,7 +112,8 @@ async fn start_base_node(world: &mut TariWorld, name: String) {
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
-    spawn_wallet(world, wallet_name, Some(node_name), world.all_seed_nodes().to_vec()).await;
+    let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
 }
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
@@ -172,7 +175,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
     let num_retries = 100;
     let mut already_sync = true;
 
-    for retry in 0..num_retries {
+    for _ in 0..num_retries {
         for (_, bn) in world.base_nodes.iter() {
             let mut client = bn.get_grpc_client().await?;
 
@@ -189,7 +192,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
         }
 
         already_sync = true;
-        tokio::time::sleep(Duration::from_secs(retry)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     if !already_sync {
@@ -197,6 +200,137 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::
     }
 
     Ok(())
+}
+
+#[when(expr = "node {word} is at height {int}")]
+#[then(expr = "node {word} is at height {int}")]
+async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
+    let num_retries = 100;
+
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
+    let mut chain_hgt = 0;
+
+    for _ in 0..=num_retries {
+        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
+
+        if chain_hgt >= height {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // base node didn't synchronize successfully at height, so we bail out
+    panic!(
+        "base node didn't synchronize successfully with height {}, current chain height {}",
+        height, chain_hgt
+    );
+}
+
+#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
+async fn miner_connected_to_base_node_and_wallet(
+    world: &mut TariWorld,
+    miner: String,
+    base_node: String,
+    wallet: String,
+) {
+    register_miner_process(world, miner, base_node, wallet);
+}
+
+#[when(expr = "I wait for wallet {word} to have at least {int} uT")]
+async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+    let wallet = world.wallets.get(&wallet).unwrap();
+    let num_retries = 100;
+
+    let mut client = wallet.get_grpc_client().await.unwrap();
+    let mut curr_amount = 0;
+
+    for _ in 0..=num_retries {
+        curr_amount = client
+            .get_balance(GetBalanceRequest {})
+            .await
+            .unwrap()
+            .into_inner()
+            .available_balance;
+
+        if curr_amount >= amount {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // failed to get wallet right amount, so we panic
+    panic!(
+        "wallet failed to get right amount {}, current amount is {}",
+        amount, curr_amount
+    );
+}
+
+#[given(expr = "I have a base node {word} connected to seed {word}")]
+#[when(expr = "I have a base node {word} connected to seed {word}")]
+async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
+    spawn_base_node(world, false, base_node, vec![seed]).await;
+}
+
+#[then(expr = "I mine {int} blocks on {word}")]
+#[when(expr = "I mine {int} blocks on {word}")]
+async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
+    mine_blocks_without_wallet(&mut client, blocks).await;
+}
+
+#[when(expr = "I have wallet {word} connected to base node {word}")]
+async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
+    let bn = world.base_nodes.get(&base_node).unwrap();
+    let peer_seeds = bn.seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
+}
+
+#[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
+async fn mining_node_mines_blocks_with_difficulty(
+    _world: &mut TariWorld,
+    _miner: String,
+    _blocks: u64,
+    _min_difficulty: u64,
+    _max_difficulty: u64,
+) {
+}
+
+#[when(expr = "I have a base node {word}")]
+#[given(expr = "I have a base node {word}")]
+async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
+    spawn_base_node(world, false, base_node, vec![]).await;
+}
+
+#[given(expr = "I have {int} seed nodes")]
+async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
+    for node in 0..seed_nodes {
+        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
+    }
+}
+
+#[when(expr = "I have wallet {word} connected to seed node {word}")]
+async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
+    spawn_wallet(world, wallet, None, vec![seed_node]).await;
+}
+
+#[when(expr = "I mine a block on {word} with coinbase {word}")]
+async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+    mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
 }
 
 #[when(expr = "I print the cucumber world")]

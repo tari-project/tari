@@ -20,8 +20,9 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, time::Duration};
+use std::{convert::TryInto, str::FromStr, time::Duration};
 
+use rand::rngs::OsRng;
 use tari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
@@ -38,7 +39,12 @@ use tari_app_grpc::{
     },
 };
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
+use tari_core::{
+    consensus::consensus_constants::ConsensusConstants,
+    transactions::{CoinbaseBuilder, CryptoFactories},
+};
+use tari_crypto::keys::SecretKey;
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
@@ -54,6 +60,7 @@ pub struct MinerProcess {
     pub name: String,
     pub base_node_name: String,
     pub wallet_name: String,
+    pub mine_until_height: u64,
 }
 
 pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_node_name: String, wallet_name: String) {
@@ -61,6 +68,7 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
         name: miner_name.clone(),
         base_node_name,
         wallet_name,
+        mine_until_height: 100_000,
     };
     world.miners.insert(miner_name, miner);
 }
@@ -71,6 +79,16 @@ pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: 
 
     for _ in 0..num_blocks {
         mine_block(&mut base_client, &mut wallet_client).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // Give some time for the base node and wallet to sync the new blocks
+    tokio::time::sleep(Duration::from_secs(5)).await;
+}
+
+pub async fn mine_blocks_without_wallet(base_client: &mut BaseNodeClient, num_blocks: u64) {
+    for _ in 0..num_blocks {
+        mine_block_without_wallet(base_client).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -117,6 +135,28 @@ async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut Wallet
     );
 }
 
+async fn mine_block_without_wallet(base_client: &mut BaseNodeClient) {
+    let block_template = create_block_template_with_coinbase_without_wallet(base_client).await;
+    mine_block_without_wallet_with_template(base_client, block_template).await;
+}
+
+async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClient, block_template: NewBlockTemplate) {
+    // Ask the base node for a valid block using the template
+    let block_result = base_client
+        .get_new_block(block_template.clone())
+        .await
+        .unwrap()
+        .into_inner();
+    let block = block_result.block.unwrap();
+
+    // We don't need to mine, as Localnet blocks have difficulty 1s
+    let _submit_res = base_client.submit_block(block).await.unwrap();
+    println!(
+        "Block successfully mined at height {:?}",
+        block_template.header.unwrap().height
+    );
+}
+
 async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     wallet_client: &mut WalletGrpcClient,
@@ -147,6 +187,33 @@ async fn create_block_template_with_coinbase(
     block_template
 }
 
+async fn create_block_template_with_coinbase_without_wallet(base_client: &mut BaseNodeClient) -> NewBlockTemplate {
+    // get the block template from the base node
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3.into(),
+        }),
+        max_weight: 0,
+    };
+
+    let template_res = base_client
+        .get_new_block_template(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    let mut block_template = template_res.new_block_template.clone().unwrap();
+
+    // add the coinbase outputs and kernels to the block template
+    let (output, kernel) = get_coinbase_without_wallet_client(template_res);
+    let body = block_template.body.as_mut().unwrap();
+
+    body.outputs.push(output);
+    body.kernels.push(kernel);
+
+    block_template
+}
+
 async fn get_coinbase_outputs_and_kernels(
     wallet_client: &mut WalletGrpcClient,
     template_res: NewBlockTemplateResponse,
@@ -154,6 +221,39 @@ async fn get_coinbase_outputs_and_kernels(
     let coinbase_req = coinbase_request(&template_res);
     let coinbase_res = wallet_client.get_coinbase(coinbase_req).await.unwrap().into_inner();
     extract_outputs_and_kernels(coinbase_res)
+}
+
+fn get_coinbase_without_wallet_client(
+    template_res: NewBlockTemplateResponse,
+) -> (TransactionOutput, TransactionKernel) {
+    let coinbase_req = coinbase_request(&template_res);
+    generate_coinbase(coinbase_req)
+}
+
+fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput, TransactionKernel) {
+    let reward = coinbase_req.reward;
+    let height = coinbase_req.height;
+    let fee = coinbase_req.fee;
+    let extra = coinbase_req.extra;
+
+    let spending_key = PrivateKey::random(&mut OsRng);
+    let script_private_key = PrivateKey::random(&mut OsRng);
+    let nonce = PrivateKey::random(&mut OsRng);
+
+    let (tx, _) = CoinbaseBuilder::new(CryptoFactories::default())
+        .with_block_height(height)
+        .with_fees(fee.into())
+        .with_spend_key(spending_key)
+        .with_script_key(script_private_key)
+        .with_nonce(nonce)
+        .with_extra(extra)
+        .build_with_reward(ConsensusConstants::localnet().first().unwrap(), reward.into())
+        .unwrap();
+
+    let tx_out = tx.body().outputs().first().unwrap().clone();
+    let tx_krnl = tx.body().kernels().first().unwrap().clone();
+
+    (tx_out.try_into().unwrap(), tx_krnl.into())
 }
 
 fn coinbase_request(template_response: &NewBlockTemplateResponse) -> GetCoinbaseRequest {
@@ -175,4 +275,20 @@ fn extract_outputs_and_kernels(coinbase: GetCoinbaseResponse) -> (TransactionOut
     let output = transaction_body.outputs.get(0).cloned().unwrap();
     let kernel = transaction_body.kernels.get(0).cloned().unwrap();
     (output, kernel)
+}
+
+pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
+    let template = create_block_template_with_coinbase_without_wallet(&mut client).await;
+    let body = template.clone().body.unwrap();
+    let output = body.outputs.last().unwrap();
+    let kernel = body.kernels.last().unwrap();
+    world.coinbases.insert(coinbase_name, (output.clone(), kernel.clone()));
+    mine_block_without_wallet_with_template(&mut client, template).await;
 }
