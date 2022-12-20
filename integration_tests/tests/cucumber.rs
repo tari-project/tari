@@ -96,10 +96,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-        self.base_nodes.clear();
-        self.seed_nodes.clear();
-        self.wallets.clear();
-        self.miners.clear();
+        // self.base_nodes.clear();
+        // self.seed_nodes.clear();
+        // self.wallets.clear();
+        // self.miners.clear();
     }
 }
 
@@ -245,7 +245,9 @@ async fn main() {
         )
         .after(|_feature,_rule,scenario,_ev,maybe_world| {
             Box::pin(async move {
-                maybe_world.unwrap().after(scenario).await;
+                if let Some(maybe_world) = maybe_world {
+                    maybe_world.after(scenario).await;
+                }
             })
         })
         .run_and_exit("tests/features/")
