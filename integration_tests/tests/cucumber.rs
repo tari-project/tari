@@ -243,7 +243,7 @@ async fn main() {
                 .summarized()
                 .assert_normalized(),
         )
-        .after(|feature,rule,scenario,_ev,maybe_world| {
+        .after(|_feature,_rule,scenario,_ev,maybe_world| {
             Box::pin(async move {
                 maybe_world.unwrap().after(scenario).await;
             })

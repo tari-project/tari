@@ -57,9 +57,11 @@ pub use crate::{
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
-pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<ApplicationConfig>) -> Result<(), ExitError> {
-    let shutdown = Shutdown::new();
-
+pub async fn run_base_node(
+    shutdown: Shutdown,
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+) -> Result<(), ExitError> {
     let data_dir = config.base_node.data_dir.clone();
     let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
 
