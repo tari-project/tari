@@ -20,14 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlindingFactor, Commitment},
+};
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock, ChainHeader},
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
-    transactions::transaction_components::Transaction,
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+    },
     validation::{error::ValidationError, DifficultyCalculator},
 };
 
@@ -73,5 +81,50 @@ pub trait FinalHorizonStateValidation<B>: Send + Sync {
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
         total_burned_sum: &Commitment,
+    ) -> Result<(), ValidationError>;
+}
+
+// Refactored validators starting from here:
+
+// Header validation
+#[allow(dead_code)]
+pub struct InternallyValidHeader(pub Arc<BlockHeader>);
+
+pub trait InternalConsistencyHeaderValidator {
+    /// Validates a header in isolation, i.e. without looking at previous headers
+    fn validate(&self, header: &BlockHeader) -> Result<InternallyValidHeader, ValidationError>;
+}
+
+pub trait ChainLinkedHeaderValidator {
+    /// Takes an (internally) valid header and validates it in context of previous headers in the chain
+    fn validate(
+        &self,
+        header: &InternallyValidHeader, // ... state from the db needed for validation...
+    ) -> Result<ChainHeader, ValidationError>;
+}
+
+// Body validation
+pub trait InternalConsistencyOutputValidator {
+    fn validate(&self, output: &TransactionOutput) -> Result<(), ValidationError>;
+}
+
+pub trait InternalConsistencyKernelValidator {
+    fn validate(&self, kernel: &TransactionKernel) -> Result<(), ValidationError>;
+}
+
+pub trait InternalConsistencyAggregateBodyValidator {
+    fn validate(
+        &self,
+        body: AggregateBody,
+        offset: BlindingFactor,
+        script_offset: BlindingFactor,
+    ) -> Result<(), ValidationError>;
+}
+
+pub trait ChainLinkedAggregateBodyValidator {
+    fn validate(
+        &self,
+        body: AggregateBody,
+        header: ChainHeader, // .... state or db needed to validate....
     ) -> Result<(), ValidationError>;
 }
