@@ -361,11 +361,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
             };
-            let tx_info = client
-                .get_transaction_info(request)
-                .await
-                .unwrap()
-                .into_inner();
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
                 TransactionStatus::MinedConfirmed => break 'inner,
