@@ -22,9 +22,9 @@
 
 mod utils;
 
-use std::{io, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
-use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
+use cucumber::{gherkin::Scenario, given, then, when, World as _};
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput};
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
@@ -396,13 +396,14 @@ async fn main() {
     )
     .expect("logging not configured");
     TariWorld::cucumber()
+        .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(1)
-        .with_writer(
-            writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
-                .summarized()
-                .assert_normalized(),
-        )
+        //.max_concurrent_scenarios(1)
+        //.with_writer(
+        //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
+        //        .summarized()
+        //        .assert_normalized(),
+        //)
         .after(|_feature,_rule,scenario,_ev,maybe_world| {
             Box::pin(async move {
                 if let Some(maybe_world) = maybe_world {
