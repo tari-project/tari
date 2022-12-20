@@ -25,9 +25,16 @@ mod utils;
 use std::{io, path::PathBuf, time::Duration};
 
 use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
+use futures::StreamExt;
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
-use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest, GetIdentityRequest, GetTransactionInfoRequest};
+use tari_base_node_grpc_client::grpc::{
+    Empty,
+    GetBalanceRequest,
+    GetCompletedTransactionsRequest,
+    GetIdentityRequest,
+    GetTransactionInfoRequest,
+};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
@@ -374,6 +381,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
     }
 }
 
+#[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to node {word}")]
 async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String, base_node: String) {
     spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
@@ -381,6 +389,37 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     let peers = base_node.seed_nodes.clone();
     spawn_wallet(world, miner.clone(), Some(miner.clone()), peers).await;
     register_miner_process(world, miner.clone(), miner.clone(), miner);
+}
+
+#[when(expr = "I list all {word} transactions for wallet {word}")]
+#[then(expr = "I list all {word} transactions for wallet {word}")]
+async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String, wallet: String) {
+    if vec!["COINBASE", "NORMAL"].contains(&transaction_type.as_str()) {
+        panic!("Invalid transaction type. Values should be COINBASE or NORMAL, for now");
+    }
+
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+
+    let request = GetCompletedTransactionsRequest {};
+    let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
+
+    while let Ok(tx) = completed_txs.next().await.unwrap() {
+        let tx_info = tx.transaction.unwrap();
+        if (tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "COINBASE") ||
+            (!tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "NORMAL")
+        {
+            println!("Transaction with status COINBASE found for wallet {}: ", wallet);
+        } else {
+            continue;
+        }
+        println!("\n");
+        println!("TxId: {}", tx_info.tx_id);
+        println!("Status: {}", tx_info.status);
+        println!("IsCancelled: {}", tx_info.is_cancelled);
+    }
 }
 
 #[when(expr = "I print the cucumber world")]
