@@ -26,6 +26,7 @@ use std::{io, path::PathBuf, time::Duration};
 
 use cucumber::{given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
+use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput};
 use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
@@ -33,13 +34,10 @@ use tari_integration_tests::error::GrpcBaseNodeError;
 use thiserror::Error;
 use utils::{
     miner::{
-        coinbase_request,
-        create_block_template_with_coinbase_without_wallet,
-        generate_coinbase,
-        mine_block_without_wallet_with_template,
-        mine_blocks,
         mine_blocks_without_wallet,
+        mine_blocks,
         register_miner_process,
+        mine_block_with_coinbase_on_node,
     },
     wallet_process::spawn_wallet,
 };
@@ -329,19 +327,8 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 }
 
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
-async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
-    let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
-        .await
-        .unwrap();
-    let template = create_block_template_with_coinbase_without_wallet(client);
-    let output = template_res.body.outputs.last().unwrap();
-    let kernel = template_res.body.kernels.last().unwrap();
-    world.coinbases.insert(coinbase_name, (output, kernel));
-    mine_block_without_wallet_with_template(world, template);
+async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+    mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
 }
 
 #[when(expr = "I print the cucumber world")]

@@ -5468,7 +5468,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_app_grpc",
- "tari_app_utilities",
  "tari_base_node",
  "tari_base_node_grpc_client",
  "tari_common",

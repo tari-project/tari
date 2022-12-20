@@ -41,7 +41,6 @@ use tari_app_grpc::{
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
 use tari_core::{
-    blocks::NewBlock,
     consensus::consensus_constants::ConsensusConstants,
     transactions::{CoinbaseBuilder, CryptoFactories},
 };
@@ -61,6 +60,7 @@ pub struct MinerProcess {
     pub name: String,
     pub base_node_name: String,
     pub wallet_name: String,
+    pub mine_until_height: u64,
 }
 
 pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_node_name: String, wallet_name: String) {
@@ -68,6 +68,7 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
         name: miner_name.clone(),
         base_node_name,
         wallet_name,
+        mine_until_height: 100_000,
     };
     world.miners.insert(miner_name, miner);
 }
@@ -274,4 +275,20 @@ fn extract_outputs_and_kernels(coinbase: GetCoinbaseResponse) -> (TransactionOut
     let output = transaction_body.outputs.get(0).cloned().unwrap();
     let kernel = transaction_body.kernels.get(0).cloned().unwrap();
     (output, kernel)
+}
+
+pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+    let mut client = world
+        .base_nodes
+        .get(&base_node)
+        .unwrap()
+        .get_grpc_client()
+        .await
+        .unwrap();
+    let template = create_block_template_with_coinbase_without_wallet(&mut client).await;
+    let body = template.clone().body.unwrap();
+    let output = body.outputs.last().unwrap();
+    let kernel = body.kernels.last().unwrap();
+    world.coinbases.insert(coinbase_name, (output.clone(), kernel.clone()));
+    mine_block_without_wallet_with_template(&mut client, template);
 }
