@@ -26,15 +26,16 @@ use std::{io, path::PathBuf, time::Duration};
 
 use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use indexmap::IndexMap;
-use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput};
-use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest};
+use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
+use tari_base_node_grpc_client::grpc::{Empty, GetBalanceRequest, GetIdentityRequest, GetTransactionInfoRequest};
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use utils::{
     miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
-    wallet_process::spawn_wallet,
+    wallet_process::{create_wallet_client, spawn_wallet},
 };
 
 use crate::utils::{
@@ -60,6 +61,8 @@ pub struct TariWorld {
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
     coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
+    // mapping from hex public key string to tx_id
+    transactions: IndexMap<String, Vec<u64>>,
 }
 
 impl TariWorld {
@@ -334,8 +337,45 @@ async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node:
 }
 
 #[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
-async fn prune_node_connected_to_base_node(world: &mut TariWorld, pruned_node: String, base_node: String, pruning_horizon: u64) {
+async fn prune_node_connected_to_base_node(
+    world: &mut TariWorld,
+    pruned_node: String,
+    base_node: String,
+    pruning_horizon: u64,
+) {
     spawn_base_node(world, false, pruned_node, vec![base_node], Some(pruning_horizon)).await;
+}
+
+#[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
+async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+
+    let num_retries = 100;
+
+    for tx_id in tx_ids {
+        println!("waiting for tx with tx_id = {} to be mined_confirmed", tx_id);
+        'inner: for _ in 0..num_retries {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client
+                .get_transaction_info(request)
+                .await
+                .unwrap()
+                .into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                TransactionStatus::MinedConfirmed => break 'inner,
+                _ => {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                },
+            }
+        }
+    }
 }
 
 #[when(expr = "I print the cucumber world")]

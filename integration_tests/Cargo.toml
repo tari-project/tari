@@ -20,6 +20,7 @@ tari_base_node = { path = "../applications/tari_base_node" }
 tari_console_wallet = { path = "../applications/tari_console_wallet" }
 tari_wallet = { path = "../base_layer/wallet" }
 tari_common_types = { path = "../base_layer/common_types" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
 tari_shutdown = { path = "../infrastructure/shutdown" }
 
 anyhow = "1.0.53"

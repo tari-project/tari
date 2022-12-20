@@ -73,7 +73,13 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>, pruning_horizon: Option<u64>) {
+pub async fn spawn_base_node(
+    world: &mut TariWorld,
+    is_seed_node: bool,
+    bn_name: String,
+    peers: Vec<String>,
+    pruning_horizon: Option<u64>,
+) {
     // each spawned base node will use different ports
     let (port, grpc_port) = match world.base_nodes.values().last() {
         Some(v) => (v.port + 1, v.grpc_port + 1),
