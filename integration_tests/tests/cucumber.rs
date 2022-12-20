@@ -127,11 +127,13 @@ impl TariWorld {
 }
 
 #[given(expr = "I have a seed node {word}")]
+#[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
     spawn_base_node(world, true, name, vec![]).await;
 }
 
-#[given(expr = "a wallet {word} connected to base node {word}")]
+#[given(expr = "I have wallet {word} connected to base node {word}")]
+#[when(expr = "I have wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
@@ -322,13 +324,6 @@ async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
         .await
         .unwrap();
     mine_blocks_without_wallet(&mut client, blocks).await;
-}
-
-#[when(expr = "I have wallet {word} connected to base node {word}")]
-async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
-    let bn = world.base_nodes.get(&base_node).unwrap();
-    let peer_seeds = bn.seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
