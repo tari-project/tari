@@ -374,6 +374,15 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
     }
 }
 
+#[when(expr = "I have a SHA3 miner {word} connected to node {word}")]
+async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String, base_node: String) {
+    spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
+    let base_node = world.base_nodes.get(&base_node).unwrap();
+    let peers = base_node.seed_nodes.clone();
+    spawn_wallet(world, miner.clone(), Some(miner.clone()), peers).await;
+    register_miner_process(world, miner.clone(), miner.clone(), miner);
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
