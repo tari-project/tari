@@ -52,11 +52,16 @@ Feature: Wallet Routing Mechanism
       #   And mining node MINE mines 5 blocks
       #   Then I wait for wallet SENDER to have at least 1000000 uT
       #   And I send 1000000 uT from wallet SENDER to wallet RECEIVER at fee 100
-      When I wait 121 seconds
+  #
+  #
+  # 10 minutes of waiting...
+  #
+  #
+      # When I wait 121 seconds
       #   And I stop wallet SENDER
-      When I wait 360 seconds
+      # When I wait 360 seconds
       #   And I restart wallet RECEIVER
-      When I wait 121 seconds
+      # When I wait 121 seconds
       #   And I stop wallet RECEIVER
       #   And I restart wallet SENDER
       #   And wallet SENDER detects all transactions are at least Broadcast
