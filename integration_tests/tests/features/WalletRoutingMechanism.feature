@@ -45,8 +45,8 @@ Feature: Wallet Routing Mechanism
     Scenario: Store and forward TX
       Given I have a seed node SEED
       When I have a base node BASE connected to seed SEED
-      When I have wallet SENDER connected to base node BASE
-      When I have wallet RECEIVER connected to base node BASE
+      # When I have wallet SENDER connected to base node BASE
+      # When I have wallet RECEIVER connected to base node BASE
       #   And I stop wallet RECEIVER
       #   And I have mining node MINE connected to base node BASE and wallet SENDER
       #   And mining node MINE mines 5 blocks

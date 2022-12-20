@@ -219,8 +219,8 @@ Feature: Wallet Transactions
     # #
     Given I have a seed node SEED_A
     When I have a base node NODE_A1 connected to seed SEED_A
-    # And I have wallet WALLET_A1 connected to seed node SEED_A
-    # And I have wallet WALLET_A2 connected to seed node SEED_A
+    When I have wallet WALLET_A1 connected to seed node SEED_A
+    When I have wallet WALLET_A2 connected to seed node SEED_A
     # And I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
     # When mining node MINER_A1 mines 7 blocks with min difficulty 200 and max difficulty 100000
     # Then node SEED_A is at height 7
@@ -237,8 +237,8 @@ Feature: Wallet Transactions
     # #
     When I have a seed node SEED_B
     When I have a base node NODE_B1 connected to seed SEED_B
-    # And I have wallet WALLET_B1 connected to seed node SEED_B
-    # And I have wallet WALLET_B2 connected to seed node SEED_B
+    When I have wallet WALLET_B1 connected to seed node SEED_B
+    When I have wallet WALLET_B2 connected to seed node SEED_B
     # And I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
     # When mining node MINER_B1 mines 7 blocks with min difficulty 1 and max difficulty 100
     # Then node SEED_B is at height 7
@@ -264,8 +264,8 @@ Feature: Wallet Transactions
 
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
-    # And I have wallet WALLET_A connected to seed node SEED
-    # And I have wallet WALLET_B connected to seed node SEED
+    When I have wallet WALLET_A connected to seed node SEED
+    When I have wallet WALLET_B connected to seed node SEED
     # And I have mining node MINER_A connected to base node SEED and wallet WALLET_A
     # When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
     # When I mine 4 blocks on SEED
@@ -295,8 +295,8 @@ Feature: Wallet Transactions
     # #
     Given I have a seed node SEED_A
     When I have a base node NODE_A1 connected to seed SEED_A
-    # And I have wallet WALLET_A1 connected to seed node SEED_A
-    # And I have wallet WALLET_A2 connected to seed node SEED_A
+    When I have wallet WALLET_A1 connected to seed node SEED_A
+    When I have wallet WALLET_A2 connected to seed node SEED_A
     # And I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
     # When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
     # Then node SEED_A is at height 1
@@ -313,8 +313,8 @@ Feature: Wallet Transactions
     # #
     When I have a seed node SEED_B
     When I have a base node NODE_B1 connected to seed SEED_B
-    # And I have wallet WALLET_B1 connected to seed node SEED_B
-    # And I have wallet WALLET_B2 connected to seed node SEED_B
+    When I have wallet WALLET_B1 connected to seed node SEED_B
+    When I have wallet WALLET_B2 connected to seed node SEED_B
     # And I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
     # When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
     # Then node SEED_B is at height 2

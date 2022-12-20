@@ -103,7 +103,7 @@ Feature: Block Sync
   @long-running @flaky
   Scenario: Node should not sync from pruned node
     When I have a base node NODE1 connected to all seed nodes
-    When I have wallet WALLET1 connected to base node NODE1
+    # When I have wallet WALLET1 connected to base node NODE1
     # And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     # And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 6
     # When mining node MINING1 mines 40 blocks with min difficulty 20 and max difficulty 9999999999
@@ -111,7 +111,7 @@ Feature: Block Sync
     # When I stop node NODE1
     # Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
     Given I have a base node NODE2
-    When I have wallet WALLET2 connected to base node NODE2
+    # When I have wallet WALLET2 connected to base node NODE2
     # And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
     # When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 2
     # And I connect node NODE2 to node PNODE1
