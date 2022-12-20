@@ -10,7 +10,7 @@ Feature: Mempool
     # The randomness of the TX1 propagation can result in this test not passing.
     # The probability of not passing (at least 2 nodes are not aware of TX1) is ~0.01%.
     #
-    # Given I have 8 seed nodes
+    Given I have 8 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # And I have 8 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
@@ -24,7 +24,7 @@ Feature: Mempool
 
   @flaky
   Scenario: Transactions are synced
-    # Given I have 2 seed nodes
+    Given I have 2 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # And I have 2 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
@@ -43,7 +43,7 @@ Feature: Mempool
 
   @critical
   Scenario: Clear out mempool
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     # When I mine a block on SENDER with coinbase CB2
@@ -71,7 +71,7 @@ Feature: Mempool
 
  @long-running
   Scenario: Double spend eventually ends up as not stored
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     # When I mine 4 blocks on SENDER
@@ -90,15 +90,15 @@ Feature: Mempool
 
   Scenario: Mempool clearing out invalid transactions after a reorg
     Given I have a seed node SEED_A
-    # And I have a base node NODE_A connected to seed SEED_A
-    # And I have wallet WALLET_A connected to base node NODE_A
+    When I have a base node NODE_A connected to seed SEED_A
+    When I have wallet WALLET_A connected to base node NODE_A
     # And I have mining node MINING_A connected to base node NODE_A and wallet WALLET_A
     # When I mine a block on NODE_A with coinbase CB_A
     # And mining node MINING_A mines 3 blocks with min difficulty 1 and max difficulty 2
     # Then node SEED_A is at height 4
     Given I have a seed node SEED_B
-    # And I have a base node NODE_B connected to seed SEED_B
-    # And I have wallet WALLET_B connected to base node NODE_B
+    When I have a base node NODE_B connected to seed SEED_B
+    When I have wallet WALLET_B connected to base node NODE_B
     # And I have mining node MINING_B connected to base node NODE_B and wallet WALLET_B
     # When I mine a block on NODE_B with coinbase CB_B
     # And mining node MINING_B mines 10 blocks with min difficulty 20 and max difficulty 9999999999
@@ -120,7 +120,7 @@ Feature: Mempool
 
   @critical
   Scenario: Zero-conf transactions
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     # When I mine a block on SENDER with coinbase CB2
@@ -152,7 +152,7 @@ Feature: Mempool
     # Then SENDER has TX13 in MINED state
 
   Scenario: Mempool unconfirmed transactions
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node BN1 connected to all seed nodes
     # When I mine a block on BN1 with coinbase CB1
     # When I mine 5 blocks on BN1
@@ -169,7 +169,7 @@ Feature: Mempool
     # Then I wait until base node BN1 has 5 unconfirmed transactions in its mempool
 
   Scenario: Mempool unconfirmed transaction to mined transaction
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node BN1 connected to all seed nodes
     # When I mine a block on BN1 with coinbase CB1
     # When I mine 2 blocks on BN1

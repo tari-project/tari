@@ -24,7 +24,7 @@ Feature: Block Propagation
 
   @critical
   Scenario: Simple propagation
-    # Given I have 2 seed nodes
+    Given I have 2 seed nodes
     # And I have 4 base nodes connected to all seed nodes
     # And I have a SHA3 miner MINER connected to all seed nodes
     # And mining node MINER mines 5 blocks
@@ -32,7 +32,7 @@ Feature: Block Propagation
     # Then all nodes are at height 5
 
   Scenario: Duplicate block is rejected
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node MINER connected to all seed nodes
     # When I mine but do not submit a block BLOCKA on MINER
     # When I submit block BLOCKA to MINER
@@ -46,7 +46,7 @@ Feature: Block Propagation
     # Then all nodes are at height 2
 
   Scenario: Submit orphan
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node MINER connected to all seed nodes
     # When I mine but do not submit a block BLOCKA on MINER
     # # TODO: Step is missing, so I commented it out
@@ -61,7 +61,7 @@ Feature: Block Propagation
 
   @non-sync-propagation
   Scenario: Nodes should never switch to block sync but stay synced via propagation
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     # Given I have a SHA3 miner MINER connected to all seed nodes
     # And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
     # Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
@@ -74,7 +74,7 @@ Feature: Block Propagation
     # Then all nodes are at height 20
 
   Scenario: Node should lag for while before syncing
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     # Given I have a SHA3 miner MINER connected to all seed nodes
     # And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
     # Given mining node MINER mines 1 blocks
@@ -93,7 +93,7 @@ Feature: Block Propagation
 
   @critical @pruned
   Scenario: Pruned node should prune outputs
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
     # When I mine a block on SENDER with coinbase CB1

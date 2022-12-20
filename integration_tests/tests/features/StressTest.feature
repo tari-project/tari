@@ -9,7 +9,7 @@ Feature: Stress Test
         # And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout <MonitoringTimeout>
         # And I have mining node MINER connected to base node NODE1 and wallet WALLET_A
         # # We mine some blocks before starting the other nodes to avoid a spinning sync state when all the nodes are at height 0
-        # And I have a seed node NODE2
+        When I have a seed node NODE2
         # And I have <NumNodes> base nodes connected to all seed nodes
         # And I have stress-test wallet WALLET_B connected to the seed node NODE2 with broadcast monitoring timeout <MonitoringTimeout>
         # When mining node MINER mines 6 blocks
@@ -52,11 +52,11 @@ Feature: Stress Test
 
     @long-running
     Scenario: Simple Stress Test
-        # #Given I have a seed node NODE1
+        Given I have a seed node NODE1
         # And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout 60
         # And I have mining node MINER connected to base node NODE1 and wallet WALLET_A
         # When mining node MINER mines 1 blocks
-        # And I have a seed node NODE2
+        When I have a seed node NODE2
         # And I have 1 base nodes connected to all seed nodes
         # And I have stress-test wallet WALLET_B connected to the seed node NODE2 with broadcast monitoring timeout 60
         # # We need to ensure the coinbase lock heights are reached; mine enough blocks

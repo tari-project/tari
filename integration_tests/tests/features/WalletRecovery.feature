@@ -6,7 +6,7 @@ Feature: Wallet Recovery
 
     @critical
     Scenario: Wallet recovery with connected base node staying online
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
       When I have wallet WALLET_A connected to all seed nodes
       When I have wallet WALLET_B connected to all seed nodes
@@ -30,7 +30,7 @@ Feature: Wallet Recovery
       #   Then I wait for wallet WALLET_D to have at least 100000 uT
 
     Scenario Outline: Multiple Wallet recovery from seed node
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using DirectAndStoreAndForward
       #   And I have individual mining nodes connected to each wallet and base node NODE
       #   Then I have each mining node mine 3 blocks
@@ -53,7 +53,7 @@ Feature: Wallet Recovery
     # BROKEN: recovery scans 15 blocks but does not actually recover any value. Tested manually and recovery works. Suspect something to do with using localnet (just a guess).
     @critical @broken
     Scenario: Recover one-sided payments
-      #   Given I have a seed node NODE
+      Given I have a seed node NODE
       #   And I have 1 base nodes connected to all seed nodes
       When I have wallet WALLET_A connected to all seed nodes
       When I have wallet WALLET_B connected to all seed nodes

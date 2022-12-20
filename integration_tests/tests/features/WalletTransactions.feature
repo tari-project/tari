@@ -129,10 +129,10 @@ Feature: Wallet Transactions
   Scenario: Wallet imports reorged outputs that become invalidated
     # # Chain 1
     Given I have a seed node SEED_B
-    # And I have a base node B connected to seed SEED_B
-    # And I have wallet WB connected to base node B
-    # And I have wallet WALLET_RECEIVE_TX connected to base node B
-    # And I have wallet WALLET_IMPORTED connected to base node B
+    When I have a base node B connected to seed SEED_B
+    When I have wallet WB connected to base node B
+    When I have wallet WALLET_RECEIVE_TX connected to base node B
+    When I have wallet WALLET_IMPORTED connected to base node B
     # And I have mining node BM connected to base node B and wallet WB
     # And mining node BM mines 4 blocks with min difficulty 1 and max difficulty 50
     # Then I wait for wallet WB to have at least 1000000 uT
@@ -147,8 +147,8 @@ Feature: Wallet Transactions
     # Then I restart wallet WALLET_IMPORTED
     # # Chain 2
     Given I have a seed node SEED_C
-    # And I have a base node C connected to seed SEED_C
-    # And I have wallet WC connected to base node C
+    When I have a base node C connected to seed SEED_C
+    When I have wallet WC connected to base node C
     # And I have mining node CM connected to base node C and wallet WC
     # And mining node CM mines 10 blocks with min difficulty 1000 and max difficulty 9999999999
     # # Connect chain 1 and 2
@@ -218,7 +218,7 @@ Feature: Wallet Transactions
     # #   Stronger chain
     # #
     Given I have a seed node SEED_A
-    # And I have a base node NODE_A1 connected to seed SEED_A
+    When I have a base node NODE_A1 connected to seed SEED_A
     # And I have wallet WALLET_A1 connected to seed node SEED_A
     # And I have wallet WALLET_A2 connected to seed node SEED_A
     # And I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
@@ -235,8 +235,8 @@ Feature: Wallet Transactions
     # #   Collects 7 coinbases into one wallet, send 7 transactions
     # #   Weaker chain
     # #
-    # And I have a seed node SEED_B
-    # And I have a base node NODE_B1 connected to seed SEED_B
+    When I have a seed node SEED_B
+    When I have a base node NODE_B1 connected to seed SEED_B
     # And I have wallet WALLET_B1 connected to seed node SEED_B
     # And I have wallet WALLET_B2 connected to seed node SEED_B
     # And I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
@@ -254,7 +254,7 @@ Feature: Wallet Transactions
     # #    # New node connects to stronger chain, then reorgs its complete chain
     # #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
     # #
-    # And I have a base node NODE_C connected to seed SEED_B
+    When I have a base node NODE_C connected to seed SEED_B
     # Then node NODE_C is at height 12
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
@@ -272,12 +272,12 @@ Feature: Wallet Transactions
     # Then I wait for wallet WALLET_A to have at least 1000000000 uT
     # When I stop wallet WALLET_B
     # When I stop node SEED
-    # Then I wait 10 seconds
+    When I wait 10 seconds
     # Then I send 100000000 uT without waiting for broadcast from wallet WALLET_A to wallet WALLET_B at fee 20
-    # Then I wait 10 seconds
+    When I wait 10 seconds
     # And I start base node SEED
-    # And I have a base node NODE_A connected to seed SEED
-    # And I have a base node NODE_B connected to seed SEED
+    When I have a base node NODE_A connected to seed SEED
+    When I have a base node NODE_B connected to seed SEED
     # And I stop wallet WALLET_A
     # And I start wallet WALLET_A
     # And I start wallet WALLET_B
@@ -285,7 +285,7 @@ Feature: Wallet Transactions
     # When I mine 1 blocks on SEED
     # Then all nodes are at height 6
     # Then wallet WALLET_B detects all transactions are at least Pending
-    # Then I wait 1 seconds
+    When I wait 1 seconds
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
     # #
@@ -294,7 +294,7 @@ Feature: Wallet Transactions
     # #   Stronger chain
     # #
     Given I have a seed node SEED_A
-    # And I have a base node NODE_A1 connected to seed SEED_A
+    When I have a base node NODE_A1 connected to seed SEED_A
     # And I have wallet WALLET_A1 connected to seed node SEED_A
     # And I have wallet WALLET_A2 connected to seed node SEED_A
     # And I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
@@ -311,8 +311,8 @@ Feature: Wallet Transactions
     # #   Collects 7 coinbases into one wallet, send 7 transactions
     # #   Weaker chain
     # #
-    # And I have a seed node SEED_B
-    # And I have a base node NODE_B1 connected to seed SEED_B
+    When I have a seed node SEED_B
+    When I have a base node NODE_B1 connected to seed SEED_B
     # And I have wallet WALLET_B1 connected to seed node SEED_B
     # And I have wallet WALLET_B2 connected to seed node SEED_B
     # And I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
@@ -330,7 +330,7 @@ Feature: Wallet Transactions
     # #    # New node connects to stronger chain, then reorgs its complete chain
     # #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
     # #
-    # And I have a base node NODE_C connected to seed SEED_B
+    When I have a base node NODE_C connected to seed SEED_B
     # Then node NODE_C is at height 5
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
@@ -358,27 +358,27 @@ Feature: Wallet Transactions
     # When wallet WALLET_SENDER detects last transaction is Pending
     # Then I stop wallet WALLET_SENDER
     # And I start wallet WALLET_RECV
-    # And I wait 5 seconds
+    When I wait 5 seconds
     # When wallet WALLET_RECV detects all transactions are at least Pending
     # Then I cancel last transaction in wallet WALLET_RECV
-    # When I wait 15 seconds
+    When I wait 15 seconds
     # Then I stop wallet WALLET_RECV
     # And I start wallet WALLET_SENDER
     # # This is a weirdness that I haven't been able to figure out. When you start WALLET_SENDER on the line above it
     # # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
     # # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
-    # And I wait 10 seconds
+    When I wait 10 seconds
     # Then I restart wallet WALLET_SENDER
-    # And I wait 10 seconds
+    When I wait 10 seconds
     # Then I restart wallet WALLET_SENDER
-    # When I wait 30 seconds
+    When I wait 30 seconds
     # And mining node MINER mines 5 blocks
     # Then all nodes are at height 15
     # When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
     # And I start wallet WALLET_RECV
-    # And I wait 5 seconds
+    When I wait 5 seconds
     # Then I restart wallet WALLET_RECV
-    # And I wait 5 seconds
+    When I wait 5 seconds
     # Then I restart wallet WALLET_RECV
     # Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
@@ -393,11 +393,11 @@ Feature: Wallet Transactions
     # Then all nodes are at height 5
     # Then I wait for wallet WALLET_SENDER to have at least 10000000000 uT
     # And I stop wallet WALLET_RECV
-    # When I wait 15 seconds
+    When I wait 15 seconds
     # And I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
     # Then I cancel last transaction in wallet WALLET_SENDER
     # Then I restart wallet WALLET_RECV
-    # When I wait 15 seconds
+    When I wait 15 seconds
     # When wallet WALLET_RECV detects last transaction is Cancelled
 
 @critical 
