@@ -31,6 +31,7 @@ use tari_common::{
     load_configuration,
 };
 use tari_console_wallet::{run_wallet_with_cli, ApplicationConfig, Cli};
+use tari_shutdown::Shutdown;
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -87,7 +88,8 @@ fn main_inner() -> Result<(), ExitError> {
         .build()
         .expect("Failed to build a runtime!");
 
-    run_wallet_with_cli(runtime, &mut config, cli)
+    let mut shutdown = Shutdown::new();
+    run_wallet_with_cli(&mut shutdown, runtime, &mut config, cli)
 }
 
 fn setup_grpc_config(config: &mut ApplicationConfig) {

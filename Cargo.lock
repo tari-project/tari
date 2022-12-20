@@ -5467,6 +5467,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_p2p",
+ "tari_shutdown",
  "tari_test_utils",
  "tari_wallet",
  "tari_wallet_grpc_client",
