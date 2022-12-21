@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,54 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::BlindingFactor;
-
-use crate::{
-    blocks::{BlockHeader, ChainHeader},
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{TransactionKernel, TransactionOutput},
-    },
-    validation::ValidationError,
-};
+use crate::blocks::BlockHeader;
 
 #[allow(dead_code)]
 pub struct InternallyValidHeader(pub Arc<BlockHeader>);
-
-pub trait InternalConsistencyHeaderValidator {
-    /// Validates a header in isolation, i.e. without looking at previous headers
-    fn validate(&self, header: &BlockHeader) -> Result<InternallyValidHeader, ValidationError>;
-}
-
-pub trait ChainLinkedHeaderValidator {
-    /// Takes an (internally) valid header and validates it in context of previous headers in the chain
-    fn validate(
-        &self,
-        header: &InternallyValidHeader, // ... state from the db needed for validation...
-    ) -> Result<ChainHeader, ValidationError>;
-}
-
-pub trait InternalConsistencyOutputValidator {
-    fn validate(&self, output: &TransactionOutput) -> Result<(), ValidationError>;
-}
-
-pub trait InternalConsistencyKernelValidator {
-    fn validate(&self, kernel: &TransactionKernel) -> Result<(), ValidationError>;
-}
-
-pub trait InternalConsistencyAggregateBodyValidator {
-    fn validate(
-        &self,
-        body: AggregateBody,
-        offset: BlindingFactor,
-        script_offset: BlindingFactor,
-    ) -> Result<(), ValidationError>;
-}
-
-pub trait ChainLinkedAggregateBodyValidator {
-    fn validate(
-        &self,
-        body: AggregateBody,
-        header: ChainHeader, // .... state or db needed to validate....
-    ) -> Result<(), ValidationError>;
-}
