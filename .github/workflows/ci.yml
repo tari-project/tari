@@ -103,7 +103,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --release --all-targets --locked
+          args: --release --all-targets --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
         uses: actions-rs/cargo@v1
         with:
