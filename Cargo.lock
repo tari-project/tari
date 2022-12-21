@@ -5478,7 +5478,6 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_p2p",
- "tari_script",
  "tari_shutdown",
  "tari_test_utils",
  "tari_utilities",
