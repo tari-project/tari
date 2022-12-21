@@ -27,7 +27,7 @@ use std::{io, path::PathBuf, time::Duration};
 use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
+use tari_app_grpc::tari_rpc as grpc;
 use tari_base_node_grpc_client::grpc::{
     Empty,
     GetBalanceRequest,
@@ -36,19 +36,23 @@ use tari_base_node_grpc_client::grpc::{
     GetTransactionInfoRequest,
 };
 use tari_common::initialize_logging;
+use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
-use utils::{
-    miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
-    wallet_process::{create_wallet_client, spawn_wallet},
-};
 
 use crate::utils::{
     base_node_process::{spawn_base_node, BaseNodeProcess},
-    miner::MinerProcess,
-    wallet_process::WalletProcess,
+    miner::{
+        mine_block_with_coinbase_on_node,
+        mine_blocks,
+        mine_blocks_without_wallet,
+        register_miner_process,
+        MinerProcess,
+    },
+    transaction::build_transaction_with_output,
+    wallet_process::{create_wallet_client, spawn_wallet, WalletProcess},
 };
 
 #[derive(Error, Debug)]
@@ -67,9 +71,10 @@ pub struct TariWorld {
     base_nodes: IndexMap<String, BaseNodeProcess>,
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
-    coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
-    // mapping from hex public key string to tx_id
-    transactions: IndexMap<String, Vec<u64>>,
+    transactions: IndexMap<String, Transaction>,
+    // mapping from hex string of public key of wallet client to tx_id's
+    wallet_tx_ids: IndexMap<String, Vec<u64>>,
+    utxos: IndexMap<String, (u64, TransactionOutput)>,
 }
 
 impl TariWorld {
@@ -358,7 +363,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
     let mut client = create_wallet_client(world, wallet_name).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
     let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
 
     let num_retries = 100;
 
@@ -371,7 +376,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
-                TransactionStatus::MinedConfirmed => break 'inner,
+                grpc::TransactionStatus::MinedConfirmed => break 'inner,
                 _ => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
@@ -400,8 +405,6 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
 
     let request = GetCompletedTransactionsRequest {};
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
@@ -428,7 +431,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
     let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
 
     let transaction_status = match transaction_status.as_str() {
         "TRANSACTION_STATUS_COMPLETED" => 0i32,
@@ -470,6 +473,21 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         "Wallet {} failed to has at least num {} txs with status {}",
         wallet, num_txs, transaction_status
     );
+}
+
+#[when(expr = "I create a transaction {word} spending {word} to {word}")]
+async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| {
+            let (a, o) = world.utxos.get(&i.to_string()).unwrap();
+            (*a, o.clone())
+        })
+        .collect::<Vec<_>>();
+    let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
+    world.utxos.insert(output, (amount, utxo));
+    world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I print the cucumber world")]
