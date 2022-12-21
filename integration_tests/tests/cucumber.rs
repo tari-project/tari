@@ -422,6 +422,56 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     }
 }
 
+#[when(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
+#[then(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
+async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_txs: u64, transaction_status: String) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+
+    let transaction_status = match transaction_status.as_str() {
+        "TRANSACTION_STATUS_COMPLETED" => 0i32,
+        "TRANSACTION_STATUS_BROADCAST" => 1i32,
+        "TRANSACTION_STATUS_MINED_UNCONFIRMED" => 2i32,
+        "TRANSACTION_STATUS_IMPORTED" => 3i32,
+        "TRANSACTION_STATUS_PENDING" => 4i32,
+        "TRANSACTION_STATUS_COINBASE" => 5i32,
+        "TRANSACTION_STATUS_MINED_CONFIRMED" => 6i32,
+        "TRANSACTION_STATUS_NOT_FOUND" => 7i32,
+        "TRANSACTION_STATUS_REJECTED" => 8i32,
+        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 9i32,
+        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 10i32,
+        "TRANSACTION_STATUS_QUEUED" => 11i32,
+        _ => panic!("Invalid transaction status {}", transaction_status),
+    };
+
+    let request = GetTransactionInfoRequest {
+        transaction_ids: tx_ids.clone(),
+    };
+    let num_retries = 100;
+
+    for _ in 0..num_retries {
+        let txs_info = client.get_transaction_info(request.clone()).await.unwrap().into_inner();
+        let txs_info = txs_info.transactions;
+        if txs_info
+            .iter()
+            .filter(|x| x.status == transaction_status)
+            .collect::<Vec<_>>()
+            .len() as u64 >=
+            num_txs
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} failed to has at least num {} txs with status {}",
+        wallet, num_txs, transaction_status
+    );
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
