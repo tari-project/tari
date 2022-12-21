@@ -5,8 +5,8 @@
 Feature: Recovery
 
     Scenario Outline: Blockchain database recovery
-        # Given I have 2 seed nodes
-        # And I have a base node B connected to all seed nodes
+        Given I have 2 seed nodes
+        When I have a base node B connected to all seed nodes
         # When I mine <NumBlocks> blocks on B
         # Then all nodes are at height <NumBlocks>
         # When I stop node B

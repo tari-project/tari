@@ -6,7 +6,7 @@ Feature: Block Sync
 
   Scenario Outline: Initial block sync
     # Given I have <NumSeeds> seed nodes
-    # And I have a base node MINER connected to all seed nodes
+    When I have a base node MINER connected to all seed nodes
     # When I mine <NumBlocks> blocks on MINER
     # Given I have <NumSyncers> base nodes connected to all seed nodes
     # # All nodes should sync to tip
@@ -27,7 +27,7 @@ Feature: Block Sync
 
   @critical
   Scenario: Simple block sync
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     # Given I have a SHA3 miner MINER connected to all seed nodes
     # Given mining node MINER mines 20 blocks
     # Given I have 2 base nodes connected to all seed nodes
@@ -36,10 +36,10 @@ Feature: Block Sync
 
   @critical 
   Scenario: Sync burned output
-    # Given I have a seed node NODE
-    # And I have a base node NODE1 connected to all seed nodes
+    Given I have a seed node NODE
+    When I have a base node NODE1 connected to all seed nodes
     # And I have 2 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
     # Then all nodes are at height 15
@@ -47,12 +47,12 @@ Feature: Block Sync
     # When I create a burn transaction of 1000000 uT from WALLET_A at fee 100
     # When mining node MINER mines 10 blocks
     # Then all nodes are at height 25
-    # Given I have a base node NODE2 connected to all seed nodes
+    When I have a base node NODE2 connected to all seed nodes
     # Then all nodes are at height 25
 
   @critical @pruned
   Scenario: Pruned mode simple sync
-    # Given I have 1 seed nodes
+    Given I have 1 seed nodes
     # Given I have a SHA3 miner NODE1 connected to all seed nodes
     # When I mine a block on NODE1 with coinbase CB1
     # And I mine 4 blocks on NODE1
@@ -63,10 +63,10 @@ Feature: Block Sync
 
   @critical @pruned
   Scenario: Pruned node should handle burned output
-    # Given I have a seed node NODE
-    # And I have a base node NODE1 connected to all seed nodes
+    Given I have a seed node NODE
+    When I have a base node NODE1 connected to all seed nodes
     # And I have 2 base nodes connected to all seed nodes
-    # And I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
     # Then all nodes are at height 15
@@ -80,7 +80,7 @@ Feature: Block Sync
   @critical
   Scenario: When a new node joins the network, it receives all peers
     # Given I have 10 seed nodes
-    # And I have a base node NODE1 connected to all seed nodes
+    When I have a base node NODE1 connected to all seed nodes
     # # additional peer seeds are being included from config.toml [common]
     # Then NODE1 has at least 10 peers
     # Given I have a base node NODE2 connected to node NODE1
@@ -88,8 +88,8 @@ Feature: Block Sync
     # And NODE2 has at least 11 peers
 
   Scenario: Pruned mode sync test
-    # Given I have a seed node SEED
-    # Given I have a base node NODE1 connected to all seed nodes
+    Given I have a seed node SEED
+    When I have a base node NODE1 connected to all seed nodes
     # When I mine a block on NODE1 with coinbase CB1
     # And I mine 4 blocks on NODE1
     # Then all nodes are at height 5
@@ -102,16 +102,16 @@ Feature: Block Sync
 
   @long-running @flaky
   Scenario: Node should not sync from pruned node
-    # Given I have a base node NODE1 connected to all seed nodes
-    # And I have wallet WALLET1 connected to base node NODE1
+    When I have a base node NODE1 connected to all seed nodes
+    # When I have wallet WALLET1 connected to base node NODE1
     # And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     # And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 6
     # When mining node MINING1 mines 40 blocks with min difficulty 20 and max difficulty 9999999999
     # Then all nodes are at height 40
     # When I stop node NODE1
     # Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
-    # Given I have a base node NODE2
-    # And I have wallet WALLET2 connected to base node NODE2
+    Given I have a base node NODE2
+    # When I have wallet WALLET2 connected to base node NODE2
     # And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
     # When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 2
     # And I connect node NODE2 to node PNODE1
@@ -127,11 +127,11 @@ Feature: Block Sync
     # Then all nodes are at height 50
 
   Scenario Outline: Syncing node while also mining before tip sync
-    # Given I have a seed node SEED
-    # And I have wallet WALLET1 connected to seed node SEED
-    # And I have wallet WALLET2 connected to seed node SEED
+    Given I have a seed node SEED
+    When I have wallet WALLET1 connected to seed node SEED
+    When I have wallet WALLET2 connected to seed node SEED
     # And I have mining node MINER connected to base node SEED and wallet WALLET1
-    # And I have a base node SYNCER connected to all seed nodes
+    When I have a base node SYNCER connected to all seed nodes
     # And I have mine-before-tip mining node MINER2 connected to base node SYNCER and wallet WALLET2
     # And I stop node SYNCER
     # When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
@@ -154,7 +154,7 @@ Feature: Block Sync
     #   | 1001 | 50 |
 
   Scenario: Pruned mode network only
-    # Given I have a base node NODE1 connected to all seed nodes
+    When I have a base node NODE1 connected to all seed nodes
     # Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     # Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
     # When I mine a block on PNODE1 with coinbase CB1

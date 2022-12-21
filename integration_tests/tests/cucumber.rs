@@ -22,9 +22,9 @@
 
 mod utils;
 
-use std::{io, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
-use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterExt as _};
+use cucumber::{gherkin::Scenario, given, then, when, World as _};
 use futures::StreamExt;
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
@@ -32,13 +32,13 @@ use tari_base_node_grpc_client::grpc::{
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
-    GetIdentityRequest,
     GetTransactionInfoRequest,
 };
 use tari_common::initialize_logging;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
+use tari_wallet_grpc_client::grpc::GetIdentityRequest;
 use thiserror::Error;
 use utils::{
     miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
@@ -59,6 +59,8 @@ pub enum TariWorldError {
     WalletProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
+    #[error("No base node, or wallet client found: {0}")]
+    ClientNotFound(String),
 }
 
 #[derive(Debug, Default, cucumber::World)]
@@ -70,6 +72,11 @@ pub struct TariWorld {
     coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
     // mapping from hex public key string to tx_id
     transactions: IndexMap<String, Vec<u64>>,
+}
+
+enum NodeClient {
+    BaseNode(tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
 }
 
 impl TariWorld {
@@ -84,7 +91,19 @@ impl TariWorld {
             .await
     }
 
-    #[allow(dead_code)]
+    async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
+        &self,
+        name: S,
+    ) -> anyhow::Result<NodeClient> {
+        match self.get_node_client(&name).await {
+            Ok(client) => Ok(NodeClient::BaseNode(client)),
+            Err(_) => match self.get_wallet_client(&name).await {
+                Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
+                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+            },
+        }
+    }
+
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: S,
@@ -96,6 +115,7 @@ impl TariWorld {
             .await
     }
 
+    #[allow(dead_code)]
     fn get_node<S: AsRef<str>>(&self, node_name: S) -> anyhow::Result<&BaseNodeProcess> {
         Ok(self
             .base_nodes
@@ -116,11 +136,13 @@ impl TariWorld {
 }
 
 #[given(expr = "I have a seed node {word}")]
+#[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
     spawn_base_node(world, true, name, vec![], None).await;
 }
 
-#[given(expr = "a wallet {word} connected to base node {word}")]
+#[given(expr = "I have wallet {word} connected to base node {word}")]
+#[when(expr = "I have wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
@@ -147,26 +169,36 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 }
 
 #[when(expr = "I wait for {word} to connect to {word}")]
+#[then(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(
     world: &mut TariWorld,
     first_node: String,
     second_node: String,
 ) -> anyhow::Result<()> {
-    let mut first_node = world.get_node_client(first_node).await?;
-    let second_node = world.get_node(second_node)?;
+    let mut first_node = world.get_base_node_or_wallet_client(first_node).await?;
+    let mut second_node = world.get_base_node_or_wallet_client(second_node).await?;
 
     for _i in 0..100 {
-        let res = first_node.list_connected_peers(Empty {}).await?;
+        let res = match first_node {
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await?,
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await?,
+        };
         let res = res.into_inner();
+
+        let public_key = match second_node {
+            NodeClient::BaseNode(ref mut client) => client.identify(Empty {}).await?.into_inner().public_key,
+            NodeClient::Wallet(ref mut client) => client.identify(GetIdentityRequest {}).await?.into_inner().public_key,
+        };
 
         if res
             .connected_peers
             .iter()
-            .any(|p| p.public_key == second_node.identity.public_key().as_bytes())
+            .any(|p| p.public_key == public_key.as_bytes())
         {
             return Ok(());
         }
+
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
@@ -303,13 +335,6 @@ async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
     mine_blocks_without_wallet(&mut client, blocks).await;
 }
 
-#[when(expr = "I have wallet {word} connected to base node {word}")]
-async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
-    let bn = world.base_nodes.get(&base_node).unwrap();
-    let peer_seeds = bn.seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
-}
-
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
     _world: &mut TariWorld,
@@ -401,7 +426,6 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
     let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
 
     let request = GetCompletedTransactionsRequest {};
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
@@ -509,13 +533,14 @@ async fn main() {
     )
     .expect("logging not configured");
     TariWorld::cucumber()
+        .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(1)
-        .with_writer(
-            writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
-                .summarized()
-                .assert_normalized(),
-        )
+        //.max_concurrent_scenarios(1)
+        //.with_writer(
+        //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
+        //        .summarized()
+        //        .assert_normalized(),
+        //)
         .after(|_feature,_rule,scenario,_ev,maybe_world| {
             Box::pin(async move {
                 if let Some(maybe_world) = maybe_world {
