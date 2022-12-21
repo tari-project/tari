@@ -39,7 +39,7 @@ use tempfile::tempdir;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{TariWorld};
+use crate::{utils::get_port, TariWorld};
 
 pub struct BaseNodeProcess {
     pub name: String,

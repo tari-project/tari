@@ -404,7 +404,6 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     }
 
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
 
     let request = GetCompletedTransactionsRequest {};
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
