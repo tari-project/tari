@@ -33,6 +33,7 @@ use tari_core::transactions::transaction_components::{Transaction, TransactionOu
 use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
+use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_wallet_grpc_client::grpc::{
     Empty,
     GetBalanceRequest,
@@ -128,7 +129,7 @@ async fn start_base_node(world: &mut TariWorld, name: String) {
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
+    spawn_wallet(world, wallet_name, Some(node_name), seeds, None).await;
 }
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
@@ -138,7 +139,7 @@ async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name
 
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
 async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    spawn_wallet(world, name, None, world.all_seed_nodes().to_vec()).await;
+    spawn_wallet(world, name, None, world.all_seed_nodes().to_vec(), None).await;
 }
 
 #[given(expr = "a miner {word} connected to base node {word} and wallet {word}")]
@@ -312,7 +313,7 @@ async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
 async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
     let bn = world.base_nodes.get(&base_node).unwrap();
     let peer_seeds = bn.seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(base_node), peer_seeds).await;
+    spawn_wallet(world, wallet, Some(base_node), peer_seeds, None).await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
@@ -340,7 +341,7 @@ async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
 
 #[when(expr = "I have wallet {word} connected to seed node {word}")]
 async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
-    spawn_wallet(world, wallet, None, vec![seed_node]).await;
+    spawn_wallet(world, wallet, None, vec![seed_node], None).await;
 }
 
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
@@ -392,7 +393,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
-    spawn_wallet(world, miner.clone(), Some(miner.clone()), peers).await;
+    spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None).await;
     register_miner_process(world, miner.clone(), miner.clone(), miner);
 }
 
@@ -514,6 +515,18 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
         "Wallet {} didn't get less than {} after num_retries {}",
         wallet, amount, num_retries
     );
+}
+
+#[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
+async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
+    let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
+    spawn_wallet(
+        world,
+        wallet,
+        None,
+        world.all_seed_nodes().to_vec(),
+        Some(routing_mechanism),
+    ).await;
 }
 
 #[when(expr = "I print the cucumber world")]
