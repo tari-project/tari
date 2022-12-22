@@ -42,7 +42,7 @@ pub const LOG_TARGET: &str = "tari_miner::miner::standalone";
 const REPORTING_FREQUENCY: u64 = 3_000_000;
 
 // Thread's stack size, ideally we would fit all thread's data in the CPU L1 cache
-const STACK_SIZE: usize = 32_000;
+const STACK_SIZE: usize = 320_000;
 
 /// Miner will send regular reports from every mining threads
 #[derive(Debug)]
