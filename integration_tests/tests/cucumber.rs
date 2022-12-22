@@ -40,6 +40,8 @@ use tari_wallet_grpc_client::grpc::{
     GetCompletedTransactionsRequest,
     GetIdentityRequest,
     GetTransactionInfoRequest,
+    PaymentRecipient,
+    TransferRequest,
 };
 use thiserror::Error;
 
@@ -526,7 +528,210 @@ async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, w
         None,
         world.all_seed_nodes().to_vec(),
         Some(routing_mechanism),
-    ).await;
+    )
+    .await;
+}
+
+#[when(expr = "I have {int} non-default wallets connected to all seed nodes using {word}")]
+async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, num: u64, mechanism: String) {
+    let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
+    for ind in 0..num {
+        let wallet_name = format!("Wallet_{}", ind);
+        spawn_wallet(
+            world,
+            wallet_name,
+            None,
+            world.all_seed_nodes().to_vec(),
+            Some(routing_mechanism),
+        )
+        .await;
+    }
+}
+
+#[when(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+#[then(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
+    world: &mut TariWorld,
+    amount: u64,
+    source_wallet: String,
+    dest_wallet: String,
+    fee: u64,
+) {
+    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
+    let identity_req = GetIdentityRequest {};
+    let source_wallet_pubkey = source_client
+        .identify(identity_req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
+    let dest_wallet_pubkey = dest_client
+        .identify(identity_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: dest_wallet_pubkey.clone(),
+        amount,
+        fee_per_gram: fee,
+        message: format!(
+            "transfer amount {} from {} to {}",
+            amount,
+            source_wallet.as_str(),
+            dest_wallet.as_str()
+        ),
+        payment_type: 0, // normal mimblewimble payment type
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Transacting amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        source_wallet.as_str(),
+        dest_wallet.as_str(),
+        fee
+    );
+
+    let tx_id = tx_res.transaction_id;
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "Transfer amount {} from {} to {} at fee {} succeeded",
+        amount, source_wallet, dest_wallet, fee
+    );
+}
+
+#[then(expr = "I send a one-sided transaction of {int} uT from {word} to {word} at fee {int}")]
+async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
+    world: &mut TariWorld,
+    amount: u64,
+    source_wallet: String,
+    dest_wallet: String,
+    fee: u64,
+) {
+    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
+    let identity_req = GetIdentityRequest {};
+    let source_wallet_pubkey = source_client
+        .identify(identity_req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
+    let dest_wallet_pubkey = dest_client
+        .identify(identity_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: dest_wallet_pubkey.clone(),
+        amount,
+        fee_per_gram: fee,
+        message: format!(
+            "One sided transfer amount {} from {} to {}",
+            amount,
+            source_wallet.as_str(),
+            dest_wallet.as_str()
+        ),
+        payment_type: 1, // one sided transaction
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "One sided transaction with amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        source_wallet.as_str(),
+        dest_wallet.as_str(),
+        fee
+    );
+
+    // we wait for transaction to be broadcasted
+    let tx_id = tx_res.transaction_id;
+    let num_retries = 100;
+    let tx_info_req = GetTransactionInfoRequest {
+        transaction_ids: vec![tx_id],
+    };
+
+    for i in 0..num_retries {
+        let tx_info_res = source_client
+            .get_transaction_info(tx_info_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_info = tx_info_res.transactions.first().unwrap();
+        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+        if tx_info.status == 1_i32 {
+            println!(
+                "One sided transaction from {} to {} with amount {} at fee {} has been broadcasted",
+                source_wallet.clone(),
+                dest_wallet.clone(),
+                amount,
+                fee
+            );
+            break;
+        }
+        if i == num_retries - 1 {
+            panic!(
+                "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                source_wallet.clone(),
+                dest_wallet.clone(),
+                amount,
+                fee
+            )
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "One sided transaction with amount {} from {} to {} at fee {} succeeded",
+        amount, source_wallet, dest_wallet, fee
+    );
 }
 
 #[when(expr = "I print the cucumber world")]
