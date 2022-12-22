@@ -1,7 +1,7 @@
 ---
 name: CI
 
-'on':
+"on":
   workflow_dispatch:
   push:
     branches:
@@ -25,7 +25,7 @@ jobs:
   clippy:
     name: clippy
     #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -55,7 +55,7 @@ jobs:
           args: clippy --all-targets --all-features
   build:
     name: cargo check
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -81,7 +81,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   build-stable:
     name: cargo check stable
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -103,7 +103,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --release --all-targets --exclude tari_integration_tests --locked
+          args: --release --all-targets --workspace --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
         uses: actions-rs/cargo@v1
         with:
@@ -111,7 +111,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   licenses:
     name: file licenses
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -124,7 +124,7 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -154,7 +154,7 @@ jobs:
           args: -v --all-features --release --workspace --exclude tari_integration_tests
   integration_tests:
     name: integration tests
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -180,7 +180,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
