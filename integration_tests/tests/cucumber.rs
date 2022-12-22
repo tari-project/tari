@@ -28,18 +28,18 @@ use cucumber::{gherkin::Scenario, given, then, when, writer, World as _, WriterE
 use futures::StreamExt;
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_base_node_grpc_client::grpc::{
+use tari_common::initialize_logging;
+use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_integration_tests::error::GrpcBaseNodeError;
+use tari_utilities::hex::Hex;
+use tari_wallet_grpc_client::grpc::{
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
     GetIdentityRequest,
     GetTransactionInfoRequest,
 };
-use tari_common::initialize_logging;
-use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
-use tari_crypto::tari_utilities::ByteArray;
-use tari_integration_tests::error::GrpcBaseNodeError;
-use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::utils::{
@@ -487,6 +487,33 @@ async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String,
     let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
     world.utxos.insert(output, (amount, utxo));
     world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I wait for wallet {word} to have less than {int} uT")]
+async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    println!("Waiting for wallet {} to have less than {} uT", wallet, amount);
+
+    let num_retries = 100;
+    let request = GetBalanceRequest {};
+
+    for _ in 0..num_retries {
+        let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
+        let current_balance = balance_res.available_balance;
+        if current_balance < amount {
+            println!(
+                "Wallet {} now has less than {}, with current balance {}",
+                wallet, amount, current_balance
+            );
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} didn't get less than {} after num_retries {}",
+        wallet, amount, num_retries
+    );
 }
 
 #[when(expr = "I print the cucumber world")]
