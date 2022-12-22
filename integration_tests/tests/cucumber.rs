@@ -74,7 +74,7 @@ impl TariWorld {
         &self,
         name: &S,
     ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
-        self.get_node(name).unwrap().get_grpc_client().await
+        self.get_node(name)?.get_grpc_client().await
     }
 
     async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
@@ -94,7 +94,7 @@ impl TariWorld {
         &self,
         name: &S,
     ) -> anyhow::Result<tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
-        self.get_wallet(name).unwrap().get_grpc_client().await
+        self.get_wallet(name)?.get_grpc_client().await
     }
 
     fn get_node<S: AsRef<str>>(&self, node_name: &S) -> anyhow::Result<&BaseNodeProcess> {
@@ -173,7 +173,6 @@ async fn node_pending_connection_to(
 ) -> anyhow::Result<()> {
     let mut first_node = world.get_base_node_or_wallet_client(&first_node).await?;
     let mut second_node = world.get_base_node_or_wallet_client(&second_node).await?;
-
     for _i in 0..100 {
         let res = match first_node {
             NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await?,
