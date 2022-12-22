@@ -424,8 +424,6 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     }
 
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
 
     let request = GetCompletedTransactionsRequest {};
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
@@ -481,8 +479,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         if txs_info
             .iter()
             .filter(|x| x.status == transaction_status)
-            .collect::<Vec<_>>()
-            .len() as u64 >=
+            .count() as u64 >=
             num_txs
         {
             return;
