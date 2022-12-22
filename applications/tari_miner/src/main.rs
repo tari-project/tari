@@ -27,7 +27,7 @@ use crossterm::{execute, terminal::SetTitle};
 use log::*;
 use run_miner::start_miner;
 use tari_app_utilities::consts;
-use tari_common::exit_codes::ExitError;
+use tari_common::{exit_codes::ExitError, initialize_logging};
 use tokio::runtime::Runtime;
 
 use crate::cli::Cli;

@@ -113,6 +113,7 @@ impl MinerProcess {
     }
 }
 
+#[allow(dead_code)]
 pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
     let mut base_client = create_base_node_client(world, &miner_name).await;
     let mut wallet_client = create_wallet_client(world, &miner_name).await;
