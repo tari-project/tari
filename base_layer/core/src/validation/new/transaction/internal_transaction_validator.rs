@@ -20,19 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::collections::HashSet;
 
 use log::{trace, warn};
-use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-};
-use tari_script::ScriptContext;
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, RangeProofService};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
 use tari_utilities::hex::Hex;
 
 use crate::{
+    consensus::ConsensusConstants,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
@@ -40,6 +36,9 @@ use crate::{
             KernelSum,
             Transaction,
             TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
         },
         CryptoFactories,
     },
@@ -49,12 +48,14 @@ use crate::{
 pub const LOG_TARGET: &str = "c::val::internal_consistency_transaction_validator";
 
 pub struct InternalConsistencyTransactionValidator {
+    rules: ConsensusConstants,
     factories: CryptoFactories,
 }
 
 impl InternalConsistencyTransactionValidator {
-    pub fn new() -> Self {
+    pub fn new(rules: ConsensusConstants) -> Self {
         Self {
+            rules,
             factories: CryptoFactories::default(),
         }
     }
@@ -68,12 +69,26 @@ impl InternalConsistencyTransactionValidator {
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
     #[allow(dead_code)]
-    pub fn validate(
-        &self,
-        tx: &Transaction,
-        prev_hash: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), ValidationError> {
+    pub fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
+            return Err(ValidationError::ErroneousCoinbaseOutput);
+        }
+
+        // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
+        // only coinbases may have the extra field set (the only field that the fn argument affects).
+        tx.body.check_output_features(1)?;
+
+        // validate maximum tx weight
+        if tx.calculate_weight(self.rules.transaction_weight()) > self.rules.get_max_block_weight_excluding_coinbase() {
+            return Err(ValidationError::MaxTransactionWeightExceeded);
+        }
+
+        validate_versions(tx, &self.rules)?;
+        for output in tx.body.outputs() {
+            self.check_permitted_output_types(output)?;
+            self.check_validator_node_registration_utxo(output)?;
+        }
+
         self.verify_kernel_signatures(tx)?;
 
         // TODO: can this be different than 0?
@@ -83,9 +98,8 @@ impl InternalConsistencyTransactionValidator {
         Self::validate_range_proofs(tx, &self.factories.range_proof)?;
         Self::verify_metadata_signatures(tx)?;
 
-        let script_offset_g = PublicKey::from_secret_key(&tx.script_offset);
-        Self::validate_script_offset(tx, script_offset_g, &self.factories.commitment, prev_hash, height)?;
-        Self::validate_covenants(tx, height)?;
+        Self::verify_no_duplicated_inputs_outputs(tx)?;
+        Self::check_total_burned(tx)?;
 
         Ok(())
     }
@@ -180,48 +194,177 @@ impl InternalConsistencyTransactionValidator {
         Ok(())
     }
 
-    /// this will validate the script offset of the aggregate body.
-    fn validate_script_offset(
-        tx: &Transaction,
-        script_offset: PublicKey,
-        factory: &CommitmentFactory,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking script offset");
-        // lets count up the input script public keys
-        let mut input_keys = PublicKey::default();
-        let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
-        for input in tx.body.inputs() {
-            let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
-            input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
+    fn check_permitted_output_types(&self, output: &TransactionOutput) -> Result<(), ValidationError> {
+        if !self
+            .rules
+            .permitted_output_types()
+            .contains(&output.features.output_type)
+        {
+            return Err(ValidationError::OutputTypeNotPermitted {
+                output_type: output.features.output_type,
+            });
         }
 
-        // Now lets gather the output public keys and hashes.
-        let mut output_keys = PublicKey::default();
-        for output in tx.body.outputs() {
-            // We should not count the coinbase tx here
-            if !output.is_coinbase() {
-                output_keys = output_keys + output.sender_offset_public_key.clone();
+        Ok(())
+    }
+
+    fn check_validator_node_registration_utxo(&self, utxo: &TransactionOutput) -> Result<(), ValidationError> {
+        if let Some(reg) = utxo.features.validator_node_registration() {
+            if utxo.minimum_value_promise < self.rules.validator_node_registration_min_deposit_amount() {
+                return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                    min: self.rules.validator_node_registration_min_deposit_amount(),
+                    actual: utxo.minimum_value_promise,
+                });
             }
-        }
-        let lhs = input_keys - output_keys;
-        if lhs != script_offset {
-            return Err(TransactionError::ScriptOffset);
+            if utxo.features.maturity < self.rules.validator_node_registration_min_lock_height() {
+                return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                    min: self.rules.validator_node_registration_min_lock_height(),
+                    actual: utxo.features.maturity,
+                });
+            }
+
+            // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+            //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+            //                 keys this becomes difficult. Fix this once we have decided on a solution.
+            if !reg.is_valid_signature_for(&[]) {
+                return Err(ValidationError::InvalidValidatorNodeSignature);
+            }
         }
         Ok(())
     }
 
-    fn validate_covenants(tx: &Transaction, height: u64) -> Result<(), TransactionError> {
-        for input in tx.body.inputs() {
-            input.covenant()?.execute(height, input, tx.body.outputs())?;
+    /// This function checks the at the tx contains no duplicated inputs or outputs.
+    fn verify_no_duplicated_inputs_outputs(tx: &Transaction) -> Result<(), ValidationError> {
+        if tx.body.contains_duplicated_inputs() {
+            warn!(target: LOG_TARGET, "Transaction validation failed due to double input");
+            return Err(ValidationError::UnsortedOrDuplicateInput);
+        }
+        if tx.body.contains_duplicated_outputs() {
+            warn!(target: LOG_TARGET, "Transaction validation failed due to double output");
+            return Err(ValidationError::UnsortedOrDuplicateOutput);
+        }
+        Ok(())
+    }
+
+    /// THis function checks the total burned sum in the header ensuring that every burned output is counted in the
+    /// total sum.
+    #[allow(clippy::mutable_key_type)]
+    fn check_total_burned(tx: &Transaction) -> Result<(), ValidationError> {
+        let mut burned_outputs = HashSet::new();
+        for output in tx.body.outputs() {
+            if output.is_burned() {
+                // we dont care about duplicate commitments are they should have already been checked
+                burned_outputs.insert(output.commitment.clone());
+            }
+        }
+        for kernel in tx.body.kernels() {
+            if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
+                return Err(ValidationError::InvalidBurnError(
+                    "Burned kernel does not match burned output".to_string(),
+                ));
+            }
+        }
+
+        if !burned_outputs.is_empty() {
+            return Err(ValidationError::InvalidBurnError(
+                "Burned output has no matching burned kernel".to_string(),
+            ));
         }
         Ok(())
     }
 }
 
-impl Default for InternalConsistencyTransactionValidator {
-    fn default() -> Self {
-        Self::new()
+fn validate_versions(tx: &Transaction, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    // validate input version
+    for input in tx.body().inputs() {
+        validate_input_version(consensus_constants, input)?;
     }
+
+    // validate output version and output features version
+    for output in tx.body().outputs() {
+        validate_output_version(consensus_constants, output)?;
+    }
+
+    // validate kernel version
+    for kernel in tx.body().kernels() {
+        validate_kernel_version(consensus_constants, kernel)?;
+    }
+
+    Ok(())
+}
+
+fn validate_input_version(
+    consensus_constants: &ConsensusConstants,
+    input: &TransactionInput,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.input_version_range().contains(&input.version) {
+        let msg = format!(
+            "Transaction input contains a version not allowed by consensus ({:?})",
+            input.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    Ok(())
+}
+
+fn validate_output_version(
+    consensus_constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    let valid_output_version = consensus_constants
+        .output_version_range()
+        .outputs
+        .contains(&output.version);
+
+    if !valid_output_version {
+        let msg = format!(
+            "Transaction output version is not allowed by consensus ({:?})",
+            output.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    let valid_features_version = consensus_constants
+        .output_version_range()
+        .features
+        .contains(&output.features.version);
+
+    if !valid_features_version {
+        let msg = format!(
+            "Transaction output features version is not allowed by consensus ({:?})",
+            output.features.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    for opcode in output.script.as_slice() {
+        if !consensus_constants
+            .output_version_range()
+            .opcode
+            .contains(&opcode.get_version())
+        {
+            let msg = format!(
+                "Transaction output script opcode is not allowed by consensus ({})",
+                opcode
+            );
+            return Err(ValidationError::ConsensusError(msg));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_kernel_version(
+    consensus_constants: &ConsensusConstants,
+    kernel: &TransactionKernel,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
+        let msg = format!(
+            "Transaction kernel version is not allowed by consensus ({:?})",
+            kernel.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+    Ok(())
 }
