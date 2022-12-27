@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 tari_app_grpc = { path = "../applications/tari_app_grpc" }
+tari_app_utilities = { path = "../applications/tari_app_utilities" }
 tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 tari_core = { path = "../base_layer/core" }
@@ -23,7 +24,7 @@ tari_common_types = { path = "../base_layer/common_types" }
 tari_script = { path = "../infrastructure/tari_script" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
 tari_shutdown = { path = "../infrastructure/shutdown" }
-
+tari_miner = { path = "../applications/tari_miner" }
 anyhow = "1.0.53"
 async-trait = "0.1.50"
 axum = "0.6.0"

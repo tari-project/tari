@@ -1,0 +1,155 @@
+#  See https://docs.rs/log4rs/1.1.1/log4rs/encode/pattern/index.html for deciphering the log pattern.
+refresh_rate: 30 seconds
+appenders:
+  # An appender named "stdout" that writes to stdout
+  stdout:
+    kind: rolling_file
+    path: "log/stdout.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/stdout.{}.log"
+    encoder:
+      pattern: "{m}"
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  network:
+    kind: rolling_file
+    path: "log/network.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/network.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  base_layer_base_node:
+    kind: rolling_file
+    path: "log/base_node.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/base_node.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  base_layer_wallet:
+    kind: rolling_file
+    path: "log/wallet.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/wallet.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  # An appender named "other" that writes to a file with a custom pattern encoder
+  other:
+    kind: rolling_file
+    path: "log/other.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/other.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+# We don't want prints during cucumber test, everything useful will in logs.
+# root:
+#   level: warn
+#   appenders:
+#     - stdout
+
+loggers:
+  cucumber:
+    level: info
+    appenders:
+      - network
+      - base_layer_wallet
+      - base_layer_base_node
+    additive: true
+  stdout:
+    level: info # we have only single print, and it's info
+    appenders:
+      - stdout
+  tari:
+    level: debug
+    appenders:
+      - base_layer_base_node
+  wallet:
+    level: debug
+    appenders:
+      - base_layer_wallet
+  # Route log events sent to the "comms" logger to the "network" appender
+  comms:
+    level: debug
+    appenders:
+      - network
+  # Route log events sent to the "p2p" logger to the "network" appender
+  p2p:
+    level: debug
+    appenders:
+      - network
+    # Route log events sent to the "yamux" logger to the "network" appender
+  yamux:
+    level: debug
+    appenders:
+      - network
+  # Route log events sent to the "mio" logger to the "network" appender
+  mio:
+    level: error
+    appenders:
+      - network
+  # Route log events sent to the "rustyline" logger to the "other" appender
+  rustyline:
+    level: error
+    appenders:
+      - other
+    additive: false
+
+  # Route log events sent to the "tokio_util" logger to the "other" appender
+  tokio_util:
+    level: error
+    appenders:
+      - other
+  # Route PGP log events
+  pgp:
+    level: warn
+    appenders:
+      - other
+  # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
+  tari_mm_proxy:
+    level: debug
+    appenders:
+      - base_layer
+  # Route R2D2 log events
+  r2d2:
+    level: info
+    appenders:
+      - other
+    additive: false

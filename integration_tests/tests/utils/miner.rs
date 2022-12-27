@@ -42,6 +42,7 @@ use tari_app_grpc::{
         TransactionOutput,
     },
 };
+use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
 use tari_core::{
@@ -49,6 +50,8 @@ use tari_core::{
     transactions::{CoinbaseBuilder, CryptoFactories},
 };
 use tari_crypto::keys::SecretKey;
+use tari_miner::{run_miner, Cli};
+use tempfile::tempdir;
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
@@ -74,9 +77,47 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
         wallet_name,
         mine_until_height: 100_000,
     };
+
     world.miners.insert(miner_name, miner);
 }
 
+impl MinerProcess {
+    pub async fn mine(&self, world: &TariWorld, blocks: Option<u64>) {
+        let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
+        let wallet = world.get_wallet(&self.wallet_name).unwrap().grpc_port;
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data/miner");
+        let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
+        let mut config_path = data_dir;
+        config_path.push("config.toml");
+        let cli = Cli {
+            common: CommonCliArgs {
+                base_path: data_dir_str,
+                config: config_path.into_os_string().into_string().unwrap(),
+                log_config: None,
+                log_level: None,
+                config_property_overrides: vec![
+                    (
+                        "miner.base_node_grpc_address".to_string(),
+                        format!("/ip4/127.0.0.1/tcp/{}", node),
+                    ),
+                    (
+                        "miner.wallet_grpc_address".to_string(),
+                        format!("/ip4/127.0.0.1/tcp/{}", wallet),
+                    ),
+                    ("miner.num_mining_threads".to_string(), "1".to_string()),
+                ],
+            },
+            mine_until_height: None,
+            miner_max_blocks: blocks,
+            miner_min_diff: None,
+            miner_max_diff: None,
+        };
+        run_miner(cli).await.unwrap();
+    }
+}
+
+#[allow(dead_code)]
 pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
     let mut base_client = create_base_node_client(world, &miner_name).await;
     let mut wallet_client = create_wallet_client(world, &miner_name).await;
@@ -120,7 +161,7 @@ async fn create_wallet_client(world: &TariWorld, miner_name: &String) -> WalletG
     )
 }
 
-async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut WalletGrpcClient) {
+pub async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut WalletGrpcClient) {
     let block_template = create_block_template_with_coinbase(base_client, wallet_client).await;
 
     // Ask the base node for a valid block using the template

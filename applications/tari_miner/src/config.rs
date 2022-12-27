@@ -129,7 +129,7 @@ impl MinerConfig {
 mod test {
     use tari_common::DefaultConfigLoader;
 
-    use crate::MinerConfig;
+    use crate::config::MinerConfig;
 
     #[test]
     fn miner_configuration() {
