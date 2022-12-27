@@ -42,7 +42,7 @@ Feature: Block Propagation
     # Then I receive an error containing 'Block exists'
     # And all nodes are at height 1
     # # Check that the base node continues to accept blocks
-    # When I mine 1 blocks on MINER
+    When I mine 1 blocks on MINER
     # Then all nodes are at height 2
 
   Scenario: Submit orphan
@@ -97,10 +97,10 @@ Feature: Block Propagation
     When I have a base node SENDER connected to all seed nodes
     # Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
     # When I mine a block on SENDER with coinbase CB1
-    # When I mine 2 blocks on SENDER
+    When I mine 2 blocks on SENDER
     # When I create a transaction TX1 spending CB1 to UTX1
     # When I submit transaction TX1 to SENDER
-    # When I mine 1 blocks on SENDER
+    When I mine 1 blocks on SENDER
     # Then TX1 is in the MINED of all nodes
     # When I mine 17 blocks on SENDER
     # Then all nodes are on the same chain at height 21

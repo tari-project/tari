@@ -12,20 +12,20 @@ Feature: Wallet Recovery
       When I have wallet WALLET_B connected to all seed nodes
       #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
       #   When mining node MINER mines 10 blocks
-      #   When I mine 5 blocks on NODE
+        When I mine 5 blocks on NODE
       #   When I wait for wallet WALLET_A to have at least 55000000000 uT
       #   Then all nodes are at height 15
       #   And I send 200000 uT from wallet WALLET_A to wallet WALLET_B at fee 25
       #   And I have mining node MINER_B connected to base node NODE and wallet WALLET_B
       #   When mining node MINER_B mines 2 blocks
-      #   When I mine 5 blocks on NODE
+        When I mine 5 blocks on NODE
       #   Then all nodes are at height 22
       #   Then I stop wallet WALLET_B
       #   When I recover wallet WALLET_B into wallet WALLET_C connected to all seed nodes
       #   When I wait for wallet WALLET_C to have at least 10000200000 uT
       When I have wallet WALLET_D connected to all seed nodes
       #   And I send 100000 uT from wallet WALLET_C to wallet WALLET_D at fee 25
-      #   When I mine 5 blocks on NODE
+        When I mine 5 blocks on NODE
       #   Then all nodes are at height 27
       #   Then I wait for wallet WALLET_D to have at least 100000 uT
 

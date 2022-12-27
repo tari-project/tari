@@ -15,7 +15,7 @@ Feature: Wallet Transfer
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
     # When I transfer 5T from WALLET_A to WALLET_B
-    # And I mine 4 blocks on SEED_A
+    When I mine 4 blocks on SEED_A
     # # BREAKS HERE
     # Then wallet WALLET_A has 5T
     # And wallet WALLET_B has 5T
@@ -50,7 +50,7 @@ Feature: Wallet Transfer
     # When mining node MINER mines 10 blocks
     # Then all nodes are at height 10
     # When I transfer 50000 uT to self from wallet Wallet_A at fee 25
-    # And I mine 5 blocks on NODE
+    When I mine 5 blocks on NODE
     # Then all nodes are at height 15
     # Then all wallets detect all transactions as Mined_Confirmed
 

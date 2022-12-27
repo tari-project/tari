@@ -28,10 +28,10 @@ Feature: Base Node Connectivity
 
     Scenario: Base node lists heights
         Given I have a seed node N1
-        # When I mine 5 blocks on N1
+        When I mine 5 blocks on N1
         # Then node N1 lists heights 1 to 5
 
     Scenario: Base node lists headers
         Given I have a seed node BN1
-        # When I mine 5 blocks on BN1
+        When I mine 5 blocks on BN1
         # Then node BN1 lists headers 1 to 5 with correct heights

@@ -55,7 +55,7 @@ Feature: Block Sync
     Given I have 1 seed nodes
     # Given I have a SHA3 miner NODE1 connected to all seed nodes
     # When I mine a block on NODE1 with coinbase CB1
-    # And I mine 4 blocks on NODE1
+    And I mine 4 blocks on NODE1
     # When I spend outputs CB1 via NODE1
     # Given mining node NODE1 mines 15 blocks
     # Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
@@ -91,10 +91,10 @@ Feature: Block Sync
     Given I have a seed node SEED
     When I have a base node NODE1 connected to all seed nodes
     # When I mine a block on NODE1 with coinbase CB1
-    # And I mine 4 blocks on NODE1
+    And I mine 4 blocks on NODE1
     # Then all nodes are at height 5
     # When I spend outputs CB1 via NODE1
-    # And I mine 3 blocks on NODE1
+    And I mine 3 blocks on NODE1
     # Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
     # Then all nodes are at height 8
     # When I mine 15 blocks on PNODE2

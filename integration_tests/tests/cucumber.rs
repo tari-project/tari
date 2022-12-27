@@ -327,14 +327,8 @@ async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, s
 
 #[then(expr = "I mine {int} blocks on {word}")]
 #[when(expr = "I mine {int} blocks on {word}")]
-async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
-    let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
-        .await
-        .unwrap();
+async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
+    let mut client = world.get_node_client(&base_node).await.unwrap();
     mine_blocks_without_wallet(&mut client, blocks).await;
 }
 
@@ -547,7 +541,7 @@ fn main() {
         let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(1)
+        //.max_concurrent_scenarios(1)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()

@@ -225,7 +225,7 @@ Feature: Wallet Transactions
     # When mining node MINER_A1 mines 7 blocks with min difficulty 200 and max difficulty 100000
     # Then node SEED_A is at height 7
     # Then node NODE_A1 is at height 7
-    # When I mine 3 blocks on SEED_A
+    When I mine 3 blocks on SEED_A
     # Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
     # Then node SEED_A is at height 10
     # Then node NODE_A1 is at height 10
@@ -243,7 +243,7 @@ Feature: Wallet Transactions
     # When mining node MINER_B1 mines 7 blocks with min difficulty 1 and max difficulty 100
     # Then node SEED_B is at height 7
     # Then node NODE_B1 is at height 7
-    # When I mine 5 blocks on SEED_B
+    When I mine 5 blocks on SEED_B
     # Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
     # Then node SEED_B is at height 12
     # Then node NODE_B1 is at height 12
@@ -259,7 +259,7 @@ Feature: Wallet Transactions
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
     # Then all nodes are at height 10
-    # When I mine 6 blocks on NODE_C
+    When I mine 6 blocks on NODE_C
     # Then all nodes are at height 16
 
   Scenario: Wallet send transactions while offline
@@ -268,7 +268,7 @@ Feature: Wallet Transactions
     When I have wallet WALLET_B connected to seed node SEED
     # And I have mining node MINER_A connected to base node SEED and wallet WALLET_A
     # When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
-    # When I mine 4 blocks on SEED
+    When I mine 4 blocks on SEED
     # Then I wait for wallet WALLET_A to have at least 1000000000 uT
     # When I stop wallet WALLET_B
     # When I stop node SEED
@@ -282,7 +282,7 @@ Feature: Wallet Transactions
     # And I start wallet WALLET_A
     # And I start wallet WALLET_B
     # Then all nodes are at height 5
-    # When I mine 1 blocks on SEED
+    When I mine 1 blocks on SEED
     # Then all nodes are at height 6
     # Then wallet WALLET_B detects all transactions are at least Pending
     When I wait 1 seconds
@@ -301,7 +301,7 @@ Feature: Wallet Transactions
     # When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
     # Then node SEED_A is at height 1
     # Then node NODE_A1 is at height 1
-    # When I mine 3 blocks on SEED_A
+    When I mine 3 blocks on SEED_A
     # Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
     # Then node SEED_A is at height 4
     # Then node NODE_A1 is at height 4
@@ -319,7 +319,7 @@ Feature: Wallet Transactions
     # When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
     # Then node SEED_B is at height 2
     # Then node NODE_B1 is at height 2
-    # When I mine 3 blocks on SEED_B
+    When I mine 3 blocks on SEED_B
     # Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
     # Then node SEED_B is at height 5
     # Then node NODE_B1 is at height 5
@@ -335,7 +335,7 @@ Feature: Wallet Transactions
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
     # Then all nodes are at height 4
-    # When I mine 2 blocks on NODE_C
+    When I mine 2 blocks on NODE_C
     # Then all nodes are at height 6
 
   @flaky @long-running

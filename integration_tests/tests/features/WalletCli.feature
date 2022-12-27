@@ -60,11 +60,11 @@ Feature: Wallet CLI
         # When I have wallet WALLET connected to base node BASE
         # And I have mining node MINER connected to base node BASE and wallet WALLET
         # And mining node MINER mines 12 blocks
-        # Then I mine 3 blocks on BASE
+        When I mine 3 blocks on BASE
         # Then all nodes are at height 15
         # When I wait for wallet WALLET to have at least 221552530060 uT
         # When I create a burn transaction of 201552500000 uT from WALLET via command line
-        # When I mine 5 blocks on BASE
+        When I mine 5 blocks on BASE
         # Then all nodes are at height 20
         # Then I get balance of wallet WALLET is at least 20000000000 uT via command line
         # # TODO: verify the actual burned kernel
