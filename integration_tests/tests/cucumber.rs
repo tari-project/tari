@@ -486,7 +486,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     }
 
     panic!(
-        "Wallet {} failed to has at least num {} txs with status {}",
+        "Wallet {} failed to have at least num {} txs with status {}",
         wallet, num_txs, transaction_status
     );
 }
