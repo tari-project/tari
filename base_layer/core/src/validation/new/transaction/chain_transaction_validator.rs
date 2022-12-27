@@ -60,8 +60,7 @@ impl<B: BlockchainBackend + 'static> ChainLinkedTransactionValidator<B> {
         prev_hash: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
-        let script_offset_g = PublicKey::from_secret_key(&tx.script_offset);
-        validate_script_offset(tx, script_offset_g, &self.factories.commitment, prev_hash, height)?;
+        validate_script_offset(tx, &self.factories.commitment, prev_hash, height)?;
         validate_covenants(tx, height)?;
 
         let constants = self.db.consensus_constants()?;
@@ -99,12 +98,13 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(db: &B, tx: &Transaction)
 /// this will validate the script offset of the aggregate body.
 fn validate_script_offset(
     tx: &Transaction,
-    script_offset: PublicKey,
     factory: &CommitmentFactory,
     prev_header: Option<HashOutput>,
     height: u64,
 ) -> Result<(), TransactionError> {
     trace!(target: LOG_TARGET, "Checking script offset");
+    let script_offset = PublicKey::from_secret_key(&tx.script_offset);
+
     // lets count up the input script public keys
     let mut input_keys = PublicKey::default();
     let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
