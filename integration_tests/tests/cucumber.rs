@@ -476,12 +476,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     for _ in 0..num_retries {
         let txs_info = client.get_transaction_info(request.clone()).await.unwrap().into_inner();
         let txs_info = txs_info.transactions;
-        if txs_info
-            .iter()
-            .filter(|x| x.status == transaction_status)
-            .count() as u64 >=
-            num_txs
-        {
+        if txs_info.iter().filter(|x| x.status == transaction_status).count() as u64 >= num_txs {
             return;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
