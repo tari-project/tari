@@ -20,54 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::stdout;
-
-use clap::Parser;
-use crossterm::{execute, terminal::SetTitle};
-use log::*;
-use run_miner::start_miner;
-use tari_app_utilities::consts;
-use tari_common::{exit_codes::ExitError, initialize_logging};
-use tokio::runtime::Runtime;
-
-use crate::cli::Cli;
-
-pub const LOG_TARGET: &str = "tari_miner::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
-
 mod cli;
+pub use cli::Cli;
+use tari_common::exit_codes::ExitError;
+mod run_miner;
+use run_miner::start_miner;
 mod config;
 mod difficulty;
 mod errors;
 mod miner;
-mod run_miner;
 mod stratum;
 mod utils;
 
-/// Application entry point
-fn main() {
-    let rt = Runtime::new().expect("Failed to start tokio runtime");
-    let terminal_title = format!("Tari Miner - Version {}", consts::APP_VERSION);
-    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
-    }
-    match rt.block_on(main_inner()) {
-        Ok(_) => std::process::exit(0),
-        Err(err) => {
-            eprintln!("Fatal error: {:?}", err);
-            let exit_code = err.exit_code;
-            error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
-            std::process::exit(exit_code as i32)
-        },
-    }
-}
-
-#[allow(clippy::too_many_lines)]
-async fn main_inner() -> Result<(), ExitError> {
-    let cli = Cli::parse();
-    initialize_logging(
-        &cli.common.log_config_path("miner"),
-        include_str!("../log4rs_sample.yml"),
-    )?;
+pub async fn run_miner(cli: Cli) -> Result<(), ExitError> {
     start_miner(cli).await
 }

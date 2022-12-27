@@ -25,7 +25,7 @@ use tari_app_utilities::common_cli_args::CommonCliArgs;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
     #[clap(long, alias = "mine-until-height")]

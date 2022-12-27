@@ -19,6 +19,13 @@ Feature: Base Node Connectivity
         # Then I wait for WALLET_A to have ONLINE connectivity
         Then SEED_A is connected to WALLET_A
 
+    @base-node @wallet
+    Scenario: Basic mining
+        Given I have a seed node NODE
+        When I have wallet WALLET connected to all seed nodes
+        When I have mining node MINER connected to base node NODE and wallet WALLET
+        Given mining node MINER mines 1 blocks
+
     Scenario: Base node lists heights
         Given I have a seed node N1
         # When I mine 5 blocks on N1

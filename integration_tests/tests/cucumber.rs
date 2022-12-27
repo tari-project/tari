@@ -19,14 +19,21 @@
 //   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![feature(internal_output_capture)]
 
 mod utils;
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    str,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use cucumber::{gherkin::Scenario, given, then, when, World as _};
+use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, World as _};
 use futures::StreamExt;
 use indexmap::IndexMap;
+use log::*;
 use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
 use tari_base_node_grpc_client::grpc::{
     Empty,
@@ -40,16 +47,16 @@ use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use tari_wallet_grpc_client::grpc::GetIdentityRequest;
 use thiserror::Error;
-use utils::{
-    miner::{mine_block_with_coinbase_on_node, mine_blocks, mine_blocks_without_wallet, register_miner_process},
-    wallet_process::{create_wallet_client, spawn_wallet},
-};
+use tokio::runtime::Runtime;
 
 use crate::utils::{
     base_node_process::{spawn_base_node, BaseNodeProcess},
-    miner::MinerProcess,
-    wallet_process::WalletProcess,
+    miner::{mine_block_with_coinbase_on_node, mine_blocks_without_wallet, register_miner_process, MinerProcess},
+    wallet_process::{create_wallet_client, spawn_wallet, WalletProcess},
 };
+
+pub const LOG_TARGET: &str = "cucumber";
+pub const LOG_TARGET_STDOUT: &str = "stdout";
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -57,6 +64,8 @@ pub enum TariWorldError {
     BaseNodeProcessNotFound(String),
     #[error("Wallet process not found: {0}")]
     WalletProcessNotFound(String),
+    #[error("Miner process not found: {0}")]
+    MinerProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
     #[error("No base node, or wallet client found: {0}")]
@@ -82,13 +91,9 @@ enum NodeClient {
 impl TariWorld {
     async fn get_node_client<S: AsRef<str>>(
         &self,
-        name: S,
+        name: &S,
     ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
-        self.base_nodes
-            .get(name.as_ref())
-            .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(name.as_ref().to_string()))?
-            .get_grpc_client()
-            .await
+        self.get_node(name)?.get_grpc_client().await
     }
 
     async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
@@ -106,21 +111,30 @@ impl TariWorld {
 
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
-        name: S,
+        name: &S,
     ) -> anyhow::Result<tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
-        self.wallets
-            .get(name.as_ref())
-            .ok_or_else(|| TariWorldError::WalletProcessNotFound(name.as_ref().to_string()))?
-            .get_grpc_client()
-            .await
+        self.get_wallet(name)?.get_grpc_client().await
     }
 
-    #[allow(dead_code)]
-    fn get_node<S: AsRef<str>>(&self, node_name: S) -> anyhow::Result<&BaseNodeProcess> {
+    fn get_node<S: AsRef<str>>(&self, node_name: &S) -> anyhow::Result<&BaseNodeProcess> {
         Ok(self
             .base_nodes
             .get(node_name.as_ref())
             .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?)
+    }
+
+    fn get_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletProcess> {
+        Ok(self
+            .wallets
+            .get(wallet_name.as_ref())
+            .ok_or_else(|| TariWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()))?)
+    }
+
+    fn get_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MinerProcess> {
+        Ok(self
+            .miners
+            .get(miner_name.as_ref())
+            .ok_or_else(|| TariWorldError::MinerProcessNotFound(miner_name.as_ref().to_string()))?)
     }
 
     pub fn all_seed_nodes(&self) -> &[String] {
@@ -128,10 +142,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-        //     self.base_nodes.clear();
-        //     self.seed_nodes.clear();
-        //     self.wallets.clear();
-        //     self.miners.clear();
+        self.base_nodes.clear();
+        self.seed_nodes.clear();
+        self.wallets.clear();
+        self.miners.clear();
     }
 }
 
@@ -158,7 +172,7 @@ async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: S
     spawn_wallet(world, name, None, world.all_seed_nodes().to_vec()).await;
 }
 
-#[given(expr = "a miner {word} connected to base node {word} and wallet {word}")]
+#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
 async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
     register_miner_process(world, miner_name, bn_name, wallet_name);
 }
@@ -176,9 +190,8 @@ async fn node_pending_connection_to(
     first_node: String,
     second_node: String,
 ) -> anyhow::Result<()> {
-    let mut first_node = world.get_base_node_or_wallet_client(first_node).await?;
-    let mut second_node = world.get_base_node_or_wallet_client(second_node).await?;
-
+    let mut first_node = world.get_base_node_or_wallet_client(&first_node).await?;
+    let mut second_node = world.get_base_node_or_wallet_client(&second_node).await?;
     for _i in 0..100 {
         let res = match first_node {
             NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await?,
@@ -208,7 +221,7 @@ async fn node_pending_connection_to(
 #[when(expr = "mining node {word} mines {int} blocks")]
 #[given(expr = "mining node {word} mines {int} blocks")]
 async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
-    mine_blocks(world, miner_name, num_blocks).await;
+    world.get_miner(miner_name).unwrap().mine(world, Some(num_blocks)).await;
 }
 
 #[then(expr = "all nodes are at height {int}")]
@@ -274,16 +287,6 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
         "base node didn't synchronize successfully with height {}, current chain height {}",
         height, chain_hgt
     );
-}
-
-#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
-async fn miner_connected_to_base_node_and_wallet(
-    world: &mut TariWorld,
-    miner: String,
-    base_node: String,
-    wallet: String,
-) {
-    register_miner_process(world, miner, base_node, wallet);
 }
 
 #[when(expr = "I wait for wallet {word} to have at least {int} uT")]
@@ -517,29 +520,71 @@ async fn print_world(world: &mut TariWorld) {
     eprintln!();
 }
 
-#[tokio::main]
-async fn main() {
+fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
+    // After each test we flush the stdout to the logs.
+    info!(
+        target: LOG_TARGET_STDOUT,
+        "{}",
+        str::from_utf8(&buffer.lock().unwrap()).unwrap()
+    );
+    buffer.lock().unwrap().clear();
+}
+
+fn main() {
     initialize_logging(
-        &PathBuf::from("log4rs/base_node.yml"),
-        include_str!("../log4rs/base_node.yml"),
+        &PathBuf::from("log4rs/cucumber.yml"),
+        include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");
-    TariWorld::cucumber()
+    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+    #[cfg(test)]
+    std::io::set_output_capture(Some(stdout_buffer.clone()));
+    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
+    // not be affected by the output capture.
+    let stdout_buffer_clone = stdout_buffer.clone();
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(async {
+        let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        //.max_concurrent_scenarios(1)
+        .max_concurrent_scenarios(1)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()
         //        .assert_normalized(),
         //)
-        .after(|_feature,_rule,scenario,_ev,maybe_world| {
+        .after(move |_feature, _rule, scenario, ev, maybe_world| {
+            let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {
+                flush_stdout(&stdout_buffer);
+                match ev {
+                    ScenarioFinished::StepFailed(_capture_locations, _location, _error) => {
+                        error!(target: LOG_TARGET, "Scenario failed");
+                    },
+                    ScenarioFinished::StepPassed => {
+                        info!(target: LOG_TARGET, "Scenario was successful.");
+                    },
+                    ScenarioFinished::StepSkipped => {
+                        warn!(target: LOG_TARGET, "Some steps were skipped.");
+                    },
+                    ScenarioFinished::BeforeHookFailed(_info) => {
+                        error!(target: LOG_TARGET, "Before hook failed!");
+                    },
+                }
                 if let Some(maybe_world) = maybe_world {
                     maybe_world.after(scenario).await;
                 }
             })
         })
-        .run_and_exit("tests/features/")
-        .await;
+        .before(|_feature,_rule,scenario,_world| {
+            Box::pin(async move {
+                println!("{} : {}", scenario.keyword, scenario.name); // This will be printed into the stdout_buffer
+                info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
+            })
+        });
+        world.run_and_exit("tests/features/").await;
+    });
+
+    // If by any chance we have anything in the stdout buffer just log it.
+    flush_stdout(&stdout_buffer);
 }

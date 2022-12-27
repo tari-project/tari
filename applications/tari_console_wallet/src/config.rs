@@ -28,7 +28,7 @@ use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfig
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_wallet::WalletConfig;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub auto_update: AutoUpdateConfig,
