@@ -48,14 +48,14 @@ use crate::{
 pub const LOG_TARGET: &str = "c::val::internal_consistency_transaction_validator";
 
 pub struct InternalConsistencyTransactionValidator {
-    rules: ConsensusConstants,
+    consensus_constants: ConsensusConstants,
     factories: CryptoFactories,
 }
 
 impl InternalConsistencyTransactionValidator {
-    pub fn new(rules: ConsensusConstants) -> Self {
+    pub fn new(consensus_constants: ConsensusConstants) -> Self {
         Self {
-            rules,
+            consensus_constants,
             factories: CryptoFactories::default(),
         }
     }
@@ -70,208 +70,220 @@ impl InternalConsistencyTransactionValidator {
     /// for a transaction
     #[allow(dead_code)]
     pub fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
-            return Err(ValidationError::ErroneousCoinbaseOutput);
-        }
-
-        // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
-        // only coinbases may have the extra field set (the only field that the fn argument affects).
-        tx.body.check_output_features(1)?;
-
-        // validate maximum tx weight
-        if tx.calculate_weight(self.rules.transaction_weight()) > self.rules.get_max_block_weight_excluding_coinbase() {
-            return Err(ValidationError::MaxTransactionWeightExceeded);
-        }
-
-        validate_versions(tx, &self.rules)?;
-        for output in tx.body.outputs() {
-            self.check_permitted_output_types(output)?;
-            self.check_validator_node_registration_utxo(output)?;
-        }
-
-        self.verify_kernel_signatures(tx)?;
-
-        // TODO: can this be different than 0?
-        let total_offset = self.factories.commitment.commit_value(&tx.offset, 0);
-        Self::validate_kernel_sum(tx, total_offset, &self.factories.commitment)?;
-
-        Self::validate_range_proofs(tx, &self.factories.range_proof)?;
-        Self::verify_metadata_signatures(tx)?;
-
-        Self::verify_no_duplicated_inputs_outputs(tx)?;
-        Self::check_total_burned(tx)?;
+        validate_is_not_coinbase(tx)?;
+        validate_maximum_weight(tx, &self.consensus_constants)?;
+        validate_versions(tx, &self.consensus_constants)?;
+        validate_output_features(tx, &self.consensus_constants)?;
+        verify_kernel_signatures(tx)?;
+        validate_kernel_sum(tx, &self.factories.commitment)?;
+        validate_range_proofs(tx, &self.factories.range_proof)?;
+        verify_metadata_signatures(tx)?;
+        verify_no_duplicated_inputs_outputs(tx)?;
+        check_total_burned(tx)?;
 
         Ok(())
     }
+}
 
-    /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
-    /// will be added to the public key used in the signature verification.
-    fn verify_kernel_signatures(&self, transaction: &Transaction) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking kernel signatures",);
-        for kernel in transaction.body.kernels() {
-            kernel.verify_signature().map_err(|e| {
-                warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
-                e
-            })?;
+fn validate_is_not_coinbase(tx: &Transaction) -> Result<(), ValidationError> {
+    if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
+        return Err(ValidationError::ErroneousCoinbaseOutput);
+    }
+
+    Ok(())
+}
+
+fn validate_maximum_weight(tx: &Transaction, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    if tx.calculate_weight(consensus_constants.transaction_weight()) >
+        consensus_constants.get_max_block_weight_excluding_coinbase()
+    {
+        return Err(ValidationError::MaxTransactionWeightExceeded);
+    }
+
+    Ok(())
+}
+
+fn validate_output_features(tx: &Transaction, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
+    // only coinbases may have the extra field set (the only field that the fn argument affects).
+    tx.body.check_output_features(1)?;
+
+    for output in tx.body.outputs() {
+        check_permitted_output_types(output, consensus_constants)?;
+        check_validator_node_registration_utxo(output, consensus_constants)?;
+    }
+
+    Ok(())
+}
+
+/// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
+/// will be added to the public key used in the signature verification.
+fn verify_kernel_signatures(transaction: &Transaction) -> Result<(), TransactionError> {
+    trace!(target: LOG_TARGET, "Checking kernel signatures",);
+    for kernel in transaction.body.kernels() {
+        kernel.verify_signature().map_err(|e| {
+            warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
+            e
+        })?;
+    }
+    Ok(())
+}
+
+/// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
+///
+/// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
+/// block balances, or zero for transaction balances)
+fn validate_kernel_sum(tx: &Transaction, factory: &CommitmentFactory) -> Result<(), TransactionError> {
+    // TODO: can this be different than 0?
+    let offset_and_reward = factory.commit_value(&tx.offset, 0);
+
+    trace!(target: LOG_TARGET, "Checking kernel total");
+    let KernelSum { sum: excess, fees } = sum_kernels(tx, offset_and_reward);
+    let sum_io = sum_commitments(tx)?;
+    trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
+    let fees = factory.commit_value(&PrivateKey::default(), fees.into());
+    trace!(
+        target: LOG_TARGET,
+        "Comparing sum.  excess:{} == sum {} + fees {}",
+        excess.to_hex(),
+        sum_io.to_hex(),
+        fees.to_hex()
+    );
+    if excess != &sum_io + &fees {
+        return Err(TransactionError::ValidationError(
+            "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
+fn sum_kernels(tx: &Transaction, offset_with_fee: PedersenCommitment) -> KernelSum {
+    // Sum all kernel excesses and fees
+    tx.body.kernels().iter().fold(
+        KernelSum {
+            fees: MicroTari(0),
+            sum: offset_with_fee,
+        },
+        |acc, val| KernelSum {
+            fees: acc.fees + val.fee,
+            sum: &acc.sum + &val.excess,
+        },
+    )
+}
+
+/// Calculate the sum of the outputs - inputs
+fn sum_commitments(tx: &Transaction) -> Result<Commitment, TransactionError> {
+    let sum_inputs = tx
+        .body
+        .inputs()
+        .iter()
+        .map(|i| i.commitment())
+        .collect::<Result<Vec<&Commitment>, _>>()?
+        .into_iter()
+        .sum::<Commitment>();
+    let sum_outputs = tx.body.outputs().iter().map(|o| &o.commitment).sum::<Commitment>();
+    Ok(&sum_outputs - &sum_inputs)
+}
+
+fn validate_range_proofs(tx: &Transaction, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
+    trace!(target: LOG_TARGET, "Checking range proofs");
+    let outputs = tx.body.outputs().iter().collect::<Vec<_>>();
+    batch_verify_range_proofs(range_proof_service, &outputs)?;
+    Ok(())
+}
+
+fn verify_metadata_signatures(tx: &Transaction) -> Result<(), TransactionError> {
+    trace!(target: LOG_TARGET, "Checking sender signatures");
+    for o in tx.body.outputs() {
+        o.verify_metadata_signature()?;
+    }
+    Ok(())
+}
+
+fn check_permitted_output_types(
+    output: &TransactionOutput,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    if !consensus_constants
+        .permitted_output_types()
+        .contains(&output.features.output_type)
+    {
+        return Err(ValidationError::OutputTypeNotPermitted {
+            output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
+}
+
+fn check_validator_node_registration_utxo(
+    utxo: &TransactionOutput,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
         }
-        Ok(())
-    }
-
-    /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    ///
-    /// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
-    /// block balances, or zero for transaction balances)
-    fn validate_kernel_sum(
-        tx: &Transaction,
-        offset_and_reward: Commitment,
-        factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking kernel total");
-        let KernelSum { sum: excess, fees } = Self::sum_kernels(tx, offset_and_reward);
-        let sum_io = Self::sum_commitments(tx)?;
-        trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
-        let fees = factory.commit_value(&PrivateKey::default(), fees.into());
-        trace!(
-            target: LOG_TARGET,
-            "Comparing sum.  excess:{} == sum {} + fees {}",
-            excess.to_hex(),
-            sum_io.to_hex(),
-            fees.to_hex()
-        );
-        if excess != &sum_io + &fees {
-            return Err(TransactionError::ValidationError(
-                "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-    fn sum_kernels(tx: &Transaction, offset_with_fee: PedersenCommitment) -> KernelSum {
-        // Sum all kernel excesses and fees
-        tx.body.kernels().iter().fold(
-            KernelSum {
-                fees: MicroTari(0),
-                sum: offset_with_fee,
-            },
-            |acc, val| KernelSum {
-                fees: acc.fees + val.fee,
-                sum: &acc.sum + &val.excess,
-            },
-        )
-    }
-
-    /// Calculate the sum of the outputs - inputs
-    fn sum_commitments(tx: &Transaction) -> Result<Commitment, TransactionError> {
-        let sum_inputs = tx
-            .body
-            .inputs()
-            .iter()
-            .map(|i| i.commitment())
-            .collect::<Result<Vec<&Commitment>, _>>()?
-            .into_iter()
-            .sum::<Commitment>();
-        let sum_outputs = tx.body.outputs().iter().map(|o| &o.commitment).sum::<Commitment>();
-        Ok(&sum_outputs - &sum_inputs)
-    }
-
-    fn validate_range_proofs(
-        tx: &Transaction,
-        range_proof_service: &RangeProofService,
-    ) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking range proofs");
-        let outputs = tx.body.outputs().iter().collect::<Vec<_>>();
-        batch_verify_range_proofs(range_proof_service, &outputs)?;
-        Ok(())
-    }
-
-    fn verify_metadata_signatures(tx: &Transaction) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking sender signatures");
-        for o in tx.body.outputs() {
-            o.verify_metadata_signature()?;
-        }
-        Ok(())
-    }
-
-    fn check_permitted_output_types(&self, output: &TransactionOutput) -> Result<(), ValidationError> {
-        if !self
-            .rules
-            .permitted_output_types()
-            .contains(&output.features.output_type)
-        {
-            return Err(ValidationError::OutputTypeNotPermitted {
-                output_type: output.features.output_type,
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(),
+                actual: utxo.features.maturity,
             });
         }
 
-        Ok(())
+        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+        //                 keys this becomes difficult. Fix this once we have decided on a solution.
+        if !reg.is_valid_signature_for(&[]) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
     }
+    Ok(())
+}
 
-    fn check_validator_node_registration_utxo(&self, utxo: &TransactionOutput) -> Result<(), ValidationError> {
-        if let Some(reg) = utxo.features.validator_node_registration() {
-            if utxo.minimum_value_promise < self.rules.validator_node_registration_min_deposit_amount() {
-                return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-                    min: self.rules.validator_node_registration_min_deposit_amount(),
-                    actual: utxo.minimum_value_promise,
-                });
-            }
-            if utxo.features.maturity < self.rules.validator_node_registration_min_lock_height() {
-                return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                    min: self.rules.validator_node_registration_min_lock_height(),
-                    actual: utxo.features.maturity,
-                });
-            }
-
-            // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
-            //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
-            //                 keys this becomes difficult. Fix this once we have decided on a solution.
-            if !reg.is_valid_signature_for(&[]) {
-                return Err(ValidationError::InvalidValidatorNodeSignature);
-            }
-        }
-        Ok(())
+/// This function checks the at the tx contains no duplicated inputs or outputs.
+fn verify_no_duplicated_inputs_outputs(tx: &Transaction) -> Result<(), ValidationError> {
+    if tx.body.contains_duplicated_inputs() {
+        warn!(target: LOG_TARGET, "Transaction validation failed due to double input");
+        return Err(ValidationError::UnsortedOrDuplicateInput);
     }
-
-    /// This function checks the at the tx contains no duplicated inputs or outputs.
-    fn verify_no_duplicated_inputs_outputs(tx: &Transaction) -> Result<(), ValidationError> {
-        if tx.body.contains_duplicated_inputs() {
-            warn!(target: LOG_TARGET, "Transaction validation failed due to double input");
-            return Err(ValidationError::UnsortedOrDuplicateInput);
-        }
-        if tx.body.contains_duplicated_outputs() {
-            warn!(target: LOG_TARGET, "Transaction validation failed due to double output");
-            return Err(ValidationError::UnsortedOrDuplicateOutput);
-        }
-        Ok(())
+    if tx.body.contains_duplicated_outputs() {
+        warn!(target: LOG_TARGET, "Transaction validation failed due to double output");
+        return Err(ValidationError::UnsortedOrDuplicateOutput);
     }
+    Ok(())
+}
 
-    /// THis function checks the total burned sum in the header ensuring that every burned output is counted in the
-    /// total sum.
-    #[allow(clippy::mutable_key_type)]
-    fn check_total_burned(tx: &Transaction) -> Result<(), ValidationError> {
-        let mut burned_outputs = HashSet::new();
-        for output in tx.body.outputs() {
-            if output.is_burned() {
-                // we dont care about duplicate commitments are they should have already been checked
-                burned_outputs.insert(output.commitment.clone());
-            }
+/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the
+/// total sum.
+#[allow(clippy::mutable_key_type)]
+fn check_total_burned(tx: &Transaction) -> Result<(), ValidationError> {
+    let mut burned_outputs = HashSet::new();
+    for output in tx.body.outputs() {
+        if output.is_burned() {
+            // we dont care about duplicate commitments are they should have already been checked
+            burned_outputs.insert(output.commitment.clone());
         }
-        for kernel in tx.body.kernels() {
-            if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
-                return Err(ValidationError::InvalidBurnError(
-                    "Burned kernel does not match burned output".to_string(),
-                ));
-            }
-        }
-
-        if !burned_outputs.is_empty() {
+    }
+    for kernel in tx.body.kernels() {
+        if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(ValidationError::InvalidBurnError(
-                "Burned output has no matching burned kernel".to_string(),
+                "Burned kernel does not match burned output".to_string(),
             ));
         }
-        Ok(())
     }
+
+    if !burned_outputs.is_empty() {
+        return Err(ValidationError::InvalidBurnError(
+            "Burned output has no matching burned kernel".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_versions(tx: &Transaction, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
