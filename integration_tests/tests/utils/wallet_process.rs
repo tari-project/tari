@@ -35,7 +35,10 @@ use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{utils::get_port, TariWorld};
+use crate::{
+    utils::{get_port, wait_for_service},
+    TariWorld,
+};
 
 #[derive(Debug)]
 pub struct WalletProcess {
@@ -149,7 +152,8 @@ pub async fn spawn_wallet(
         let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
     }
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    wait_for_service(port).await;
+    wait_for_service(grpc_port).await;
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
