@@ -161,7 +161,7 @@ async fn node_pending_connection_to(
     first_node: String,
     second_node: String,
 ) -> anyhow::Result<()> {
-    let mut first_node = world.get_node_client(first_node).await?;
+    let mut first_node = world.get_node_client(first_node).await.unwrap();
     let second_node = world.get_node(second_node)?;
 
     for _i in 0..100 {
@@ -695,6 +695,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             .unwrap()
             .into_inner();
         let tx_info = tx_info_res.transactions.first().unwrap();
+
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
             println!(
@@ -706,6 +707,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             );
             break;
         }
+
         if i == num_retries - 1 {
             panic!(
                 "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
@@ -715,6 +717,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
                 fee
             )
         }
+
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
@@ -733,6 +736,179 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         amount, source_wallet, dest_wallet, fee
     );
 }
+
+#[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Confirmed")]
+async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    let num_retries = 100;
+    let mut total_mined_confirmed_coinbases = 0;
+
+    'outer: for _ in 0..num_retries {
+        println!("Detecting mined confirmed coinbase transactions");
+        'inner: for tx_id in tx_ids {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedConfirmed => {
+                    total_mined_confirmed_coinbases += 1;
+                    if total_mined_confirmed_coinbases >= coinbases {
+                        break 'outer;
+                    }
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        if total_mined_confirmed_coinbases < coinbases {
+            total_mined_confirmed_coinbases = 0;
+        }
+    }
+
+    if total_mined_confirmed_coinbases >= coinbases {
+        println!(
+            "Wallet {} detected at least {} coinbase transactions as Mined_Confirmed",
+            &wallet_name, coinbases
+        );
+    } else {
+        panic!(
+            "Wallet {} failed to detect at least {} coinbase transactions as Mined_Confirmed",
+            wallet_name, coinbases
+        );
+    }
+}
+
+#[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_Confirmed")]
+async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    let num_retries = 100;
+    let mut total_mined_confirmed_coinbases = 0;
+
+    'outer: for _ in 0..num_retries {
+        println!("Detecting mined confirmed coinbase transactions");
+        'inner: for tx_id in tx_ids {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedConfirmed => total_mined_confirmed_coinbases += 1,
+                _ => continue 'inner,
+            }
+        }
+
+        if total_mined_confirmed_coinbases >= coinbases {
+            break 'outer;
+        } else {
+            total_mined_confirmed_coinbases = 0;
+        }
+    }
+
+    if total_mined_confirmed_coinbases == coinbases {
+        println!(
+            "Wallet {} detected exactly {} coinbase transactions as Mined_Confirmed",
+            &wallet_name, coinbases
+        );
+    } else {
+        panic!(
+            "Wallet {} failed to detect exactly {} coinbase transactions as Mined_Confirmed",
+            wallet_name, coinbases
+        );
+    }
+}
+
+#[when(expr = "I have a base node {word} connected to node {word}")]
+async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+    spawn_base_node(world, false, base_node, vec![peer_node], None).await;
+}
+
+#[then(expr = "node {word} is at the same height as node {word}")]
+async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+    let mut peer_node_client = world.get_node_client(peer_node.clone()).await.unwrap();
+    let req = Empty {};
+    let mut expected_height = peer_node_client
+        .get_tip_info(req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .metadata
+        .unwrap()
+        .height_of_longest_chain;
+
+    let mut base_node_client = world.get_node_client(base_node.clone()).await.unwrap();
+    let mut current_height = 0;
+    let num_retries = 100;
+
+    'outer: for _ in 0..12 {
+        'inner: for _ in 0..num_retries {
+            current_height = base_node_client
+                .get_tip_info(req.clone())
+                .await
+                .unwrap()
+                .into_inner()
+                .metadata
+                .unwrap()
+                .height_of_longest_chain;
+            if current_height >= expected_height {
+                break 'inner;
+            }
+        }
+
+        expected_height = peer_node_client
+            .get_tip_info(req.clone())
+            .await
+            .unwrap()
+            .into_inner()
+            .metadata
+            .unwrap()
+            .height_of_longest_chain;
+
+        current_height = base_node_client
+            .get_tip_info(req.clone())
+            .await
+            .unwrap()
+            .into_inner()
+            .metadata
+            .unwrap()
+            .height_of_longest_chain;
+
+        if current_height == expected_height {
+            break 'outer;
+        }
+    }
+
+    if current_height == expected_height {
+        println!(
+            "Base node {} is at the same height {} as node {}",
+            &base_node, current_height, &peer_node
+        );
+    } else {
+        panic!(
+            "Base node {} failed to synchronize at the same height as node {}",
+            base_node, peer_node
+        );
+    }
+}
+
+#[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
+async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_pubkey = wallet_client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    
+}
+
+
 
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {

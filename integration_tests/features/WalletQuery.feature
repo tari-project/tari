@@ -1,6 +1,3 @@
-# Copyright 2022 The Tari Project
-# SPDX-License-Identifier: BSD-3-Clause
-
 @wallet-query @wallet
 Feature: Wallet Querying
 
@@ -21,10 +18,8 @@ Feature: Wallet Querying
     When I mine 2 blocks on SeedA
     Then the UTXO UTX1 has been mined according to SeedA
 
-
   @critical
   Scenario: As a wallet I cannot submit a locked coinbase transaction
-    # Using GRPC
     Given I have a seed node SeedA
     When I mine a block on SeedA with coinbase CB1
     When I create a transaction TX1 spending CB1 to UTX1
