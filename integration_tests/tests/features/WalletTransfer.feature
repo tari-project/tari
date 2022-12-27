@@ -29,16 +29,16 @@ Feature: Wallet Transfer
     When I have wallet Wallet_B connected to all seed nodes
     When I have wallet Wallet_C connected to all seed nodes
     # When mining node MINER mines 2 blocks
-    # Then all nodes are at height 2
+    Then all nodes are at height 2
     #   # Ensure the coinbase lock heights have expired
     # And mining node MINER mines 3 blocks
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     # # Ensure the coinbase lock heights have expired
     # And mining node MINER mines 5 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 20
     # And mining node MINER mines 10 blocks
-    # Then all nodes are at height 20
+    Then all nodes are at height 20
     # Then all wallets detect all transactions as Mined_Confirmed
 
   Scenario: As a wallet I want to submit transfers to myself
@@ -48,10 +48,10 @@ Feature: Wallet Transfer
     When I have wallet Wallet_A connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet Wallet_A
     # When mining node MINER mines 10 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # When I transfer 50000 uT to self from wallet Wallet_A at fee 25
     When I mine 5 blocks on NODE
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # Then all wallets detect all transactions as Mined_Confirmed
 
   Scenario: As a wallet I want to create a HTLC transaction

@@ -13,7 +13,7 @@ Feature: Wallet Routing Mechanism
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using <Mechanism>
       #   # We need to ensure the coinbase lock heights are gone and we have enough individual UTXOs; mine enough blocks
       #   And mining node MINER mines 20 blocks
-      #   Then all nodes are at height 20
+        Then all nodes are at height 20
       #   # TODO: This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
       #   When I wait for wallet WALLET_A to have at least 100000000 uT
@@ -22,12 +22,12 @@ Feature: Wallet Routing Mechanism
       #   # TODO: This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 1 blocks
-      #   Then all nodes are at height 21
+        Then all nodes are at height 21
       #   Then all wallets detect all transactions as Mined_Unconfirmed
       #   # TODO: This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 11 blocks
-      #   Then all nodes are at height 32
+        Then all nodes are at height 32
       #   Then all wallets detect all transactions as Mined_Confirmed
       #   # TODO: This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds

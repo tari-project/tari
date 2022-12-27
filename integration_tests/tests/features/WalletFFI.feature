@@ -126,9 +126,9 @@ Feature: Wallet FFI
         # Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # # The broadcast check does not include delivery; create some holding points to ensure it was received
         # And mining node MINER mines 2 blocks
-        # Then all nodes are at height 22
+        Then all nodes are at height 22
         # And mining node MINER mines 2 blocks
-        # Then all nodes are at height 24
+        Then all nodes are at height 24
         # And mining node MINER mines 6 blocks
         # Then I wait for wallet RECEIVER to have at least 1000000 uT
         # And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
@@ -179,10 +179,10 @@ Feature: Wallet FFI
         # And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 5 via one-sided transactions
         # Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # And mining node MINER mines 2 blocks
-        # Then all nodes are at height 22
+        Then all nodes are at height 22
         # Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_UNCONFIRMED and not cancelled
         # And mining node MINER mines 5 blocks
-        # Then all nodes are at height 27
+        Then all nodes are at height 27
         # Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and not cancelled
         # And I stop ffi wallet FFI_WALLET
 
@@ -198,13 +198,13 @@ Feature: Wallet FFI
         # Then I wait for wallet SENDER to have at least 5000000 uT
         # Then I send a one-sided transaction of 1000000 uT from SENDER to FFI_RECEIVER at fee 20
         # And mining node MINER mines 2 blocks
-        # Then all nodes are at height 12
+        Then all nodes are at height 12
         # #BROKEN
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_UNCONFIRMED
         # And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # And mining node MINER mines 5 blocks
-        # Then all nodes are at height 17
+        Then all nodes are at height 17
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         # And I stop ffi wallet FFI_RECEIVER
 

@@ -17,7 +17,7 @@ Feature: Wallet Monitoring
     When I have wallet WALLET_A1 connected to seed node SEED_A
     # And I have mining node MINING_A connected to base node SEED_A and wallet WALLET_A1
     # And mining node MINING_A mines 10 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # And I list all COINBASE transactions for wallet WALLET_A1
     # Then wallet WALLET_A1 has 10 coinbase transactions
     # Then all COINBASE transactions for wallet WALLET_A1 are valid
@@ -32,7 +32,7 @@ Feature: Wallet Monitoring
     When I have wallet WALLET_B1 connected to seed node SEED_B
     # And I have mining node MINING_B connected to base node SEED_B and wallet WALLET_B1
     # And mining node MINING_B mines 10 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # And I list all COINBASE transactions for wallet WALLET_B1
     # Then wallet WALLET_B1 has 10 coinbase transactions
     # Then all COINBASE transactions for wallet WALLET_B1 are valid
@@ -41,10 +41,10 @@ Feature: Wallet Monitoring
     #     # Connect Chain 1 and 2
     #     #
     # And I have a SHA3 miner NODE_C connected to all seed nodes
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     #     # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
     # And mining node NODE_C mines 6 blocks
-    # Then all nodes are at height 16
+    Then all nodes are at height 16
     #     # Wait for coinbase statuses to change in the wallet
     When I wait 30 seconds
     # And I list all COINBASE transactions for wallet WALLET_A1
@@ -101,10 +101,10 @@ Feature: Wallet Monitoring
     #     # Connect Chain 1 and 2
     #     #
     # And I have a SHA3 miner NODE_C connected to all seed nodes
-    # Then all nodes are at height 20
+    Then all nodes are at height 20
     #     # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
     # And mining node NODE_C mines 6 blocks
-    # Then all nodes are at height 26
+    Then all nodes are at height 26
     # Then wallet WALLET_A1 detects exactly 20 coinbase transactions as Mined_Confirmed
     # Then wallet WALLET_B1 detects exactly 17 coinbase transactions as Mined_Confirmed
     # And I list all NORMAL transactions for wallet WALLET_A1

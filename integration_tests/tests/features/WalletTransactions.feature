@@ -13,24 +13,24 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # When I wait for wallet WALLET_A to have at least 55000000000 uT
     # Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     # Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 20
+    Then all nodes are at height 20
     # Then I wait for wallet WALLET_B to have at least 2000000 uT
     # # Spend one of the recovered UTXOs to self in a standard MW transaction
     # Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     # Then I wait for wallet WALLET_B to have less than 1100000 uT
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 25
+    Then all nodes are at height 25
     # Then I wait for wallet WALLET_B to have at least 1900000 uT
     # # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     # Then I send a one-sided transaction of 1500000 uT from WALLET_B to WALLET_C at fee 20
     # Then I wait for wallet WALLET_B to have less than 1000000 uT
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 30
+    Then all nodes are at height 30
     # Then I wait for wallet WALLET_C to have at least 1500000 uT
 
   @critical
@@ -42,24 +42,24 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 15 blocks
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # When I wait for wallet WALLET_A to have at least 55000000000 uT
     # Then I send a one-sided stealth transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     # Then I send a one-sided stealth transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 20
+    Then all nodes are at height 20
     # Then I wait for wallet WALLET_B to have at least 2000000 uT
     # # Spend one of the recovered UTXOs to self in a standard MW transaction
     # Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     # Then I wait for wallet WALLET_B to have less than 1100000 uT
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 25
+    Then all nodes are at height 25
     # Then I wait for wallet WALLET_B to have at least 1900000 uT
     # # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     # Then I send a one-sided stealth transaction of 1500000 uT from WALLET_B to WALLET_C at fee 20
     # Then I wait for wallet WALLET_B to have less than 1000000 uT
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 30
+    Then all nodes are at height 30
     # Then I wait for wallet WALLET_C to have at least 1500000 uT
 
   Scenario: Wallet imports unspent output
@@ -70,11 +70,11 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
     # And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # Then mining node MINER mines 5 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # Then I wait for wallet WALLET_B to have at least 1000000 uT
     # Then I stop wallet WALLET_B
     # Then I import WALLET_B unspent outputs to WALLET_C
@@ -93,7 +93,7 @@ Feature: Wallet Transactions
     # When mining node MINER2 mines 2 blocks
     # When mining node MINER mines 3 blocks
     # When mining node MINER2 mines 3 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # Then I wait for wallet WALLET_A to have at least 20000000000 uT
 
   @flaky
@@ -105,15 +105,15 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
     # And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # Then mining node MINER mines 5 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # Then I wait for wallet WALLET_B to have at least 1000000 uT
     # When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
     # Then mining node MINER mines 5 blocks
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # When I wait for wallet WALLET_B to have at least 50000 uT
     # Then I stop wallet WALLET_B
     # Then I import WALLET_B spent outputs to WALLET_C
@@ -176,18 +176,18 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
     # And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # When mining node MINER mines 6 blocks
-    # Then all nodes are at height 11
+    Then all nodes are at height 11
     # Then I wait for wallet WALLET_B to have at least 1000000 uT
     # Then I stop wallet WALLET_B
     # Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
     # Then I wait for wallet WALLET_C to have at least 1000000 uT
     # And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     # When mining node MINER mines 6 blocks
-    # Then all nodes are at height 17
+    Then all nodes are at height 17
     # Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
@@ -197,7 +197,7 @@ Feature: Wallet Transactions
     When I have wallet WALLET_B connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # When mining node MINER mines 10 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
     # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
@@ -205,7 +205,7 @@ Feature: Wallet Transactions
     # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     # Then mining node MINER mines 5 blocks
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # Then I wait for wallet WALLET_B to have at least 500000 uT
     # Then I check if wallet WALLET_B has 5 transactions
     # Then I restart wallet WALLET_B
@@ -258,9 +258,9 @@ Feature: Wallet Transactions
     # Then node NODE_C is at height 12
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
-    # Then all nodes are at height 16
+    Then all nodes are at height 16
 
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
@@ -281,9 +281,9 @@ Feature: Wallet Transactions
     # And I stop wallet WALLET_A
     # And I start wallet WALLET_A
     # And I start wallet WALLET_B
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     When I mine 1 blocks on SEED
-    # Then all nodes are at height 6
+    Then all nodes are at height 6
     # Then wallet WALLET_B detects all transactions are at least Pending
     When I wait 1 seconds
 
@@ -334,9 +334,9 @@ Feature: Wallet Transactions
     # Then node NODE_C is at height 5
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
-    # Then all nodes are at height 4
+    Then all nodes are at height 4
     When I mine 2 blocks on NODE_C
-    # Then all nodes are at height 6
+    Then all nodes are at height 6
 
   @flaky @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
@@ -346,12 +346,12 @@ Feature: Wallet Transactions
     When I have wallet WALLET_RECV connected to all seed nodes
     # And I have mining node MINER connected to base node NODE and wallet WALLET_A
     # And mining node MINER mines 5 blocks
-    # Then all nodes are at height 5
+    Then all nodes are at height 5
     # Then I wait for wallet WALLET_A to have at least 10000000000 uT
     # And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
     # And I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 100
     # And mining node MINER mines 5 blocks
-    # Then all nodes are at height 10
+    Then all nodes are at height 10
     # Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
     # And I stop wallet WALLET_RECV
     # And I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
@@ -373,7 +373,7 @@ Feature: Wallet Transactions
     # Then I restart wallet WALLET_SENDER
     When I wait 30 seconds
     # And mining node MINER mines 5 blocks
-    # Then all nodes are at height 15
+    Then all nodes are at height 15
     # When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
     # And I start wallet WALLET_RECV
     When I wait 5 seconds

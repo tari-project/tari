@@ -15,7 +15,7 @@ Feature: Mempool
     # And I have 8 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
-    # Then all nodes are at height 3
+    Then all nodes are at height 3
     # When I create a transaction TX1 spending CB1 to UTX1
     # When I submit transaction TX1 to SENDER
     # Then SENDER has TX1 in MEMPOOL state
@@ -29,7 +29,7 @@ Feature: Mempool
     # And I have 2 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
-    # Then all nodes are at height 3
+    Then all nodes are at height 3
     # When I create a transaction TX1 spending CB1 to UTX1
     # When I submit transaction TX1 to SENDER
     # Then SENDER has TX1 in MEMPOOL state
@@ -37,7 +37,7 @@ Feature: Mempool
     When I have a base node NODE1 connected to all seed nodes
     # Then NODE1 has TX1 in MEMPOOL state
     When I mine 1 blocks on SENDER
-    # Then all nodes are at height 4
+    Then all nodes are at height 4
     # Then SENDER has TX1 in MINED state
     # Then TX1 is in the MINED of all nodes
 
@@ -114,7 +114,7 @@ Feature: Mempool
     # Then node SEED_A is at height 5
     # Then node SEED_B is at height 12
     # And I connect node NODE_A to node NODE_B
-    # Then all nodes are at height 12
+    Then all nodes are at height 12
     # Then NODE_A has TXA in NOT_STORED state
     # Then NODE_A has TXB in MINED state
 
