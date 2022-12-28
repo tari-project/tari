@@ -209,38 +209,44 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
-    let num_retries = 100;
-    let mut already_sync = true;
+    let num_retries = 24; // About 2 minutes
+    let mut nodes_at_height: IndexMap<&String, bool> = IndexMap::new();
+
+    let _ = world
+        .base_nodes
+        .iter()
+        .map(|(name, _)| nodes_at_height.insert(name, false));
 
     for _ in 0..num_retries {
-        for (_, bn) in world.base_nodes.iter() {
-            let mut client = bn.get_grpc_client().await.unwrap();
+        for (name, _) in nodes_at_height
+            .clone()
+            .iter()
+            .filter(|(_, at_height)| at_height == &&false)
+        {
+            let mut client = world.get_node_client(name).await.unwrap();
 
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
             let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
             if chain_hgt < height {
-                already_sync = false;
+                nodes_at_height.insert(name, true);
             }
         }
 
-        if already_sync {
+        if nodes_at_height.values().all(|v| v == &true) {
             return;
         }
 
-        already_sync = true;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    if !already_sync {
-        panic!("base nodes not successfully synchronized at height {}", height);
-    }
+    panic!("base nodes not successfully synchronized at height {}", height);
 }
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = 100;
+    let num_retries = 24; // About two minutes
 
     let mut client = world
         .base_nodes
@@ -307,14 +313,11 @@ async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, s
 
 #[then(expr = "I mine {int} blocks on {word}")]
 #[when(expr = "I mine {int} blocks on {word}")]
-async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
+async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
     let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
+        .get_node_client(&base_node)
         .await
-        .unwrap();
+        .expect("Couldn't get the node client to mine with");
     mine_blocks_without_wallet(&mut client, blocks).await;
 }
 
@@ -1361,7 +1364,7 @@ fn main() {
         let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(1)
+        .max_concurrent_scenarios(5)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()
