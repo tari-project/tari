@@ -37,7 +37,7 @@ use tonic::transport::Channel;
 
 use crate::{utils::get_port, TariWorld};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WalletProcess {
     pub name: String,
     pub port: u64,

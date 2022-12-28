@@ -62,7 +62,7 @@ use crate::TariWorld;
 type BaseNodeClient = BaseNodeGrpcClient<Channel>;
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MinerProcess {
     pub name: String,
     pub base_node_name: String,
