@@ -110,7 +110,7 @@ pub fn build_output(spendable_amount: u64) -> TransactionOutput {
 
     let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
-        spendable_amount,
+        spendable_amount.into(),
         &spending_key,
         &script,
         &features,
