@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod chain_transaction_validator;
-pub use chain_transaction_validator::ChainLinkedTransactionValidator;
+mod abort_on_drop;
 
-mod internal_transaction_validator;
-pub use internal_transaction_validator::InternalConsistencyTransactionValidator;
+mod block_validator;
+pub use block_validator::BlockValidator;
