@@ -27,6 +27,7 @@ use rand::Rng;
 pub mod base_node;
 pub mod base_node_process;
 pub mod miner;
+pub mod transaction;
 pub mod wallet;
 pub mod wallet_client;
 pub mod wallet_process;
