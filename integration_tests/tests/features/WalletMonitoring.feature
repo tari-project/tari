@@ -43,7 +43,7 @@ Feature: Wallet Monitoring
     # And I have a SHA3 miner NODE_C connected to all seed nodes
     Then all nodes are at height 10
     #     # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
-    When mining node NODE_C mines 6 blocks
+    # When mining node NODE_C mines 6 blocks
     Then all nodes are at height 16
     #     # Wait for coinbase statuses to change in the wallet
     When I wait 30 seconds
