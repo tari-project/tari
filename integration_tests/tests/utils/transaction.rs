@@ -89,9 +89,7 @@ pub fn build_output(spendable_amount: u64) -> TransactionOutput {
     let features = OutputFeatures::default();
     let factories = CryptoFactories::default();
     let spending_key = PrivateKey::random(&mut OsRng);
-    let commitment = factories
-        .commitment
-        .commit_value(&spending_key, spendable_amount);
+    let commitment = factories.commitment.commit_value(&spending_key, spendable_amount);
     let proof = RangeProof::from_bytes(
         factories
             .range_proof

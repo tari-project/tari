@@ -944,8 +944,8 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
                     tx_id
                 );
                 break 'inner;
-            } 
-            
+            }
+
             if retry == num_retries {
                 panic!(
                     "Unable to have wallet transaction with tx_id = {} with status Mined_Confirmed",
