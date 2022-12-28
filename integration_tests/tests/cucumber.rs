@@ -179,12 +179,12 @@ async fn node_pending_connection_to(
     world: &mut TariWorld,
     first_node: String,
     second_node: String,
-) -> anyhow::Result<()> {
+) {
     let mut first_node = world.get_node_client(&first_node).await.unwrap();
     let second_node = world.get_node(&second_node).unwrap();
 
     for _i in 0..100 {
-        let res = first_node.list_connected_peers(Empty {}).await?;
+        let res = first_node.list_connected_peers(Empty {}).await.unwrap();
         let res = res.into_inner();
 
         if res
@@ -192,7 +192,7 @@ async fn node_pending_connection_to(
             .iter()
             .any(|p| p.public_key == second_node.identity.public_key().as_bytes())
         {
-            return Ok(());
+            return;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
@@ -225,7 +225,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         }
 
         if already_sync {
-            return Ok(());
+            return;
         }
 
         already_sync = true;
@@ -235,8 +235,6 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
     if !already_sync {
         panic!("base nodes not successfully synchronized at height {}", height);
     }
-
-    Ok(())
 }
 
 #[when(expr = "node {word} is at height {int}")]
@@ -1296,7 +1294,7 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
     let miners = world.miners.clone();
     for (miner, miner_ps) in miners {
         println!("Miner {} is mining {} blocks", miner, blocks);
-        miner_ps.mine(world, Some(blocks));
+        miner_ps.mine(world, Some(blocks)).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
