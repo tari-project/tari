@@ -39,14 +39,14 @@ use crate::{
     validation::ValidationError,
 };
 
-pub const LOG_TARGET: &str = "c::val::chain_transaction_validator";
+pub const LOG_TARGET: &str = "c::val::chain_aggregate_body_validator";
 
-pub struct ChainLinkedTransactionValidator<B> {
+pub struct ChainLinkedAggregateBodyValidator<B> {
     db: BlockchainDatabase<B>,
     factories: CryptoFactories,
 }
 
-impl<B: BlockchainBackend + 'static> ChainLinkedTransactionValidator<B> {
+impl<B: BlockchainBackend + 'static> ChainLinkedAggregateBodyValidator<B> {
     pub fn new(db: BlockchainDatabase<B>) -> Self {
         Self {
             db,
