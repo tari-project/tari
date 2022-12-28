@@ -931,30 +931,28 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     );
 
     for tx_id in wallet_tx_ids {
-        'inner: for retry in 0..num_retries {
+        'inner: for retry in 0..=num_retries {
             let req = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
             };
             let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
             let tx_status = res.transactions.first().unwrap().status;
             // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
-            if tx_status != 6 {
-                println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
-                miner_ps.mine(world, Some(1)).await;
-            } else {
+            if tx_status == 6 {
                 println!(
                     "Wallet transaction with id {} has been detected with status Mined_Confirmed",
                     tx_id
                 );
                 break 'inner;
-            }
-
-            if retry == num_retries - 1 && tx_status != 6 {
+            } else if retry == num_retries {
                 panic!(
                     "Unable to have wallet transaction with tx_id = {} with status Mined_Confirmed",
                     tx_id
                 );
             }
+
+            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
+            miner_ps.mine(world, Some(1)).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
@@ -1015,14 +1013,14 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
             let tx_status = res.transactions.first().unwrap().status;
             // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
-            if tx_status != 6 {
-                println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
-                mine_block(&mut node_client, &mut wallet_client).await;
-            } else {
+            if tx_status == 6 {
                 println!("Transaction with id {} has been Mined_Confirmed", tx_id);
                 mined_status_flag = true;
                 break 'inner;
             }
+
+            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
+            mine_block(&mut node_client, &mut wallet_client).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }

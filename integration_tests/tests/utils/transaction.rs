@@ -55,12 +55,7 @@ pub fn build_transaction_with_output(utxos: &[(u64, TransactionOutput)]) -> (u64
         .iter()
         .map(|(_, u)| {
             TransactionInput::new_with_output_data(
-                TransactionInputVersion::try_from(
-                    u8::try_from(u.version.as_u8())
-                        .map_err(|_| "Invalid version: overflowed u8")
-                        .unwrap(),
-                )
-                .unwrap(),
+                TransactionInputVersion::try_from(u.version.as_u8()).unwrap(),
                 u.features.clone(),
                 u.commitment.clone(),
                 u.script.clone(),
@@ -110,12 +105,12 @@ pub fn build_output(spendable_amount: u64) -> TransactionOutput {
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_key);
     let covenant = Covenant::default();
     let encrypted_value =
-        EncryptedValue::encrypt_value(&spending_key, &commitment.clone(), MicroTari(spendable_amount)).unwrap();
+        EncryptedValue::encrypt_value(&spending_key, &commitment, MicroTari(spendable_amount)).unwrap();
     let minimum_value_promise = MicroTari(0u64);
 
     let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
-        spendable_amount.into(),
+        spendable_amount,
         &spending_key,
         &script,
         &features,
