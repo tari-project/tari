@@ -35,4 +35,3 @@ Feature: Wallet Querying
     # Then TX1 is in the mempool
     When I mine 1 blocks on SeedA
     # Then the UTXO UTX1 has been mined according to SeedA
-
