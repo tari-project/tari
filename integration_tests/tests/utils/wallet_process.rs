@@ -139,9 +139,8 @@ pub async fn spawn_wallet(
         kill_signal: shutdown,
     });
 
-    // We need to give it time for the wallet to startup
-    // TODO: it would be better to scan the wallet to detect when it has started
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    wait_for_service(port).await;
+    wait_for_service(grpc_port).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
     if let Some((_, _, hacky_request)) = base_node {
@@ -152,8 +151,7 @@ pub async fn spawn_wallet(
         let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
     }
 
-    wait_for_service(port).await;
-    wait_for_service(grpc_port).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {

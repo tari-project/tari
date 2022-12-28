@@ -10,15 +10,15 @@ Feature: Reorgs
     #     #     Note: Use more than 1 base node to speed up the test
     Given I have a seed node SEED_B
     When I have a base node B connected to seed SEED_B
-    # When I have wallet WB connected to base node B
-    # And I have mining node BM connected to base node B and wallet WB
+    When I have wallet WB connected to base node B
+    When I have mining node BM connected to base node B and wallet WB
     # And mining node BM mines 3 blocks with min difficulty 1 and max difficulty 50
     #     # Chain 2
     #     #     Note: Use more than 1 base node to speed up the test
     Given I have a seed node SEED_C
     When I have a base node C connected to seed SEED_C
-    # When I have wallet WC connected to base node C
-    # And I have mining node CM connected to base node C and wallet WC
+    When I have wallet WC connected to base node C
+    When I have mining node CM connected to base node C and wallet WC
     # And mining node CM mines 10 blocks with min difficulty 51 and max difficulty 9999999999
     #     # Connect chain 1 and 2
     # Then node B is at height 3
@@ -35,8 +35,8 @@ Feature: Reorgs
     #     #     Note: Use more than 1 base node to speed up the test
     Given I have a seed node SEED_B
     When I have a base node B connected to seed SEED_B
-    # When I have wallet WB connected to base node B
-    # And I have mining node BM connected to base node B and wallet WB
+    When I have wallet WB connected to base node B
+    When I have mining node BM connected to base node B and wallet WB
     # And mining node BM mines 10 blocks with min difficulty 1 and max difficulty 1
 
     # When I wait for wallet WB to have at least 55000000000 uT
@@ -46,8 +46,8 @@ Feature: Reorgs
     #     #     Note: Use more than 1 base node to speed up the test
     Given I have a seed node SEED_C
     When I have a base node C connected to seed SEED_C
-    # When I have wallet WC connected to base node C
-    # And I have mining node CM connected to base node C and wallet WC
+    When I have wallet WC connected to base node C
+    When I have mining node CM connected to base node C and wallet WC
     # And mining node CM mines 17 blocks with min difficulty 1 and max difficulty 1
     #     # Connect chain 1 and 2
     # Then node B is at height 15
@@ -74,8 +74,8 @@ Feature: Reorgs
   @reorg
   Scenario: Pruned mode reorg simple
     When I have a base node NODE1 connected to all seed nodes
-    # When I have wallet WALLET1 connected to base node NODE1
-    # And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    When I have wallet WALLET1 connected to base node NODE1
+    When I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     # When mining node MINING1 mines 5 blocks with min difficulty 1 and max difficulty 20
     Then all nodes are at height 5
     # Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
@@ -99,7 +99,7 @@ Feature: Reorgs
   Scenario: Pruned mode reorg past horizon
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
-    # And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    When I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     # Given I have a base node NODE2 connected to node NODE1
     # When I have wallet WALLET2 connected to base node NODE2
     # And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
@@ -257,7 +257,7 @@ Feature: Reorgs
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     When I have wallet WALLET1 connected to base node NODE1
-    # And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    When I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
     # And I have a base node NODE2 connected to node NODE1
     # When I have wallet WALLET2 connected to base node NODE2
     # And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
@@ -277,7 +277,7 @@ Feature: Reorgs
   Scenario: Full block sync with large reorg
     Given I have a base node NODE1
     When I have wallet WALLET1 connected to base node NODE1
-    # And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    When I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
     # And I have a base node NODE2 connected to node NODE1
     # When I have wallet WALLET2 connected to base node NODE2
     # And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2

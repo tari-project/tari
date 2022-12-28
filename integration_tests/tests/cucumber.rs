@@ -548,7 +548,7 @@ fn main() {
         let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        //.max_concurrent_scenarios(1)
+        .max_concurrent_scenarios(5)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()

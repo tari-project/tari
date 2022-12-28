@@ -27,9 +27,9 @@ Feature: Wallet FFI
     @broken
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
-        # When I have wallet SPECTATOR connected to base node BASE
-        # And I have mining node MINER connected to base node BASE and wallet SPECTATOR
-        # And mining node MINER mines 10 blocks
+        When I have wallet SPECTATOR connected to base node BASE
+        When I have mining node MINER connected to base node BASE and wallet SPECTATOR
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SPECTATOR to have at least 1000000 uT
         # Then I recover wallet SPECTATOR into ffi wallet FFI_WALLET from seed words on node BASE
         # And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
@@ -58,15 +58,15 @@ Feature: Wallet FFI
 
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE
-        # When I have wallet SENDER connected to base node BASE
+        When I have wallet SENDER connected to base node BASE
         # And I have a ffi wallet FFI_WALLET connected to base node BASE
-        # And I have mining node MINER connected to base node BASE and wallet SENDER
-        # And mining node MINER mines 10 blocks
+        When I have mining node MINER connected to base node BASE and wallet SENDER
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 1000000 uT
         # And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         # Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # And wallet SENDER detects all transactions are at least Broadcast
-        # And mining node MINER mines 10 blocks
+        When mining node MINER mines 10 blocks
         # Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         # When I have wallet RECEIVER connected to base node BASE
         # And I stop wallet RECEIVER
@@ -112,24 +112,24 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have a base node BASE2 connected to all seed nodes
-        # When I have wallet SENDER connected to base node BASE1
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
         # When I have wallet RECEIVER connected to base node BASE2
-        # And I have mining node MINER connected to base node BASE1 and wallet SENDER
-        # And mining node MINER mines 10 blocks
+        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 1000000 uT
         # And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         # Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-        # And mining node MINER mines 10 blocks
+        When mining node MINER mines 10 blocks
         # Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         # And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         # Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # # The broadcast check does not include delivery; create some holding points to ensure it was received
-        # And mining node MINER mines 2 blocks
+        When mining node MINER mines 2 blocks
         Then all nodes are at height 22
-        # And mining node MINER mines 2 blocks
+        When mining node MINER mines 2 blocks
         Then all nodes are at height 24
-        # And mining node MINER mines 6 blocks
+        When mining node MINER mines 6 blocks
         # Then I wait for wallet RECEIVER to have at least 1000000 uT
         # And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
         # And I start TXO validation on ffi wallet FFI_WALLET
@@ -143,10 +143,10 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have a base node BASE2 connected to all seed nodes
-        # When I have wallet SENDER connected to base node BASE1
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE1
-        # And I have mining node MINER connected to base node BASE1 and wallet SENDER
-        # And mining node MINER mines 10 blocks
+        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 1000000 uT
         # And I stop ffi wallet FFI_WALLET
         # And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
@@ -155,7 +155,7 @@ Feature: Wallet FFI
         # Then I wait for ffi wallet FFI_WALLET to receive 1 transaction
         # Then I wait for ffi wallet FFI_WALLET to receive 1 finalization
         # Then I wait for ffi wallet FFI_WALLET to receive 1 broadcast
-        # And mining node MINER mines 10 blocks
+        When mining node MINER mines 10 blocks
         # Then I wait for ffi wallet FFI_WALLET to receive 1 mined
         # Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         # And I stop ffi wallet FFI_WALLET
@@ -165,23 +165,23 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have a base node BASE2 connected to all seed nodes
-        # When I have wallet SENDER connected to base node BASE1
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_WALLET connected to base node BASE2
-        # When I have wallet RECEIVER connected to base node BASE2
-        # And I have mining node MINER connected to base node BASE1 and wallet SENDER
-        # And mining node MINER mines 10 blocks
+        When I have wallet RECEIVER connected to base node BASE2
+        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 5000000 uT
         # And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         # And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         # Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-        # And mining node MINER mines 10 blocks
+        When mining node MINER mines 10 blocks
         # Then I wait for ffi wallet FFI_WALLET to have at least 4000000 uT
         # And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 5 via one-sided transactions
         # Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-        # And mining node MINER mines 2 blocks
+        When mining node MINER mines 2 blocks
         Then all nodes are at height 22
         # Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_UNCONFIRMED and not cancelled
-        # And mining node MINER mines 5 blocks
+        When mining node MINER mines 5 blocks
         Then all nodes are at height 27
         # Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and not cancelled
         # And I stop ffi wallet FFI_WALLET
@@ -191,29 +191,29 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have a base node BASE2 connected to all seed nodes
-        # When I have wallet SENDER connected to base node BASE1
+        When I have wallet SENDER connected to base node BASE1
         # And I have a ffi wallet FFI_RECEIVER connected to base node BASE2
-        # And I have mining node MINER connected to base node BASE1 and wallet SENDER
-        # And mining node MINER mines 10 blocks
+        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When mining node MINER mines 10 blocks
         # Then I wait for wallet SENDER to have at least 5000000 uT
         # Then I send a one-sided transaction of 1000000 uT from SENDER to FFI_RECEIVER at fee 20
-        # And mining node MINER mines 2 blocks
+        When mining node MINER mines 2 blocks
         Then all nodes are at height 12
         # #BROKEN
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_UNCONFIRMED
         # And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-        # And mining node MINER mines 5 blocks
+        When mining node MINER mines 5 blocks
         Then all nodes are at height 17
         # Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         # And I stop ffi wallet FFI_RECEIVER
 
     Scenario: As a client I want to get fee per gram stats
         Given I have a base node BASE
-        # When I have wallet WALLET_A connected to base node BASE
-        # When I have wallet WALLET_B connected to base node BASE
-        # And I have mining node MINER connected to base node BASE and wallet WALLET_A
-        # And mining node MINER mines 7 blocks
+        When I have wallet WALLET_A connected to base node BASE
+        When I have wallet WALLET_B connected to base node BASE
+        When I have mining node MINER connected to base node BASE and wallet WALLET_A
+        When mining node MINER mines 7 blocks
         # When I have wallet WALLET_B connected to base node BASE
         # Then I wait for wallet WALLET_A to have at least 10000000 uT
         # And I have a ffi wallet FFI_WALLET connected to base node BASE
@@ -224,7 +224,7 @@ Feature: Wallet FFI
         # And The fee per gram stats for FFI_WALLET are 20, 30, 40
         # And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 60
         # And The fee per gram stats for FFI_WALLET are 20, 40, 60
-        # And mining node MINER mines 1 blocks
+        When mining node MINER mines 1 blocks
         # And The fee per gram stats for FFI_WALLET are 1, 1, 1
 
     # Scenario: As a client I want to get my balance
