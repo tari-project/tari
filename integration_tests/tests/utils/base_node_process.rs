@@ -24,7 +24,6 @@ use std::{
     fmt::{Debug, Formatter},
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 
 use rand::rngs::OsRng;
@@ -39,7 +38,10 @@ use tempfile::tempdir;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{utils::get_port, TariWorld};
+use crate::{
+    utils::{get_port, wait_for_service},
+    TariWorld,
+};
 
 pub struct BaseNodeProcess {
     pub name: String,
@@ -167,9 +169,8 @@ pub async fn spawn_base_node(
         world.seed_nodes.push(bn_name);
     }
 
-    // We need to give it time for the base node to startup
-    // TODO: it would be better to scan the base node to detect when it has started
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    wait_for_service(port).await;
+    wait_for_service(grpc_port).await;
 }
 
 // pub async fn get_base_node_client(port: u64) -> GrpcBaseNodeClient {

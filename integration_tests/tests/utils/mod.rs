@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::TcpListener, ops::Range};
+use std::{net::TcpListener, ops::Range, time::Duration};
 
 use rand::Rng;
 
@@ -41,5 +41,25 @@ pub fn get_port(range: Range<u16>) -> Option<u64> {
         if TcpListener::bind(("127.0.0.1", port)).is_ok() {
             return Some(u64::from(port));
         }
+    }
+}
+
+pub async fn wait_for_service(port: u64) {
+    // The idea is that if the port is taken it means the service is running.
+    // If it's not taken the port hasn't come up yet
+    let max_tries = 40;
+    let mut attempts = 0;
+
+    loop {
+        if TcpListener::bind(("127.0.0.1", port as u16)).is_err() {
+            return;
+        }
+
+        if attempts >= max_tries {
+            panic!("Service on port {} never started", port);
+        }
+
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        attempts += 1;
     }
 }
