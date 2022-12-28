@@ -175,11 +175,7 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 
 #[when(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
-async fn node_pending_connection_to(
-    world: &mut TariWorld,
-    first_node: String,
-    second_node: String,
-) {
+async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
     let mut first_node = world.get_node_client(&first_node).await.unwrap();
     let second_node = world.get_node(&second_node).unwrap();
 
