@@ -93,7 +93,7 @@ Feature: Wallet CLI
         When I have a base node BASE connected to seed SEED
         When I have wallet SENDER connected to base node BASE
         When I have wallet RECEIVER connected to base node BASE
-        When And I have mining node MINE connected to base node BASE and wallet SENDER
+        When I have mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 15 blocks
         # Then wallets SENDER should have EXACTLY 12 spendable coinbase outputs
         # # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid

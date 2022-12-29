@@ -318,7 +318,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
-async fn wallet_connected_to_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
+async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
     let bn = world.base_nodes.get(&base_node).unwrap();
     let peer_seeds = bn.seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), peer_seeds, None).await;
