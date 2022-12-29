@@ -26,7 +26,9 @@ mod utils;
 use std::{
     collections::VecDeque,
     convert::TryFrom,
+    io::BufRead,
     path::PathBuf,
+    ptr::null,
     str,
     sync::{Arc, Mutex},
     time::Duration,
@@ -80,6 +82,7 @@ use tari_wallet_grpc_client::grpc::{
 };
 use thiserror::Error;
 use tokio::runtime::Runtime;
+use utils::wallet_ffi::create_seed_words;
 
 use crate::utils::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
@@ -93,6 +96,7 @@ use crate::utils::{
         MinerProcess,
     },
     transaction::{build_transaction_with_output, build_transaction_with_output_and_fee},
+    wallet_ffi::{create_contact, get_mnemonic_word_list_for_language, spawn_wallet_ffi, WalletFFI},
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet, WalletProcess},
 };
 
@@ -108,6 +112,8 @@ pub enum TariWorldError {
     BaseNodeProcessNotFound(String),
     #[error("Wallet process not found: {0}")]
     WalletProcessNotFound(String),
+    #[error("FFIWallet not found: {0}")]
+    FFIWalletNotFound(String),
     #[error("Miner process not found: {0}")]
     MinerProcessNotFound(String),
     #[error("Base node error: {0}")]
@@ -121,6 +127,7 @@ pub struct TariWorld {
     base_nodes: IndexMap<String, BaseNodeProcess>,
     blocks: IndexMap<String, Block>,
     miners: IndexMap<String, MinerProcess>,
+    ffi_wallets: IndexMap<String, WalletFFI>,
     wallets: IndexMap<String, WalletProcess>,
     transactions: IndexMap<String, Transaction>,
     wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -162,6 +169,30 @@ impl TariWorld {
         }
     }
 
+    async fn get_wallet_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
+        if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
+            return Ok(address.clone());
+        }
+        match self.get_wallet_client(name).await {
+            Ok(wallet) => {
+                let mut wallet = wallet;
+
+                Ok(wallet
+                    .get_address(Empty {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+                    .address
+                    .to_hex())
+            },
+            Err(_) => {
+                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+
+                Ok(ffi_wallet.get_address().address().get_as_hex())
+            },
+        }
+    }
+
     #[allow(dead_code)]
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
@@ -184,6 +215,20 @@ impl TariWorld {
             .ok_or_else(|| TariWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()))?)
     }
 
+    fn get_ffi_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletFFI> {
+        Ok(self
+            .ffi_wallets
+            .get(wallet_name.as_ref())
+            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+    }
+
+    fn get_mut_ffi_wallet<S: AsRef<str>>(&mut self, wallet_name: &S) -> anyhow::Result<&mut WalletFFI> {
+        Ok(self
+            .ffi_wallets
+            .get_mut(wallet_name.as_ref())
+            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+    }
+
     fn get_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MinerProcess> {
         Ok(self
             .miners
@@ -199,6 +244,7 @@ impl TariWorld {
         self.base_nodes.clear();
         self.seed_nodes.clear();
         self.wallets.clear();
+        self.ffi_wallets.clear();
         self.miners.clear();
     }
 }
@@ -492,7 +538,10 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, ba
     world
         .wallet_connected_to_base_node
         .insert(wallet.clone(), base_node.clone());
-    spawn_wallet(world, wallet, Some(base_node), peer_seeds, None, None).await;
+
+    let mut cli = get_default_cli();
+    cli.seed_words_file_name = Some(PathBuf::new().join("seed_words.txt"));
+    spawn_wallet(world, wallet, Some(base_node), peer_seeds, None, Some(cli)).await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
@@ -1037,7 +1086,6 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 #[then(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
 async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_txs: u64, transaction_status: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-
     let transaction_status = match transaction_status.as_str() {
         "TRANSACTION_STATUS_COMPLETED" => 0,
         "TRANSACTION_STATUS_BROADCAST" => 1,
@@ -1055,7 +1103,6 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     };
 
     let num_retries = 100;
-
     for _ in 0..num_retries {
         let mut txs = client
             .get_completed_transactions(grpc::GetCompletedTransactionsRequest {})
@@ -1135,6 +1182,7 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
 }
 
 #[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
+#[given(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
     let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
     // assuming we have at least one base node as seed node, we use the first to connect wallet to
@@ -1184,15 +1232,9 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     fee: u64,
 ) {
     let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let source_wallet_address = source_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let source_wallet_address = world.get_wallet_address(&source_wallet).await.unwrap();
 
-    let dest_wallet_address = world.wallet_addresses.get(&dest_wallet).unwrap();
+    let dest_wallet_address = world.get_wallet_address(&dest_wallet).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: dest_wallet_address.clone(),
@@ -1250,22 +1292,9 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     fee: u64,
 ) {
     let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let source_wallet_address = source_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let source_wallet_address = world.get_wallet_address(&source_wallet).await.unwrap();
 
-    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
-    let dest_wallet_address = dest_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let dest_wallet_address = world.get_wallet_address(&dest_wallet).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: dest_wallet_address.clone(),
@@ -1362,22 +1391,8 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
     fee_per_gram: u64,
 ) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
@@ -1571,13 +1586,7 @@ async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wal
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_Confirmed")]
 async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
@@ -1720,13 +1729,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 #[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
 async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -1782,6 +1785,7 @@ async fn stop_all_wallets(world: &mut TariWorld) {
 }
 
 #[then(expr = "I stop wallet {word}")]
+#[when(expr = "I stop wallet {word}")]
 async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     // conveniently, register wallet address
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -1827,13 +1831,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     wallet: String,
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -1892,13 +1890,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
     for wallet in world.wallets.keys() {
         let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-        let wallet_address = wallet_client
-            .get_address(Empty {})
-            .await
-            .unwrap()
-            .into_inner()
-            .address
-            .to_hex();
+        let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
         let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address);
 
         let wallet_tx_ids = if wallet_tx_ids.is_none() {
@@ -2032,23 +2024,8 @@ async fn send_num_transactions_to_wallets_at_fee(
     fee_per_gram: u64,
 ) {
     let mut sender_wallet_client = create_wallet_client(world, sender_wallet.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver_wallet_client = create_wallet_client(world, receiver_wallet.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
+    let sender_wallet_address = world.get_wallet_address(&sender_wallet).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver_wallet).await.unwrap();
     let mut tx_ids = vec![];
 
     for _ in 0..num_txs {
@@ -2302,22 +2279,8 @@ async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) 
 #[when(expr = "I transfer {int}T from {word} to {word}")]
 async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
@@ -2508,31 +2471,9 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
     fee_per_gram: u64,
 ) {
     let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver1_client = create_wallet_client(world, receiver1.clone()).await.unwrap();
-    let receiver1_address = receiver1_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver2_client = create_wallet_client(world, receiver2.clone()).await.unwrap();
-    let receiver2_address = receiver2_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver1_address = world.get_wallet_address(&receiver1).await.unwrap();
+    let receiver2_address = world.get_wallet_address(&receiver2).await.unwrap();
 
     let payment_recipient1 = PaymentRecipient {
         address: receiver1_address.clone(),
@@ -2661,13 +2602,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
 #[when(expr = "I transfer {int} uT to self from wallet {word} at fee {int}")]
 async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: String, fee_per_gram: u64) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: sender_wallet_address.clone(),
@@ -2745,22 +2680,8 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
 #[when(expr = "I broadcast HTLC transaction with {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, receiver: String, fee_per_gram: u64) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
@@ -2854,14 +2775,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
 #[when(expr = "I claim an HTLC refund transaction with wallet {word} at fee {int}")]
 async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let output_hash = world.output_hash.clone().unwrap();
 
     let claim_htlc_req = ClaimHtlcRefundRequest {
@@ -2931,14 +2845,7 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
 #[when(expr = "I claim an HTLC transaction with wallet {word} at fee {int}")]
 async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let output_hash = world.output_hash.clone().unwrap();
     let pre_image = world.pre_image.clone().unwrap();
 
@@ -3971,6 +3878,480 @@ async fn print_world(world: &mut TariWorld) {
     eprintln!();
 }
 
+// FFI Steps
+#[when(expr = "I have a ffi wallet {word} connected to base node {word}")]
+#[then(expr = "I have a ffi wallet {word} connected to base node {word}")]
+#[given(expr = "I have a ffi wallet {word} connected to base node {word}")]
+async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
+    spawn_wallet_ffi(world, wallet.clone(), null());
+    let base_node = world.get_node(&base_node).unwrap();
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        base_node.identity.public_key().to_hex(),
+        base_node.identity.public_address().to_string(),
+    );
+}
+
+#[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
+async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
+    spawn_wallet_ffi(world, wallet.clone(), null());
+    assert!(world.all_seed_nodes().contains(&seed_node), "Seed node not found.");
+    let seed_node = world.get_node(&seed_node).unwrap();
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        seed_node.identity.public_key().to_hex(),
+        seed_node.identity.public_address().to_string(),
+    );
+}
+
+#[given(expr = "I set base node {word} for ffi wallet {word}")]
+async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
+    let base_node = world.get_node(&base_node).unwrap();
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        base_node.identity.public_key().to_hex(),
+        base_node.identity.public_address().to_string(),
+    );
+}
+
+#[then(expr = "I want to get public key of ffi wallet {word}")]
+async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
+    let wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let public_key = wallet.identify();
+    println!("public_key {}", public_key);
+}
+
+#[then(expr = "I want to get emoji id of ffi wallet {word}")]
+async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
+    let wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let emoji_id = wallet.get_emoji_id();
+    assert_eq!(
+        emoji_id.len(),
+        132,
+        "Emoji id {} is expected to be of length 132",
+        emoji_id
+    );
+}
+
+#[then(expr = "I stop ffi wallet {word}")]
+async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
+    let address = world.get_wallet_address(&wallet).await.unwrap();
+    let ffi_wallet = world.ffi_wallets.get_mut(&wallet).unwrap();
+    println!("Adding wallet {}", wallet);
+    world.wallet_addresses.insert(wallet, address);
+    ffi_wallet.destroy();
+}
+
+#[then(expr = "I retrieve the mnemonic word list for {word}")]
+async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
+    println!("Mnemonic words for language {}:", language);
+    let words = get_mnemonic_word_list_for_language(language);
+    for i in 0..words.get_length() {
+        print!("{} ", words.get_at(i as u32).as_string());
+    }
+    println!();
+    assert_eq!(words.get_length(), 2048);
+}
+
+#[then(expr = "I wait for ffi wallet {word} to connect to {word}")]
+async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let node = world.get_node(&node).unwrap().identity.public_key();
+    for _ in 0..10 {
+        let public_keys = ffi_wallet.connected_public_keys();
+        for i in 0..public_keys.get_length() {
+            let public_key = public_keys.get_public_key_at(i as u32);
+            if public_key.get_bytes().get_as_hex() == node.to_hex() {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+    panic!("Wallet not connected");
+}
+
+#[then(expr = "I wait for ffi wallet {word} to have at least {int} uT")]
+async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let mut ffi_balance = ffi_wallet.get_balance();
+    let mut cnt = 0;
+    while ffi_balance.get_available() < balance && cnt < 10 {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        ffi_balance = ffi_wallet.get_balance();
+        cnt += 1;
+    }
+    assert!(
+        ffi_balance.get_available() >= balance,
+        "Wallet doesn't have enough available funds {}",
+        ffi_balance.get_available()
+    );
+}
+
+#[when(expr = "I add contact with alias {word} and address of {word} to ffi wallet {word}")]
+async fn ffi_add_contact(world: &mut TariWorld, alias: String, pubkey: String, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+
+    let address = world.get_wallet_address(&pubkey).await.unwrap();
+    let contact = create_contact(alias, address);
+
+    assert!(ffi_wallet.upsert_contact(contact));
+}
+
+async fn check_contact(world: &mut TariWorld, alias: String, pubkey: Option<String>, wallet: String) -> bool {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let address: Option<String> = match pubkey {
+        Some(pubkey) => Some(world.get_wallet_address(&pubkey).await.unwrap()),
+        None => None,
+    };
+    let contacts = ffi_wallet.get_contacts();
+    let mut found = false;
+    for i in 0..contacts.get_length() {
+        let contact = contacts.get_at(i);
+        if (address.is_none() || &contact.get_address().address().get_as_hex() == address.as_ref().unwrap()) &&
+            contact.get_alias() == alias
+        {
+            found = true;
+            break;
+        }
+    }
+    found
+}
+
+#[then(expr = "I have contact with alias {word} and address of {word} in ffi wallet {word}")]
+async fn ffi_check_contact(world: &mut TariWorld, alias: String, pubkey: String, wallet: String) {
+    assert!(check_contact(world, alias, Some(pubkey), wallet).await);
+}
+
+#[when(expr = "I remove contact with alias {word} from ffi wallet {word}")]
+async fn ffi_remove_contact(world: &mut TariWorld, alias: String, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let contacts = ffi_wallet.get_contacts();
+    let mut contact_to_remove = None;
+    for i in 0..contacts.get_length() {
+        let contact = contacts.get_at(i);
+        if contact.get_alias() == alias {
+            contact_to_remove = Some(contact);
+            break;
+        }
+    }
+    assert!(contact_to_remove.is_some());
+    assert!(ffi_wallet.remove_contact(contact_to_remove.unwrap()));
+}
+
+#[then(expr = "I don't have contact with alias {word} in ffi wallet {word}")]
+async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: String) {
+    assert!(!check_contact(world, alias, None, wallet).await);
+}
+
+#[when(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}")]
+#[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}")]
+async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
+    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, false);
+    assert_ne!(tx_id, 0, "Send transaction was not successful");
+}
+
+#[when(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
+#[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
+async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
+    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, true);
+    assert_ne!(tx_id, 0, "Send transaction was not successful");
+}
+
+#[when(expr = "I have {int} received and {int} send transaction in ffi wallet {word}")]
+#[then(expr = "I have {int} received and {int} send transaction in ffi wallet {word}")]
+async fn ffi_check_number_of_transactions(world: &mut TariWorld, received: u32, send: u32, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let inbound_txs = ffi_wallet.get_pending_inbound_transactions();
+    let mut inbound_cnt = inbound_txs.get_length();
+    let outbound_txs = ffi_wallet.get_pending_outbound_transactions();
+    let mut outbound_cnt = outbound_txs.get_length();
+    let completed_txs = ffi_wallet.get_completed_transactions();
+    for i in 0..completed_txs.get_length() {
+        let completed_tx = completed_txs.get_at(i);
+        if completed_tx.is_outbound() {
+            outbound_cnt += 1;
+        } else {
+            inbound_cnt += 1;
+        }
+    }
+    assert_eq!(outbound_cnt, send);
+    assert_eq!(inbound_cnt, received);
+}
+
+#[then(expr = "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)")]
+async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet: String, cnt: u32) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let mut found_cnt = 0;
+    let num_retries = 120;
+    for _ in 0..num_retries {
+        let pending_outbound_transactions = ffi_wallet.get_pending_outbound_transactions();
+        found_cnt = pending_outbound_transactions.get_length();
+        if found_cnt >= cnt {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(found_cnt >= cnt, "The number of pending outbound transaction is lower.");
+}
+
+#[then(expr = "I wait for ffi wallet {word} to have at least {int} contacts to be {word}")]
+async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
+    assert!(
+        vec!["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
+        "Unknown status : {}",
+        status
+    );
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    println!(
+        "Waiting for {} to have at least {} contacts with status '{}'",
+        wallet, cnt, status
+    );
+    let mut found_cnt = 0;
+
+    let liveness_data = ffi_wallet.get_liveness_data();
+    for _ in 0..120 {
+        found_cnt = 0;
+        for (_alias, data) in liveness_data.lock().unwrap().iter() {
+            if data.get_online_status() == status {
+                found_cnt += 1;
+            }
+        }
+        if found_cnt >= cnt {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(
+        found_cnt >= cnt,
+        "{} doesn't have at least {} contacts with status {}!",
+        wallet,
+        cnt,
+        status
+    );
+}
+
+#[then(expr = "I want to view the transaction kernels for completed transactions in ffi wallet {word}")]
+async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let completed_transactions = ffi_wallet.get_completed_transactions();
+    for i in 0..completed_transactions.get_length() {
+        let completed_transaction = completed_transactions.get_at(i);
+        let kernel = completed_transaction.get_transaction_kernel();
+        println!("Transaction kernel info :");
+        assert!(!kernel.get_excess_hex().is_empty());
+        println!("Excess {}", kernel.get_excess_hex());
+        assert!(!kernel.get_excess_public_nonce_hex().is_empty());
+        println!("Nonce {}", kernel.get_excess_public_nonce_hex());
+        assert!(!kernel.get_excess_signature_hex().is_empty());
+        println!("Signature {}", kernel.get_excess_signature_hex());
+    }
+}
+
+#[then(expr = "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction")]
+async fn ffi_cancel_outbound_transactions(world: &mut TariWorld, wallet: String, cnt: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let pending_outbound_transactions = ffi_wallet.get_pending_outbound_transactions();
+    let mut cancelled = 0;
+    for i in 0..pending_outbound_transactions.get_length() {
+        let pending_outbound_transaction = pending_outbound_transactions.get_at(i);
+        if ffi_wallet.cancel_pending_transaction(pending_outbound_transaction.get_transaction_id()) {
+            cancelled += 1;
+        }
+    }
+    assert_eq!(cancelled, cnt);
+}
+
+#[then(expr = "I wait for ffi wallet {word} to receive {int} transaction")]
+async fn ffi_wait_for_transaction_received(world: &mut TariWorld, wallet: String, cnt: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let num_retries = 120;
+    let mut found_cnt = 0;
+    for _ in 0..num_retries {
+        found_cnt = ffi_wallet.get_counters().get_transaction_received();
+        if found_cnt >= cnt {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+}
+
+#[then(expr = "I wait for ffi wallet {word} to receive {int} finalization")]
+async fn ffi_wait_for_transaction_finalized(world: &mut TariWorld, wallet: String, cnt: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let num_retries = 120;
+    let mut found_cnt = 0;
+    for _ in 0..num_retries {
+        found_cnt = ffi_wallet.get_counters().get_transaction_finalized();
+        if found_cnt >= cnt {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+}
+
+#[then(expr = "I wait for ffi wallet {word} to receive {int} broadcast")]
+async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: String, cnt: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let num_retries = 120;
+    let mut found_cnt = 0;
+    for _ in 0..num_retries {
+        found_cnt = ffi_wallet.get_counters().get_transaction_broadcast();
+        if found_cnt >= cnt {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+}
+
+#[then(expr = "I start TXO validation on ffi wallet {word}")]
+async fn ffi_start_txo_validation(world: &mut TariWorld, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    ffi_wallet.start_txo_validation();
+    let num_retries = 120;
+    let mut validation_complete = false;
+    for _ in 0..num_retries {
+        validation_complete = ffi_wallet.get_counters().get_txo_validation_complete();
+        if validation_complete {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(validation_complete);
+}
+
+#[then(expr = "I start TX validation on ffi wallet {word}")]
+async fn ffi_start_tx_validation(world: &mut TariWorld, wallet: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    ffi_wallet.start_transaction_validation();
+    let num_retries = 120;
+    let mut validation_complete = false;
+    for _ in 0..num_retries {
+        validation_complete = ffi_wallet.get_counters().get_tx_validation_complete();
+        if validation_complete {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(validation_complete);
+}
+
+#[then(expr = "ffi wallet {word} detects {word} {int} ffi transactions to be {word}")]
+async fn ffi_detects_transaction(
+    world: &mut TariWorld,
+    wallet: String,
+    comparison: String,
+    count: u64,
+    status: String,
+) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    assert!(vec![
+        "TRANSACTION_STATUS_BROADCAST",
+        "TRANSACTION_STATUS_FAUX_UNCONFIRMED",
+        "TRANSACTION_STATUS_FAUX_CONFIRMED"
+    ]
+    .contains(&status.as_str()));
+    println!(
+        "Waiting for {} to have detected {} {} {} transaction(s)",
+        wallet, comparison, count, status
+    );
+    let mut found_count = 0;
+    for _ in 0..120 {
+        found_count = match status.as_str() {
+            "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
+            "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
+            "TRANSACTION_STATUS_FAUX_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
+            _ => unreachable!(),
+        };
+        if found_count >= count {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    match comparison.as_str() {
+        "AT_LEAST" => assert!(
+            found_count >= count,
+            "Counter not adequate! Counter is {}.",
+            found_count
+        ),
+        "EXACTLY" => assert!(
+            found_count == count,
+            "Counter not adequate! Counter is {}.",
+            found_count
+        ),
+        _ => panic!("Unknown comparison method {}", comparison),
+    };
+}
+
+#[then(expr = "I wait for ffi wallet {word} to receive {int} mined")]
+async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, count: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    println!("Waiting for {} to receive {} transaction(s) mined", wallet, count);
+
+    let mut found_cnt = 0;
+    for _ in 0..120 {
+        found_cnt = ffi_wallet.get_counters().get_transaction_mined();
+        if found_cnt >= count {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(found_cnt >= count);
+}
+
+#[then(expr = "I recover wallet {word} into ffi wallet {word} from seed words on node {word}")]
+async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wallet_name: String, base_node: String) {
+    let wallet = world.get_wallet(&wallet_name).unwrap();
+    let seed_words_path = wallet.temp_dir_path.clone().join("seed_words.txt");
+    let seed_words_file = std::fs::File::open(seed_words_path).unwrap();
+    let reader = std::io::BufReader::new(seed_words_file);
+    let line = reader.lines().next().unwrap().unwrap();
+    let words = line.split_whitespace().collect();
+    let seed_words = create_seed_words(words);
+
+    spawn_wallet_ffi(world, ffi_wallet_name.clone(), seed_words.get_ptr());
+
+    let base_node = world.get_node(&base_node).unwrap();
+    world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
+        base_node.identity.public_key().to_hex(),
+        base_node.identity.public_address().to_string(),
+    );
+}
+
+#[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
+async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: String) {
+    let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
+    ffi_wallet.restart();
+    let base_node = world.get_node(&base_node).unwrap();
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    ffi_wallet.add_base_node(
+        base_node.identity.public_key().to_hex(),
+        base_node.identity.public_address().to_string(),
+    );
+}
+
+#[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]
+#[when(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]
+async fn ffi_fee_per_gram_stats(world: &mut TariWorld, wallet: String, min: u64, avg: u64, max: u64) {
+    let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
+    let fee_per_gram_stats = ffi_wallet.get_fee_per_gram_stats(5);
+    for i in 0..fee_per_gram_stats.get_length() {
+        let fee_per_gram_stat = fee_per_gram_stats.get_at(i);
+        println!("order {}", fee_per_gram_stat.get_order());
+        println!("min {}", fee_per_gram_stat.get_min_fee_per_gram());
+        println!("avg {}", fee_per_gram_stat.get_avg_fee_per_gram());
+        println!("max {}", fee_per_gram_stat.get_max_fee_per_gram());
+        assert_eq!(fee_per_gram_stat.get_min_fee_per_gram(), min);
+        assert_eq!(fee_per_gram_stat.get_avg_fee_per_gram(), avg);
+        assert_eq!(fee_per_gram_stat.get_max_fee_per_gram(), max);
+    }
+}
+
 fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
     // After each test we flush the stdout to the logs.
     info!(
@@ -3981,31 +4362,18 @@ fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
     buffer.lock().unwrap().clear();
 }
 
-fn main() {
-    initialize_logging(
-        &PathBuf::from("log4rs/cucumber.yml"),
-        include_str!("../log4rs/cucumber.yml"),
-    )
-    .expect("logging not configured");
-    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
-    #[cfg(test)]
-    std::io::set_output_capture(Some(stdout_buffer.clone()));
-    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
-    // not be affected by the output capture.
-    let stdout_buffer_clone = stdout_buffer.clone();
-    let runtime = Runtime::new().unwrap();
-    runtime.block_on(async {
-        let world = TariWorld::cucumber()
+async fn run_cucumber(is_ffi: bool, stdout_buffer: Arc<Mutex<Vec<u8>>>) {
+    let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(5)
+        .max_concurrent_scenarios(if is_ffi {1} else {5})
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()
         //        .assert_normalized(),
         //)
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
-            let stdout_buffer = stdout_buffer_clone.clone();
+            let stdout_buffer = stdout_buffer.clone();
             Box::pin(async move {
                 flush_stdout(&stdout_buffer);
                 match ev {
@@ -4033,8 +4401,31 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
-        world.run_and_exit("tests/features/").await;
-    });
+    world
+        .filter_run_and_exit("tests/features/", move |feature, _, _| {
+            if is_ffi {
+                feature.name == "Wallet FFI"
+            } else {
+                feature.name != "Wallet FFI"
+            }
+        })
+        .await;
+}
+
+fn main() {
+    initialize_logging(
+        &PathBuf::from("log4rs/cucumber.yml"),
+        include_str!("../log4rs/cucumber.yml"),
+    )
+    .expect("logging not configured");
+    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+    #[cfg(test)]
+    std::io::set_output_capture(Some(stdout_buffer.clone()));
+    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
+    // not be affected by the output capture.
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(run_cucumber(false, stdout_buffer.clone()));
+    runtime.block_on(run_cucumber(true, stdout_buffer.clone()));
 
     // If by any chance we have anything in the stdout buffer just log it.
     flush_stdout(&stdout_buffer);
