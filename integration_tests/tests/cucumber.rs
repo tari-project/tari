@@ -35,9 +35,9 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::initialize_logging;
 use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
-use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -79,6 +79,8 @@ pub enum TariWorldError {
     MinerProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
+    #[error("No base node, or wallet client found: {0}")]
+    ClientNotFound(String),
 }
 
 #[derive(Debug, Default, cucumber::World)]
@@ -93,12 +95,30 @@ pub struct TariWorld {
     utxos: IndexMap<String, (u64, TransactionOutput)>,
 }
 
+enum NodeClient {
+    BaseNode(tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
+}
+
 impl TariWorld {
     async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
     ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
         self.get_node(name)?.get_grpc_client().await
+    }
+
+    async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
+        &self,
+        name: S,
+    ) -> anyhow::Result<NodeClient> {
+        match self.get_node_client(&name).await {
+            Ok(client) => Ok(NodeClient::BaseNode(client)),
+            Err(_) => match self.get_wallet_client(&name).await {
+                Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
+                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+            },
+        }
     }
 
     #[allow(dead_code)]
@@ -174,20 +194,32 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 }
 
 #[when(expr = "I wait for {word} to connect to {word}")]
+#[then(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
-    let mut first_node = world.get_node_client(&first_node).await.unwrap();
-    let second_node = world.get_node(&second_node).unwrap();
+    let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
+    let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
+
+    let second_client_pubkey = match second_client {
+        NodeClient::Wallet(mut client) => {
+            client
+                .identify(GetIdentityRequest {})
+                .await
+                .unwrap()
+                .into_inner()
+                .public_key
+        },
+        NodeClient::BaseNode(mut client) => client.identify(Empty {}).await.unwrap().into_inner().public_key,
+    };
 
     for _i in 0..100 {
-        let res = first_node.list_connected_peers(Empty {}).await.unwrap();
+        let res = match node_client {
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+        };
         let res = res.into_inner();
 
-        if res
-            .connected_peers
-            .iter()
-            .any(|p| p.public_key == second_node.identity.public_key().as_bytes())
-        {
+        if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
             return;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -1298,11 +1330,186 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
     }
 }
 
+#[then(expr = "I wait for {word} to have {int} node connections")]
+async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have {} connections", &wallet, connections);
+    let mut actual_connections = 0_u32;
+
+    for _ in 0..num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        actual_connections = network_status_res.num_node_connections;
+        if u64::from(actual_connections) >= connections {
+            println!("Wallet {} has at least {} connections", &wallet, connections);
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if u64::from(actual_connections) != connections {
+        panic!("Wallet {} does not have {} connections", &wallet, connections);
+    }
+}
+
+#[then(expr = "I wait for {word} to have {word} connectivity")]
+async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wallet: String, connectivity: String) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have connectivity {}", &wallet, &connectivity);
+    let connectivity = connectivity.to_uppercase();
+
+    let connectivity_index = match connectivity.as_str() {
+        "INITIALIZING" => 0,
+        "ONLINE" => 1,
+        "DEGRADED" => 2,
+        "OFFLINE" => 3,
+        _ => panic!("Invalid connectivity value {}", connectivity),
+    };
+
+    for _ in 0..=num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        let connectivity_status = network_status_res.status;
+        if connectivity_status == connectivity_index {
+            println!("Wallet {} has {} connectivity", &wallet, &connectivity);
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} did not get correct connectivity status {}",
+        &wallet, connectivity
+    );
+}
+
+#[then(expr = "node {word} lists heights {int} to {int}")]
+async fn node_lists_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let heights = (start..=end).collect::<Vec<_>>();
+    let blocks_req = GetBlocksRequest { heights };
+    let mut blocks_stream = node_client.get_blocks(blocks_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(block) = blocks_stream.next().await {
+        let block = block.unwrap().block.unwrap();
+        let block_height = block.header.unwrap().height;
+        if height != block_height {
+            panic!(
+                "Invalid block height for node {}: expected height {} != current height {}",
+                &node, block_height, height
+            );
+        }
+        println!("Valid block height {}, listed by node {}", height, &node);
+        height += 1;
+    }
+}
+
+#[then(expr = "node {word} lists headers {int} to {int} with correct heights")]
+async fn node_lists_headers_with_correct_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let list_headers_req = ListHeadersRequest {
+        from_height: start,
+        num_headers: end - start + 1,
+        sorting: 1,
+    };
+    let mut headers_stream = node_client.list_headers(list_headers_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(header) = headers_stream.next().await {
+        let header_res = header.unwrap();
+        let header_height = header_res.header.unwrap().height;
+
+        if header_height != height {
+            panic!(
+                "incorrect listing of height headers by node {}: expected height to be {} but got height {}",
+                &node, height, header_height
+            );
+        }
+        println!("correct listing of height header {} by node {}", height, &node);
+        height += 1;
+    }
+}
+
 #[then(expr = "all nodes are at height {int}*{int}")]
 #[when(expr = "all nodes are at height {int}*{int}")]
 async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) {
     all_nodes_are_at_height(world, a * b).await;
 }
+
+#[when(expr = "I transfer {int}T from {word} to {word}")]
+async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_identity_res = sender_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let sender_wallet_pubkey = sender_wallet_identity_res.public_key.to_hex();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
+    let receiver_wallet_identity_res = receiver_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let receiver_wallet_pubkey = receiver_wallet_identity_res.public_key.to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_wallet_pubkey.clone(),
+        amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
+        fee_per_gram: 10,               // as in the js cucumber tests
+        message: format!(
+            "transfer amount {} from {} to {}",
+            amount,
+            sender.as_str(),
+            receiver.as_str()
+        ),
+        payment_type: 0, // normal mimblewimble payment type
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Transacting amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        sender.as_str(),
+        receiver.as_str(),
+        10
+    );
+
+    let tx_id = tx_res.transaction_id;
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&sender_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(sender_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(receiver_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "Transfer amount {} from {} to {} at fee {} succeeded",
+        amount, sender, receiver, 10
+    );
+}
+
+#[when(expr = "wallet {word} has {int}T")]
+#[then(expr = "wallet {word} has {int}T")]
+async fn wallet_has_tari(_world: &mut TariWorld, _wallet: String, _amount: u64) {}
 
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
