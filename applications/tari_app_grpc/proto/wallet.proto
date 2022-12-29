@@ -39,6 +39,8 @@ service Wallet {
     rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
     // This returns the identity information
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+    // This returns the tari address
+    rpc GetAddress (Empty) returns (GetAddressResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Tari to a number of recipients
@@ -85,6 +87,10 @@ message GetVersionRequest { }
 
 message GetVersionResponse {
     string version = 1;
+}
+
+message GetAddressResponse {
+    bytes address = 1;
 }
 
 message TransferRequest {
