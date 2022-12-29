@@ -1341,14 +1341,14 @@ async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: 
     for _ in 0..num_retries {
         let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
         actual_connections = network_status_res.num_node_connections;
-        if actual_connections as u64 >= connections {
+        if u64::from(actual_connections) >= connections {
             println!("Wallet {} has at least {} connections", &wallet, connections);
             break;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    if actual_connections as u64 != connections {
+    if u64::from(actual_connections) != connections {
         panic!("Wallet {} does not have {} connections", &wallet, connections);
     }
 }
