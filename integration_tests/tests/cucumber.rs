@@ -1439,6 +1439,74 @@ async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) 
     all_nodes_are_at_height(world, a * b).await;
 }
 
+#[when(expr = "I transfer {int}T from {word} to {word}")]
+async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_identity_res = sender_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let sender_wallet_pubkey = sender_wallet_identity_res.public_key.to_hex();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
+    let receiver_wallet_identity_res = receiver_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let receiver_wallet_pubkey = receiver_wallet_identity_res.public_key.to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_wallet_pubkey.clone(),
+        amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
+        fee_per_gram: 10,               // as in the js cucumber tests
+        message: format!(
+            "transfer amount {} from {} to {}",
+            amount,
+            sender.as_str(),
+            receiver.as_str()
+        ),
+        payment_type: 0, // normal mimblewimble payment type
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Transacting amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        sender.as_str(),
+        receiver.as_str(),
+        10
+    );
+
+    let tx_id = tx_res.transaction_id;
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&sender_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(sender_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(receiver_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "Transfer amount {} from {} to {} at fee {} succeeded",
+        amount, sender, receiver, 10
+    );
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
