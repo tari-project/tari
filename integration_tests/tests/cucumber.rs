@@ -1507,6 +1507,10 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     );
 }
 
+#[when(expr = "wallet {word} has {int}T")]
+#[then(expr = "wallet {word} has {int}T")]
+async fn wallet_has_tari(_world: &mut TariWorld, _wallet: String, _amount: u64) {}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
