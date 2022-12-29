@@ -13,7 +13,7 @@ Feature: Wallet Routing Mechanism
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using <Mechanism>
       #   # We need to ensure the coinbase lock heights are gone and we have enough individual UTXOs; mine enough blocks
       #   And mining node MINER mines 20 blocks
-      #   Then all nodes are at height 20
+        Then all nodes are at height 20
       #   # TODO: This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
       #   When I wait for wallet WALLET_A to have at least 100000000 uT
@@ -22,12 +22,12 @@ Feature: Wallet Routing Mechanism
       #   # TODO: This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 1 blocks
-      #   Then all nodes are at height 21
+        Then all nodes are at height 21
       #   Then all wallets detect all transactions as Mined_Unconfirmed
       #   # TODO: This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 11 blocks
-      #   Then all nodes are at height 32
+        Then all nodes are at height 32
       #   Then all wallets detect all transactions as Mined_Confirmed
       #   # TODO: This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
@@ -45,10 +45,10 @@ Feature: Wallet Routing Mechanism
     Scenario: Store and forward TX
       Given I have a seed node SEED
       When I have a base node BASE connected to seed SEED
-      # When I have wallet SENDER connected to base node BASE
-      # When I have wallet RECEIVER connected to base node BASE
+      When I have wallet SENDER connected to base node BASE
+      When I have wallet RECEIVER connected to base node BASE
       #   And I stop wallet RECEIVER
-      #   And I have mining node MINE connected to base node BASE and wallet SENDER
+      When I have mining node MINE connected to base node BASE and wallet SENDER
       #   And mining node MINE mines 5 blocks
       #   Then I wait for wallet SENDER to have at least 1000000 uT
       #   And I send 1000000 uT from wallet SENDER to wallet RECEIVER at fee 100

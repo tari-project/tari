@@ -34,24 +34,35 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
-use tari_app_grpc::tari_rpc::{TransactionKernel, TransactionOutput, TransactionStatus};
-use tari_base_node_grpc_client::grpc::{
+use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
+use tari_common::initialize_logging;
+use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
+use tari_integration_tests::error::GrpcBaseNodeError;
+use tari_utilities::hex::Hex;
+use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
+use tari_wallet_grpc_client::grpc::{
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
+    GetIdentityRequest,
     GetTransactionInfoRequest,
+    PaymentRecipient,
+    TransferRequest,
 };
-use tari_common::initialize_logging;
-use tari_crypto::tari_utilities::ByteArray;
-use tari_integration_tests::error::GrpcBaseNodeError;
-use tari_utilities::hex::Hex;
-use tari_wallet_grpc_client::grpc::GetIdentityRequest;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
 use crate::utils::{
     base_node_process::{spawn_base_node, BaseNodeProcess},
-    miner::{mine_block_with_coinbase_on_node, mine_blocks_without_wallet, register_miner_process, MinerProcess},
+    miner::{
+        mine_block,
+        mine_block_with_coinbase_on_node,
+        mine_blocks_without_wallet,
+        register_miner_process,
+        MinerProcess,
+    },
+    transaction::build_transaction_with_output,
     wallet_process::{create_wallet_client, spawn_wallet, WalletProcess},
 };
 
@@ -78,9 +89,10 @@ pub struct TariWorld {
     base_nodes: IndexMap<String, BaseNodeProcess>,
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
-    coinbases: IndexMap<String, (TransactionOutput, TransactionKernel)>,
-    // mapping from hex public key string to tx_id
-    transactions: IndexMap<String, Vec<u64>>,
+    transactions: IndexMap<String, Transaction>,
+    // mapping from hex string of public key of wallet client to tx_id's
+    wallet_tx_ids: IndexMap<String, Vec<u64>>,
+    utxos: IndexMap<String, (u64, TransactionOutput)>,
 }
 
 enum NodeClient {
@@ -109,6 +121,7 @@ impl TariWorld {
         }
     }
 
+    #[allow(dead_code)]
     async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: &S,
@@ -150,16 +163,14 @@ impl TariWorld {
 }
 
 #[given(expr = "I have a seed node {word}")]
-#[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
     spawn_base_node(world, true, name, vec![], None).await;
 }
 
-#[given(expr = "I have wallet {word} connected to base node {word}")]
-#[when(expr = "I have wallet {word} connected to base node {word}")]
+#[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet_name, Some(node_name), seeds).await;
+    spawn_wallet(world, wallet_name, Some(node_name), seeds, None).await;
 }
 
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
@@ -169,7 +180,7 @@ async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name
 
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
 async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    spawn_wallet(world, name, None, world.all_seed_nodes().to_vec()).await;
+    spawn_wallet(world, name, None, world.all_seed_nodes().to_vec(), None).await;
 }
 
 #[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
@@ -185,33 +196,32 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 #[when(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
-async fn node_pending_connection_to(
-    world: &mut TariWorld,
-    first_node: String,
-    second_node: String,
-) -> anyhow::Result<()> {
-    let mut first_node = world.get_base_node_or_wallet_client(&first_node).await?;
-    let mut second_node = world.get_base_node_or_wallet_client(&second_node).await?;
+async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
+    let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
+    let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
+
+    let second_client_pubkey = match second_client {
+        NodeClient::Wallet(mut client) => {
+            client
+                .identify(GetIdentityRequest {})
+                .await
+                .unwrap()
+                .into_inner()
+                .public_key
+        },
+        NodeClient::BaseNode(mut client) => client.identify(Empty {}).await.unwrap().into_inner().public_key,
+    };
+
     for _i in 0..100 {
-        let res = match first_node {
-            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await?,
-            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await?,
+        let res = match node_client {
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
         };
         let res = res.into_inner();
 
-        let public_key = match second_node {
-            NodeClient::BaseNode(ref mut client) => client.identify(Empty {}).await?.into_inner().public_key,
-            NodeClient::Wallet(ref mut client) => client.identify(GetIdentityRequest {}).await?.into_inner().public_key,
-        };
-
-        if res
-            .connected_peers
-            .iter()
-            .any(|p| p.public_key == public_key.as_bytes())
-        {
-            return Ok(());
+        if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
+            return;
         }
-
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
@@ -226,41 +236,45 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
-async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) -> anyhow::Result<()> {
-    let num_retries = 100;
-    let mut already_sync = true;
+async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
+    let num_retries = 24; // About 2 minutes
+    let mut nodes_at_height: IndexMap<&String, bool> = IndexMap::new();
+
+    let _ = world
+        .base_nodes
+        .iter()
+        .map(|(name, _)| nodes_at_height.insert(name, false));
 
     for _ in 0..num_retries {
-        for (_, bn) in world.base_nodes.iter() {
-            let mut client = bn.get_grpc_client().await?;
+        for (name, _) in nodes_at_height
+            .clone()
+            .iter()
+            .filter(|(_, at_height)| at_height == &&false)
+        {
+            let mut client = world.get_node_client(name).await.unwrap();
 
-            let chain_tip = client.get_tip_info(Empty {}).await?.into_inner();
+            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
             let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
             if chain_hgt < height {
-                already_sync = false;
+                nodes_at_height.insert(name, true);
             }
         }
 
-        if already_sync {
-            return Ok(());
+        if nodes_at_height.values().all(|v| v == &true) {
+            return;
         }
 
-        already_sync = true;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    if !already_sync {
-        panic!("base nodes not successfully synchronized at height {}", height);
-    }
-
-    Ok(())
+    panic!("base nodes not successfully synchronized at height {}", height);
 }
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = 100;
+    let num_retries = 24; // About two minutes
 
     let mut client = world
         .base_nodes
@@ -327,15 +341,19 @@ async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, s
 
 #[then(expr = "I mine {int} blocks on {word}")]
 #[when(expr = "I mine {int} blocks on {word}")]
-async fn mine_blocks_on(world: &mut TariWorld, base_node: String, blocks: u64) {
+async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
     let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
+        .get_node_client(&base_node)
         .await
-        .unwrap();
+        .expect("Couldn't get the node client to mine with");
     mine_blocks_without_wallet(&mut client, blocks).await;
+}
+
+#[when(expr = "I have wallet {word} connected to base node {word}")]
+async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
+    let bn = world.base_nodes.get(&base_node).unwrap();
+    let peer_seeds = bn.seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), peer_seeds, None).await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
@@ -363,7 +381,7 @@ async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
 
 #[when(expr = "I have wallet {word} connected to seed node {word}")]
 async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
-    spawn_wallet(world, wallet, None, vec![seed_node]).await;
+    spawn_wallet(world, wallet, None, vec![seed_node], None).await;
 }
 
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
@@ -386,7 +404,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
     let mut client = create_wallet_client(world, wallet_name).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
     let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
 
     let num_retries = 100;
 
@@ -399,7 +417,7 @@ async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, walle
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
-                TransactionStatus::MinedConfirmed => break 'inner,
+                grpc::TransactionStatus::MinedConfirmed => break 'inner,
                 _ => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
@@ -415,7 +433,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
-    spawn_wallet(world, miner.clone(), Some(miner.clone()), peers).await;
+    spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None).await;
     register_miner_process(world, miner.clone(), miner.clone(), miner);
 }
 
@@ -453,7 +471,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
     let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.transactions.get(&wallet_pubkey).unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
 
     let transaction_status = match transaction_status.as_str() {
         "TRANSACTION_STATUS_COMPLETED" => 0i32,
@@ -490,6 +508,1008 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         wallet, num_txs, transaction_status
     );
 }
+
+#[when(expr = "I create a transaction {word} spending {word} to {word}")]
+async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| {
+            let (a, o) = world.utxos.get(&i.to_string()).unwrap();
+            (*a, o.clone())
+        })
+        .collect::<Vec<_>>();
+    let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
+    world.utxos.insert(output, (amount, utxo));
+    world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I wait for wallet {word} to have less than {int} uT")]
+async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    println!("Waiting for wallet {} to have less than {} uT", wallet, amount);
+
+    let num_retries = 100;
+    let request = GetBalanceRequest {};
+
+    for _ in 0..num_retries {
+        let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
+        let current_balance = balance_res.available_balance;
+        if current_balance < amount {
+            println!(
+                "Wallet {} now has less than {}, with current balance {}",
+                wallet, amount, current_balance
+            );
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} didn't get less than {} after num_retries {}",
+        wallet, amount, num_retries
+    );
+}
+
+#[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
+async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
+    let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
+    spawn_wallet(
+        world,
+        wallet,
+        None,
+        world.all_seed_nodes().to_vec(),
+        Some(routing_mechanism),
+    )
+    .await;
+}
+
+#[when(expr = "I have {int} non-default wallets connected to all seed nodes using {word}")]
+async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, num: u64, mechanism: String) {
+    let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
+    for ind in 0..num {
+        let wallet_name = format!("Wallet_{}", ind);
+        spawn_wallet(
+            world,
+            wallet_name,
+            None,
+            world.all_seed_nodes().to_vec(),
+            Some(routing_mechanism),
+        )
+        .await;
+    }
+}
+
+#[when(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+#[then(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
+    world: &mut TariWorld,
+    amount: u64,
+    source_wallet: String,
+    dest_wallet: String,
+    fee: u64,
+) {
+    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
+    let identity_req = GetIdentityRequest {};
+    let source_wallet_pubkey = source_client
+        .identify(identity_req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
+    let dest_wallet_pubkey = dest_client
+        .identify(identity_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: dest_wallet_pubkey.clone(),
+        amount,
+        fee_per_gram: fee,
+        message: format!(
+            "transfer amount {} from {} to {}",
+            amount,
+            source_wallet.as_str(),
+            dest_wallet.as_str()
+        ),
+        payment_type: 0, // normal mimblewimble payment type
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Transacting amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        source_wallet.as_str(),
+        dest_wallet.as_str(),
+        fee
+    );
+
+    let tx_id = tx_res.transaction_id;
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "Transfer amount {} from {} to {} at fee {} succeeded",
+        amount, source_wallet, dest_wallet, fee
+    );
+}
+
+#[then(expr = "I send a one-sided transaction of {int} uT from {word} to {word} at fee {int}")]
+async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
+    world: &mut TariWorld,
+    amount: u64,
+    source_wallet: String,
+    dest_wallet: String,
+    fee: u64,
+) {
+    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
+    let identity_req = GetIdentityRequest {};
+    let source_wallet_pubkey = source_client
+        .identify(identity_req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
+    let dest_wallet_pubkey = dest_client
+        .identify(identity_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .public_key
+        .to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: dest_wallet_pubkey.clone(),
+        amount,
+        fee_per_gram: fee,
+        message: format!(
+            "One sided transfer amount {} from {} to {}",
+            amount,
+            source_wallet.as_str(),
+            dest_wallet.as_str()
+        ),
+        payment_type: 1, // one sided transaction
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "One sided transaction with amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        source_wallet.as_str(),
+        dest_wallet.as_str(),
+        fee
+    );
+
+    // we wait for transaction to be broadcasted
+    let tx_id = tx_res.transaction_id;
+    let num_retries = 100;
+    let tx_info_req = GetTransactionInfoRequest {
+        transaction_ids: vec![tx_id],
+    };
+
+    for i in 0..num_retries {
+        let tx_info_res = source_client
+            .get_transaction_info(tx_info_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_info = tx_info_res.transactions.first().unwrap();
+
+        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+        if tx_info.status == 1_i32 {
+            println!(
+                "One sided transaction from {} to {} with amount {} at fee {} has been broadcasted",
+                source_wallet.clone(),
+                dest_wallet.clone(),
+                amount,
+                fee
+            );
+            break;
+        }
+
+        if i == num_retries - 1 {
+            panic!(
+                "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                source_wallet.clone(),
+                dest_wallet.clone(),
+                amount,
+                fee
+            )
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "One sided transaction with amount {} from {} to {} at fee {} succeeded",
+        amount, source_wallet, dest_wallet, fee
+    );
+}
+
+#[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Confirmed")]
+async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    let num_retries = 100;
+    let mut total_mined_confirmed_coinbases = 0;
+
+    'outer: for _ in 0..num_retries {
+        println!("Detecting mined confirmed coinbase transactions");
+        'inner: for tx_id in tx_ids {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedConfirmed => {
+                    total_mined_confirmed_coinbases += 1;
+                    if total_mined_confirmed_coinbases >= coinbases {
+                        break 'outer;
+                    }
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        if total_mined_confirmed_coinbases < coinbases {
+            total_mined_confirmed_coinbases = 0;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if total_mined_confirmed_coinbases >= coinbases {
+        println!(
+            "Wallet {} detected at least {} coinbase transactions as Mined_Confirmed",
+            &wallet_name, coinbases
+        );
+    } else {
+        panic!(
+            "Wallet {} failed to detect at least {} coinbase transactions as Mined_Confirmed",
+            wallet_name, coinbases
+        );
+    }
+}
+
+#[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_Confirmed")]
+async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
+    let wallet_pubkey = wallet_identity.public_key.to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    let num_retries = 100;
+    let mut total_mined_confirmed_coinbases = 0;
+
+    'outer: for _ in 0..num_retries {
+        println!("Detecting mined confirmed coinbase transactions");
+        'inner: for tx_id in tx_ids {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedConfirmed => total_mined_confirmed_coinbases += 1,
+                _ => continue 'inner,
+            }
+        }
+
+        if total_mined_confirmed_coinbases >= coinbases {
+            break 'outer;
+        } else {
+            total_mined_confirmed_coinbases = 0;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if total_mined_confirmed_coinbases == coinbases {
+        println!(
+            "Wallet {} detected exactly {} coinbase transactions as Mined_Confirmed",
+            &wallet_name, coinbases
+        );
+    } else {
+        panic!(
+            "Wallet {} failed to detect exactly {} coinbase transactions as Mined_Confirmed",
+            wallet_name, coinbases
+        );
+    }
+}
+
+#[when(expr = "I have a base node {word} connected to node {word}")]
+async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+    spawn_base_node(world, false, base_node, vec![peer_node], None).await;
+}
+
+#[then(expr = "node {word} is at the same height as node {word}")]
+async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+    let mut peer_node_client = world.get_node_client(&peer_node).await.unwrap();
+    let req = Empty {};
+    let mut expected_height = peer_node_client
+        .get_tip_info(req.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .metadata
+        .unwrap()
+        .height_of_longest_chain;
+
+    let mut base_node_client = world.get_node_client(&base_node).await.unwrap();
+    let mut current_height = 0;
+    let num_retries = 100;
+
+    'outer: for _ in 0..12 {
+        'inner: for _ in 0..num_retries {
+            current_height = base_node_client
+                .get_tip_info(req.clone())
+                .await
+                .unwrap()
+                .into_inner()
+                .metadata
+                .unwrap()
+                .height_of_longest_chain;
+            if current_height >= expected_height {
+                break 'inner;
+            }
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        expected_height = peer_node_client
+            .get_tip_info(req.clone())
+            .await
+            .unwrap()
+            .into_inner()
+            .metadata
+            .unwrap()
+            .height_of_longest_chain;
+
+        current_height = base_node_client
+            .get_tip_info(req.clone())
+            .await
+            .unwrap()
+            .into_inner()
+            .metadata
+            .unwrap()
+            .height_of_longest_chain;
+
+        if current_height == expected_height {
+            break 'outer;
+        }
+    }
+
+    if current_height == expected_height {
+        println!(
+            "Base node {} is at the same height {} as node {}",
+            &base_node, current_height, &peer_node
+        );
+    } else {
+        panic!(
+            "Base node {} failed to synchronize at the same height as node {}",
+            base_node, peer_node
+        );
+    }
+}
+
+#[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
+async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_identity_res = wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    let wallet_pubkey = wallet_identity_res.public_key.to_hex();
+    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    if wallet_tx_ids.is_empty() {
+        panic!("Wallet {} has no available transactions", wallet);
+    }
+
+    let miner_ps = world.miners.get(&miner).unwrap();
+    let num_retries = 100;
+    println!(
+        "Detecting {} Mined_Confirmed transactions for wallet {}",
+        wallet_tx_ids.len(),
+        wallet
+    );
+
+    for tx_id in wallet_tx_ids {
+        'inner: for retry in 0..=num_retries {
+            let req = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
+            let tx_status = res.transactions.first().unwrap().status;
+            // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
+            if tx_status == 6 {
+                println!(
+                    "Wallet transaction with id {} has been detected with status Mined_Confirmed",
+                    tx_id
+                );
+                break 'inner;
+            }
+
+            if retry == num_retries {
+                panic!(
+                    "Unable to have wallet transaction with tx_id = {} with status Mined_Confirmed",
+                    tx_id
+                );
+            }
+
+            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
+            miner_ps.mine(world, Some(1)).await;
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    }
+}
+
+#[then(expr = "I stop all wallets")]
+async fn stop_all_wallets(world: &mut TariWorld) {
+    for (wallet, wallet_ps) in &mut world.wallets {
+        println!("Stopping wallet {}", wallet);
+        wallet_ps.kill();
+    }
+}
+
+#[when(expr = "I start wallet {word}")]
+async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
+    spawn_wallet(world, wallet, None, vec![], None).await;
+}
+
+#[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
+async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
+    world: &mut TariWorld,
+    node: String,
+    wallet: String,
+) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_identity_res = wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    let wallet_pubkey = wallet_identity_res.public_key.to_hex();
+    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+    if wallet_tx_ids.is_empty() {
+        panic!("Wallet {} on node {} has no available transactions", &wallet, &node);
+    }
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let num_retries = 100;
+    let mut mined_status_flag = false;
+
+    println!(
+        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_Confirmed",
+        &wallet, &node
+    );
+
+    for tx_id in wallet_tx_ids {
+        println!(
+            "Waiting for transaction with id {} to have status Mined_Confirmed, while mining on node {}",
+            tx_id, &node
+        );
+
+        'inner: for _ in 0..num_retries {
+            let req = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
+            let tx_status = res.transactions.first().unwrap().status;
+            // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
+            if tx_status == 6 {
+                println!("Transaction with id {} has been Mined_Confirmed", tx_id);
+                mined_status_flag = true;
+                break 'inner;
+            }
+
+            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
+            mine_block(&mut node_client, &mut wallet_client).await;
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        if !mined_status_flag {
+            panic!(
+                "Failed to have transaction with id {} on wallet {}, while mining on node {}, to be Mined_Confirmed",
+                tx_id, &wallet, &node
+            );
+        }
+    }
+
+    println!(
+        "Wallet {} has all transactions Mined_Confirmed, while mining on node {}",
+        &wallet, &node
+    );
+}
+
+#[then(expr = "all wallets detect all transactions as Mined_Confirmed")]
+async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
+    for wallet in world.wallets.keys() {
+        let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+        let wallet_identity_res = wallet_client
+            .identify(GetIdentityRequest {})
+            .await
+            .unwrap()
+            .into_inner();
+        let wallet_pubkey = wallet_identity_res.public_key.to_hex();
+        let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+
+        if wallet_tx_ids.is_empty() {
+            panic!("Wallet {} has no available transactions", &wallet);
+        }
+
+        for tx_id in wallet_tx_ids {
+            let req = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
+            let tx_status = res.transactions.first().unwrap().status;
+
+            // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
+            if tx_status == 6 {
+                println!(
+                    "Wallet {} has detected transaction with id {} as Mined_Confirmed",
+                    &wallet, tx_id
+                );
+            } else {
+                panic!(
+                    "Transaction with id {} does not have status as Mined_Confirmed, on wallet {}",
+                    tx_id, &wallet
+                );
+            }
+        }
+    }
+}
+
+#[then(expr = "wallets {word} should have {word} {int} spendable coinbase outputs")]
+async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
+    world: &mut TariWorld,
+    wallets: String,
+    comparison: String,
+    amount_of_coinbases: u64,
+) {
+    let at_least = "AT_LEAST";
+    let exactly = "EXACTLY";
+
+    if comparison.as_str() != at_least && comparison.as_str() != exactly {
+        panic!("Invalid comparison value provided: {}", comparison);
+    }
+
+    let wallets = wallets.split(',').collect::<Vec<_>>();
+    let mut wallets_clients: Vec<_> = vec![];
+    for w in &wallets {
+        wallets_clients.push(create_wallet_client(world, w.to_string()).await.unwrap());
+    }
+
+    let num_retries = 100;
+    let mut coinbase_count = 0;
+    let mut spendable_coinbase_count = 0;
+
+    for ind in 0..wallets_clients.len() {
+        let wallet = wallets[ind];
+        let mut client = wallets_clients[ind].clone();
+
+        'inner: for _ in 0..num_retries {
+            let mut stream = client
+                .get_completed_transactions(GetCompletedTransactionsRequest {})
+                .await
+                .unwrap()
+                .into_inner();
+            while let Some(completed_tx) = stream.next().await {
+                let tx_info = completed_tx.unwrap().transaction.unwrap();
+
+                if tx_info.message.contains("Coinbase Transaction for Block ") && tx_info.fee == 0 {
+                    let tx_id = tx_info.tx_id;
+                    coinbase_count += 1;
+
+                    println!("Found coinbase transaction with id {} for wallet {}", tx_id, &wallet);
+
+                    // MINED_CONFIRMED status = 6
+                    if tx_info.status == 6 {
+                        println!(
+                            "Coinbase transaction with id {} for wallet {} is Mined_Confirmed",
+                            tx_id, &wallet
+                        );
+                        spendable_coinbase_count += 1;
+                    }
+                }
+            }
+
+            if spendable_coinbase_count >= amount_of_coinbases {
+                println!(
+                    "Wallet {} has found at least {} within total {} coinbase transaction",
+                    &wallet, amount_of_coinbases, coinbase_count
+                );
+                break 'inner;
+            }
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        if comparison == at_least && spendable_coinbase_count >= amount_of_coinbases {
+            println!("Wallet {} has found at least {}", &wallet, amount_of_coinbases);
+        } else if comparison == exactly && spendable_coinbase_count == amount_of_coinbases {
+            println!("Wallet {} has found exactly {}", &wallet, amount_of_coinbases);
+        } else {
+            panic!(
+                "Wallet {} hasn't found {} {} spendable outputs",
+                wallet, comparison, amount_of_coinbases
+            );
+        }
+    }
+}
+
+#[when(expr = "I send {int} transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram {int}")]
+async fn send_num_transactions_to_wallets_at_fee(
+    world: &mut TariWorld,
+    num_txs: u64,
+    amount: u64,
+    sender_wallet: String,
+    receiver_wallet: String,
+    fee_per_gram: u64,
+) {
+    let mut sender_wallet_client = create_wallet_client(world, sender_wallet.clone()).await.unwrap();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver_wallet.clone()).await.unwrap();
+    let receiver_wallet_identity_res = receiver_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let mut tx_ids = vec![];
+
+    for _ in 0..num_txs {
+        let payment_recipient = PaymentRecipient {
+            address: receiver_wallet_identity_res.public_key.to_hex().clone(),
+            amount,
+            fee_per_gram,
+            message: format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender_wallet.as_str(),
+                receiver_wallet.as_str()
+            ),
+            payment_type: 0, // standard mimblewimble transaction
+        };
+        let transfer_req = TransferRequest {
+            recipients: vec![payment_recipient],
+        };
+        let transfer_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+        let transfer_res = transfer_res.results.first().unwrap();
+
+        if !transfer_res.is_success {
+            panic!(
+                "Failed to send transaction from wallet {} to wallet {}, with message \n {}",
+                &sender_wallet, &receiver_wallet, &transfer_res.failure_message
+            );
+        }
+        tx_ids.push(transfer_res.transaction_id);
+
+        let mut sender_tx_ids = world.wallet_tx_ids.get(&sender_wallet).unwrap().clone();
+        sender_tx_ids.push(transfer_res.transaction_id);
+        world.wallet_tx_ids.insert(sender_wallet.clone(), sender_tx_ids);
+
+        let mut receiver_tx_ids = world.wallet_tx_ids.get(&receiver_wallet).unwrap().clone();
+        receiver_tx_ids.push(transfer_res.transaction_id);
+        world.wallet_tx_ids.insert(receiver_wallet.clone(), receiver_tx_ids);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let num_retries = 100;
+    println!(
+        "Waiting for transactions from wallet {} to wallet {} to be broadcasted",
+        &sender_wallet, &receiver_wallet
+    );
+
+    for tx_id in tx_ids {
+        println!("Waiting for transaction with id {} to be broadcasted", tx_id);
+        let request = GetTransactionInfoRequest {
+            transaction_ids: vec![tx_id],
+        };
+
+        let mut is_broadcast = false;
+
+        'inner: for _ in 0..num_retries {
+            let txs_info = sender_wallet_client
+                .get_transaction_info(request.clone())
+                .await
+                .unwrap()
+                .into_inner();
+            let txs_info = txs_info.transactions.first().unwrap();
+
+            if txs_info.status == 1 {
+                println!(
+                    "Transaction from wallet {} to wallet {} with id {} has been broadcasted to the network",
+                    &sender_wallet, &receiver_wallet, tx_id
+                );
+                is_broadcast = true;
+                break 'inner;
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        if !is_broadcast {
+            panic!(
+                "Transaction from wallet {} to wallet {} with id {} was not broacasted to the network",
+                &sender_wallet, &receiver_wallet, tx_id
+            );
+        }
+    }
+}
+
+#[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
+#[when(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
+async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: String, seed_node: String) {
+    println!("Create base node for SHA3 miner {}", &sha3_miner);
+    spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()], None).await;
+
+    println!("Create wallet for SHA3 miner {}", &sha3_miner);
+    spawn_wallet(
+        world,
+        sha3_miner.clone(),
+        Some(sha3_miner.clone()),
+        vec![seed_node],
+        None,
+    )
+    .await;
+
+    println!("Register SHA3 miner {}", &sha3_miner);
+    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner);
+}
+
+#[when(expr = "I have individual mining nodes connected to each wallet and base node {word}")]
+async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWorld, base_node: String) {
+    let wallets = world.wallets.clone();
+
+    for (ind, wallet_name) in wallets.keys().enumerate() {
+        let miner = format!("Miner_{}", ind);
+        register_miner_process(world, miner, base_node.clone(), wallet_name.clone());
+    }
+}
+
+#[then(expr = "I have each mining node mine {int} blocks")]
+async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
+    let miners = world.miners.clone();
+    for (miner, miner_ps) in miners {
+        println!("Miner {} is mining {} blocks", miner, blocks);
+        miner_ps.mine(world, Some(blocks)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+#[then(expr = "I wait for {word} to have {int} node connections")]
+async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have {} connections", &wallet, connections);
+    let mut actual_connections = 0_u32;
+
+    for _ in 0..num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        actual_connections = network_status_res.num_node_connections;
+        if u64::from(actual_connections) >= connections {
+            println!("Wallet {} has at least {} connections", &wallet, connections);
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if u64::from(actual_connections) != connections {
+        panic!("Wallet {} does not have {} connections", &wallet, connections);
+    }
+}
+
+#[then(expr = "I wait for {word} to have {word} connectivity")]
+async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wallet: String, connectivity: String) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have connectivity {}", &wallet, &connectivity);
+    let connectivity = connectivity.to_uppercase();
+
+    let connectivity_index = match connectivity.as_str() {
+        "INITIALIZING" => 0,
+        "ONLINE" => 1,
+        "DEGRADED" => 2,
+        "OFFLINE" => 3,
+        _ => panic!("Invalid connectivity value {}", connectivity),
+    };
+
+    for _ in 0..=num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        let connectivity_status = network_status_res.status;
+        if connectivity_status == connectivity_index {
+            println!("Wallet {} has {} connectivity", &wallet, &connectivity);
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} did not get correct connectivity status {}",
+        &wallet, connectivity
+    );
+}
+
+#[then(expr = "node {word} lists heights {int} to {int}")]
+async fn node_lists_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let heights = (start..=end).collect::<Vec<_>>();
+    let blocks_req = GetBlocksRequest { heights };
+    let mut blocks_stream = node_client.get_blocks(blocks_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(block) = blocks_stream.next().await {
+        let block = block.unwrap().block.unwrap();
+        let block_height = block.header.unwrap().height;
+        if height != block_height {
+            panic!(
+                "Invalid block height for node {}: expected height {} != current height {}",
+                &node, block_height, height
+            );
+        }
+        println!("Valid block height {}, listed by node {}", height, &node);
+        height += 1;
+    }
+}
+
+#[then(expr = "node {word} lists headers {int} to {int} with correct heights")]
+async fn node_lists_headers_with_correct_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let list_headers_req = ListHeadersRequest {
+        from_height: start,
+        num_headers: end - start + 1,
+        sorting: 1,
+    };
+    let mut headers_stream = node_client.list_headers(list_headers_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(header) = headers_stream.next().await {
+        let header_res = header.unwrap();
+        let header_height = header_res.header.unwrap().height;
+
+        if header_height != height {
+            panic!(
+                "incorrect listing of height headers by node {}: expected height to be {} but got height {}",
+                &node, height, header_height
+            );
+        }
+        println!("correct listing of height header {} by node {}", height, &node);
+        height += 1;
+    }
+}
+
+#[then(expr = "all nodes are at height {int}*{int}")]
+#[when(expr = "all nodes are at height {int}*{int}")]
+async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) {
+    all_nodes_are_at_height(world, a * b).await;
+}
+
+#[when(expr = "I transfer {int}T from {word} to {word}")]
+async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_identity_res = sender_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let sender_wallet_pubkey = sender_wallet_identity_res.public_key.to_hex();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
+    let receiver_wallet_identity_res = receiver_wallet_client
+        .identify(GetIdentityRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let receiver_wallet_pubkey = receiver_wallet_identity_res.public_key.to_hex();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_wallet_pubkey.clone(),
+        amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
+        fee_per_gram: 10,               // as in the js cucumber tests
+        message: format!(
+            "transfer amount {} from {} to {}",
+            amount,
+            sender.as_str(),
+            receiver.as_str()
+        ),
+        payment_type: 0, // normal mimblewimble payment type
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+    };
+    let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+
+    assert_eq!(tx_res.len(), 1usize);
+
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Transacting amount {} from wallet {} to {} at fee {} failed",
+        amount,
+        sender.as_str(),
+        receiver.as_str(),
+        10
+    );
+
+    let tx_id = tx_res.transaction_id;
+
+    // insert tx_id's to the corresponding world mapping
+    let mut source_tx_ids = world.wallet_tx_ids.get(&sender_wallet_pubkey).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_pubkey).unwrap().clone();
+
+    source_tx_ids.push(tx_id);
+    dest_tx_ids.push(tx_id);
+
+    world.wallet_tx_ids.insert(sender_wallet_pubkey, source_tx_ids);
+    world.wallet_tx_ids.insert(receiver_wallet_pubkey, dest_tx_ids);
+
+    println!(
+        "Transfer amount {} from {} to {} at fee {} succeeded",
+        amount, sender, receiver, 10
+    );
+}
+
+#[when(expr = "wallet {word} has {int}T")]
+#[then(expr = "wallet {word} has {int}T")]
+async fn wallet_has_tari(_world: &mut TariWorld, _wallet: String, _amount: u64) {}
 
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
@@ -547,7 +1567,7 @@ fn main() {
         let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(1)
+        .max_concurrent_scenarios(5)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()

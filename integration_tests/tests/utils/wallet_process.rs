@@ -29,15 +29,18 @@ use tari_comms_dht::DhtConfig;
 use tari_console_wallet::run_wallet;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
-use tari_wallet::WalletConfig;
+use tari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
 use tari_wallet_grpc_client::WalletGrpcClient;
 use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{utils::get_port, TariWorld};
+use crate::{
+    utils::{get_port, wait_for_service},
+    TariWorld,
+};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WalletProcess {
     pub name: String,
     pub port: u64,
@@ -57,6 +60,7 @@ pub async fn spawn_wallet(
     wallet_name: String,
     base_node_name: Option<String>,
     peer_seeds: Vec<String>,
+    routing_mechanism: Option<TransactionRoutingMechanism>,
 ) {
     // each spawned wallet will use different ports
     let port = get_port(18000..18499).unwrap();
@@ -115,6 +119,12 @@ pub async fn spawn_wallet(
         wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
         wallet_config.wallet.p2p.datastore_path = temp_dir.path().join("peer_db/wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        if let Some(mech) = routing_mechanism {
+            wallet_config
+                .wallet
+                .transaction_service_config
+                .transaction_routing_mechanism = mech;
+        }
 
         // FIXME: wallet doesn't pick up the custom base node for some reason atm
         wallet_config.wallet.custom_base_node =
@@ -136,9 +146,8 @@ pub async fn spawn_wallet(
         kill_signal: shutdown,
     });
 
-    // We need to give it time for the wallet to startup
-    // TODO: it would be better to scan the wallet to detect when it has started
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    wait_for_service(port).await;
+    wait_for_service(grpc_port).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
     if let Some((_, _, hacky_request)) = base_node {
@@ -149,7 +158,7 @@ pub async fn spawn_wallet(
         let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
     }
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {

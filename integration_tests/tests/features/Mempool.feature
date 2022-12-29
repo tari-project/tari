@@ -14,8 +14,8 @@ Feature: Mempool
     When I have a base node SENDER connected to all seed nodes
     # And I have 8 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
-    # When I mine 2 blocks on SENDER
-    # Then all nodes are at height 3
+    When I mine 2 blocks on SENDER
+    Then all nodes are at height 3
     # When I create a transaction TX1 spending CB1 to UTX1
     # When I submit transaction TX1 to SENDER
     # Then SENDER has TX1 in MEMPOOL state
@@ -28,16 +28,16 @@ Feature: Mempool
     When I have a base node SENDER connected to all seed nodes
     # And I have 2 base nodes connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
-    # When I mine 2 blocks on SENDER
-    # Then all nodes are at height 3
+    When I mine 2 blocks on SENDER
+    Then all nodes are at height 3
     # When I create a transaction TX1 spending CB1 to UTX1
     # When I submit transaction TX1 to SENDER
     # Then SENDER has TX1 in MEMPOOL state
     # Then TX1 is in the MEMPOOL of all nodes
     When I have a base node NODE1 connected to all seed nodes
     # Then NODE1 has TX1 in MEMPOOL state
-    # When I mine 1 blocks on SENDER
-    # Then all nodes are at height 4
+    When I mine 1 blocks on SENDER
+    Then all nodes are at height 4
     # Then SENDER has TX1 in MINED state
     # Then TX1 is in the MINED of all nodes
 
@@ -48,7 +48,7 @@ Feature: Mempool
     # When I mine a block on SENDER with coinbase CB1
     # When I mine a block on SENDER with coinbase CB2
     # When I mine a block on SENDER with coinbase CB3
-    # When I mine 4 blocks on SENDER
+    When I mine 4 blocks on SENDER
     # When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 1600
     # When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 2000
     # When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 1800
@@ -74,14 +74,14 @@ Feature: Mempool
     Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
-    # When I mine 4 blocks on SENDER
+    When I mine 4 blocks on SENDER
     # When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
     # When I create a custom fee transaction TX2 spending CB1 to UTX2 with fee 20
     # When I submit transaction TX1 to SENDER
     # When I submit transaction TX2 to SENDER
     # Then SENDER has TX1 in MEMPOOL state
     # Then SENDER has TX2 in MEMPOOL state
-    # When I mine 1 blocks on SENDER
+    When I mine 1 blocks on SENDER
     # # A transaction that was removed from the pool will be reported as unknown as long as it is stored in the reorg pool
     # # for 5 minutes
     # Then SENDER has TX1 in UNKNOWN state
@@ -92,14 +92,14 @@ Feature: Mempool
     Given I have a seed node SEED_A
     When I have a base node NODE_A connected to seed SEED_A
     When I have wallet WALLET_A connected to base node NODE_A
-    # And I have mining node MINING_A connected to base node NODE_A and wallet WALLET_A
-    # When I mine a block on NODE_A with coinbase CB_A
-    # And mining node MINING_A mines 3 blocks with min difficulty 1 and max difficulty 2
+    When I have mining node MINING_A connected to base node NODE_A and wallet WALLET_A
+    When I mine a block on NODE_A with coinbase CB_A
+    When mining node MINING_A mines 3 blocks with min difficulty 1 and max difficulty 2
     # Then node SEED_A is at height 4
     Given I have a seed node SEED_B
     When I have a base node NODE_B connected to seed SEED_B
     When I have wallet WALLET_B connected to base node NODE_B
-    # And I have mining node MINING_B connected to base node NODE_B and wallet WALLET_B
+    When I have mining node MINING_B connected to base node NODE_B and wallet WALLET_B
     # When I mine a block on NODE_B with coinbase CB_B
     # And mining node MINING_B mines 10 blocks with min difficulty 20 and max difficulty 9999999999
     # Then node SEED_B is at height 11
@@ -114,7 +114,7 @@ Feature: Mempool
     # Then node SEED_A is at height 5
     # Then node SEED_B is at height 12
     # And I connect node NODE_A to node NODE_B
-    # Then all nodes are at height 12
+    Then all nodes are at height 12
     # Then NODE_A has TXA in NOT_STORED state
     # Then NODE_A has TXB in MINED state
 
@@ -124,7 +124,7 @@ Feature: Mempool
     When I have a base node SENDER connected to all seed nodes
     # When I mine a block on SENDER with coinbase CB1
     # When I mine a block on SENDER with coinbase CB2
-    # When I mine 4 blocks on SENDER
+    When I mine 4 blocks on SENDER
     # When I create a custom fee transaction TX01 spending CB1 to UTX01 with fee 20
     # When I create a custom fee transaction TX02 spending UTX01 to UTX02 with fee 20
     # When I create a custom fee transaction TX03 spending UTX02 to UTX03 with fee 20
@@ -143,7 +143,7 @@ Feature: Mempool
     # Then SENDER has TX11 in MEMPOOL state
     # Then SENDER has TX12 in MEMPOOL state
     # Then SENDER has TX13 in MEMPOOL state
-    # When I mine 1 blocks on SENDER
+    When I mine 1 blocks on SENDER
     # Then SENDER has TX01 in MINED state
     # Then SENDER has TX02 in MINED state
     # Then SENDER has TX03 in MINED state
@@ -155,7 +155,7 @@ Feature: Mempool
     Given I have 1 seed nodes
     When I have a base node BN1 connected to all seed nodes
     # When I mine a block on BN1 with coinbase CB1
-    # When I mine 5 blocks on BN1
+    When I mine 5 blocks on BN1
     # When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
     # When I create a custom fee transaction TX2 spending CB1 to UTX1 with fee 16
     # When I create a custom fee transaction TX3 spending CB1 to UTX1 with fee 16
@@ -172,9 +172,9 @@ Feature: Mempool
     Given I have 1 seed nodes
     When I have a base node BN1 connected to all seed nodes
     # When I mine a block on BN1 with coinbase CB1
-    # When I mine 2 blocks on BN1
+    When I mine 2 blocks on BN1
     # When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
     # When I submit transaction TX1 to BN1
     # Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
-    # When I mine 1 blocks on BN1
+    When I mine 1 blocks on BN1
     # Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool

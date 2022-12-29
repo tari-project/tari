@@ -5480,6 +5480,7 @@ dependencies = [
  "tari_crypto",
  "tari_miner",
  "tari_p2p",
+ "tari_script",
  "tari_shutdown",
  "tari_test_utils",
  "tari_utilities",
