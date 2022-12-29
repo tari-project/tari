@@ -35,9 +35,9 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::initialize_logging;
 use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
-use tari_crypto::tari_utilities::ByteArray;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -79,6 +79,8 @@ pub enum TariWorldError {
     MinerProcessNotFound(String),
     #[error("Base node error: {0}")]
     GrpcBaseNodeError(#[from] GrpcBaseNodeError),
+    #[error("No base node, or wallet client found: {0}")]
+    ClientNotFound(String),
 }
 
 #[derive(Debug, Default, cucumber::World)]
@@ -93,12 +95,30 @@ pub struct TariWorld {
     utxos: IndexMap<String, (u64, TransactionOutput)>,
 }
 
+enum NodeClient {
+    BaseNode(tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
+}
+
 impl TariWorld {
     async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
     ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
         self.get_node(name)?.get_grpc_client().await
+    }
+
+    async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
+        &self,
+        name: S,
+    ) -> anyhow::Result<NodeClient> {
+        match self.get_node_client(&name).await {
+            Ok(client) => Ok(NodeClient::BaseNode(client)),
+            Err(_) => match self.get_wallet_client(&name).await {
+                Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
+                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+            },
+        }
     }
 
     #[allow(dead_code)]
@@ -174,20 +194,32 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 }
 
 #[when(expr = "I wait for {word} to connect to {word}")]
+#[then(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
-    let mut first_node = world.get_node_client(&first_node).await.unwrap();
-    let second_node = world.get_node(&second_node).unwrap();
+    let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
+    let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
+
+    let second_client_pubkey = match second_client {
+        NodeClient::Wallet(mut client) => {
+            client
+                .identify(GetIdentityRequest {})
+                .await
+                .unwrap()
+                .into_inner()
+                .public_key
+        },
+        NodeClient::BaseNode(mut client) => client.identify(Empty {}).await.unwrap().into_inner().public_key,
+    };
 
     for _i in 0..100 {
-        let res = first_node.list_connected_peers(Empty {}).await.unwrap();
+        let res = match node_client {
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+        };
         let res = res.into_inner();
 
-        if res
-            .connected_peers
-            .iter()
-            .any(|p| p.public_key == second_node.identity.public_key().as_bytes())
-        {
+        if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
             return;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -1295,6 +1327,109 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
         println!("Miner {} is mining {} blocks", miner, blocks);
         miner_ps.mine(world, Some(blocks)).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+#[then(expr = "I wait for {word} to have {int} node connections")]
+async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have {} connections", &wallet, connections);
+    let mut actual_connections = 0_u32;
+
+    for _ in 0..num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        actual_connections = network_status_res.num_node_connections;
+        if actual_connections as u64 >= connections {
+            println!("Wallet {} has at least {} connections", &wallet, connections);
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if actual_connections as u64 != connections {
+        panic!("Wallet {} does not have {} connections", &wallet, connections);
+    }
+}
+
+#[then(expr = "I wait for {word} to have {word} connectivity")]
+async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wallet: String, connectivity: String) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    println!("Waiting for wallet {} to have connectivity {}", &wallet, &connectivity);
+    let connectivity = connectivity.to_uppercase();
+
+    let connectivity_index = match connectivity.as_str() {
+        "INITIALIZING" => 0,
+        "ONLINE" => 1,
+        "DEGRADED" => 2,
+        "OFFLINE" => 3,
+        _ => panic!("Invalid connectivity value {}", connectivity),
+    };
+
+    for _ in 0..=num_retries {
+        let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
+        let connectivity_status = network_status_res.status;
+        if connectivity_status == connectivity_index {
+            println!("Wallet {} has {} connectivity", &wallet, &connectivity);
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!(
+        "Wallet {} did not get correct connectivity status {}",
+        &wallet, connectivity
+    );
+}
+
+#[then(expr = "node {word} lists heights {int} to {int}")]
+async fn node_lists_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let heights = (start..=end).collect::<Vec<_>>();
+    let blocks_req = GetBlocksRequest { heights };
+    let mut blocks_stream = node_client.get_blocks(blocks_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(block) = blocks_stream.next().await {
+        let block = block.unwrap().block.unwrap();
+        let block_height = block.header.unwrap().height;
+        if height != block_height {
+            panic!(
+                "Invalid block height for node {}: expected height {} != current height {}",
+                &node, block_height, height
+            );
+        }
+        println!("Valid block height {}, listed by node {}", height, &node);
+        height += 1;
+    }
+}
+
+#[then(expr = "node {word} lists headers {int} to {int} with correct heights")]
+async fn node_lists_headers_with_correct_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let list_headers_req = ListHeadersRequest {
+        from_height: start,
+        num_headers: end - start + 1,
+        sorting: 1,
+    };
+    let mut headers_stream = node_client.list_headers(list_headers_req).await.unwrap().into_inner();
+
+    let mut height = start;
+    while let Some(header) = headers_stream.next().await {
+        let header_res = header.unwrap();
+        let header_height = header_res.header.unwrap().height;
+
+        if header_height != height {
+            panic!(
+                "incorrect listing of height headers by node {}: expected height to be {} but got height {}",
+                &node, height, header_height
+            );
+        }
+        println!("correct listing of height header {} by node {}", height, &node);
+        height += 1;
     }
 }
 
