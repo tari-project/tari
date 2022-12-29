@@ -68,6 +68,8 @@ use crate::utils::{
 
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
+const BLOCK_REWARD: u64 = 5_000;
+const CONFIRMATION_PERIOD: u64 = 4;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -163,6 +165,7 @@ impl TariWorld {
 }
 
 #[given(expr = "I have a seed node {word}")]
+#[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
     spawn_base_node(world, true, name, vec![], None).await;
 }
@@ -176,6 +179,15 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
 async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
     spawn_base_node(world, false, name, world.all_seed_nodes().to_vec(), None).await;
+}
+
+#[when(expr = "I have {int} base nodes connected to all seed nodes")]
+async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes: u64) {
+    for i in 0..nodes {
+        let node = format!("Node_{}", i);
+        println!("Initializing node {}", node.clone());
+        spawn_base_node(world, false, node, world.all_seed_nodes().to_vec(), None).await;
+    }
 }
 
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
@@ -1447,7 +1459,6 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         .await
         .unwrap()
         .into_inner();
-
     let sender_wallet_pubkey = sender_wallet_identity_res.public_key.to_hex();
 
     let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
@@ -1458,11 +1469,12 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         .into_inner();
 
     let receiver_wallet_pubkey = receiver_wallet_identity_res.public_key.to_hex();
+    println!("FLAG: receiver_wallet_pubkey {}", receiver_wallet_pubkey.as_str());
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_pubkey.clone(),
-        amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
-        fee_per_gram: 10,               // as in the js cucumber tests
+        amount: amount * 1_000_u64, // 1T = 1_000uT, as in cucumber tests
+        fee_per_gram: 10,           // as in the js cucumber tests
         message: format!(
             "transfer amount {} from {} to {}",
             amount,
@@ -1509,7 +1521,67 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 
 #[when(expr = "wallet {word} has {int}T")]
 #[then(expr = "wallet {word} has {int}T")]
-async fn wallet_has_tari(_world: &mut TariWorld, _wallet: String, _amount: u64) {}
+async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    for _ in 0..num_retries {
+        let balance_res = wallet_client
+            .get_balance(GetBalanceRequest {})
+            .await
+            .unwrap()
+            .into_inner();
+
+        if balance_res.available_balance >= amount * 1_000 {
+            println!("Wallet {} has at least {}T", wallet.as_str(), amount);
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    panic!("Wallet {} failed to have at least {}T", wallet, amount);
+}
+
+#[when(expr = "I have wallet {word} with {int}T connected to base node {word}")]
+async fn wallet_with_tari_connected_to_base_node(
+    world: &mut TariWorld,
+    wallet: String,
+    amount: u64,
+    base_node: String,
+) {
+    let peer_seeds = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
+    println!(
+        "Start a new wallet {} connected to base node {}",
+        wallet.as_str(),
+        base_node.as_str()
+    );
+    spawn_wallet(world, wallet.clone(), Some(base_node.clone()), peer_seeds, None).await;
+    let num_blocks = amount * 1_000 / BLOCK_REWARD;
+
+    println!("Creating miner...");
+    create_miner(world, "temp_miner".to_string(), base_node.clone(), wallet.clone()).await;
+
+    println!("Mining {} blocks", num_blocks + CONFIRMATION_PERIOD);
+    let miner = world.miners.get(&"temp_miner".to_string()).unwrap();
+    miner.mine(world, Some(num_blocks + CONFIRMATION_PERIOD)).await; // mine some additional blocks to confirm txs
+
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let num_retries = 100;
+
+    for _ in 0..num_retries {
+        let balance_res = wallet_client
+            .get_balance(GetBalanceRequest {})
+            .await
+            .unwrap()
+            .into_inner();
+
+        if balance_res.available_balance >= amount * 1_000 {
+            println!("Wallet {} has at least {}T", wallet.as_str(), amount);
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
 
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {

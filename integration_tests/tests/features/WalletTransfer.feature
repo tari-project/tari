@@ -17,13 +17,13 @@ Feature: Wallet Transfer
     When I transfer 5T from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     # # BREAKS HERE
-    # Then wallet WALLET_A has 5T
-    # And wallet WALLET_B has 5T
+    Then wallet WALLET_A has 5T
+    When wallet WALLET_B has 5T
 
   Scenario: As a wallet I want to submit multiple transfers
     Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
-    # And I have 1 base nodes connected to all seed nodes
+    When I have 1 base nodes connected to all seed nodes
     When I have wallet Wallet_A connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet Wallet_A
     When I have wallet Wallet_B connected to all seed nodes
