@@ -23,28 +23,24 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use super::valid_header::InternallyValidHeader;
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     validation::ValidationError,
 };
 
 pub const LOG_TARGET: &str = "c::val::internal_consistency_header_validator";
 
-pub struct InternalConsistencyHeaderValidator<TBackend> {
+pub struct InternalConsistencyHeaderValidator {
     rules: ConsensusManager,
-    backend: TBackend,
 }
 
-impl<TBackend: BlockchainBackend> InternalConsistencyHeaderValidator<TBackend> {
-    pub fn new(rules: ConsensusManager, backend: TBackend) -> Self {
-        Self { rules, backend }
+impl InternalConsistencyHeaderValidator {
+    pub fn new(rules: ConsensusManager) -> Self {
+        Self { rules }
     }
 
     /// The consensus checks that are done in order of cheapest to verify to most expensive
@@ -54,10 +50,6 @@ impl<TBackend: BlockchainBackend> InternalConsistencyHeaderValidator<TBackend> {
         check_blockchain_version(constants, header.version)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-
-        check_pow_data(header, &self.rules, &self.backend)?;
-
-        check_not_bad_block(&self.backend, header.hash())?;
 
         // TODO: can we do more validations here?
 
@@ -87,48 +79,6 @@ pub fn check_timestamp_ftl(
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
         ));
-    }
-    Ok(())
-}
-
-/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-pub fn check_pow_data<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    rules: &ConsensusManager,
-    db: &B,
-) -> Result<(), ValidationError> {
-    use PowAlgorithm::{Monero, Sha3};
-    match block_header.pow.pow_algo {
-        Monero => {
-            let monero_data =
-                MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
-            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
-            if seed_height != 0 {
-                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
-                let seed_used_height = block_header.height.saturating_sub(seed_height);
-                if seed_used_height > rules.consensus_constants(block_header.height).max_randomx_seed_height() {
-                    return Err(ValidationError::BlockHeaderError(
-                        BlockHeaderValidationError::OldSeedHash,
-                    ));
-                }
-            }
-
-            Ok(())
-        },
-        Sha3 => {
-            if !block_header.pow.pow_data.is_empty() {
-                return Err(ValidationError::CustomError(
-                    "Proof of work data must be empty for Sha3 blocks".to_string(),
-                ));
-            }
-            Ok(())
-        },
-    }
-}
-
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash)? {
-        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
     }
     Ok(())
 }

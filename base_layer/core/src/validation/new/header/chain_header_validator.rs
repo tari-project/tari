@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::{debug, warn};
+use tari_common_types::types::FixedHash;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use super::valid_header::InternallyValidHeader;
@@ -31,6 +32,7 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::{
         monero_difficulty,
+        monero_rx::MoneroPowData,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         AchievedTargetDifficulty,
@@ -65,6 +67,13 @@ impl<B: BlockchainBackend + 'static> ChainLinkedHeaderValidator<B> {
             // TODO: create a custom variant
             None => return Err(ValidationError::CustomError("Empty headers".to_string())),
         };
+
+        {
+            let txn = self.db.inner().db_read_access()?;
+            check_not_bad_block(&*txn, start_header.0.hash())?;
+            check_pow_data(&start_header.0, &self.consensus_rules, &*txn)?;
+        }
+
         let mut state = self.initialize_state(start_header).await?;
 
         for header in headers {
@@ -229,4 +238,46 @@ struct State {
     target_difficulties: TargetDifficulties,
     previous_accum: BlockHeaderAccumulatedData,
     valid_headers: Vec<ChainHeader>,
+}
+
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash)? {
+        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
+    }
+    Ok(())
+}
+
+/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
+pub fn check_pow_data<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    rules: &ConsensusManager,
+    db: &B,
+) -> Result<(), ValidationError> {
+    use PowAlgorithm::{Monero, Sha3};
+    match block_header.pow.pow_algo {
+        Monero => {
+            let monero_data =
+                MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
+            if seed_height != 0 {
+                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
+                let seed_used_height = block_header.height.saturating_sub(seed_height);
+                if seed_used_height > rules.consensus_constants(block_header.height).max_randomx_seed_height() {
+                    return Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::OldSeedHash,
+                    ));
+                }
+            }
+
+            Ok(())
+        },
+        Sha3 => {
+            if !block_header.pow.pow_data.is_empty() {
+                return Err(ValidationError::CustomError(
+                    "Proof of work data must be empty for Sha3 blocks".to_string(),
+                ));
+            }
+            Ok(())
+        },
+    }
 }

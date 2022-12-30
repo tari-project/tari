@@ -39,6 +39,7 @@ use tari_core::{
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
+        new::header::{ChainLinkedHeaderValidator, InternalConsistencyHeaderValidator},
         transaction_validators::{
             MempoolValidator,
             TxConsensusValidator,
@@ -237,6 +238,12 @@ async fn build_node_context(
             ExitError::new(ExitCode::DatabaseError, err)
         }
     })?;
+
+    // initialize the validators
+    let _internal_header_validator = InternalConsistencyHeaderValidator::new(rules.clone());
+    let _chain_header_validator =
+        ChainLinkedHeaderValidator::new(blockchain_db.clone().into(), rules.clone(), randomx_factory.clone());
+
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),
