@@ -61,10 +61,6 @@ impl InternalConsistencyAggregateBodyValidator {
     }
 
     /// Validate this transaction by checking the following:
-    /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
-    /// 1. The signature signs the canonical message with the private excess
-    /// 1. Range proofs of the outputs are valid
-    ///
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction

@@ -67,13 +67,14 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
     pub fn new(
         db: AsyncBlockchainDb<B>,
         consensus_rules: ConsensusManager,
+        factories: CryptoFactories,
         bypass_range_proof_verification: bool,
         concurrency: usize,
     ) -> Self {
         Self {
             db,
             consensus_rules,
-            factories: CryptoFactories::default(),
+            factories,
             concurrency,
             bypass_range_proof_verification,
         }
