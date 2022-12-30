@@ -414,9 +414,14 @@ async fn prune_node_connected_to_base_node(
 #[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
 async fn wallect_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
 
@@ -481,9 +486,14 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 #[then(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
 async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_txs: u64, transaction_status: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let transaction_status = match transaction_status.as_str() {
         "TRANSACTION_STATUS_COMPLETED" => 0i32,
@@ -602,26 +612,25 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     fee: u64,
 ) {
     let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let identity_req = GetIdentityRequest {};
-    let source_wallet_pubkey = source_client
-        .identify(identity_req.clone())
+    let source_wallet_address = source_client
+        .get_address(Empty {})
         .await
         .unwrap()
         .into_inner()
-        .public_key
+        .address
         .to_hex();
 
     let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
-    let dest_wallet_pubkey = dest_client
-        .identify(identity_req)
+    let dest_wallet_address = dest_client
+        .get_address(Empty {})
         .await
         .unwrap()
         .into_inner()
-        .public_key
+        .address
         .to_hex();
 
     let payment_recipient = PaymentRecipient {
-        address: dest_wallet_pubkey.clone(),
+        address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
         message: format!(
@@ -653,14 +662,14 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     let tx_id = tx_res.transaction_id;
 
     // insert tx_id's to the corresponding world mapping
-    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
-    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_address).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_address).unwrap().clone();
 
     source_tx_ids.push(tx_id);
     dest_tx_ids.push(tx_id);
 
-    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
-    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+    world.wallet_tx_ids.insert(source_wallet_address, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_address, dest_tx_ids);
 
     println!(
         "Transfer amount {} from {} to {} at fee {} succeeded",
@@ -677,26 +686,25 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     fee: u64,
 ) {
     let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let identity_req = GetIdentityRequest {};
-    let source_wallet_pubkey = source_client
-        .identify(identity_req.clone())
+    let source_wallet_address = source_client
+        .get_address(Empty {})
         .await
         .unwrap()
         .into_inner()
-        .public_key
+        .address
         .to_hex();
 
     let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
-    let dest_wallet_pubkey = dest_client
-        .identify(identity_req)
+    let dest_wallet_address = dest_client
+        .get_address(Empty {})
         .await
         .unwrap()
         .into_inner()
-        .public_key
+        .address
         .to_hex();
 
     let payment_recipient = PaymentRecipient {
-        address: dest_wallet_pubkey.clone(),
+        address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
         message: format!(
@@ -766,14 +774,14 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     }
 
     // insert tx_id's to the corresponding world mapping
-    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_pubkey).unwrap().clone();
-    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_pubkey).unwrap().clone();
+    let mut source_tx_ids = world.wallet_tx_ids.get(&source_wallet_address).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&dest_wallet_address).unwrap().clone();
 
     source_tx_ids.push(tx_id);
     dest_tx_ids.push(tx_id);
 
-    world.wallet_tx_ids.insert(source_wallet_pubkey, source_tx_ids);
-    world.wallet_tx_ids.insert(dest_wallet_pubkey, dest_tx_ids);
+    world.wallet_tx_ids.insert(source_wallet_address, source_tx_ids);
+    world.wallet_tx_ids.insert(dest_wallet_address, dest_tx_ids);
 
     println!(
         "One sided transaction with amount {} from {} to {} at fee {} succeeded",
@@ -784,9 +792,14 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 #[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Confirmed")]
 async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
     let mut total_mined_confirmed_coinbases = 0;
@@ -833,9 +846,14 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_Confirmed")]
 async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
-    let wallet_pubkey = wallet_identity.public_key.to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
     let mut total_mined_confirmed_coinbases = 0;
@@ -954,13 +972,14 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 #[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
 async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_identity_res = wallet_client
-        .identify(GetIdentityRequest {})
+    let wallet_address = wallet_client
+        .get_address(Empty {})
         .await
         .unwrap()
-        .into_inner();
-    let wallet_pubkey = wallet_identity_res.public_key.to_hex();
-    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+        .into_inner()
+        .address
+        .to_hex();
+    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
         panic!("Wallet {} has no available transactions", wallet);
@@ -1025,13 +1044,14 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     wallet: String,
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_identity_res = wallet_client
-        .identify(GetIdentityRequest {})
+    let wallet_address = wallet_client
+        .get_address(Empty {})
         .await
         .unwrap()
-        .into_inner();
-    let wallet_pubkey = wallet_identity_res.public_key.to_hex();
-    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+        .into_inner()
+        .address
+        .to_hex();
+    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
         panic!("Wallet {} on node {} has no available transactions", &wallet, &node);
@@ -1089,13 +1109,14 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
     for wallet in world.wallets.keys() {
         let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-        let wallet_identity_res = wallet_client
-            .identify(GetIdentityRequest {})
+        let wallet_address = wallet_client
+            .get_address(Empty {})
             .await
             .unwrap()
-            .into_inner();
-        let wallet_pubkey = wallet_identity_res.public_key.to_hex();
-        let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_pubkey).unwrap();
+            .into_inner()
+            .address
+            .to_hex();
+        let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
         if wallet_tx_ids.is_empty() {
             panic!("Wallet {} has no available transactions", &wallet);
@@ -1212,19 +1233,28 @@ async fn send_num_transactions_to_wallets_at_fee(
     fee_per_gram: u64,
 ) {
     let mut sender_wallet_client = create_wallet_client(world, sender_wallet.clone()).await.unwrap();
-
-    let mut receiver_wallet_client = create_wallet_client(world, receiver_wallet.clone()).await.unwrap();
-    let receiver_wallet_identity_res = receiver_wallet_client
-        .identify(GetIdentityRequest {})
+    let sender_wallet_address = sender_wallet_client
+        .get_address(Empty {})
         .await
         .unwrap()
-        .into_inner();
+        .into_inner()
+        .address
+        .to_hex();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver_wallet.clone()).await.unwrap();
+    let receiver_wallet_address = receiver_wallet_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
 
     let mut tx_ids = vec![];
 
     for _ in 0..num_txs {
         let payment_recipient = PaymentRecipient {
-            address: receiver_wallet_identity_res.public_key.to_hex().clone(),
+            address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
             message: format!(
@@ -1249,13 +1279,15 @@ async fn send_num_transactions_to_wallets_at_fee(
         }
         tx_ids.push(transfer_res.transaction_id);
 
-        let mut sender_tx_ids = world.wallet_tx_ids.get(&sender_wallet).unwrap().clone();
+        let mut sender_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap().clone();
         sender_tx_ids.push(transfer_res.transaction_id);
-        world.wallet_tx_ids.insert(sender_wallet.clone(), sender_tx_ids);
+        world.wallet_tx_ids.insert(sender_wallet_address.clone(), sender_tx_ids);
 
-        let mut receiver_tx_ids = world.wallet_tx_ids.get(&receiver_wallet).unwrap().clone();
+        let mut receiver_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_address).unwrap().clone();
         receiver_tx_ids.push(transfer_res.transaction_id);
-        world.wallet_tx_ids.insert(receiver_wallet.clone(), receiver_tx_ids);
+        world
+            .wallet_tx_ids
+            .insert(receiver_wallet_address.clone(), receiver_tx_ids);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -1454,25 +1486,25 @@ async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) 
 #[when(expr = "I transfer {int}T from {word} to {word}")]
 async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_identity_res = sender_wallet_client
-        .identify(GetIdentityRequest {})
+    let sender_wallet_address = sender_wallet_client
+        .get_address(Empty {})
         .await
         .unwrap()
-        .into_inner();
-    let sender_wallet_pubkey = sender_wallet_identity_res.public_key.to_hex();
+        .into_inner()
+        .address
+        .to_hex();
 
     let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_identity_res = receiver_wallet_client
-        .identify(GetIdentityRequest {})
+    let receiver_wallet_address = receiver_wallet_client
+        .get_address(Empty {})
         .await
         .unwrap()
-        .into_inner();
-
-    let receiver_wallet_pubkey = receiver_wallet_identity_res.public_key.to_hex();
-    println!("FLAG: receiver_wallet_pubkey {}", receiver_wallet_pubkey.as_str());
+        .into_inner()
+        .address
+        .to_hex();
 
     let payment_recipient = PaymentRecipient {
-        address: receiver_wallet_pubkey.clone(),
+        address: receiver_wallet_address.clone(),
         amount: amount * 1_000_u64, // 1T = 1_000uT, as in cucumber tests
         fee_per_gram: 10,           // as in the js cucumber tests
         message: format!(
@@ -1504,14 +1536,14 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     let tx_id = tx_res.transaction_id;
 
     // insert tx_id's to the corresponding world mapping
-    let mut source_tx_ids = world.wallet_tx_ids.get(&sender_wallet_pubkey).unwrap().clone();
-    let mut dest_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_pubkey).unwrap().clone();
+    let mut source_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap().clone();
+    let mut dest_tx_ids = world.wallet_tx_ids.get(&receiver_wallet_address).unwrap().clone();
 
     source_tx_ids.push(tx_id);
     dest_tx_ids.push(tx_id);
 
-    world.wallet_tx_ids.insert(sender_wallet_pubkey, source_tx_ids);
-    world.wallet_tx_ids.insert(receiver_wallet_pubkey, dest_tx_ids);
+    world.wallet_tx_ids.insert(sender_wallet_address, source_tx_ids);
+    world.wallet_tx_ids.insert(receiver_wallet_address, dest_tx_ids);
 
     println!(
         "Transfer amount {} from {} to {} at fee {} succeeded",
