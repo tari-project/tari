@@ -1697,6 +1697,7 @@ async fn wallet_with_tari_connected_to_base_node(
 }
 
 #[when(expr = "I transfer {int} uT from {word} to {word} and {word} at fee {int}")]
+#[allow(clippy::too_many_lines)]
 async fn transfer_from_wallet_to_two_recipients_at_fee(
     world: &mut TariWorld,
     amount: u64,

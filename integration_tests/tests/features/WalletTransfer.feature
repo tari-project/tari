@@ -18,6 +18,7 @@ Feature: Wallet Transfer
     When I mine 4 blocks on SEED_A
     # # BREAKS HERE
     Then wallet WALLET_A has 5T
+    When I wait 5 seconds
     When wallet WALLET_B has 5T
 
   Scenario: As a wallet I want to submit multiple transfers
@@ -36,6 +37,7 @@ Feature: Wallet Transfer
     # # Ensure the coinbase lock heights have expired
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
+    When I wait 5 seconds
     When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
