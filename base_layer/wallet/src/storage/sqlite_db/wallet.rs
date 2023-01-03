@@ -43,11 +43,12 @@ use tari_comms::{
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
+    safe_array::SafeArray,
     Hidden,
     SafePassword,
 };
 use tokio::time::Instant;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use crate::{
     error::WalletStorageError,
@@ -553,16 +554,16 @@ fn get_cipher_for_db_encryption(
     .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
     // Hash the passphrase to produce a ChaCha20-Poly1305 key
-    let mut derived_encryption_key = Zeroizing::new([0u8; size_of::<Key>()]);
+    let mut derived_encryption_key = Hidden::hide(SafeArray::<u8, { size_of::<Key>() }>::default());
     argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
         .hash_password_into(
             passphrase.reveal(),
             encryption_salt.as_bytes(),
-            derived_encryption_key.as_mut(),
+            derived_encryption_key.reveal_mut(),
         )
         .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.as_ref())))
+    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.reveal())))
 }
 
 /// A Sql version of the wallet setting key-value table
