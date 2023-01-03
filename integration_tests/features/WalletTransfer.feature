@@ -24,10 +24,10 @@ Feature: Wallet Transfer
     Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     When I have 1 base nodes connected to all seed nodes
-    When I have wallet Wallet_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet Wallet_A
-    When I have wallet Wallet_B connected to all seed nodes
-    When I have wallet Wallet_C connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
     When mining node MINER mines 2 blocks
     Then all nodes are at height 2
     #   # Ensure the coinbase lock heights have expired
@@ -36,7 +36,7 @@ Feature: Wallet Transfer
     # # Ensure the coinbase lock heights have expired
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
-    When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 20
+    When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_Confirmed
@@ -45,11 +45,12 @@ Feature: Wallet Transfer
     Given I have a seed node NODE
     # # Add a 2nd node otherwise initial sync will not succeed
     When I have 1 base nodes connected to all seed nodes
-    When I have wallet Wallet_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet Wallet_A
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 10 blocks
     Then all nodes are at height 10
-    When I transfer 50000 uT to self from wallet Wallet_A at fee 25
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I transfer 50000 uT to self from wallet WALLET_A at fee 25
     When I mine 5 blocks on NODE
     Then all nodes are at height 15
     Then all wallets detect all transactions as Mined_Confirmed
@@ -83,6 +84,7 @@ Feature: Wallet Transfer
     When I broadcast HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     # # atomic swaps are set at lock of 720 blocks
     When mining node MINER_2 mines 720 blocks
+    When I wait 5 seconds
     When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
     Then I wait for wallet WALLET_A to have at least 9000000000 uT

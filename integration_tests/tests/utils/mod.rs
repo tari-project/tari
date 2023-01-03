@@ -32,8 +32,6 @@ pub mod wallet;
 pub mod wallet_client;
 pub mod wallet_process;
 
-use tokio::time::Instant;
-
 pub fn get_port(range: Range<u16>) -> Option<u64> {
     let min = range.clone().min().expect("A minimum possible port number");
     let max = range.max().expect("A maximum possible port number");

@@ -43,6 +43,7 @@ use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_wallet_grpc_client::grpc::{
     ClaimHtlcRefundRequest,
+    ClaimShaAtomicSwapRequest,
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
@@ -98,6 +99,7 @@ pub struct TariWorld {
     wallet_tx_ids: IndexMap<String, Vec<u64>>,
     utxos: IndexMap<String, (u64, TransactionOutput)>,
     output_hash: Option<String>,
+    pre_image: Option<String>,
 }
 
 enum NodeClient {
@@ -681,15 +683,11 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     let tx_id = tx_res.transaction_id;
 
     // insert tx_id's to the corresponding world mapping
-    // insert tx_id's to the corresponding world mapping
-    let source_tx_ids = world
-        .wallet_tx_ids
-        .entry(source_wallet_address.clone())
-        .or_insert(vec![]);
+    let source_tx_ids = world.wallet_tx_ids.entry(source_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_insert(vec![]);
+    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_default();
 
     dest_tx_ids.push(tx_id);
 
@@ -796,15 +794,11 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     }
 
     // insert tx_id's to the corresponding world mapping
-    // insert tx_id's to the corresponding world mapping
-    let source_tx_ids = world
-        .wallet_tx_ids
-        .entry(source_wallet_address.clone())
-        .or_insert(vec![]);
+    let source_tx_ids = world.wallet_tx_ids.entry(source_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_insert(vec![]);
+    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_default();
 
     dest_tx_ids.push(tx_id);
 
@@ -1321,17 +1315,11 @@ async fn send_num_transactions_to_wallets_at_fee(
         tx_ids.push(transfer_res.transaction_id);
 
         // insert tx_id's to the corresponding world mapping
-        let source_tx_ids = world
-            .wallet_tx_ids
-            .entry(sender_wallet_address.clone())
-            .or_insert(vec![]);
+        let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
         source_tx_ids.append(&mut tx_ids);
 
-        let dest_tx_ids = world
-            .wallet_tx_ids
-            .entry(receiver_wallet_address.clone())
-            .or_insert(vec![]);
+        let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
         dest_tx_ids.append(&mut tx_ids);
 
@@ -1620,17 +1608,11 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     }
 
     // insert tx_id's to the corresponding world mapping
-    let source_tx_ids = world
-        .wallet_tx_ids
-        .entry(sender_wallet_address.clone())
-        .or_insert(vec![]);
+    let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world
-        .wallet_tx_ids
-        .entry(receiver_wallet_address.clone())
-        .or_insert(vec![]);
+    let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
     dest_tx_ids.push(tx_id);
 
@@ -1857,18 +1839,15 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
     }
 
     // insert tx_id's to the corresponding world mapping
-    let sender_tx_ids = world
-        .wallet_tx_ids
-        .entry(sender_wallet_address.clone())
-        .or_insert(vec![]);
+    let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     sender_tx_ids.push(tx_id1);
     sender_tx_ids.push(tx_id2);
 
-    let receiver1_tx_ids = world.wallet_tx_ids.entry(receiver1_address.clone()).or_insert(vec![]);
+    let receiver1_tx_ids = world.wallet_tx_ids.entry(receiver1_address.clone()).or_default();
     receiver1_tx_ids.push(tx_id1);
 
-    let receiver2_tx_ids = world.wallet_tx_ids.entry(receiver2_address.clone()).or_insert(vec![]);
+    let receiver2_tx_ids = world.wallet_tx_ids.entry(receiver2_address.clone()).or_default();
     receiver2_tx_ids.push(tx_id2);
 
     println!(
@@ -1909,7 +1888,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         "Transacting amount {} to self from wallet {} at fee {} failed",
         amount,
         sender.as_str(),
-        10
+        fee_per_gram
     );
 
     // we wait for transaction to be broadcasted
@@ -1951,10 +1930,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
     }
 
     // insert tx_id's to the corresponding world mapping
-    let sender_tx_ids = world
-        .wallet_tx_ids
-        .entry(sender_wallet_address.clone())
-        .or_insert(vec![]);
+    let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     sender_tx_ids.push(tx_id);
 
@@ -2057,20 +2033,15 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
     }
 
     // insert tx_id's to the corresponding world mapping
-    let sender_tx_ids = world
-        .wallet_tx_ids
-        .entry(sender_wallet_address.clone())
-        .or_insert(vec![]);
+    let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     sender_tx_ids.push(tx_id);
 
-    let receiver_tx_ids = world
-        .wallet_tx_ids
-        .entry(receiver_wallet_address.clone())
-        .or_insert(vec![]);
+    let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
     receiver_tx_ids.push(tx_id);
     world.output_hash = Some(sha_atomic_swap_tx_res.output_hash);
+    world.pre_image = Some(sha_atomic_swap_tx_res.pre_image);
 
     println!(
         "Atomic swap transfer amount {} from {} to {} at fee {} succeeded",
@@ -2146,11 +2117,90 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
     }
 
     // insert tx_id's to the corresponding world mapping
-    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_insert(vec![]);
+    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
     wallet_tx_ids.push(tx_id);
 
     println!(
         "Claim HTLC refund transaction with wallet {} at fee {} succeeded",
+        wallet, fee_per_gram
+    );
+}
+
+#[when(expr = "I claim an HTLC transaction with wallet {word} at fee {int}")]
+async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_address = wallet_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+
+    let output_hash = world.output_hash.clone().unwrap();
+    let pre_image = world.pre_image.clone().unwrap();
+
+    let claim_htlc_req = ClaimShaAtomicSwapRequest {
+        output: output_hash,
+        pre_image,
+        fee_per_gram,
+    };
+
+    let claim_htlc_res = wallet_client
+        .claim_sha_atomic_swap_transaction(claim_htlc_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(
+        claim_htlc_res.clone().results.unwrap().is_success,
+        "Claim HTLC transaction with wallet {} at fee {} failed",
+        wallet.as_str(),
+        fee_per_gram
+    );
+
+    // we wait for transaction to be broadcasted
+    let tx_id = claim_htlc_res.results.unwrap().transaction_id;
+    let num_retries = 100;
+    let tx_info_req = GetTransactionInfoRequest {
+        transaction_ids: vec![tx_id],
+    };
+
+    for i in 0..=num_retries {
+        let tx_info_res = wallet_client
+            .get_transaction_info(tx_info_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_info = tx_info_res.transactions.first().unwrap();
+
+        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+        if tx_info.status == 1_i32 {
+            println!(
+                "Claim HTLC transaction with wallet {} at fee {} has been broadcasted",
+                wallet.as_str(),
+                fee_per_gram
+            );
+            break;
+        }
+
+        if i == num_retries {
+            panic!(
+                "Claim HTLC transaction with wallet {} at fee {} failed to be broadcasted",
+                wallet.as_str(),
+                fee_per_gram
+            )
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // insert tx_id's to the corresponding world mapping
+    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
+    wallet_tx_ids.push(tx_id);
+
+    println!(
+        "Claim HTLC transaction with wallet {} at fee {} succeeded",
         wallet, fee_per_gram
     );
 }
