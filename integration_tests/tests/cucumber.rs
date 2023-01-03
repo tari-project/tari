@@ -36,8 +36,11 @@ use indexmap::IndexMap;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
-use tari_common::initialize_logging;
-use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
+use tari_common::{configuration::Network, initialize_logging};
+use tari_core::{
+    consensus::ConsensusManager,
+    transactions::transaction_components::{Transaction, TransactionOutput},
+};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -71,7 +74,6 @@ use crate::utils::{
 
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
-const BLOCK_REWARD: u64 = 5_000_000;
 const CONFIRMATION_PERIOD: u64 = 4;
 
 #[derive(Error, Debug)]
@@ -1666,7 +1668,21 @@ async fn wallet_with_tari_connected_to_base_node(
         base_node.as_str()
     );
     spawn_wallet(world, wallet.clone(), Some(base_node.clone()), peer_seeds, None).await;
-    let num_blocks = amount * 1_000_000 / BLOCK_REWARD;
+
+    let mut base_node_client = world.get_node_client(&base_node).await.unwrap();
+    let tip_info_res = base_node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let mut current_height = tip_info_res.metadata.unwrap().height_of_longest_chain;
+
+    let mut num_blocks = 0;
+    let mut reward = 0;
+
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+
+    while reward < amount {
+        current_height += 1;
+        num_blocks += 1;
+        reward += consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000 uT
+    }
 
     println!("Creating miner...");
     create_miner(world, "temp_miner".to_string(), base_node.clone(), wallet.clone()).await;
