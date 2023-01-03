@@ -234,10 +234,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
         let sync_peer = self.sync_peers[peer_index].clone();
-        match self.attempt_sync(&sync_peer, client, max_latency).await {
-            Ok(()) => Ok(sync_peer),
-            Err(err) => Err(err),
-        }
+        self.attempt_sync(&sync_peer, client, max_latency).await?
+          Ok(sync_peer)
+          
     }
 
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {
