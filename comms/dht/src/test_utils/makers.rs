@@ -98,8 +98,8 @@ pub fn make_dht_header(
         let signature = make_valid_message_signature(node_identity, &binding_message_representation);
         if flags.is_encrypted() {
             let shared_secret = CommsDHKE::new(e_secret_key, node_identity.public_key());
-            let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
-            message_signature = crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature)?;
+            let key_signature = crypt::generate_key_signature(&shared_secret);
+            message_signature = crypt::encrypt_signature(&key_signature, &signature)?;
         }
     }
     Ok(DhtMessageHeader {
@@ -203,7 +203,7 @@ pub fn make_dht_envelope<T: prost::Message>(
         let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
         let mut message = prepare_message(true, message);
-        crypt::encrypt(&key_message, &mut message).unwrap();
+        crypt::encrypt_message(&key_message, &mut message).unwrap();
         message.freeze()
     } else {
         prepare_message(false, message).freeze()
