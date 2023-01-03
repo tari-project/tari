@@ -26,7 +26,7 @@ use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_common::configuration::CommonConfig;
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
-use tari_console_wallet::run_wallet;
+use tari_console_wallet::{run_wallet, run_wallet_with_cli, Cli};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
@@ -61,6 +61,7 @@ pub async fn spawn_wallet(
     base_node_name: Option<String>,
     peer_seeds: Vec<String>,
     routing_mechanism: Option<TransactionRoutingMechanism>,
+    cli: Option<Cli>,
 ) {
     // each spawned wallet will use different ports
     let port = get_port(18000..18499).unwrap();
@@ -132,7 +133,13 @@ pub async fn spawn_wallet(
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
-        if let Err(e) = run_wallet(&mut send_to_thread_shutdown, rt, &mut wallet_config) {
+        let cli = if let Some(cli) = cli {
+            cli
+        } else {
+            let cli = get_default_cli();
+        };
+
+        if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
             panic!("{:?}", e);
         }
     });
@@ -159,6 +166,32 @@ pub async fn spawn_wallet(
     }
 
     tokio::time::sleep(Duration::from_secs(2)).await;
+}
+
+pub fn get_default_cli() -> Cli {
+    Cli {
+        common: CommonCliArgs {
+            base_path: data_dir_str,
+            config: config_path.into_os_string().into_string().unwrap(),
+            log_config: None,
+            log_level: None,
+            config_property_overrides: vec![],
+        },
+        password: None,
+        change_password: false,
+        recovery: false,
+        seed_words: None,
+        seed_words_file_name: None,
+        non_interactive_mode: true,
+        input_file: None,
+        command: None,
+        wallet_notify: None,
+        command_mode_auto_exit: false,
+        network: None,
+        grpc_enabled: true,
+        grpc_address: None,
+        command2: None,
+    }
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
