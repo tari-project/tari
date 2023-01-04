@@ -38,7 +38,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::transaction_components::Transaction,
-    validation::MempoolTransactionValidation,
+    validation::MempoolTransactionValidator,
 };
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
@@ -54,7 +54,7 @@ impl Mempool {
     pub fn new(
         config: MempoolConfig,
         rules: ConsensusManager,
-        validator: Box<dyn MempoolTransactionValidation>,
+        validator: Box<dyn MempoolTransactionValidator>,
     ) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),

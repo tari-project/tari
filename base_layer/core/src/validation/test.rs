@@ -50,7 +50,7 @@ use crate::{
         DifficultyCalculator,
         FinalHorizonStateValidation,
         HeaderValidation,
-        MempoolTransactionValidation,
+        MempoolTransactionValidator,
         ValidationError,
     },
 };

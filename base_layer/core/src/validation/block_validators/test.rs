@@ -43,9 +43,8 @@ use crate::{
     txn_schema,
     validation::{
         block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        traits::PostOrphanBodyValidation,
         BlockSyncBodyValidation,
-        OrphanValidation,
+        InternalConsistencyValidator,
         ValidationError,
     },
 };
@@ -263,6 +262,7 @@ async fn it_rejects_zero_conf_double_spends() {
 
 mod body_only {
     use super::*;
+    use crate::validation::traits::CandidateBlockValidator;
 
     #[test]
     fn it_rejects_invalid_input_metadata() {
@@ -287,9 +287,7 @@ mod body_only {
         let metadata = blockchain.db().get_chain_metadata().unwrap();
 
         let db = blockchain.db().db_read_access().unwrap();
-        let err = validator
-            .validate_body_for_valid_orphan(&*db, &block, &metadata)
-            .unwrap_err();
+        let err = validator.validate_body(&*db, &block, &metadata).unwrap_err();
         assert!(matches!(err, ValidationError::UnknownInputs(_)));
     }
 }
@@ -328,7 +326,7 @@ mod orphan_validator {
             .collect::<Vec<_>>();
 
         let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
-        let err = validator.validate(&unmined).unwrap_err();
+        let err = validator.validate_internal_consistency(&unmined).unwrap_err();
         assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
     }
 
@@ -352,7 +350,7 @@ mod orphan_validator {
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
         let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
-        let err = validator.validate(&unmined).unwrap_err();
+        let err = validator.validate_internal_consistency(&unmined).unwrap_err();
         unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
         assert_eq!(output_type, OutputType::Standard);
     }

@@ -40,7 +40,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::{transaction_components::Transaction, weight::TransactionWeight},
-    validation::{MempoolTransactionValidation, ValidationError},
+    validation::{MempoolTransactionValidator, ValidationError},
 };
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
@@ -51,7 +51,7 @@ pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
-    validator: Box<dyn MempoolTransactionValidation>,
+    validator: Box<dyn MempoolTransactionValidator>,
     rules: ConsensusManager,
 }
 
@@ -60,7 +60,7 @@ impl MempoolStorage {
     pub fn new(
         config: MempoolConfig,
         rules: ConsensusManager,
-        validator: Box<dyn MempoolTransactionValidation>,
+        validator: Box<dyn MempoolTransactionValidator>,
     ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),

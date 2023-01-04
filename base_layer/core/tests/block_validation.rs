@@ -51,10 +51,10 @@ use tari_core::{
         header_validator::HeaderValidator,
         mocks::MockValidator,
         BlockSyncBodyValidation,
+        CandidateBlockValidator,
         DifficultyCalculator,
         HeaderValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        InternalConsistencyValidator,
         ValidationError,
     },
 };
@@ -277,7 +277,7 @@ OutputFeatures::default()),
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
-    assert!(orphan_validator.validate(&new_block).is_ok());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_ok());
 
     // lets break the block weight
     let (template, _) = chain_block_with_new_coinbase(
@@ -288,7 +288,7 @@ OutputFeatures::default()),
         None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break the sorting
     let (mut template, _) =
@@ -296,13 +296,13 @@ OutputFeatures::default()),
     let outputs = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break spend rules
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase value
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -319,7 +319,7 @@ OutputFeatures::default()),
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -336,14 +336,14 @@ OutputFeatures::default()),
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break accounting
     let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 }
 
 #[test]
@@ -418,7 +418,7 @@ OutputFeatures::default()),
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
@@ -443,7 +443,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
@@ -482,7 +482,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
@@ -512,7 +512,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
@@ -539,7 +539,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
