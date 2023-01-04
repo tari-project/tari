@@ -24,6 +24,7 @@
 mod utils;
 
 use std::{
+    convert::TryFrom,
     path::PathBuf,
     str,
     sync::{Arc, Mutex},
@@ -37,8 +38,10 @@ use log::*;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::initialize_logging;
-use tari_console_wallet::cli::CliCommands;
-use tari_core::transactions::transaction_components::{Transaction, TransactionOutput};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use tari_console_wallet::{CliCommands, ExportUtxosArgs};
+use tari_core::transactions::transaction_components::{Transaction, TransactionOutput, UnblindedOutput};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -50,6 +53,7 @@ use tari_wallet_grpc_client::grpc::{
     GetCompletedTransactionsRequest,
     GetIdentityRequest,
     GetTransactionInfoRequest,
+    ImportUtxosRequest,
     PaymentRecipient,
     SendShaAtomicSwapRequest,
     TransferRequest,
@@ -250,7 +254,11 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
 #[when(expr = "mining node {word} mines {int} blocks")]
 #[given(expr = "mining node {word} mines {int} blocks")]
 async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
-    world.get_miner(miner_name).unwrap().mine(world, Some(num_blocks)).await;
+    world
+        .get_miner(miner_name)
+        .unwrap()
+        .mine(world, Some(num_blocks), None, None)
+        .await;
 }
 
 #[then(expr = "all nodes are at height {int}")]
@@ -377,13 +385,18 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, ba
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
+#[then(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
-    _world: &mut TariWorld,
-    _miner: String,
-    _blocks: u64,
-    _min_difficulty: u64,
-    _max_difficulty: u64,
+    world: &mut TariWorld,
+    miner: String,
+    blocks: u64,
+    min_difficulty: u64,
+    max_difficulty: u64,
 ) {
+    let miner_ps = world.miners.get(&miner).unwrap();
+    miner_ps
+        .mine(world, Some(blocks), Some(min_difficulty), Some(max_difficulty))
+        .await;
 }
 
 #[when(expr = "I have a base node {word}")]
@@ -605,7 +618,7 @@ async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, w
         None,
         world.all_seed_nodes().to_vec(),
         Some(routing_mechanism),
-        Nones,
+        None,
     )
     .await;
 }
@@ -1152,7 +1165,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
             }
 
             println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
-            miner_ps.mine(world, Some(1)).await;
+            miner_ps.mine(world, Some(1), None, None).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
@@ -1527,7 +1540,7 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
     let miners = world.miners.clone();
     for (miner, miner_ps) in miners {
         println!("Miner {} is mining {} blocks", miner, blocks);
-        miner_ps.mine(world, Some(blocks)).await;
+        miner_ps.mine(world, Some(blocks), None, None).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
@@ -1797,7 +1810,9 @@ async fn wallet_with_tari_connected_to_base_node(
 
     println!("Mining {} blocks", num_blocks + CONFIRMATION_PERIOD);
     let miner = world.miners.get(&"temp_miner".to_string()).unwrap();
-    miner.mine(world, Some(num_blocks + CONFIRMATION_PERIOD)).await; // mine some additional blocks to confirm txs
+    miner
+        .mine(world, Some(num_blocks + CONFIRMATION_PERIOD), None, None)
+        .await; // mine some additional blocks to confirm txs
 
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
@@ -2475,22 +2490,163 @@ async fn send_one_sided_stealth_transaction(
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    let wallet_a_ps = world.wallets.get(&wallet_a).unwrap();
+    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     wallet_a_ps.kill();
-    let mut cli = get_default_cli();
 
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path();
+
+    let mut wallet_data_dir = PathBuf::new();
+    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push("data/wallet");
+
+    let mut config_path = wallet_data_dir.clone();
+    config_path.push("config.toml");
+
+    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
 
     let mut path_buf = PathBuf::new();
     path_buf.push(temp_dir_path);
     path_buf.push("exported_utxos.csv");
 
     let args = ExportUtxosArgs {
-        output_file: Some(path_buf),
+        output_file: Some(path_buf.clone()),
     };
     cli.command2 = Some(CliCommands::ExportUtxos(args));
     spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
+
+    let exported_outputs = std::fs::File::open(path_buf).unwrap();
+    let mut reader = csv::Reader::from_reader(exported_outputs);
+
+    let mut outputs: Vec<UnblindedOutput> = vec![];
+
+    for output in reader.deserialize::<UnblindedOutput>() {
+        outputs.push(output.unwrap());
+    }
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let import_utxos_req = ImportUtxosRequest {
+        outputs: outputs
+            .iter()
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .collect::<Vec<grpc::UnblindedOutput>>(),
+    };
+
+    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+}
+
+#[then(expr = "I import {word} spent outputs to {word}")]
+async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    wallet_a_ps.kill();
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
+
+    let mut wallet_data_dir = PathBuf::new();
+    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push("data/wallet");
+
+    let mut config_path = wallet_data_dir.clone();
+    config_path.push("config.toml");
+
+    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
+
+    let mut path_buf = PathBuf::new();
+    path_buf.push(temp_dir_path);
+    path_buf.push("exported_utxos.csv");
+
+    let args = ExportUtxosArgs {
+        output_file: Some(path_buf.clone()),
+    };
+    cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
+    spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
+
+    let exported_outputs = std::fs::File::open(path_buf).unwrap();
+    let mut reader = csv::Reader::from_reader(exported_outputs);
+
+    let mut outputs: Vec<UnblindedOutput> = vec![];
+
+    for output in reader.deserialize::<UnblindedOutput>() {
+        outputs.push(output.unwrap());
+    }
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let import_utxos_req = ImportUtxosRequest {
+        outputs: outputs
+            .iter()
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .collect::<Vec<grpc::UnblindedOutput>>(),
+    };
+
+    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+}
+
+#[then(expr = "Then I import {word} unspent outputs as faucet outputs to {word}")]
+async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    wallet_a_ps.kill();
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
+
+    let mut wallet_data_dir = PathBuf::new();
+    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push("data/wallet");
+
+    let mut config_path = wallet_data_dir.clone();
+    config_path.push("config.toml");
+
+    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
+
+    let mut path_buf = PathBuf::new();
+    path_buf.push(temp_dir_path);
+    path_buf.push("exported_utxos.csv");
+
+    let args = ExportUtxosArgs {
+        output_file: Some(path_buf.clone()),
+    };
+    cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
+    spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
+
+    let exported_outputs = std::fs::File::open(path_buf).unwrap();
+    let mut reader = csv::Reader::from_reader(exported_outputs);
+
+    let mut outputs: Vec<UnblindedOutput> = vec![];
+
+    for mut output in reader.deserialize::<UnblindedOutput>() {
+        let mut output = output.unwrap();
+        output.metadata_signature = ComAndPubSignature::new(
+            Commitment::default(),
+            PublicKey::default(),
+            PrivateKey::default(),
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+        output.script_private_key = output.clone().spending_key;
+
+        let script_public_key = PublicKey::from_secret_key(&output.script_private_key);
+        outputs.push(output.clone());
+    }
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let import_utxos_req = ImportUtxosRequest {
+        outputs: outputs
+            .iter()
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .collect::<Vec<grpc::UnblindedOutput>>(),
+    };
+
+    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+}
+
+#[then(expr = "I restart wallet {word}")]
+async fn restart_wallet(world: &mut TariWorld, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    // stop wallet
+    wallet_ps.kill();
+    // start wallet
+    spawn_wallet(world, wallet, None, vec![], None, None).await;
 }
 
 #[when(expr = "I print the cucumber world")]

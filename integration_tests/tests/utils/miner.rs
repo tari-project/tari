@@ -82,7 +82,13 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
 }
 
 impl MinerProcess {
-    pub async fn mine(&self, world: &TariWorld, blocks: Option<u64>) {
+    pub async fn mine(
+        &self,
+        world: &TariWorld,
+        blocks: Option<u64>,
+        miner_min_diff: Option<u64>,
+        miner_max_diff: Option<u64>,
+    ) {
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let wallet = world.get_wallet(&self.wallet_name).unwrap().grpc_port;
         let temp_dir = tempdir().unwrap();
@@ -110,8 +116,8 @@ impl MinerProcess {
             },
             mine_until_height: None,
             miner_max_blocks: blocks,
-            miner_min_diff: None,
-            miner_max_diff: None,
+            miner_min_diff,
+            miner_max_diff,
         };
         run_miner(cli).await.unwrap();
     }

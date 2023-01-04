@@ -20,13 +20,14 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, thread, time::Duration};
+use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
 use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
+use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::CommonConfig;
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
-use tari_console_wallet::{run_wallet, run_wallet_with_cli, Cli};
+use tari_console_wallet::{run_wallet_with_cli, Cli};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
@@ -136,7 +137,15 @@ pub async fn spawn_wallet(
         let cli = if let Some(cli) = cli {
             cli
         } else {
-            let cli = get_default_cli();
+            let data_dir = wallet_config.wallet.data_dir.clone();
+            let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
+
+            let mut config_path = data_dir;
+            config_path.push("config.toml");
+
+            let cli = get_default_cli(data_dir_str, config_path.clone());
+
+            cli
         };
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
@@ -168,7 +177,7 @@ pub async fn spawn_wallet(
     tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
-pub fn get_default_cli() -> Cli {
+pub fn get_default_cli(data_dir_str: String, config_path: PathBuf) -> Cli {
     Cli {
         common: CommonCliArgs {
             base_path: data_dir_str,
