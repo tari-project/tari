@@ -405,6 +405,142 @@ async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node:
     mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
 }
 
+#[then(expr = "{word} has {word} in {word} state")]
+async fn transaction_in_state(
+    world: &mut TariWorld,
+    node: String,
+    tx_name: String,
+    state: String,
+) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let sig = &tx.body.kernels()[0].excess_sig;
+
+    let resp = client
+        .transaction_state(grpc::TransactionStateRequest {
+            excess_sig: Some(sig.into()),
+        })
+        .await?;
+
+    let inner = resp.into_inner();
+
+    let res_state = match inner.result {
+        0 => "UNKNOWN",
+        1 => "MEMPOOL",
+        2 => "NOT STORED",
+        3 => "MINED",
+        _ => panic!("not getting a good result"),
+    };
+
+    if res_state == state {
+        Ok(())
+    } else {
+        panic!(
+            "The node {} has tx {} in state {} instead of the expected {}",
+            node, tx_name, res_state, state
+        );
+    }
+}
+
+#[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
+async fn tx_in_state_all_nodes(
+    world: &mut TariWorld,
+    tx_name: String,
+    pool: String,
+    can_fail_percent: u64,
+) -> anyhow::Result<()> {
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let sig = &tx.body.kernels()[0].excess_sig;
+
+    let num_retries = 480; // About 2 minutes
+    let mut node_pool_status: IndexMap<&String, bool> = IndexMap::new();
+
+    let nodes = world.base_nodes.iter().clone();
+    let nodes_count = world.base_nodes.len();
+
+    for (name, _) in nodes.clone() {
+        node_pool_status.insert(name, false);
+    }
+
+    let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
+
+    for _ in 0..num_retries {
+        for (name, _) in node_pool_status
+            .clone()
+            .iter()
+            .filter(|(_, in_pool)| in_pool == &&false)
+        {
+            let mut client = world.get_node_client(name).await?;
+
+            let resp = client
+                .transaction_state(grpc::TransactionStateRequest {
+                    excess_sig: Some(sig.into()),
+                })
+                .await?;
+
+            let inner = resp.into_inner();
+
+            let res_state = match inner.result {
+                0 => "UNKNOWN",
+                1 => "MEMPOOL",
+                2 => "NOT STORED",
+                3 => "MINED",
+                _ => panic!("not getting a good result"),
+            };
+
+            if pool == res_state {
+                node_pool_status.insert(name, true);
+            }
+        }
+
+        if node_pool_status
+            .values()
+            .filter(|v| v == &&true)
+            .collect::<Vec<_>>()
+            .len() >
+            (nodes_count - can_fail as usize)
+        {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    panic!(
+        "Too many nodes failed to get {} in the {}, {:?}, can_fail: {}",
+        tx_name, pool, node_pool_status, can_fail
+    );
+}
+
+#[then(expr = "I submit transaction {word} to {word}")]
+#[when(expr = "I submit transaction {word} to {word}")]
+async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let resp = client
+        .submit_transaction(grpc::SubmitTransactionRequest {
+            transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
+        })
+        .await?;
+
+    let result = resp.into_inner();
+
+    if result.result == 1 {
+        Ok(())
+    } else {
+        panic!("Transaction wasn't submit")
+    }
+}
+
 #[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
 async fn prune_node_connected_to_base_node(
     world: &mut TariWorld,

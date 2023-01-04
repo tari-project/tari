@@ -29,6 +29,7 @@ use tari_core::transactions::{
     transaction_components::{
         KernelBuilder,
         Transaction,
+        TransactionBuilder,
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
@@ -95,22 +96,15 @@ impl TestTransactionBuilder {
 
         let output = self.output.clone().unwrap();
 
-        let tx = Transaction::new(
-            self.inputs.iter().map(|f| f.0.clone()).collect(),
-            vec![output.0],
-            vec![kernel.clone()],
-            offset.clone(),
-            script_offset_pvt.clone(),
-        );
-        // let mut tx_builder = TransactionBuilder::new();
-        // tx_builder
-        //     .add_inputs(&mut self.inputs.iter().map(|f| f.0.clone()).collect())
-        //     .add_output(self.output.unwrap().0)
-        //     .add_offset(offset.clone())
-        //     .add_script_offset(script_offset_pvt.clone())
-        //     .with_kernel(kernel.clone());
+        let mut tx_builder = TransactionBuilder::new();
+        tx_builder
+            .add_inputs(&mut self.inputs.iter().map(|f| f.0.clone()).collect())
+            .add_output(self.output.unwrap().0)
+            .add_offset(offset.clone())
+            .add_script_offset(script_offset_pvt.clone())
+            .with_kernel(kernel.clone());
 
-        // tx_builder.build(&self.factories, None, 0).unwrap()
+        let tx = tx_builder.build(&self.factories, None, 0).unwrap();
         (tx, output.1)
     }
 
@@ -122,7 +116,7 @@ impl TestTransactionBuilder {
         let nonce = PrivateKey::default() + self.keys.nonce.clone();
         let offset = PrivateKey::default() + self.keys.offset.clone();
 
-        let script_offset_pvt = output.script_private_key.clone() - self.keys.sender_offset_private_key.clone();
+        let script_offset_pvt = input.script_private_key.clone() - self.keys.sender_offset_private_key.clone();
         let excess_blinding_factor = output.spending_key.clone() - input.spending_key.clone();
 
         let tx_meta = TransactionMetadata::new(fee, 0);
