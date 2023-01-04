@@ -12,14 +12,14 @@ Feature: Mempool
     #
     Given I have 8 seed nodes
     When I have a base node SENDER connected to all seed nodes
-    # And I have 8 base nodes connected to all seed nodes
-    # When I mine a block on SENDER with coinbase CB1
+    When I have 8 base nodes connected to all seed nodes
+    When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
-    # Then all nodes are at height 3
-    # When I create a transaction TX1 spending CB1 to UTX1
-    # When I submit transaction TX1 to SENDER
-    # Then SENDER has TX1 in MEMPOOL state
-    # Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
+    Then all nodes are at height 3
+    When I create a transaction TX1 spending CB1 to UTX1
+    When I submit transaction TX1 to SENDER
+    Then SENDER has TX1 in MEMPOOL state
+    Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
   @flaky
