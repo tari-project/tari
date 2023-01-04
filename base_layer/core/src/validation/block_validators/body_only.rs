@@ -94,7 +94,7 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
             });
         }
         if block.height() != metadata.height_of_longest_chain() + 1 {
-            return Err(ValidationError::IncorrectNextTipHeight {
+            return Err(ValidationError::IncorrectHeight {
                 expected: metadata.height_of_longest_chain() + 1,
                 block_height: block.height(),
             });

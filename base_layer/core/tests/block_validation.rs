@@ -48,12 +48,12 @@ use tari_core::{
     txn_schema,
     validation::{
         block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        header_validator::DefaultHeaderValidator,
         mocks::MockValidator,
         BlockSyncBodyValidation,
         CandidateBlockValidator,
+        ChainLinkedHeaderValidator,
         DifficultyCalculator,
-        HeaderValidation,
         InternalConsistencyValidator,
         ValidationError,
     },
@@ -101,7 +101,7 @@ fn test_monero_blocks() {
         .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
-    let header_validator = HeaderValidator::new(cm.clone());
+    let header_validator = DefaultHeaderValidator::new(cm.clone());
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
@@ -244,7 +244,7 @@ fn test_orphan_validator() {
     let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         orphan_validator.clone(),
     );
     let db = BlockchainDatabase::new(
@@ -370,10 +370,10 @@ fn test_orphan_body_validation() {
         .build();
     let backend = create_test_db();
     let body_only_validator = BodyOnlyValidator::new(rules.clone());
-    let header_validator = HeaderValidator::new(rules.clone());
+    let header_validator = DefaultHeaderValidator::new(rules.clone());
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
@@ -403,6 +403,8 @@ OutputFeatures::default()),
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -429,6 +431,8 @@ OutputFeatures::default()),
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -468,6 +472,8 @@ OutputFeatures::default()),
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -498,6 +504,8 @@ OutputFeatures::default()),
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -525,6 +533,8 @@ OutputFeatures::default()),
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -565,10 +575,10 @@ fn test_header_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let header_validator = HeaderValidator::new(rules.clone());
+    let header_validator = DefaultHeaderValidator::new(rules.clone());
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
@@ -598,6 +608,8 @@ OutputFeatures::default()),
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -612,6 +624,8 @@ OutputFeatures::default()),
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -624,6 +638,8 @@ OutputFeatures::default()),
     let mut result = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
+            &[],
+            genesis.header(),
             &new_block.header,
             &difficulty_calculator,
         )
@@ -637,6 +653,8 @@ OutputFeatures::default()),
         result = header_validator
             .validate(
                 &*db.db_read_access().unwrap(),
+                &[],
+                genesis.header(),
                 &new_block.header,
                 &difficulty_calculator,
             )
@@ -663,7 +681,7 @@ async fn test_block_sync_body_validator() {
 
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
 

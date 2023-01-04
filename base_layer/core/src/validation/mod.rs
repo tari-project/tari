@@ -36,8 +36,9 @@ mod traits;
 pub use traits::{
     BlockSyncBodyValidation,
     CandidateBlockValidator,
+    ChainLinkedHeaderValidator,
     FinalHorizonStateValidation,
-    HeaderValidation,
+    HeaderInternalConsistencyValidator,
     InternalConsistencyValidator,
     MempoolTransactionValidator,
 };

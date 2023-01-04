@@ -49,7 +49,7 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        header_validator::DefaultHeaderValidator,
         mocks::MockValidator,
         DifficultyCalculator,
     },
@@ -95,7 +95,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        DefaultHeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
             node_config.bypass_range_proof_verification,
