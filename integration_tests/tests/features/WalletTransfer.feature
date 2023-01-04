@@ -38,11 +38,12 @@ Feature: Wallet Transfer
     # # Ensure the coinbase lock heights have expired
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
-    When I wait 15 seconds
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_Confirmed
+
 
   Scenario: As a wallet I want to submit transfers to myself
     Given I have a seed node NODE
