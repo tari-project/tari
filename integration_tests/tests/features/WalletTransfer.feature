@@ -14,6 +14,7 @@ Feature: Wallet Transfer
     When I have a base node NODE_B connected to all seed nodes
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
+    When I wait 5 seconds
     When I transfer 5T from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     # # BREAKS HERE
@@ -37,7 +38,7 @@ Feature: Wallet Transfer
     # # Ensure the coinbase lock heights have expired
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
-    When I wait 5 seconds
+    When I wait 15 seconds
     When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
