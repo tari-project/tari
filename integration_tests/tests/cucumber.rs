@@ -2491,7 +2491,7 @@ async fn send_one_sided_stealth_transaction(
 #[then(expr = "I import {word} unspent outputs to {word}")]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_a_ps.kill();
+    // wallet_a_ps.kill();
 
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path();
@@ -2582,7 +2582,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
 }
 
-#[then(expr = "Then I import {word} unspent outputs as faucet outputs to {word}")]
+#[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
 async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     wallet_a_ps.kill();

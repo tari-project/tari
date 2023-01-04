@@ -73,7 +73,6 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I wait 5 seconds
     When I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10

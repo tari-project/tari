@@ -95,6 +95,7 @@ pub async fn spawn_wallet(
     let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
     let mut send_to_thread_shutdown = shutdown.clone();
+
     thread::spawn(move || {
         let mut wallet_config = tari_console_wallet::ApplicationConfig {
             common: CommonConfig::default(),
@@ -163,6 +164,8 @@ pub async fn spawn_wallet(
     });
 
     wait_for_service(port).await;
+    println!("FLAG: HEREEEEE {}", grpc_port);
+
     wait_for_service(grpc_port).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
