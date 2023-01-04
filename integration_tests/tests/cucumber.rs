@@ -39,7 +39,7 @@ use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::transaction_components::{Transaction, TransactionOutput},
+    transactions::transaction_components::{Transaction, UnblindedOutput},
 };
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_utilities::hex::Hex;
@@ -101,7 +101,7 @@ pub struct TariWorld {
     transactions: IndexMap<String, Transaction>,
     // mapping from hex string of public key of wallet client to tx_id's
     wallet_tx_ids: IndexMap<String, Vec<u64>>,
-    utxos: IndexMap<String, (u64, TransactionOutput)>,
+    utxos: IndexMap<String, UnblindedOutput>,
     output_hash: Option<String>,
     pre_image: Option<String>,
 }
@@ -555,14 +555,24 @@ async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String,
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
-        .map(|i| {
-            let (a, o) = world.utxos.get(&i.to_string()).unwrap();
-            (*a, o.clone())
-        })
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
-    let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
-    world.utxos.insert(output, (amount, utxo));
+    // let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
+    let (tx, utxo) = build_transaction_with_output(utxos);
+    world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee {word}")]
+async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs: String, output: String, fee: u64) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
+        .collect::<Vec<_>>();
+
+    // world.utxos.insert(output, (0, utxo));
+    // world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I wait for wallet {word} to have less than {int} uT")]

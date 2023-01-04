@@ -20,115 +20,162 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::default::Default;
 
-use rand::rngs::OsRng;
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, RangeProof};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{
-            EncryptedValue,
-            OutputFeatures,
-            Transaction,
-            TransactionBuilder,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-        },
-        CryptoFactories,
+use tari_common_types::types::{Commitment, PrivateKey, Signature};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    test_helpers::TestParams,
+    transaction_components::{
+        KernelBuilder,
+        Transaction,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        UnblindedOutput,
+        UnblindedOutputBuilder,
     },
+    transaction_protocol::TransactionMetadata,
+    CryptoFactories,
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey, SecretKey},
-    range_proof::RangeProofService,
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    keys::PublicKey,
+    ristretto::{pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory, RistrettoSecretKey},
 };
-use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::ByteArray;
 
-pub fn build_transaction_with_output(utxos: &[(u64, TransactionOutput)]) -> (u64, TransactionOutput, Transaction) {
-    let inputs = utxos
-        .iter()
-        .map(|(_, u)| {
-            TransactionInput::new_with_output_data(
-                TransactionInputVersion::try_from(u.version.as_u8()).unwrap(),
-                u.features.clone(),
-                u.commitment.clone(),
-                u.script.clone(),
-                ExecutionStack::new(vec![]),
-                ComAndPubSignature::default(),
-                u.sender_offset_public_key.clone(),
-                u.covenant.clone(),
-                u.encrypted_value.clone(),
-                u.minimum_value_promise,
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut tx_builder = TransactionBuilder::new();
-
-    for input in &inputs {
-        tx_builder.add_input(input.clone());
-    }
-
-    let spendable_amount = utxos.iter().map(|x| x.0).sum();
-    let output = build_output(spendable_amount);
-    tx_builder.add_output(output.clone());
-
-    let factories = CryptoFactories::default();
-    let tx = tx_builder.build(&factories, None, 0).unwrap();
-
-    (spendable_amount, output, tx)
+#[derive(Clone)]
+struct TestTransactionBuilder {
+    amount: MicroTari,
+    factories: CryptoFactories,
+    fee: MicroTari,
+    inputs: Vec<(TransactionInput, UnblindedOutput)>,
+    keys: TestParams,
+    lock_height: u64,
+    output: Option<(TransactionOutput, UnblindedOutput)>,
 }
 
-pub fn build_output(spendable_amount: u64) -> TransactionOutput {
-    let version = TransactionOutputVersion::V0;
-    let features = OutputFeatures::default();
-    let factories = CryptoFactories::default();
-    let spending_key = PrivateKey::random(&mut OsRng);
-    let commitment = factories.commitment.commit_value(&spending_key, spendable_amount);
-    let proof = RangeProof::from_bytes(
-        factories
-            .range_proof
-            .construct_proof(&spending_key, spendable_amount)
-            .unwrap()
-            .as_slice(),
-    )
-    .unwrap();
-    let script = TariScript::default();
-    let sender_offset_key = RistrettoSecretKey::random(&mut OsRng);
-    let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_key);
-    let covenant = Covenant::default();
-    let encrypted_value =
-        EncryptedValue::encrypt_value(&spending_key, &commitment, MicroTari(spendable_amount)).unwrap();
-    let minimum_value_promise = MicroTari(0u64);
-
-    let metadata_signature = TransactionOutput::create_metadata_signature(
-        TransactionOutputVersion::get_current_version(),
-        spendable_amount.into(),
-        &spending_key,
-        &script,
-        &features,
-        &sender_offset_key,
-        &covenant,
-        &EncryptedValue::default(),
-        minimum_value_promise,
-    )
-    .unwrap();
-
-    TransactionOutput {
-        version,
-        features,
-        commitment,
-        proof,
-        script,
-        sender_offset_public_key,
-        metadata_signature,
-        covenant,
-        encrypted_value,
-        minimum_value_promise,
+impl TestTransactionBuilder {
+    pub fn new() -> Self {
+        Self {
+            amount: MicroTari(0),
+            factories: CryptoFactories::default(),
+            fee: MicroTari(0),
+            inputs: vec![],
+            keys: TestParams::new(),
+            lock_height: 0,
+            output: None,
+        }
     }
+
+    pub fn change_fee(&mut self, fee: MicroTari) -> &mut Self {
+        self.fee = fee;
+        self
+    }
+
+    pub fn update_amount(&mut self, amount: MicroTari) {
+        self.amount += amount
+    }
+
+    pub fn add_input(&mut self, u: UnblindedOutput) -> &mut Self {
+        self.update_amount(u.value);
+
+        self.inputs.push((
+            u.as_transaction_input(&ExtendedPedersenCommitmentFactory::default())
+                .expect("The Unblinded output to convert to an Input"),
+            u,
+        ));
+
+        self
+    }
+
+    pub fn build(mut self) -> (Transaction, UnblindedOutput) {
+        self.create_utxo();
+
+        let (script_offset_pvt, offset, kernel) = &self.build_kernel();
+
+        let output = self.output.clone().unwrap();
+
+        let tx = Transaction::new(
+            self.inputs.iter().map(|f| f.0.clone()).collect(),
+            vec![output.0],
+            vec![kernel.clone()],
+            offset.clone(),
+            script_offset_pvt.clone(),
+        );
+        // let mut tx_builder = TransactionBuilder::new();
+        // tx_builder
+        //     .add_inputs(&mut self.inputs.iter().map(|f| f.0.clone()).collect())
+        //     .add_output(self.output.unwrap().0)
+        //     .add_offset(offset.clone())
+        //     .add_script_offset(script_offset_pvt.clone())
+        //     .with_kernel(kernel.clone());
+
+        // tx_builder.build(&self.factories, None, 0).unwrap()
+        (tx, output.1)
+    }
+
+    pub fn build_kernel(&self) -> (PrivateKey, RistrettoSecretKey, TransactionKernel) {
+        let input = &self.inputs[0].1.clone();
+        let output = &self.output.clone().unwrap().1;
+
+        let fee = self.fee;
+        let nonce = PrivateKey::default() + self.keys.nonce.clone();
+        let offset = PrivateKey::default() + self.keys.offset.clone();
+
+        let script_offset_pvt = output.script_private_key.clone() - self.keys.sender_offset_private_key.clone();
+        let excess_blinding_factor = output.spending_key.clone() - input.spending_key.clone();
+
+        let tx_meta = TransactionMetadata::new(fee, 0);
+
+        let public_nonce = PublicKey::from_secret_key(&nonce);
+        let offset_blinding_factor = &excess_blinding_factor - &offset;
+        let excess = PublicKey::from_secret_key(&offset_blinding_factor);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, &excess, &tx_meta);
+        let k = offset_blinding_factor;
+        let r = nonce;
+        let s = Signature::sign_raw(&k, r, &e).unwrap();
+
+        let kernel = KernelBuilder::new()
+            .with_fee(self.fee)
+            .with_lock_height(self.lock_height)
+            .with_excess(&Commitment::from_public_key(&excess))
+            .with_signature(&s)
+            .build()
+            .unwrap();
+
+        (script_offset_pvt, offset, kernel)
+    }
+
+    fn calculate_spendable(&self) -> MicroTari {
+        MicroTari(self.amount.0 - self.fee.0)
+    }
+
+    fn create_utxo(&mut self) {
+        let script = Default::default();
+
+        let mut builder = UnblindedOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
+            .with_features(Default::default())
+            .with_script(script)
+            .with_script_private_key(self.keys.script_private_key.clone())
+            .with_input_data(Default::default());
+        builder.with_sender_offset_public_key(self.keys.sender_offset_public_key.clone());
+        builder
+            .sign_as_sender_and_receiver(&self.keys.sender_offset_private_key.clone())
+            .expect("sign as sender and receiver");
+        let unblinded = builder.try_build().expect("Get output from unblinded output");
+        let utxo = unblinded
+            .as_transaction_output(&self.factories)
+            .expect("unblinded into output");
+
+        self.output = Some((utxo, unblinded));
+    }
+}
+
+pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transaction, UnblindedOutput) {
+    let mut builder = TestTransactionBuilder::new();
+    for unblinded_output in utxos {
+        builder.add_input(unblinded_output);
+    }
+
+    builder.build()
 }
