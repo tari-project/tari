@@ -259,37 +259,37 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
     let num_retries = NUM_RETIRES;
-    let mut nodes_at_height: IndexMap<&String, bool> = IndexMap::new();
+    let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
-    let _ = world
-        .base_nodes
-        .iter()
-        .map(|(name, _)| nodes_at_height.insert(name, false));
+    for (name, _) in world.base_nodes.iter() {
+        nodes_at_height.insert(name, 0);
+    }
 
     for _ in 0..num_retries {
         for (name, _) in nodes_at_height
             .clone()
             .iter()
-            .filter(|(_, at_height)| at_height == &&false)
+            .filter(|(_, at_height)| at_height != &&height)
         {
             let mut client = world.get_node_client(name).await.unwrap();
 
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
             let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
-            if chain_hgt < height {
-                nodes_at_height.insert(name, true);
-            }
+            nodes_at_height.insert(name, chain_hgt);
         }
 
-        if nodes_at_height.values().all(|v| v == &true) {
+        if nodes_at_height.values().all(|h| h == &height) {
             return;
         }
 
         tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
-    panic!("base nodes not successfully synchronized at height {}", height);
+    panic!(
+        "base nodes not successfully synchronized at height {}, {:?}",
+        height, nodes_at_height
+    );
 }
 
 #[when(expr = "node {word} is at height {int}")]
@@ -297,13 +297,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
     let num_retries = NUM_RETIRES; // About two minutes
 
-    let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
-        .await
-        .unwrap();
+    let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
     for _ in 0..=num_retries {
