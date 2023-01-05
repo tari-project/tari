@@ -112,6 +112,7 @@ impl MinerProcess {
                         format!("/ip4/127.0.0.1/tcp/{}", wallet),
                     ),
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
+                    ("miner.mine_on_tip_only".to_string(), "false".to_string()),
                 ],
             },
             mine_until_height: None,

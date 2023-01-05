@@ -46,7 +46,7 @@ pub struct WalletProcess {
     pub name: String,
     pub port: u64,
     pub grpc_port: u64,
-    pub temp_dir_path: String,
+    pub temp_dir_path: PathBuf,
     pub kill_signal: Shutdown,
 }
 
@@ -64,9 +64,21 @@ pub async fn spawn_wallet(
     routing_mechanism: Option<TransactionRoutingMechanism>,
     cli: Option<Cli>,
 ) {
-    // each spawned wallet will use different ports
-    let port = get_port(18000..18499).unwrap();
-    let grpc_port = get_port(18500..18999).unwrap();
+    let port: u64;
+    let grpc_port: u64;
+    let temp_dir_path: PathBuf;
+
+    if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
+        port = wallet_ps.port;
+        grpc_port = wallet_ps.grpc_port;
+        temp_dir_path = wallet_ps.temp_dir_path.clone()
+    } else {
+        // each spawned wallet will use different ports
+        port = get_port(18000..18499).unwrap();
+        grpc_port = get_port(18500..18999).unwrap();
+        // create a new temporary directory
+        temp_dir_path = tempdir().unwrap().path().to_path_buf()
+    };
 
     let base_node = base_node_name.map(|name| {
         let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
@@ -78,9 +90,6 @@ pub async fn spawn_wallet(
 
         (pubkey, port, set_base_node_request)
     });
-
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path().display().to_string();
 
     let mut peer_addresses = vec![];
     for peer in peer_seeds {
@@ -96,6 +105,8 @@ pub async fn spawn_wallet(
     let shutdown = Shutdown::new();
     let mut send_to_thread_shutdown = shutdown.clone();
 
+    let temp_dir = temp_dir_path.clone();
+
     thread::spawn(move || {
         let mut wallet_config = tari_console_wallet::ApplicationConfig {
             common: CommonConfig::default(),
@@ -107,20 +118,20 @@ pub async fn spawn_wallet(
             },
         };
 
-        eprintln!("Using wallet temp_dir: {}", temp_dir.path().display());
+        eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
 
         wallet_config.wallet.network = Network::LocalNet;
         wallet_config.wallet.password = Some("test".into());
         wallet_config.wallet.grpc_enabled = true;
         wallet_config.wallet.grpc_address =
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
-        wallet_config.wallet.data_dir = temp_dir.path().join("data/wallet");
-        wallet_config.wallet.db_file = temp_dir.path().join("db/console_wallet.db");
+        wallet_config.wallet.data_dir = temp_dir_path.clone().join("data/wallet");
+        wallet_config.wallet.db_file = temp_dir_path.clone().join("db/console_wallet.db");
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
-        wallet_config.wallet.p2p.datastore_path = temp_dir.path().join("peer_db/wallet");
+        wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db/wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
         if let Some(mech) = routing_mechanism {
             wallet_config
@@ -157,7 +168,7 @@ pub async fn spawn_wallet(
         name: wallet_name.clone(),
         port,
         grpc_port,
-        temp_dir_path,
+        temp_dir_path: temp_dir,
         kill_signal: shutdown,
     });
 

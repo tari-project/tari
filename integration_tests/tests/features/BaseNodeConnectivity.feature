@@ -25,11 +25,19 @@ Feature: Base Node Connectivity
         When I have wallet WALLET connected to all seed nodes
         When I have mining node MINER connected to base node NODE and wallet WALLET
         Given mining node MINER mines 1 blocks
+        Then node NODE is at height 1
+
+    Scenario: Basic mining with templates
+        Given I have a base node NODE
+        When I mine 2 blocks on NODE
+        Then node NODE is at height 2
+        Then all nodes are at height 2
 
     Scenario: Base node lists heights
         Given I have a seed node N1
         When I mine 5 blocks on N1
         Then node N1 lists heights 1 to 5
+
 
     Scenario: Base node lists headers
         Given I have a seed node BN1

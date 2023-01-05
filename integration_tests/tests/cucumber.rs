@@ -82,6 +82,8 @@ use crate::utils::{
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
+const NUM_RETIRES: u64 = 240;
+const RETRY_TIME_IN_MS: u64 = 250;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -283,52 +285,46 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
-    let num_retries = 24; // About 2 minutes
-    let mut nodes_at_height: IndexMap<&String, bool> = IndexMap::new();
+    let num_retries = NUM_RETIRES * height; // About 2 minutes per block
+    let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
-    let _ = world
-        .base_nodes
-        .iter()
-        .map(|(name, _)| nodes_at_height.insert(name, false));
+    for (name, _) in world.base_nodes.iter() {
+        nodes_at_height.insert(name, 0);
+    }
 
     for _ in 0..num_retries {
         for (name, _) in nodes_at_height
             .clone()
             .iter()
-            .filter(|(_, at_height)| at_height == &&false)
+            .filter(|(_, at_height)| at_height != &&height)
         {
             let mut client = world.get_node_client(name).await.unwrap();
 
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
             let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
-            if chain_hgt < height {
-                nodes_at_height.insert(name, true);
-            }
+            nodes_at_height.insert(name, chain_hgt);
         }
 
-        if nodes_at_height.values().all(|v| v == &true) {
+        if nodes_at_height.values().all(|h| h == &height) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
-    panic!("base nodes not successfully synchronized at height {}", height);
+    panic!(
+        "base nodes not successfully synchronized at height {}, {:?}",
+        height, nodes_at_height
+    );
 }
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = 24; // About two minutes
+    let num_retries = NUM_RETIRES; // About two minutes
 
-    let mut client = world
-        .base_nodes
-        .get(&base_node)
-        .unwrap()
-        .get_grpc_client()
-        .await
-        .unwrap();
+    let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
     for _ in 0..=num_retries {
@@ -339,7 +335,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
     // base node didn't synchronize successfully at height, so we bail out
@@ -506,7 +502,7 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
 }
 
 #[when(expr = "wallet {word} detects all transactions are at least Pending")]
-async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wallet: String) {
+async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -2626,7 +2622,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     cli.command2 = Some(CliCommands::ExportUtxos(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-
+    println!("FLAG: {}", base_node);
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 
@@ -2926,41 +2922,12 @@ async fn multi_send_txs_from_wallet(
 
 #[when(expr = "I connect node {word} to node {word}")]
 async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_b: String) {
-    let node_a_ps = world.base_nodes.get(&node_a).unwrap();
+    let node_a_ps = world.base_nodes.get_mut(&node_a).unwrap();
     let mut node_a_peers = node_a_ps.seed_nodes.clone();
     let is_seed_node = node_a_ps.is_seed_node;
     node_a_peers.push(node_b);
     node_a_ps.kill();
     spawn_base_node(world, is_seed_node, node_a, node_a_peers, None).await;
-}
-
-#[when(expr = "I print the cucumber world")]
-async fn print_world(world: &mut TariWorld) {
-    eprintln!();
-    eprintln!("======================================");
-    eprintln!("============= TEST NODES =============");
-    eprintln!("======================================");
-    eprintln!();
-
-    // base nodes
-    for (name, node) in world.base_nodes.iter() {
-        eprintln!(
-            "Base node \"{}\": grpc port \"{}\", temp dir path \"{}\"",
-            name, node.grpc_port, node.temp_dir_path
-        );
-    }
-
-    // wallets
-    for (name, node) in world.wallets.iter() {
-        eprintln!(
-            "Wallet \"{}\": grpc port \"{}\", temp dir path \"{}\"",
-            name, node.grpc_port, node.temp_dir_path
-        );
-    }
-
-    eprintln!();
-    eprintln!("======================================");
-    eprintln!();
 }
 
 fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {

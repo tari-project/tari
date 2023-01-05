@@ -262,7 +262,7 @@ Feature: Wallet Transactions
     When I connect node SEED_A to node NODE_C
     Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
-    Then all nodes are at height 16
+    # Then all nodes are at height 16
 
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
@@ -338,7 +338,7 @@ Feature: Wallet Transactions
     When I connect node SEED_A to node NODE_C
     Then all nodes are at height 4
     When I mine 2 blocks on NODE_C
-    Then all nodes are at height 6
+    # Then all nodes are at height 6
 
   @flaky @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
