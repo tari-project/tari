@@ -56,7 +56,7 @@ pub use chain_balance::ChainBalanceValidator;
 
 mod header_iter;
 
-pub mod new;
+pub mod header_sync_validator;
 
 #[cfg(test)]
 mod test;

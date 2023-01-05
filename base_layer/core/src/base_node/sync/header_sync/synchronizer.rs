@@ -37,7 +37,7 @@ use tari_comms::{
 use tari_utilities::hex::Hex;
 use tracing;
 
-use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
+use super::BlockHeaderSyncError;
 use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer},
     blocks::{BlockHeader, ChainBlock, ChainHeader},
@@ -49,7 +49,7 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    validation::ValidationError,
+    validation::{header_sync_validator::BlockHeaderSyncValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";

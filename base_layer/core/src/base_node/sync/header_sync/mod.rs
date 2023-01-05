@@ -25,5 +25,3 @@ pub use error::BlockHeaderSyncError;
 
 mod synchronizer;
 pub use synchronizer::HeaderSynchronizer;
-
-mod validator;
