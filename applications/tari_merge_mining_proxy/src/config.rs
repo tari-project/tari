@@ -60,6 +60,10 @@ pub struct MergeMiningProxyConfig {
     pub check_tari_difficulty_before_submit: bool,
     /// The maximum amount of VMs that RandomX will be use
     pub max_randomx_vms: usize,
+    /// The extra data to store in the coinbase, usually some data about the mining pool.
+    /// Note that this data is publicly readable, but it is suggested you populate it so that
+    /// pool dominance can be seen before any one party has more than 51%.
+    pub coinbase_extra: String,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -78,6 +82,7 @@ impl Default for MergeMiningProxyConfig {
             wait_for_initial_sync_at_startup: true,
             check_tari_difficulty_before_submit: true,
             max_randomx_vms: 5,
+            coinbase_extra: "tari_merge_mining_proxy".to_string(),
         }
     }
 }

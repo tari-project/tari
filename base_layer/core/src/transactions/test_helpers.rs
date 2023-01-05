@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey},
@@ -47,6 +47,7 @@ use crate::{
             KernelFeatures,
             OutputFeatures,
             OutputType,
+            SpentOutput,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -179,9 +180,12 @@ impl TestParams {
         } else {
             EncryptedValue::default()
         };
-
+        let version = match params.output_version {
+            Some(v) => v,
+            None => TransactionOutputVersion::get_current_version(),
+        };
         let metadata_signature = TransactionOutput::create_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
+            version,
             params.value,
             &self.spend_key,
             &params.script,
@@ -194,9 +198,7 @@ impl TestParams {
         .unwrap();
 
         UnblindedOutput::new(
-            params
-                .output_version
-                .unwrap_or_else(TransactionOutputVersion::get_current_version),
+            version,
             params.value,
             self.spend_key.clone(),
             params.features,
@@ -230,12 +232,11 @@ impl TestParams {
         (input, unblinded)
     }
 
-    pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
+    pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> usize {
         let output_features = OutputFeatures { ..Default::default() };
-        self.fee()
-            .weighting()
-            .round_up_metadata_size(script![Nop].get_serialized_size() + output_features.get_serialized_size()) *
-            num_outputs
+        self.fee().weighting().round_up_features_and_scripts_size(
+            script![Nop].get_serialized_size() + output_features.get_serialized_size(),
+        ) * num_outputs
     }
 
     pub fn commit_value(&self, value: MicroTari) -> Commitment {
@@ -303,12 +304,12 @@ pub fn create_consensus_manager() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()
 }
 
-pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64) -> UnblindedOutput {
+pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64, extra: Option<Vec<u8>>) -> UnblindedOutput {
     let rules = create_consensus_manager();
     let constants = rules.consensus_constants(height);
     test_params.create_unblinded_output(UtxoTestParams {
         value: rules.get_block_reward_at(height),
-        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height()),
+        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), extra),
         ..Default::default()
     })
 }
@@ -515,12 +516,18 @@ pub fn create_unblinded_txos(
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
-    let output_metadata_size = weighting.round_up_metadata_size(
+    let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
         output_features.get_serialized_size() +
             output_script.get_serialized_size() +
             output_covenant.get_serialized_size(),
     ) * output_count;
-    let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
+    let estimated_fee = Fee::new(weighting).calculate(
+        fee_per_gram,
+        1,
+        input_count,
+        output_count,
+        output_features_and_scripts_size,
+    );
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
 
@@ -641,7 +648,9 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
 pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProtocol, Vec<UnblindedOutput>) {
     let factories = CryptoFactories::default();
     let test_params_change_and_txn = TestParams::new();
-    let output_version = TransactionOutputVersion::get_current_version();
+    let output_version = schema
+        .output_version
+        .unwrap_or_else(TransactionOutputVersion::get_current_version);
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .consensus_constants(0)
@@ -663,12 +672,54 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     for tx_input in &schema.from {
         let input = tx_input.clone();
-        let mut utxo = input
-            .as_transaction_input(&factories.commitment)
-            .expect("Should be able to make a transaction input");
-        utxo.version = schema
+        // We cant use as_transaction_input as we might want to change the version, so lets create a custom input here
+        let version = schema
             .input_version
             .unwrap_or_else(TransactionInputVersion::get_current_version);
+        let commitment = factories.commitment.commit(&input.spending_key, &input.value.into());
+        let r_a = PrivateKey::random(&mut OsRng);
+        let r_x = PrivateKey::random(&mut OsRng);
+        let r_y = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = factories.commitment.commit(&r_x, &r_a);
+        let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
+
+        let challenge = TransactionInput::build_script_challenge(
+            version,
+            &ephemeral_commitment,
+            &ephemeral_pubkey,
+            &input.script,
+            &input.input_data,
+            &PublicKey::from_secret_key(&input.script_private_key),
+            &commitment,
+        );
+        let script_signature = ComAndPubSignature::sign(
+            &input.value.into(),
+            &input.spending_key,
+            &input.script_private_key,
+            &r_a,
+            &r_x,
+            &r_y,
+            &challenge,
+            &*factories.commitment,
+        )
+        .unwrap();
+
+        let utxo = TransactionInput::new(
+            version,
+            SpentOutput::OutputData {
+                features: input.features.clone(),
+                commitment,
+                script: input.script.clone(),
+                sender_offset_public_key: input.sender_offset_public_key.clone(),
+                covenant: input.covenant.clone(),
+                version: input.version,
+                encrypted_value: input.encrypted_value.clone(),
+                minimum_value_promise: input.minimum_value_promise,
+            },
+            input.input_data.clone(),
+            script_signature,
+        );
+
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());

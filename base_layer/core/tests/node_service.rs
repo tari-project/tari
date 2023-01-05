@@ -551,6 +551,7 @@ async fn local_get_new_block_with_zero_conf() {
         &factories,
         coinbase_value,
         rules.consensus_constants(1).coinbase_lock_height() + 1,
+        None,
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
@@ -623,6 +624,7 @@ async fn local_get_new_block_with_combined_transaction() {
         &factories,
         coinbase_value,
         rules.consensus_constants(1).coinbase_lock_height() + 1,
+        None,
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);

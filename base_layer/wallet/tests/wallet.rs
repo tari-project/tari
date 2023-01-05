@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{panic, path::Path, sync::Arc, time::Duration};
+use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use rand::{rngs::OsRng, RngCore};
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common::configuration::StringList;
 use tari_common_types::{
@@ -75,11 +76,7 @@ use tari_wallet::{
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{
-            initialize_sqlite_database_backends,
-            partial_wallet_backup,
-            run_migration_and_create_sqlite_connection,
-        },
+        sqlite_utilities::{initialize_sqlite_database_backends, run_migration_and_create_sqlite_connection},
     },
     test_utils::make_wallet_database_connection,
     transaction_service::{
@@ -115,7 +112,7 @@ async fn create_wallet(
     database_name: &str,
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
-    passphrase: Option<SafePassword>,
+    passphrase: SafePassword,
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::LocalNet;
@@ -213,24 +210,26 @@ async fn test_wallet() {
 
     // create wallet creates a local wallet
     let network = Network::LocalNet;
+    let alice_passphrase = SafePassword::from("My lovely secret passphrase");
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        None,
+        alice_passphrase.clone(),
         None,
     )
     .await
     .unwrap();
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
+    let bob_passphrase = SafePassword::from("My second lovely secret passphrase");
     let bob_wallet = create_wallet(
         bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
-        None,
+        bob_passphrase,
         None,
     )
     .await
@@ -322,22 +321,6 @@ async fn test_wallet() {
     // Test applying and removing encryption
     let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
-    alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string().into())
-        .await
-        .unwrap();
-
-    // Second encryption should fail
-    #[allow(clippy::match_wild_err_arm)]
-    match alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string().into())
-        .await
-    {
-        Ok(_) => panic!("Should not be able to encrypt twice"),
-        Err(WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted)) => {},
-        Err(_) => panic!("Should be the Already Encrypted error"),
-    }
-
     drop(alice_event_stream);
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
@@ -345,45 +328,41 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
 
-    if WalletSqliteDatabase::new(connection.clone(), None).is_ok() {
-        panic!("Should not be able to instantiate encrypted wallet without cipher");
+    if WalletSqliteDatabase::new(connection.clone(), "supernova passphrase".to_string().into()).is_ok() {
+        panic!("Should not be able to instantiate encrypted wallet with incorrect cipher");
     }
 
-    let result = WalletSqliteDatabase::new(connection.clone(), Some("wrong passphrase".to_string().into()));
+    let result = WalletSqliteDatabase::new(connection.clone(), "avalanche in andorra".to_string().into());
 
     if let Err(err) = result {
         assert!(matches!(err, WalletStorageError::InvalidPassphrase));
     } else {
-        panic!("Should not be able to instantiate encrypted wallet without cipher");
+        panic!("Should not be able to instantiate encrypted wallet with incorrect cipher");
     }
 
-    let db = WalletSqliteDatabase::new(connection, Some("It's turtles all the way down".to_string().into()))
+    let db = WalletSqliteDatabase::new(connection, alice_passphrase.clone())
         .expect("Should be able to instantiate db with cipher");
     drop(db);
 
     let mut shutdown_a = Shutdown::new();
-    let mut alice_wallet = create_wallet(
+    let alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        Some("It's turtles all the way down".to_string().into()),
+        alice_passphrase.clone(),
         None,
     )
     .await
     .unwrap();
-
-    alice_wallet.remove_encryption().await.unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
-    let db = WalletSqliteDatabase::new(connection, None).expect(
-        "Should be able to instantiate db with
-    cipher",
-    );
+    let db = WalletSqliteDatabase::new(connection, alice_passphrase.clone())
+        .expect("Should be able to instantiate db with cipher");
     drop(db);
 
     // Test the partial db backup in this test so that we can work with the data generated during the test
@@ -393,7 +372,7 @@ async fn test_wallet() {
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        None,
+        alice_passphrase.clone(),
         None,
     )
     .await
@@ -412,11 +391,10 @@ async fn test_wallet() {
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
-    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone()).unwrap();
-
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
-    let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
+    let wallet_db =
+        WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), alice_passphrase.clone()).unwrap());
     let master_seed = wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
@@ -424,7 +402,9 @@ async fn test_wallet() {
         "Could not open Sqlite
     db",
     );
-    let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
+    let backup_wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), "sunrise in summer".to_string().into()).unwrap(),
+    );
     let master_seed = backup_wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_none());
 
@@ -446,7 +426,7 @@ async fn test_do_not_overwrite_master_key() {
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
-        None,
+        "beautiful moon outside".to_string().into(),
         Some(recovery_seed),
     )
     .await
@@ -462,7 +442,7 @@ async fn test_do_not_overwrite_master_key() {
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
-        None,
+        "beautiful moon outside".to_string().into(),
         Some(recovery_seed.clone()),
     )
     .await
@@ -478,7 +458,7 @@ async fn test_do_not_overwrite_master_key() {
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
-        None,
+        "very safe".to_string().into(),
         Some(recovery_seed),
     )
     .await
@@ -496,7 +476,7 @@ async fn test_sign_message() {
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
-        None,
+        "sha256(my_password)".to_string().into(),
         None,
     )
     .await
@@ -533,7 +513,7 @@ async fn test_store_and_forward_send_tx() {
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        None,
+        "satoshi is alice".to_string().into(),
         None,
     )
     .await
@@ -561,7 +541,7 @@ async fn test_store_and_forward_send_tx() {
         "carol_db",
         factories.clone(),
         shutdown_c.to_signal(),
-        None,
+        "carol wallet".to_string().into(),
         None,
     )
     .await
@@ -695,7 +675,12 @@ async fn test_import_utxo() {
         ..Default::default()
     };
 
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
 
     let mut alice_wallet = Wallet::start(
         config,
@@ -703,12 +688,14 @@ async fn test_import_utxo() {
         AutoUpdateConfig::default(),
         alice_identity.clone(),
         factories.clone(),
-        WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
+        WalletDatabase::new(
+            WalletSqliteDatabase::new(connection.clone(), "a new passphrase".to_string().into()).unwrap(),
+        ),
         OutputManagerDatabase::new(output_manager_backend.clone()),
-        TransactionServiceSqliteDatabase::new(connection.clone(), None),
+        TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
         ContactsServiceSqliteDatabase::new(connection.clone()),
-        KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
+        KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
     )
@@ -718,7 +705,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let temp_features = OutputFeatures::create_coinbase(50);
+    let temp_features = OutputFeatures::create_coinbase(50, None);
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);
@@ -763,7 +750,7 @@ async fn test_import_utxo() {
 
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
-    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, cipher));
     let outputs = db.fetch_outputs_by_tx_id(tx_id).unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
@@ -817,7 +804,7 @@ async fn test_recovery_birthday() {
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
-        None,
+        "my wallet passphrase".to_string().into(),
         Some(recovery_seed),
     )
     .await
@@ -842,7 +829,7 @@ async fn test_contacts_service_liveness() {
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        None,
+        "alice and bob safe passphrase".to_string().into(),
         None,
     )
     .await
@@ -855,7 +842,7 @@ async fn test_contacts_service_liveness() {
         "bob_db",
         factories,
         shutdown_b.to_signal(),
-        None,
+        "bob unique safe passphrase".to_string().into(),
         None,
     )
     .await

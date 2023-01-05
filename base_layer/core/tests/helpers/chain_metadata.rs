@@ -20,14 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
-use blake2::Digest;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_core::base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata};
-use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
 /// Create a mock Chain Metadata stream.
@@ -64,15 +61,6 @@ impl MockChainMetadata {
         metadata: &ChainMetadata,
     ) -> Result<usize, Arc<ChainMetadataEvent>> {
         let data = PeerChainMetadata::new(id.clone(), metadata.clone(), None);
-        self.publish_event(ChainMetadataEvent::PeerChainMetadataReceived(vec![data]))
+        self.publish_event(ChainMetadataEvent::PeerChainMetadataReceived(data))
     }
-}
-
-#[allow(dead_code)]
-pub fn random_peer_metadata(height: u64, difficulty: u128) -> PeerChainMetadata {
-    let key: Vec<u8> = (0..13).map(|_| rand::random::<u8>()).collect();
-    let id = NodeId::from_key(&key);
-    let block_hash = Blake256::digest(id.as_bytes()).to_vec().try_into().unwrap();
-    let metadata = ChainMetadata::new(height, block_hash, 2800, 0, difficulty, 0);
-    PeerChainMetadata::new(id, metadata, None)
 }

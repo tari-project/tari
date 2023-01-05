@@ -1,7 +1,6 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash},
@@ -31,6 +30,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Retrieve outputs that are invalid
+    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have not been found or confirmed in the block chain yet
     fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -48,6 +49,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
 
     fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
+    fn update_last_validation_timestamp(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
 
     fn mark_output_as_spent(
@@ -82,10 +84,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
-    /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError>;
-    /// Remove encryption from the backend.
-    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
     fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;

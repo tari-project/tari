@@ -120,7 +120,7 @@ diesel::table! {
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
-        metadata -> Nullable<Binary>,
+        coinbase_extra -> Nullable<Binary>,
         features_json -> Text,
         spending_priority -> Integer,
         covenant -> Binary,
@@ -128,6 +128,7 @@ diesel::table! {
         encrypted_value -> Binary,
         minimum_value_promise -> BigInt,
         source -> Integer,
+        last_validation_timestamp -> Nullable<Timestamp>,
     }
 }
 

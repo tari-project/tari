@@ -54,7 +54,7 @@ pub struct NewOutputSql {
     pub input_data: Vec<u8>,
     #[derivative(Debug = "ignore")]
     pub script_private_key: Vec<u8>,
-    pub metadata: Option<Vec<u8>>,
+    pub coinbase_extra: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_ephemeral_commitment: Vec<u8>,
     pub metadata_signature_ephemeral_pubkey: Vec<u8>,
@@ -77,10 +77,10 @@ impl NewOutputSql {
         status: OutputStatus,
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
-        cipher: Option<&XChaCha20Poly1305>,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant).unwrap();
+        BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant)?;
 
         let mut output = Self {
             commitment: Some(output.commitment.to_vec()),
@@ -94,7 +94,7 @@ impl NewOutputSql {
             script: output.unblinded_output.script.to_bytes(),
             input_data: output.unblinded_output.input_data.to_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
-            metadata: Some(output.unblinded_output.features.metadata.clone()),
+            coinbase_extra: Some(output.unblinded_output.features.coinbase_extra.clone()),
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
             metadata_signature_ephemeral_commitment: output
                 .unblinded_output
@@ -117,11 +117,10 @@ impl NewOutputSql {
             source: output.source as i32,
         };
 
-        if let Some(cipher) = cipher {
-            output
-                .encrypt(cipher)
-                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        }
+        output
+            .encrypt(cipher)
+            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+
         Ok(output)
     }
 
@@ -177,7 +176,7 @@ impl From<OutputSql> for NewOutputSql {
             script: o.script,
             input_data: o.input_data,
             script_private_key: o.script_private_key,
-            metadata: o.metadata,
+            coinbase_extra: o.coinbase_extra,
             sender_offset_public_key: o.sender_offset_public_key,
             metadata_signature_ephemeral_commitment: o.metadata_signature_ephemeral_commitment,
             metadata_signature_ephemeral_pubkey: o.metadata_signature_ephemeral_pubkey,

@@ -97,7 +97,7 @@ pub struct ConsensusConstants {
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
-    coinbase_output_features_metadata_max_length: usize,
+    coinbase_output_features_extra_max_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
@@ -211,14 +211,14 @@ impl ConsensusConstants {
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
         let output_features = OutputFeatures { ..Default::default() };
-        let metadata_size = self
-            .transaction_weight
-            .round_up_metadata_size(output_features.get_serialized_size() + script![Nop].get_serialized_size());
-        self.transaction_weight.calculate(1, 0, 1, metadata_size)
+        let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
+            output_features.get_serialized_size() + script![Nop].get_serialized_size(),
+        );
+        self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
     }
 
-    pub fn coinbase_output_features_metadata_max_length(&self) -> usize {
-        self.coinbase_output_features_metadata_max_length
+    pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
+        self.coinbase_output_features_extra_max_length
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -320,18 +320,17 @@ impl ConsensusConstants {
     }
 
     /// Returns the current epoch from the given height
-    pub fn block_height_to_current_epoch(&self, height: u64) -> VnEpoch {
+    pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
         VnEpoch(height / self.vn_epoch_length)
+    }
+
+    /// Returns the block height of the start of the given epoch
+    pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
+        epoch.as_u64() * self.vn_epoch_length
     }
 
     pub fn epoch_length(&self) -> u64 {
         self.vn_epoch_length
-    }
-
-    /// Returns the next epoch up from the given height
-    pub fn block_height_to_next_epoch(&self, height: u64) -> VnEpoch {
-        let rem = height % self.vn_epoch_length;
-        VnEpoch((height + rem) / self.vn_epoch_length)
     }
 
     pub fn localnet() -> Vec<Self> {
@@ -376,7 +375,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_metadata_max_length: 64,
+            coinbase_output_features_extra_max_length: 64,
         }]
     }
 
@@ -422,7 +421,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_metadata_max_length: 64,
+            coinbase_output_features_extra_max_length: 64,
         }]
     }
 
@@ -472,7 +471,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_metadata_max_length: 64,
+            coinbase_output_features_extra_max_length: 64,
         }]
     }
 
@@ -528,7 +527,7 @@ impl ConsensusConstants {
                 vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
-                coinbase_output_features_metadata_max_length: 64,
+                coinbase_output_features_extra_max_length: 64,
             },
             ConsensusConstants {
                 effective_from_height: 23000,
@@ -557,7 +556,7 @@ impl ConsensusConstants {
                 vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
-                coinbase_output_features_metadata_max_length: 64,
+                coinbase_output_features_extra_max_length: 64,
             },
         ]
     }
@@ -610,7 +609,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_metadata_max_length: 64,
+            coinbase_output_features_extra_max_length: 64,
         };
 
         vec![consensus_constants_1]
@@ -659,7 +658,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_metadata_max_length: 64,
+            coinbase_output_features_extra_max_length: 64,
         }]
     }
 

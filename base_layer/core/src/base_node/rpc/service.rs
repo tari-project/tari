@@ -347,7 +347,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }
 
         Ok(Response::new(FetchUtxosResponse {
-            outputs: res.into_iter().map(Into::into).collect(),
+            outputs: res
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|err| RpcStatus::bad_request(&err))?,
             is_synced,
         }))
     }
@@ -402,18 +406,26 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             responses: mined_info_resp
                 .into_iter()
                 .flatten()
-                .map(|utxo| UtxoQueryResponse {
-                    mmr_position: utxo.mmr_position.into(),
-                    mined_height: utxo.mined_height,
-                    mined_in_block: utxo.header_hash.to_vec(),
-                    output_hash: utxo.output.hash().to_vec(),
-                    output: match utxo.output {
-                        PrunedOutput::Pruned { .. } => None,
-                        PrunedOutput::NotPruned { output } => Some(output.into()),
-                    },
-                    mined_timestamp: utxo.mined_timestamp,
+                .map(|utxo| {
+                    Ok(UtxoQueryResponse {
+                        mmr_position: utxo.mmr_position.into(),
+                        mined_height: utxo.mined_height,
+                        mined_in_block: utxo.header_hash.to_vec(),
+                        output_hash: utxo.output.hash().to_vec(),
+                        output: match utxo.output {
+                            PrunedOutput::Pruned { .. } => None,
+                            PrunedOutput::NotPruned { output } => Some(match output.try_into() {
+                                Ok(output) => output,
+                                Err(err) => {
+                                    return Err(err);
+                                },
+                            }),
+                        },
+                        mined_timestamp: utxo.mined_timestamp,
+                    })
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|err| RpcStatus::bad_request(&err))?,
         }))
     }
 

@@ -145,6 +145,7 @@ fn async_add_new_block() {
         txns,
         &consensus_manager,
         &CryptoFactories::default(),
+        None,
     )
     .0;
 

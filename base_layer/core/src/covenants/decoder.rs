@@ -169,7 +169,7 @@ mod test {
         let hash = FixedHash::from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut bytes = Vec::new();
         covenant!(fields_hashed_eq(
-            @fields(@field::commitment, @field::features_metadata),
+            @fields(@field::commitment),
             @hash(hash),
         ))
         .write_to(&mut bytes)
@@ -183,10 +183,7 @@ mod test {
         ));
         let token = decoder.next().unwrap().unwrap();
         unpack_enum!(CovenantArg::OutputFields(fields) = token.as_arg().unwrap());
-        assert_eq!(fields.fields(), &[
-            OutputField::Commitment,
-            OutputField::FeaturesMetadata
-        ]);
+        assert_eq!(fields.fields(), &[OutputField::Commitment]);
 
         let token = decoder.next().unwrap().unwrap();
         unpack_enum!(CovenantArg::Hash(hash) = token.as_arg().unwrap());

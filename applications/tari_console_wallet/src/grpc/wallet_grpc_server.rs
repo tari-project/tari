@@ -305,7 +305,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut tx_service = self.get_transaction_service();
 
         let coinbase = tx_service
-            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height)
+            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height, request.extra)
             .await
             .map_err(|err| Status::unknown(err.to_string()))?;
 
@@ -956,7 +956,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .outputs()
             .iter()
             .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .unwrap();
+            .ok_or_else(|| Status::internal("No code template registration output!"))?;
         let template_address = reg_output.hash();
 
         transaction_service

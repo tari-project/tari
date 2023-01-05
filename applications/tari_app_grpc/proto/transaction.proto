@@ -122,7 +122,7 @@ message OutputFeatures {
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 3;
-    bytes metadata = 4;
+    bytes coinbase_extra = 4;
     SideChainFeature sidechain_feature = 5;
 }
 

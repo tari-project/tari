@@ -29,6 +29,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
@@ -1409,10 +1410,13 @@ impl LMDBDatabase {
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
         let constants = self.get_consensus_constants(header.height);
-        let current_epoch = constants.block_height_to_current_epoch(header.height);
+        let current_epoch = constants.block_height_to_epoch(header.height);
 
         let prev_shard_key = store.get_shard_key(
-            (current_epoch.as_u64() - constants.validator_node_validity_period().as_u64()) * constants.epoch_length(),
+            current_epoch
+                .as_u64()
+                .saturating_sub(constants.validator_node_validity_period().as_u64()) *
+                constants.epoch_length(),
             current_epoch.as_u64() * constants.epoch_length(),
             vn_reg.public_key(),
         )?;
@@ -1423,7 +1427,7 @@ impl LMDBDatabase {
             &header.prev_hash,
         );
 
-        let next_epoch = constants.block_height_to_next_epoch(header.height);
+        let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
         let validator_node = ValidatorNodeEntry {
             shard_key,
             start_epoch: next_epoch,
@@ -2492,7 +2496,7 @@ impl BlockchainBackend for LMDBDatabase {
         let constants = self.consensus_manager.consensus_constants(height);
 
         // Get the current epoch for the height
-        let end_epoch = constants.block_height_to_current_epoch(height);
+        let end_epoch = constants.block_height_to_epoch(height);
         // Subtract the registration validaty period to get the start epoch
         let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period());
         // Convert these back to height as validators regs are indexed by height
@@ -2500,34 +2504,6 @@ impl BlockchainBackend for LMDBDatabase {
         let end_height = end_epoch.as_u64() * constants.epoch_length();
         let nodes = vn_store.get_vn_set(start_height, end_height)?;
         Ok(nodes)
-
-        // let validator_node_validaty_period = constants.validator_node_validity_period();
-        // let mut pub_keys = HashMap::new();
-        //
-        // let end = height + validator_node_validaty_period;
-        // for h in height..end {
-        //     lmdb_get_multiple(&txn, &self.validator_nodes_ending, &h.to_le_bytes())?
-        //         .into_iter()
-        //         .for_each(|v: ValidatorNodeEntry| {
-        //             if v.from_height <= height {
-        //                 if let Some((shard_key, start)) =
-        //                     pub_keys.insert(v.public_key.clone(), (v.shard_key, v.from_height))
-        //                 {
-        //                     // If the node is already in the map, check if the start height is higher. If it is,
-        // replace                     // the old value with the new one.
-        //                     if start > v.from_height {
-        //                         pub_keys.insert(v.public_key, (shard_key, start));
-        //                     }
-        //                 }
-        //             }
-        //         });
-        // }
-        //
-        // // now remove the heights
-        // Ok(pub_keys
-        //     .into_iter()
-        //     .map(|(pk, (shard_key, _))| (pk, shard_key))
-        //     .collect())
     }
 
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
@@ -2536,24 +2512,12 @@ impl BlockchainBackend for LMDBDatabase {
         let constants = self.get_consensus_constants(height);
 
         // Get the epoch height boundaries for our query
-        let current_epoch = constants.block_height_to_current_epoch(height);
+        let current_epoch = constants.block_height_to_epoch(height);
         let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period());
         let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = current_epoch.as_u64() * constants.epoch_length();
         let maybe_shard_id = store.get_shard_key(start_height, end_height, &public_key)?;
         Ok(maybe_shard_id)
-
-        // let txn = self.read_transaction()?;
-        // let mut validator_nodes: Vec<ValidatorNodeEntry> =
-        //     lmdb_fetch_matching_after(&txn, &self.validator_nodes, public_key.as_bytes())?;
-        // validator_nodes = validator_nodes
-        //     .into_iter()
-        //     .filter(|a| a.from_height <= height && height <= a.to_height)
-        //     .collect();
-        // // get the last one
-        // validator_nodes.sort_by(|a, b| a.from_height.cmp(&b.from_height));
-        //
-        // Ok(validator_nodes.into_iter().map(|a| a.shard_key).last())
     }
 
     fn fetch_template_registrations(

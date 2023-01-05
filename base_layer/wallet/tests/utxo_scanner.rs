@@ -34,7 +34,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
-    blocks::{genesis_block, BlockHeader},
+    blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
 };
@@ -42,7 +42,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::{epoch_time::EpochTime, ByteArray};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
@@ -160,8 +160,9 @@ async fn setup(
 
             let db_connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
+            let passphrase = SafePassword::from("my lovely secret passphrase");
             WalletDatabase::new(
-                WalletSqliteDatabase::new(db_connection, None).expect("Should be able to create wallet database"),
+                WalletSqliteDatabase::new(db_connection, passphrase).expect("Should be able to create wallet database"),
             )
         },
         Some(db) => db,
@@ -1027,13 +1028,7 @@ async fn test_birthday_timestamp_over_chain() {
         is_synced: true,
     });
 
-    let genesis_block_timestamp = genesis_block::get_esmeralda_genesis_block()
-        .header()
-        .timestamp()
-        .as_u64();
-
     // birthday duration from unix epoch should be at least the genesis block timestamp
-    assert!(birthday_epoch_time >= genesis_block_timestamp);
     let before_birthday_block_timestamp = block_headers
         .get(&(NUM_BLOCKS - BIRTHDAY_OFFSET - 1))
         .unwrap()

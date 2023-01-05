@@ -19,8 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use std::{collections::HashMap, convert::TryInto, mem::size_of, sync::Arc, time::Duration};
+
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
@@ -102,9 +104,10 @@ use crate::support::{
     utils::{make_input, make_input_with_features, TestParams},
 };
 
-fn default_metadata_byte_size() -> usize {
-    TransactionWeight::latest()
-        .round_up_metadata_size(OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size())
+fn default_features_and_scripts_size_byte_size() -> usize {
+    TransactionWeight::latest().round_up_features_and_scripts_size(
+        OutputFeatures::default().get_serialized_size() + script![Nop].get_serialized_size(),
+    )
 }
 
 struct TestOmsService<U> {
@@ -339,8 +342,14 @@ async fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, Transa
 #[tokio::test]
 async fn fee_estimate() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher.clone()).unwrap();
 
     let factories = CryptoFactories::default();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
@@ -363,7 +372,7 @@ async fn fee_estimate() {
         .unwrap();
     assert_eq!(
         fee,
-        fee_calc.calculate(fee_per_gram, 1, 1, 2, 2 * default_metadata_byte_size())
+        fee_calc.calculate(fee_per_gram, 1, 1, 2, 2 * default_features_and_scripts_size_byte_size())
     );
 
     let fee_per_gram = MicroTari::from(5);
@@ -387,7 +396,7 @@ async fn fee_estimate() {
                 1,
                 1,
                 outputs + 1,
-                default_metadata_byte_size() * (outputs + 1)
+                default_features_and_scripts_size_byte_size() * (outputs + 1)
             )
         );
     }
@@ -413,9 +422,15 @@ async fn test_utxo_selection_no_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
     // no chain metadata
     let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection, None),
+        OutputManagerSqliteDatabase::new(connection, cipher),
         None,
         server_node_identity,
     )
@@ -489,7 +504,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_metadata_byte_size() * 3);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_features_and_scripts_size_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
     let spendable_amount = (3..=10).sum::<u64>() * amount;
@@ -508,7 +523,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_features_and_scripts_size_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
     assert_eq!(utxos_total_value, MicroTari::from(5_000));
 
@@ -529,10 +544,15 @@ async fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
     let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection, None),
+        OutputManagerSqliteDatabase::new(connection, cipher),
         Some(6),
         server_node_identity,
     )
@@ -582,7 +602,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_metadata_byte_size() * 3);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_features_and_scripts_size_byte_size() * 3);
     assert_eq!(fee, expected_fee);
 
     let spendable_amount = (1..=6).sum::<u64>() * amount;
@@ -595,7 +615,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
     assert_eq!(utxos_total_value, MicroTari::from(5_000));
-    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_features_and_scripts_size_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
 
     // test that largest spendable utxo was encumbered
@@ -667,9 +687,15 @@ async fn test_utxo_selection_with_tx_priority() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
     // setup with chain metadata at a height of 6
     let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection, None),
+        OutputManagerSqliteDatabase::new(connection, cipher),
         Some(6),
         server_node_identity,
     )
@@ -683,7 +709,7 @@ async fn test_utxo_selection_with_tx_priority() {
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::create_coinbase(1)),
+        Some(OutputFeatures::create_coinbase(1, None)),
     )
     .await;
     oms.add_rewindable_output(uo, Some(SpendingPriority::HtlcSpendAsap), None)
@@ -733,9 +759,14 @@ async fn test_utxo_selection_with_tx_priority() {
 async fn send_not_enough_funds() {
     let factories = CryptoFactories::default();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
     let num_outputs = 20;
@@ -773,15 +804,26 @@ async fn send_not_enough_funds() {
 #[tokio::test]
 async fn send_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change =
-        Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, default_metadata_byte_size());
+    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(
+        fee_per_gram,
+        1,
+        2,
+        1,
+        default_features_and_scripts_size_byte_size(),
+    );
     let value1 = 5000;
     oms.output_manager_handle
         .add_output(
@@ -840,8 +882,14 @@ async fn send_no_change() {
 #[tokio::test]
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -901,8 +949,14 @@ async fn cancel_transaction() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -952,8 +1006,14 @@ async fn cancel_transaction() {
 #[tokio::test]
 async fn cancel_transaction_and_reinstate_inbound_tx() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -989,8 +1049,14 @@ async fn test_get_balance() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -1049,8 +1115,14 @@ async fn sending_transaction_persisted_while_offline() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
@@ -1134,8 +1206,14 @@ async fn sending_transaction_persisted_while_offline() {
 async fn coin_split_with_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let val1 = 6_000 * uT;
@@ -1163,7 +1241,7 @@ async fn coin_split_with_change() {
         1,
         2,
         split_count + 1,
-        (split_count + 1) * default_metadata_byte_size(),
+        (split_count + 1) * default_features_and_scripts_size_byte_size(),
     );
     assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
     // NOTE: assuming the LargestFirst strategy is used
@@ -1174,8 +1252,14 @@ async fn coin_split_with_change() {
 async fn coin_split_no_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
@@ -1187,7 +1271,7 @@ async fn coin_split_no_change() {
         1,
         3,
         split_count,
-        split_count * default_metadata_byte_size(),
+        split_count * default_features_and_scripts_size_byte_size(),
     );
 
     let val1 = 4_000 * uT;
@@ -1214,8 +1298,14 @@ async fn coin_split_no_change() {
 #[tokio::test]
 async fn handle_coinbase_with_bulletproofs_rewinding() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let reward1 = MicroTari::from(1000);
@@ -1228,7 +1318,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let _transaction = oms
         .output_manager_handle
-        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1244,7 +1334,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let _tx2 = oms
         .output_manager_handle
-        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
+        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1258,7 +1348,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
     );
     let tx3 = oms
         .output_manager_handle
-        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2)
+        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2, b"test".to_vec())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1288,8 +1378,14 @@ async fn test_txo_validation() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let oms_db = backend.clone();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
@@ -1349,7 +1445,7 @@ async fn test_txo_validation() {
     // These responses will mark outputs 1 and 2 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1357,7 +1453,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1425,7 +1521,13 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms.output_manager_handle
-        .get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+        .get_coinbase_transaction(
+            6u64.into(),
+            MicroTari::from(15_000_000),
+            MicroTari::from(1_000_000),
+            2,
+            b"test".to_vec(),
+        )
         .await
         .unwrap();
 
@@ -1490,7 +1592,7 @@ async fn test_txo_validation() {
 
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1498,7 +1600,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1506,7 +1608,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output4_tx_output.clone().into()),
+            output: Some(output4_tx_output.clone().try_into().unwrap()),
             mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1514,7 +1616,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output5_tx_output.clone().into()),
+            output: Some(output5_tx_output.clone().try_into().unwrap()),
             mmr_position: 5,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1522,7 +1624,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output6_tx_output.clone().into()),
+            output: Some(output6_tx_output.clone().try_into().unwrap()),
             mmr_position: 6,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
@@ -1577,7 +1679,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
-    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 2);
+    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 5);
 
     assert!(oms.output_manager_handle.get_spent_outputs().await.unwrap().is_empty());
 
@@ -1668,7 +1770,7 @@ async fn test_txo_validation() {
     // Update UtxoResponses to not have the received output5 and coinbase output6
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1676,7 +1778,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1684,7 +1786,7 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output4_tx_output.clone().into()),
+            output: Some(output4_tx_output.clone().try_into().unwrap()),
             mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
@@ -1838,9 +1940,14 @@ async fn test_txo_validation() {
 async fn test_txo_revalidation() {
     let factories = CryptoFactories::default();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -1892,7 +1999,7 @@ async fn test_txo_revalidation() {
     // These responses will mark outputs 1 and 2 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
-            output: Some(output1_tx_output.clone().into()),
+            output: Some(output1_tx_output.clone().try_into().unwrap()),
             mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -1900,7 +2007,7 @@ async fn test_txo_revalidation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
-            output: Some(output2_tx_output.clone().into()),
+            output: Some(output2_tx_output.clone().try_into().unwrap()),
             mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
@@ -2005,8 +2112,14 @@ async fn test_get_status_by_tx_id() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -2040,8 +2153,14 @@ async fn test_get_status_by_tx_id() {
 async fn scan_for_recovery_test() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
 
     const NUM_REWINDABLE: usize = 5;
@@ -2159,8 +2278,14 @@ async fn scan_for_recovery_test() {
 async fn recovered_output_key_not_in_keychain() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
 
     let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000u64), &factories.commitment).await;

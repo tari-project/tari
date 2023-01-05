@@ -32,15 +32,7 @@ mod utils;
 mod wallet_modes;
 
 pub use cli::Cli;
-use init::{
-    boot,
-    change_password,
-    get_base_node_peer_config,
-    init_wallet,
-    start_wallet,
-    tari_splash_screen,
-    WalletBoot,
-};
+use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
@@ -57,7 +49,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::wallet_mode;
+use crate::init::{boot_with_password, confirm_seed_words, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -110,7 +102,7 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&cli, &config.wallet)?;
+    let (mut boot_mode, password) = boot_with_password(&cli, &config.wallet)?;
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
@@ -143,6 +135,9 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         );
     }
 
+    let on_init = matches!(boot_mode, WalletBoot::New);
+    let not_recovery = recovery_seed.is_none();
+
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
         config,
@@ -152,6 +147,18 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
         shutdown_signal,
         cli.non_interactive_mode,
     ))?;
+
+    // if wallet is being set for the first time, wallet seed words are prompted on the screen
+    if !cli.non_interactive_mode && not_recovery && on_init {
+        match confirm_seed_words(&mut wallet) {
+            Ok(()) => {
+                print!("\x1Bc"); // Clear the screen
+            },
+            Err(error) => {
+                return Err(error);
+            },
+        };
+    }
 
     // Check if there is an in progress recovery in the wallet's database
     if wallet.is_recovery_in_progress()? {

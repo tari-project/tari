@@ -276,8 +276,14 @@ where
                 .get_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
-            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height)) => self
-                .get_coinbase_transaction(tx_id, reward, fees, block_height)
+            OutputManagerRequest::GetCoinbaseTransaction {
+                tx_id,
+                reward,
+                fees,
+                block_height,
+                extra,
+            } => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction {
@@ -313,7 +319,6 @@ where
                 output_features,
                 fee_per_gram,
                 lock_height,
-                message,
             } => self
                 .create_pay_to_self_transaction(
                     tx_id,
@@ -322,7 +327,6 @@ where
                     *output_features,
                     fee_per_gram,
                     lock_height,
-                    message,
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -410,18 +414,6 @@ where
                 .create_coin_join(commitments, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::Transaction),
-            OutputManagerRequest::ApplyEncryption(cipher) => self
-                .resources
-                .db
-                .apply_encryption(*cipher)
-                .map(|_| OutputManagerResponse::EncryptionApplied)
-                .map_err(OutputManagerError::OutputManagerStorageError),
-            OutputManagerRequest::RemoveEncryption => self
-                .resources
-                .db
-                .remove_encryption()
-                .map(|_| OutputManagerResponse::EncryptionRemoved)
-                .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
@@ -891,11 +883,11 @@ where
         );
         // TODO: Include asset metadata here if required
         // We assume that default OutputFeatures and Nop TariScript is used
-        let metadata_byte_size = self
+        let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
-            .round_up_metadata_size(
+            .round_up_features_and_scripts_size(
                 OutputFeatures::default().get_serialized_size() +
                     script![Nop].get_serialized_size() +
                     Covenant::new().get_serialized_size(),
@@ -907,7 +899,7 @@ where
                 selection_criteria,
                 fee_per_gram,
                 num_outputs,
-                metadata_byte_size * num_outputs,
+                features_and_scripts_byte_size * num_outputs,
             )
             .await
         {
@@ -920,12 +912,12 @@ where
                 let fee_calc = self.get_fee_calc();
                 let output_features_estimate = OutputFeatures::default();
 
-                let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
+                let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
                     output_features_estimate.get_serialized_size() +
                         script![Nop].get_serialized_size() +
                         Covenant::new().get_serialized_size(),
                 );
-                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_metadata_size);
+                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
                 return Ok(Fee::normalize(fee));
             },
             Err(e) => Err(e),
@@ -962,18 +954,24 @@ where
             selection_criteria,
             fee_per_gram,
         );
-        let metadata_byte_size = self
+        let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
-            .round_up_metadata_size(
+            .round_up_features_and_scripts_size(
                 recipient_output_features.get_serialized_size() +
                     recipient_script.get_serialized_size() +
                     recipient_covenant.get_serialized_size(),
             );
 
         let input_selection = self
-            .select_utxos(amount, selection_criteria, fee_per_gram, 1, metadata_byte_size)
+            .select_utxos(
+                amount,
+                selection_criteria,
+                fee_per_gram,
+                1,
+                features_and_scripts_byte_size,
+            )
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1072,6 +1070,7 @@ where
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1101,6 +1100,7 @@ where
             .with_script(script!(Nop))
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
+            .with_extra(extra)
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -1137,9 +1137,9 @@ where
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
         let weighting = self.resources.consensus_constants.transaction_weight();
-        let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
+        let features_and_scripts_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
-                weighting.round_up_metadata_size({
+                weighting.round_up_features_and_scripts_size({
                     output.features().get_serialized_size() +
                         output.covenant().get_serialized_size() +
                         output.script().unwrap_or(&nop_script).get_serialized_size()
@@ -1152,7 +1152,7 @@ where
                 selection_criteria,
                 fee_per_gram,
                 outputs.len(),
-                metadata_byte_size,
+                features_and_scripts_byte_size,
             )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
@@ -1239,21 +1239,26 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-        message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
 
-        let metadata_byte_size = self
+        let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
-            .round_up_metadata_size(
+            .round_up_features_and_scripts_size(
                 output_features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size(),
             );
 
         let input_selection = self
-            .select_utxos(amount, selection_criteria, fee_per_gram, 1, metadata_byte_size)
+            .select_utxos(
+                amount,
+                selection_criteria,
+                fee_per_gram,
+                1,
+                features_and_scripts_byte_size,
+            )
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1267,7 +1272,6 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_message(message)
             .with_rewindable_outputs(self.resources.rewind_data.clone())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())
@@ -1416,16 +1420,16 @@ where
         mut selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         num_outputs: usize,
-        total_output_metadata_byte_size: usize,
+        total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
+            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_features_and_scripts_byte_size: {}, \
              selection_criteria: {:?}",
             amount,
             fee_per_gram,
             num_outputs,
-            total_output_metadata_byte_size,
+            total_output_features_and_scripts_byte_size,
             selection_criteria
         );
         let mut utxos = Vec::new();
@@ -1459,7 +1463,7 @@ where
 
         // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
-        let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
+        let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate.get_serialized_size() +
                 Covenant::new().get_serialized_size() +
                 script![Nop].get_serialized_size(),
@@ -1482,7 +1486,7 @@ where
                 1,
                 utxos.len(),
                 num_outputs,
-                total_output_metadata_byte_size,
+                total_output_features_and_scripts_byte_size,
             );
             if utxos_total_value == amount + fee_without_change {
                 break;
@@ -1492,7 +1496,7 @@ where
                 1,
                 utxos.len(),
                 num_outputs + 1,
-                total_output_metadata_byte_size + default_metadata_size,
+                total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
             );
 
             trace!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
@@ -1546,11 +1550,11 @@ where
         Ok(())
     }
 
-    fn default_metadata_size(&self) -> usize {
+    fn default_features_and_scripts_size(&self) -> usize {
         self.resources
             .consensus_constants
             .transaction_weight()
-            .round_up_metadata_size(
+            .round_up_features_and_scripts_size(
                 script!(Nop).get_serialized_size() + OutputFeatures::default().get_serialized_size(),
             )
     }
@@ -1570,9 +1574,13 @@ where
             .iter()
             .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
 
-        let fee = self
-            .get_fee_calc()
-            .calculate(fee_per_gram, 1, src_outputs.len(), 1, self.default_metadata_size());
+        let fee = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            1,
+            self.default_features_and_scripts_size(),
+        );
 
         Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
     }
@@ -1604,7 +1612,7 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            self.default_metadata_size() * number_of_splits,
+            self.default_features_and_scripts_size() * number_of_splits,
         );
 
         let accumulated_amount = src_outputs
@@ -1673,7 +1681,7 @@ where
                         UtxoSelectionCriteria::largest_first(),
                         fee_per_gram,
                         number_of_splits,
-                        self.default_metadata_size() * number_of_splits,
+                        self.default_features_and_scripts_size() * number_of_splits,
                     )
                     .await?;
 
@@ -1697,7 +1705,7 @@ where
         }
 
         let covenant = Covenant::default();
-        let default_metadata_size = self.default_metadata_size();
+        let default_features_and_scripts_size = self.default_features_and_scripts_size();
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
 
         // accumulated value amount from given source outputs
@@ -1710,7 +1718,7 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            default_metadata_size * number_of_splits,
+            default_features_and_scripts_size * number_of_splits,
         );
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
@@ -1882,7 +1890,7 @@ where
         }
 
         let covenant = Covenant::default();
-        let default_metadata_size = self.default_metadata_size();
+        let default_features_and_scripts_size = self.default_features_and_scripts_size();
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
         let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
 
@@ -1900,7 +1908,7 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            default_metadata_size * number_of_splits,
+            default_features_and_scripts_size * number_of_splits,
         );
 
         // checking whether a total output value is enough
@@ -1922,7 +1930,7 @@ where
                 1,
                 src_outputs.len(),
                 number_of_splits + 1,
-                default_metadata_size * (number_of_splits + 1),
+                default_features_and_scripts_size * (number_of_splits + 1),
             ),
         };
 
@@ -2128,7 +2136,7 @@ where
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         let covenant = Covenant::default();
         let noop_script = script!(Nop);
-        let default_metadata_size = self.default_metadata_size();
+        let default_features_and_scripts_size = self.default_features_and_scripts_size();
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
@@ -2140,9 +2148,9 @@ where
             .iter()
             .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
 
-        let fee = self
-            .get_fee_calc()
-            .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_metadata_size);
+        let fee =
+            self.get_fee_calc()
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_features_and_scripts_size);
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
 

@@ -437,6 +437,7 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone()).await,
                     };
                     let submit_time = Instant::now();
 
@@ -978,7 +979,7 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature).unwrap(),
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
                     ),
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
@@ -1035,7 +1036,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","metadata","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
+        r##""index","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
@@ -1051,7 +1052,8 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
                 .to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
-            utxo.features.metadata.to_hex(),
+            String::from_utf8(utxo.features.coinbase_extra.clone())
+                .unwrap_or_else(|_| utxo.features.coinbase_extra.to_hex()),
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),

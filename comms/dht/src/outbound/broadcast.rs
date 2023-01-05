@@ -498,7 +498,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate key message for encryption of message
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
                 // Encrypt the message with the body with key message above
-                crypt::encrypt(&key_message, &mut body)?;
+                crypt::encrypt_message(&key_message, &mut body)?;
                 let encrypted_body = body.freeze();
 
                 // Produce domain separated signature signature
@@ -513,8 +513,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 );
 
                 // Generate key signature for encryption of signature
-                let key_signature =
-                    crypt::generate_key_signature_for_authenticated_encryption(&shared_ephemeral_secret);
+                let key_signature = crypt::generate_key_signature(&shared_ephemeral_secret);
 
                 // Sign the encrypted message
                 let signature =
@@ -522,7 +521,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
                 // Perform authenticated encryption with ChaCha20-Poly1305 and set the origin field
                 let encrypted_message_signature =
-                    crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature.to_encoded_bytes())?;
+                    crypt::encrypt_signature(&key_signature, &signature.to_encoded_bytes())?;
 
                 Ok((
                     Some(Arc::new(e_public_key)),

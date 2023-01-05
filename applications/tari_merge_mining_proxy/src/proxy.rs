@@ -83,7 +83,7 @@ impl MergeMiningProxyService {
         debug!(target: LOG_TARGET, "Config: {:?}", config);
         Self {
             inner: InnerService {
-                config,
+                config: Arc::new(config),
                 block_templates,
                 http_client,
                 base_node_client,
@@ -154,7 +154,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 
 #[derive(Debug, Clone)]
 struct InnerService {
-    config: MergeMiningProxyConfig,
+    config: Arc<MergeMiningProxyConfig>,
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
@@ -194,7 +194,7 @@ impl InnerService {
             .metadata
             .as_ref()
             .map(|meta| meta.height_of_longest_chain)
-            .ok_or(MmProxyError::GrpcResponseMissingField("metadata"))?;
+            .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
         if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::Relaxed) {
             self.initial_sync_achieved
                 .store(result.get_ref().initial_sync_achieved, Ordering::Relaxed);
@@ -271,7 +271,8 @@ impl InnerService {
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
-            BorshSerialize::serialize(&monero_data, &mut header_mut.pow.as_mut().unwrap().pow_data).unwrap();
+            BorshSerialize::serialize(&monero_data, &mut header_mut.pow.as_mut().unwrap().pow_data)
+                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
             let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
@@ -422,7 +423,8 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client);
+        let new_block_protocol =
+            BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client, self.config.clone());
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;
