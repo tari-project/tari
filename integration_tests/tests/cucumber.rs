@@ -258,7 +258,7 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
-    let num_retries = NUM_RETIRES;
+    let num_retries = NUM_RETIRES * height; // About 2 minutes per block
     let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
     for (name, _) in world.base_nodes.iter() {
