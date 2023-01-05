@@ -78,6 +78,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
+    When I wait 5 seconds
     Then I import WALLET_B unspent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I restart wallet WALLET_C
@@ -155,15 +156,15 @@ Feature: Wallet Transactions
     # # Connect chain 1 and 2
     Then node B is at height 8
     When node C is at height 10
-    # Given I have a base node SA connected to nodes B,C
-    # Then node SA is at height 10
-    # And node B is at height 10
-    # And node C is at height 10
-    # Then I restart wallet WALLET_IMPORTED
-    # Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
-    # And mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
-    # And node B is at height 11
-    # And node C is at height 11
+    When I have a base node SA connected to nodes B,C
+    Then node SA is at height 10
+    Then node B is at height 10
+    Then node C is at height 10
+    Then I restart wallet WALLET_IMPORTED
+    Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
+    When mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
+    When node B is at height 11
+    When node C is at height 11
   # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
   # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
   # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
@@ -184,33 +185,33 @@ Feature: Wallet Transactions
     Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
-    # Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
-    # Then I wait for wallet WALLET_C to have at least 1000000 uT
-    # And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
+    Then I wait for wallet WALLET_C to have at least 1000000 uT
+    When I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     When mining node MINER mines 6 blocks
     Then all nodes are at height 17
-    # Then I wait for wallet WALLET_C to have at least 400000 uT
+    Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
-    # And I have 1 base nodes connected to all seed nodes
+    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 10 blocks
     Then all nodes are at height 10
-    # Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    # And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When mining node MINER mines 5 blocks
     Then all nodes are at height 15
-    # Then I wait for wallet WALLET_B to have at least 500000 uT
-    # Then I check if wallet WALLET_B has 5 transactions
-    # Then I restart wallet WALLET_B
-    # Then I check if wallet WALLET_B has 5 transactions
+    Then I wait for wallet WALLET_B to have at least 500000 uT
+    Then I check if wallet WALLET_B has 5 transactions
+    Then I restart wallet WALLET_B
+    Then I check if wallet WALLET_B has 5 transactions
 
   Scenario: Wallet clearing out invalid transactions after a reorg
     # #
@@ -223,13 +224,13 @@ Feature: Wallet Transactions
     When I have wallet WALLET_A1 connected to seed node SEED_A
     When I have wallet WALLET_A2 connected to seed node SEED_A
     When I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
-    # When mining node MINER_A1 mines 7 blocks with min difficulty 200 and max difficulty 100000
-    # Then node SEED_A is at height 7
-    # Then node NODE_A1 is at height 7
+    When mining node MINER_A1 mines 7 blocks with min difficulty 200 and max difficulty 100000
+    Then node SEED_A is at height 7
+    Then node NODE_A1 is at height 7
     When I mine 3 blocks on SEED_A
-    # Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
-    # Then node SEED_A is at height 10
-    # Then node NODE_A1 is at height 10
+    Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
+    Then node SEED_A is at height 10
+    Then node NODE_A1 is at height 10
     # And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
     # #
     # # Chain 2:
@@ -241,14 +242,14 @@ Feature: Wallet Transactions
     When I have wallet WALLET_B1 connected to seed node SEED_B
     When I have wallet WALLET_B2 connected to seed node SEED_B
     When I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
-    # When mining node MINER_B1 mines 7 blocks with min difficulty 1 and max difficulty 100
-    # Then node SEED_B is at height 7
-    # Then node NODE_B1 is at height 7
+    When mining node MINER_B1 mines 7 blocks with min difficulty 1 and max difficulty 100
+    Then node SEED_B is at height 7
+    Then node NODE_B1 is at height 7
     When I mine 5 blocks on SEED_B
-    # Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
-    # Then node SEED_B is at height 12
-    # Then node NODE_B1 is at height 12
-    # And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
+    Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
+    Then node SEED_B is at height 12
+    Then node NODE_B1 is at height 12
+    When I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
     # #
     # # Connect Chain 1 and 2 in stages
     # #    # New node connects to weaker chain, receives all broadcast (not mined) transactions into mempool

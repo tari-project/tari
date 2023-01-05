@@ -35,7 +35,7 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::tari_rpc::{self as grpc};
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::initialize_logging;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
@@ -43,6 +43,7 @@ use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::transactions::transaction_components::{Transaction, TransactionOutput, UnblindedOutput};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_integration_tests::error::GrpcBaseNodeError;
+use tari_script::{ExecutionStack, StackItem};
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_wallet_grpc_client::grpc::{
@@ -106,6 +107,7 @@ pub struct TariWorld {
     utxos: IndexMap<String, (u64, TransactionOutput)>,
     output_hash: Option<String>,
     pre_image: Option<String>,
+    wallet_connected_to_base_node: IndexMap<String, String>, // wallet -> base node,
 }
 
 enum NodeClient {
@@ -184,6 +186,9 @@ async fn start_base_node(world: &mut TariWorld, name: String) {
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
+    world
+        .wallet_connected_to_base_node
+        .insert(wallet_name.clone(), node_name.clone());
     spawn_wallet(world, wallet_name, Some(node_name), seeds, None, None).await;
 }
 
@@ -381,6 +386,9 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
 async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
     let bn = world.base_nodes.get(&base_node).unwrap();
     let peer_seeds = bn.seed_nodes.clone();
+    world
+        .wallet_connected_to_base_node
+        .insert(wallet.clone(), base_node.clone());
     spawn_wallet(world, wallet, Some(base_node), peer_seeds, None, None).await;
 }
 
@@ -486,6 +494,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
+    world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
     spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None, None).await;
     register_miner_process(world, miner.clone(), miner.clone(), miner);
 }
@@ -1045,6 +1054,12 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 #[when(expr = "I have a base node {word} connected to node {word}")]
 async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
     spawn_base_node(world, false, base_node, vec![peer_node], None).await;
+}
+
+#[when(expr = "I have a base node {word} connected to nodes {word}")]
+async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, nodes: String) {
+    let nodes = nodes.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
+    spawn_base_node(world, false, base_node, nodes, None).await;
 }
 
 #[then(expr = "node {word} is at the same height as node {word}")]
@@ -1802,6 +1817,9 @@ async fn wallet_with_tari_connected_to_base_node(
         wallet.as_str(),
         base_node.as_str()
     );
+    world
+        .wallet_connected_to_base_node
+        .insert(wallet.clone(), base_node.clone());
     spawn_wallet(world, wallet.clone(), Some(base_node.clone()), peer_seeds, None, None).await;
     let num_blocks = amount * 1_000_000 / BLOCK_REWARD;
 
@@ -2490,14 +2508,14 @@ async fn send_one_sided_stealth_transaction(
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    // let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     // wallet_a_ps.kill();
 
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path();
 
     let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push(temp_dir_path);
     wallet_data_dir.push("data/wallet");
 
     let mut config_path = wallet_data_dir.clone();
@@ -2513,9 +2531,15 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         output_file: Some(path_buf.clone()),
     };
     cli.command2 = Some(CliCommands::ExportUtxos(args));
-    spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
 
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+
+    println!("FLAG: WE ARE HEREEEEEEEEEEE");
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
+    println!("FLAG: WE ARE HEREEEEEEEEEEE");
+
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
@@ -2544,7 +2568,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let temp_dir_path = temp_dir.path();
 
     let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push(temp_dir_path);
     wallet_data_dir.push("data/wallet");
 
     let mut config_path = wallet_data_dir.clone();
@@ -2560,7 +2584,10 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         output_file: Some(path_buf.clone()),
     };
     cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
-    spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
@@ -2591,7 +2618,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let temp_dir_path = temp_dir.path();
 
     let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path.clone());
+    wallet_data_dir.push(temp_dir_path);
     wallet_data_dir.push("data/wallet");
 
     let mut config_path = wallet_data_dir.clone();
@@ -2607,14 +2634,17 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         output_file: Some(path_buf.clone()),
     };
     cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
-    spawn_wallet(world, wallet_a, None, vec![], None, Some(cli)).await;
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
-    for mut output in reader.deserialize::<UnblindedOutput>() {
+    for output in reader.deserialize::<UnblindedOutput>() {
         let mut output = output.unwrap();
         output.metadata_signature = ComAndPubSignature::new(
             Commitment::default(),
@@ -2626,6 +2656,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         output.script_private_key = output.clone().spending_key;
 
         let script_public_key = PublicKey::from_secret_key(&output.script_private_key);
+        output.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
         outputs.push(output.clone());
     }
 
@@ -2646,7 +2677,157 @@ async fn restart_wallet(world: &mut TariWorld, wallet: String) {
     // stop wallet
     wallet_ps.kill();
     // start wallet
-    spawn_wallet(world, wallet, None, vec![], None, None).await;
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
+    let base_node_ps = world.base_nodes.get(&base_node).unwrap();
+    let seed_nodes = base_node_ps.seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
+}
+
+#[then(expr = "I check if wallet {word} has {int} transactions")]
+async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: String, num_txs: u64) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let mut get_completed_txs_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let mut count = 0;
+    while let Some(tx) = get_completed_txs_res.next().await {
+        let _tx = tx.unwrap(); // make sure we get the actual response
+        count += 1;
+    }
+
+    assert_eq!(
+        num_txs,
+        count,
+        "Wallet {} did not get {} transactions, instead it got {}",
+        wallet.as_str(),
+        num_txs,
+        count
+    );
+}
+
+#[when(expr = "I multi-send {int} transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+async fn multi_send_txs_from_wallet(
+    world: &mut TariWorld,
+    num_txs: u64,
+    amount: u64,
+    sender: String,
+    receiver: String,
+    fee_per_gram: u64,
+) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = sender_wallet_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+
+    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
+    let receiver_wallet_address = receiver_wallet_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+
+    let mut transfer_res = vec![];
+
+    for _ in 0..num_txs {
+        let payment_recipient = PaymentRecipient {
+            address: receiver_wallet_address.clone(),
+            amount,
+            fee_per_gram,
+            message: format!(
+                "I send multi-transfers with amount {} from {} to {} with fee {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str(),
+                fee_per_gram
+            ),
+            payment_type: 0, // mimblewimble transaction
+        };
+
+        let transfer_req = TransferRequest {
+            recipients: vec![payment_recipient],
+        };
+        let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+        let tx_res = tx_res.results;
+
+        assert_eq!(tx_res.len(), 1usize);
+
+        let tx_res = tx_res.first().unwrap();
+        assert!(
+            tx_res.is_success,
+            "Multi-Transaction with amount {} from wallet {} to {} at fee {} failed",
+            amount,
+            sender.as_str(),
+            receiver.as_str(),
+            fee_per_gram
+        );
+
+        transfer_res.push(tx_res.clone());
+    }
+
+    let num_retries = 100;
+
+    for tx_res in transfer_res {
+        let tx_id = tx_res.transaction_id;
+        let tx_info_req = GetTransactionInfoRequest {
+            transaction_ids: vec![tx_id],
+        };
+
+        for i in 0..num_retries {
+            let tx_info_res = sender_wallet_client
+                .get_transaction_info(tx_info_req.clone())
+                .await
+                .unwrap()
+                .into_inner();
+            let tx_info = tx_info_res.transactions.first().unwrap();
+
+            // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+            if tx_info.status == 1_i32 {
+                println!(
+                    "Multi-transaction from {} to {} with amount {} at fee {} has been broadcasted",
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                );
+                break;
+            }
+
+            if i == num_retries - 1 {
+                panic!(
+                    "Multi-transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                )
+            }
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        // insert tx_id's to the corresponding world mapping
+        let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
+
+        sender_tx_ids.push(tx_id);
+
+        let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
+
+        receiver_tx_ids.push(tx_id);
+
+        println!(
+            "Multi-transaction with amount {} from {} to {} at fee {} succeeded",
+            amount, sender, receiver, fee_per_gram
+        );
+    }
 }
 
 #[when(expr = "I print the cucumber world")]

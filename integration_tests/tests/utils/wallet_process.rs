@@ -144,9 +144,7 @@ pub async fn spawn_wallet(
             let mut config_path = data_dir;
             config_path.push("config.toml");
 
-            let cli = get_default_cli(data_dir_str, config_path.clone());
-
-            cli
+            get_default_cli(data_dir_str, config_path.clone())
         };
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
@@ -163,9 +161,9 @@ pub async fn spawn_wallet(
         kill_signal: shutdown,
     });
 
-    wait_for_service(port).await;
-    println!("FLAG: HEREEEEE {}", grpc_port);
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
+    wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 
     // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
