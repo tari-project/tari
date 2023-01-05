@@ -75,6 +75,8 @@ use crate::utils::{
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
+const NUM_RETIRES: u64 = 240;
+const RETRY_TIME_IN_MS: u64 = 250;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -256,7 +258,7 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
-    let num_retries = 24; // About 2 minutes
+    let num_retries = NUM_RETIRES;
     let mut nodes_at_height: IndexMap<&String, bool> = IndexMap::new();
 
     let _ = world
@@ -284,7 +286,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
     panic!("base nodes not successfully synchronized at height {}", height);
@@ -293,7 +295,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = 24; // About two minutes
+    let num_retries = NUM_RETIRES; // About two minutes
 
     let mut client = world
         .base_nodes
@@ -312,7 +314,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
     // base node didn't synchronize successfully at height, so we bail out
