@@ -91,6 +91,7 @@ Feature: Wallet CLI
     Scenario: As a user I want to make-it-rain via command line
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
+        When I print the cucumber world
         When I have wallet SENDER connected to base node BASE
         When I have wallet RECEIVER connected to base node BASE
         When I have mining node MINE connected to base node BASE and wallet SENDER

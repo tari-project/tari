@@ -77,7 +77,7 @@ pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
 const NUM_RETIRES: u64 = 240;
-const RETRY_TIME_IN_MS: u64 = 250;
+const RETRY_TIME_IN_MS: u64 = 500;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -419,31 +419,44 @@ async fn transaction_in_state(
         .get(&tx_name)
         .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
     let sig = &tx.body.kernels()[0].excess_sig;
+    let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
-    let resp = client
-        .transaction_state(grpc::TransactionStateRequest {
-            excess_sig: Some(sig.into()),
-        })
-        .await?;
+    // Some state changes take up to 30 minutes to make
+    for _ in 0..(NUM_RETIRES * 4) {
+        let resp = client
+            .transaction_state(grpc::TransactionStateRequest {
+                excess_sig: Some(sig.into()),
+            })
+            .await?;
 
-    let inner = resp.into_inner();
+        let inner = resp.into_inner();
 
-    let res_state = match inner.result {
-        0 => "UNKNOWN",
-        1 => "MEMPOOL",
-        2 => "NOT STORED",
-        3 => "MINED",
-        _ => panic!("not getting a good result"),
-    };
+        last_state = match inner.result {
+            0 => "UNKNOWN",
+            1 => "MEMPOOL",
+            2 => "NOT STORED",
+            3 => "MINED",
+            _ => panic!("not getting a good result"),
+        };
 
-    if res_state == state {
-        Ok(())
-    } else {
-        panic!(
-            "The node {} has tx {} in state {} instead of the expected {}",
-            node, tx_name, res_state, state
-        );
+        if last_state == state {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 4)).await;
     }
+
+    panic!(
+        "The node {} has tx {} in state {} instead of the expected {}",
+        node, tx_name, last_state, state
+    );
+}
+
+#[then(expr = "I connect node {word} to node {word}")]
+#[when(expr = "I connect node {word} to node {word}")]
+async fn connect_node_to_node(world: &mut TariWorld, node_a: String, node_b: String) {
+    let node_a = world.get_node(&node_a).unwrap();
+    let node_b = world.get_node(&node_b).unwrap();
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]
@@ -464,7 +477,6 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
         .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
     let sig = &tx.body.kernels()[0].excess_sig;
 
-    let num_retries = 120; // About 2 minutes
     let mut node_pool_status: IndexMap<&String, &str> = IndexMap::new();
 
     let nodes = world.base_nodes.iter().clone();
@@ -476,7 +488,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
 
     let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
 
-    for _ in 0..num_retries {
+    for _ in 0..(NUM_RETIRES / 2) {
         for (name, _) in node_pool_status
             .clone()
             .iter()
@@ -507,12 +519,12 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS / 2)).await;
     }
 
     panic!(
-        "Too many nodes failed to get {} in {}, {:?}, can_fail: {}",
-        tx_name, pool, node_pool_status, can_fail
+        "More than {}% ({} node(s)) failed to get {} in {}, {:?}",
+        can_fail_percent, can_fail, tx_name, pool, node_pool_status
     );
 }
 
