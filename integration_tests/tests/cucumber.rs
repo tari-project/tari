@@ -24,6 +24,7 @@
 mod utils;
 
 use std::{
+    convert::TryFrom,
     path::PathBuf,
     str,
     sync::{Arc, Mutex},
@@ -68,7 +69,7 @@ use crate::utils::{
         register_miner_process,
         MinerProcess,
     },
-    transaction::build_transaction_with_output,
+    transaction::{build_transaction_with_output, build_transaction_with_output_and_fee},
     wallet_process::{create_wallet_client, spawn_wallet, WalletProcess},
 };
 
@@ -445,8 +446,13 @@ async fn transaction_in_state(
     }
 }
 
+#[then(expr = "{word} is in the {word} of all nodes")]
+async fn tx_in_state_all_nodes(world: &mut TariWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
+    tx_in_state_all_nodes_with_allowed_failure(world, tx_name, pool, 0).await
+}
+
 #[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
-async fn tx_in_state_all_nodes(
+async fn tx_in_state_all_nodes_with_allowed_failure(
     world: &mut TariWorld,
     tx_name: String,
     pool: String,
@@ -458,14 +464,14 @@ async fn tx_in_state_all_nodes(
         .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
     let sig = &tx.body.kernels()[0].excess_sig;
 
-    let num_retries = 480; // About 2 minutes
-    let mut node_pool_status: IndexMap<&String, bool> = IndexMap::new();
+    let num_retries = 120; // About 2 minutes
+    let mut node_pool_status: IndexMap<&String, &str> = IndexMap::new();
 
     let nodes = world.base_nodes.iter().clone();
     let nodes_count = world.base_nodes.len();
 
     for (name, _) in nodes.clone() {
-        node_pool_status.insert(name, false);
+        node_pool_status.insert(name, "UNCHECKED: DEFAULT TEST STATE");
     }
 
     let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
@@ -474,7 +480,7 @@ async fn tx_in_state_all_nodes(
         for (name, _) in node_pool_status
             .clone()
             .iter()
-            .filter(|(_, in_pool)| in_pool == &&false)
+            .filter(|(_, in_pool)| ***in_pool != pool)
         {
             let mut client = world.get_node_client(name).await?;
 
@@ -494,26 +500,18 @@ async fn tx_in_state_all_nodes(
                 _ => panic!("not getting a good result"),
             };
 
-            if pool == res_state {
-                node_pool_status.insert(name, true);
-            }
+            node_pool_status.insert(name, res_state);
         }
 
-        if node_pool_status
-            .values()
-            .filter(|v| v == &&true)
-            .collect::<Vec<_>>()
-            .len() >
-            (nodes_count - can_fail as usize)
-        {
+        if node_pool_status.values().filter(|v| ***v == pool).count() > (nodes_count - can_fail as usize) {
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 
     panic!(
-        "Too many nodes failed to get {} in the {}, {:?}, can_fail: {}",
+        "Too many nodes failed to get {} in {}, {:?}, can_fail: {}",
         tx_name, pool, node_pool_status, can_fail
     );
 }
@@ -537,7 +535,7 @@ async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node: Str
     if result.result == 1 {
         Ok(())
     } else {
-        panic!("Transaction wasn't submit")
+        panic!("Transaction {} wasn't submit to {}", tx_name, node)
     }
 }
 
@@ -693,7 +691,7 @@ async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String,
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
-    // let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
+
     let (tx, utxo) = build_transaction_with_output(utxos);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
@@ -707,8 +705,9 @@ async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    // world.utxos.insert(output, (0, utxo));
-    // world.transactions.insert(transaction, tx);
+    let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    world.utxos.insert(output, utxo);
+    world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I wait for wallet {word} to have less than {int} uT")]
@@ -2418,9 +2417,9 @@ fn main() {
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
         let world = TariWorld::cucumber()
-        .repeat_failed()
+            .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(5)
+        //.max_concurrent_scenarios(1)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()

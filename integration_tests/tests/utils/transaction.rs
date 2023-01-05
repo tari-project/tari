@@ -165,6 +165,16 @@ impl TestTransactionBuilder {
     }
 }
 
+pub fn build_transaction_with_output_and_fee(utxos: Vec<UnblindedOutput>, fee: u64) -> (Transaction, UnblindedOutput) {
+    let mut builder = TestTransactionBuilder::new();
+    for unblinded_output in utxos {
+        builder.add_input(unblinded_output);
+    }
+    builder.change_fee(MicroTari(fee));
+
+    builder.build()
+}
+
 pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transaction, UnblindedOutput) {
     let mut builder = TestTransactionBuilder::new();
     for unblinded_output in utxos {
