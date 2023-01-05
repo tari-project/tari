@@ -59,7 +59,7 @@ impl FixedHash {
         32
     }
 
-    pub fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self(ZERO_HASH)
     }
 
