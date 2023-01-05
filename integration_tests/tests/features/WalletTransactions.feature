@@ -257,9 +257,9 @@ Feature: Wallet Transactions
     # #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
     # #
     When I have a base node NODE_C connected to seed SEED_B
-    # Then node NODE_C is at height 12
+    Then node NODE_C is at height 12
     # # Wait for the reorg to filter through
-    # And I connect node SEED_A to node NODE_C
+    When I connect node SEED_A to node NODE_C
     Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
@@ -269,24 +269,24 @@ Feature: Wallet Transactions
     When I have wallet WALLET_A connected to seed node SEED
     When I have wallet WALLET_B connected to seed node SEED
     When I have mining node MINER_A connected to base node SEED and wallet WALLET_A
-    # When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
+    When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
     When I mine 4 blocks on SEED
-    # Then I wait for wallet WALLET_A to have at least 1000000000 uT
-    # When I stop wallet WALLET_B
-    # When I stop node SEED
+    Then I wait for wallet WALLET_A to have at least 1000000000 uT
+    When I stop wallet WALLET_B
+    When I stop node SEED
     When I wait 10 seconds
-    # Then I send 100000000 uT without waiting for broadcast from wallet WALLET_A to wallet WALLET_B at fee 20
+    Then I send 100000000 uT without waiting for broadcast from wallet WALLET_A to wallet WALLET_B at fee 20
     When I wait 10 seconds
-    # And I start base node SEED
+    When I start base node SEED
     When I have a base node NODE_A connected to seed SEED
     When I have a base node NODE_B connected to seed SEED
-    # And I stop wallet WALLET_A
-    # And I start wallet WALLET_A
-    # And I start wallet WALLET_B
+    When I stop wallet WALLET_A
+    When I start wallet WALLET_A
+    When I start wallet WALLET_B
     Then all nodes are at height 5
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
-    # Then wallet WALLET_B detects all transactions are at least Pending
+    Then wallet WALLET_B detects all transactions are at least Pending
     When I wait 1 seconds
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
@@ -300,13 +300,13 @@ Feature: Wallet Transactions
     When I have wallet WALLET_A1 connected to seed node SEED_A
     When I have wallet WALLET_A2 connected to seed node SEED_A
     When I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
-    # When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
-    # Then node SEED_A is at height 1
-    # Then node NODE_A1 is at height 1
+    When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
+    Then node SEED_A is at height 1
+    Then node NODE_A1 is at height 1
     When I mine 3 blocks on SEED_A
-    # Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
-    # Then node SEED_A is at height 4
-    # Then node NODE_A1 is at height 4
+    Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
+    Then node SEED_A is at height 4
+    Then node NODE_A1 is at height 4
     # And I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
     # #
     # # Chain 2:
@@ -318,14 +318,14 @@ Feature: Wallet Transactions
     When I have wallet WALLET_B1 connected to seed node SEED_B
     When I have wallet WALLET_B2 connected to seed node SEED_B
     When I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
-    # When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
-    # Then node SEED_B is at height 2
-    # Then node NODE_B1 is at height 2
+    When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
+    Then node SEED_B is at height 2
+    Then node NODE_B1 is at height 2
     When I mine 3 blocks on SEED_B
-    # Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
-    # Then node SEED_B is at height 5
-    # Then node NODE_B1 is at height 5
-    # And I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
+    Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
+    Then node SEED_B is at height 5
+    Then node NODE_B1 is at height 5
+    When I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
     # #
     # # Connect Chain 1 and 2 in stages
     # #    # New node connects to weaker chain, receives all broadcast (not mined) transactions into mempool
@@ -333,9 +333,9 @@ Feature: Wallet Transactions
     # #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
     # #
     When I have a base node NODE_C connected to seed SEED_B
-    # Then node NODE_C is at height 5
+    Then node NODE_C is at height 5
     # # Wait for the reorg to filter through
-    # And I connect node SEED_A to node NODE_C
+    When I connect node SEED_A to node NODE_C
     Then all nodes are at height 4
     When I mine 2 blocks on NODE_C
     Then all nodes are at height 6
@@ -343,21 +343,21 @@ Feature: Wallet Transactions
   @flaky @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
     Given I have a seed node NODE
-    # And I have 1 base nodes connected to all seed nodes
+    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_RECV connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
-    # Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    # And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
-    # And I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 100
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
+    When I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 100
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
-    # Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
-    # And I stop wallet WALLET_RECV
-    # And I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
-    # When wallet WALLET_SENDER detects last transaction is Pending
+    Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
+    When I stop wallet WALLET_RECV
+    When I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    When wallet WALLET_SENDER detects last transaction is Pending
     # Then I stop wallet WALLET_SENDER
     # And I start wallet WALLET_RECV
     When I wait 5 seconds
