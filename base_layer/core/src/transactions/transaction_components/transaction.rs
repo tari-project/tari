@@ -33,18 +33,21 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_components::{
-        OutputFeatures,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::{uT, MicroTari},
+        transaction_components::{
+            OutputFeatures,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
+        CryptoFactories,
     },
-    weight::TransactionWeight,
-    CryptoFactories,
+    validation::aggregated_body::InternalConsistencyAggregateBodyValidator,
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
@@ -96,7 +99,9 @@ impl Transaction {
         height: u64,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body.validate_internal_consistency(
+        let body_validator = InternalConsistencyAggregateBodyValidator::default();
+        body_validator.validate_internal_consistency(
+            &self.body,
             &self.offset,
             &self.script_offset,
             bypass_range_proof_verification,
