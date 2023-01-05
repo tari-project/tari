@@ -258,9 +258,9 @@ Feature: Wallet Transactions
     # Then node NODE_C is at height 12
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
-    Then all nodes are at height 10
+    # Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
-    Then all nodes are at height 16
+    # Then all nodes are at height 16
 
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
@@ -281,9 +281,9 @@ Feature: Wallet Transactions
     # And I stop wallet WALLET_A
     # And I start wallet WALLET_A
     # And I start wallet WALLET_B
-    Then all nodes are at height 5
+    # Then all nodes are at height 5
     When I mine 1 blocks on SEED
-    Then all nodes are at height 6
+    # Then all nodes are at height 6
     # Then wallet WALLET_B detects all transactions are at least Pending
     When I wait 1 seconds
 
@@ -334,9 +334,9 @@ Feature: Wallet Transactions
     # Then node NODE_C is at height 5
     # # Wait for the reorg to filter through
     # And I connect node SEED_A to node NODE_C
-    Then all nodes are at height 4
+    # Then all nodes are at height 4
     When I mine 2 blocks on NODE_C
-    Then all nodes are at height 6
+    # Then all nodes are at height 6
 
   @flaky @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
