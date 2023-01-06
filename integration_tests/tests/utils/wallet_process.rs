@@ -71,13 +71,13 @@ pub async fn spawn_wallet(
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         port = wallet_ps.port;
         grpc_port = wallet_ps.grpc_port;
-        temp_dir_path = wallet_ps.temp_dir_path.clone()
+        temp_dir_path = wallet_ps.temp_dir_path.clone();
     } else {
         // each spawned wallet will use different ports
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
-        temp_dir_path = tempdir().unwrap().path().to_path_buf()
+        temp_dir_path = tempdir().unwrap().path().to_path_buf();
     };
 
     let base_node = base_node_name.map(|name| {
@@ -159,6 +159,7 @@ pub async fn spawn_wallet(
         };
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
+            println!("FLAG: are we panicking here or not ? {}", e.clone());
             panic!("{:?}", e);
         }
     });
