@@ -323,7 +323,7 @@ mod test {
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
-        validation::aggregated_body::InternalConsistencyAggregateBodyValidator,
+        validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
     };
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
@@ -597,15 +597,13 @@ mod test {
             Err(TransactionError::MoreThanOneCoinbase)
         ));
         // testing that "block" is still valid
-        let body_validator = InternalConsistencyAggregateBodyValidator::default();
+        let body_validator = AggregateBodyInternalConsistencyValidator::new(false, factories);
         body_validator
-            .validate_internal_consistency(
+            .validate(
                 tx.body(),
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
-                false,
                 Some(block_reward),
-                &factories,
                 None,
                 u64::MAX,
             )

@@ -39,7 +39,7 @@ use tari_core::{
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::DefaultHeaderValidator,
-        transaction_validators::{
+        transaction::{
             MempoolValidator,
             TxConsensusValidator,
             TxInputAndMaturityValidator,

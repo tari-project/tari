@@ -44,7 +44,7 @@ use crate::{
     tx,
     validation::{
         header_iter::HeaderIter,
-        transaction_validators::TxInternalConsistencyValidator,
+        transaction::TxInternalConsistencyValidator,
         ChainBalanceValidator,
         DifficultyCalculator,
         FinalHorizonStateValidation,

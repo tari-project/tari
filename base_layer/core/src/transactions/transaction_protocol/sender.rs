@@ -62,7 +62,7 @@ use crate::{
             TransactionProtocolError as TPE,
         },
     },
-    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -607,9 +607,9 @@ impl SenderTransactionProtocol {
                 match result {
                     Ok(mut transaction) => {
                         transaction.body.sort();
-                        let validator = InternalConsistencyTransactionValidator::default();
+                        let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
                         let result = validator
-                            .validate_internal_consistency(&transaction, true, factories, None, prev_header, height)
+                            .validate(&transaction, None, prev_header, height)
                             .map_err(TPE::TransactionBuildError);
                         if let Err(e) = result {
                             self.state = SenderState::Failed(e.clone());
@@ -797,7 +797,7 @@ mod test {
                 TransactionProtocolError::RangeProofError,
             },
         },
-        validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
+        validation::transaction::TransactionInternalConsistencyValidator,
     };
 
     #[test]
@@ -1109,10 +1109,8 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
-        let validator = InternalConsistencyTransactionValidator::default();
-        assert!(validator
-            .validate_internal_consistency(tx, false, &factories, None, None, u64::MAX)
-            .is_ok());
+        let validator = TransactionInternalConsistencyValidator::new(false, factories);
+        assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }
 
     #[test]

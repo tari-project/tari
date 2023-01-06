@@ -50,7 +50,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 
 #[test]
@@ -329,10 +329,8 @@ fn test_validate_internal_consistency() {
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
 
     let factories = CryptoFactories::default();
-    let validator = InternalConsistencyTransactionValidator::default();
-    assert!(validator
-        .validate_internal_consistency(&tx, false, &factories, None, None, u64::MAX)
-        .is_ok());
+    let validator = TransactionInternalConsistencyValidator::new(false, factories);
+    assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
 }
 
 #[test]
@@ -345,10 +343,8 @@ fn check_cut_through() {
     assert_eq!(tx.body.kernels().len(), 1);
 
     let factories = CryptoFactories::default();
-    let validator = InternalConsistencyTransactionValidator::default();
-    validator
-        .validate_internal_consistency(&tx, false, &factories, None, None, u64::MAX)
-        .unwrap();
+    let validator = TransactionInternalConsistencyValidator::new(false, factories);
+    validator.validate(&tx, None, None, u64::MAX).unwrap();
 
     let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
     let (tx2, _outputs) = test_helpers::spend_utxos(schema);
@@ -379,15 +375,10 @@ fn check_cut_through() {
     }
 
     // Validate basis transaction where cut-through has not been applied.
-    validator
-        .validate_internal_consistency(&tx3, false, &factories, None, None, u64::MAX)
-        .unwrap();
+    validator.validate(&tx3, None, None, u64::MAX).unwrap();
 
     // tx3_cut_through has manual cut-through, it should not be possible so this should fail
-    let validator = InternalConsistencyTransactionValidator::default();
-    validator
-        .validate_internal_consistency(&tx3_cut_through, false, &factories, None, None, u64::MAX)
-        .unwrap_err();
+    validator.validate(&tx3_cut_through, None, None, u64::MAX).unwrap_err();
 }
 
 #[test]
@@ -432,10 +423,8 @@ fn inputs_not_malleable() {
     tx.body.inputs_mut()[0].input_data = stack;
 
     let factories = CryptoFactories::default();
-    let validator = InternalConsistencyTransactionValidator::default();
-    let err = validator
-        .validate_internal_consistency(&tx, false, &factories, None, None, u64::MAX)
-        .unwrap_err();
+    let validator = TransactionInternalConsistencyValidator::new(false, factories);
+    let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
     unpack_enum!(TransactionError::InvalidSignatureError(_a) = err);
 }
 
@@ -506,9 +495,9 @@ mod validate_internal_consistency {
         // SenderTransactionProtocol::finalize() calls validate_internal_consistency
         let stx_protocol = create_sender_transaction_protocol_with(0, 5 * uT, inputs, outputs)?;
         // Otherwise if this passes check again with the height
-        let validator = InternalConsistencyTransactionValidator::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, CryptoFactories::default());
         let tx = stx_protocol.take_transaction().unwrap();
-        validator.validate_internal_consistency(&tx, false, &CryptoFactories::default(), None, None, height)?;
+        validator.validate(&tx, None, None, height)?;
         Ok(())
     }
 

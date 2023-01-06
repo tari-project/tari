@@ -68,9 +68,10 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::{
-        internal_transaction_validator::InternalConsistencyTransactionValidator,
-        transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
+    validation::transaction::{
+        TransactionInternalConsistencyValidator,
+        TxConsensusValidator,
+        TxInputAndMaturityValidator,
     },
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -1006,10 +1007,8 @@ async fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    let validator = InternalConsistencyTransactionValidator::default();
-    assert!(validator
-        .validate_internal_consistency(&tx, true, &factories, None, None, u64::MAX)
-        .is_ok());
+    let validator = TransactionInternalConsistencyValidator::new(true, factories);
+    assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
 

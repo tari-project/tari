@@ -21,12 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_common_types::types::HashOutput;
 use tari_utilities::hex::Hex;
 
-use super::aggregated_body::InternalConsistencyAggregateBodyValidator;
+use super::aggregate_body::AggregateBodyInternalConsistencyValidator;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::{transaction_components::Transaction, CryptoFactories},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{Transaction, TransactionError},
+        CryptoFactories,
+    },
     validation::{
         helpers::{
             check_inputs_are_utxos,
@@ -43,6 +48,38 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
+pub struct TransactionInternalConsistencyValidator {
+    aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
+}
+
+impl TransactionInternalConsistencyValidator {
+    pub fn new(bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+        Self {
+            aggregate_body_validator: AggregateBodyInternalConsistencyValidator::new(
+                bypass_range_proof_verification,
+                factories,
+            ),
+        }
+    }
+
+    /// Validate this transaction by checking the following:
+    /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
+    /// 1. The signature signs the canonical message with the private excess
+    /// 1. Range proofs of the outputs are valid
+    ///
+    /// This function does NOT check that inputs come from the UTXO set
+    pub fn validate(
+        &self,
+        tx: &Transaction,
+        reward: Option<MicroTari>,
+        prev_header: Option<HashOutput>,
+        height: u64,
+    ) -> Result<(), TransactionError> {
+        self.aggregate_body_validator
+            .validate(&tx.body, &tx.offset, &tx.script_offset, reward, prev_header, height)
+    }
+}
+
 /// This validator will check the internal consistency of the transaction.
 ///
 /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
@@ -52,18 +89,17 @@ pub const LOG_TARGET: &str = "c::val::transaction_validators";
 /// This function does NOT check that inputs come from the UTXO set
 pub struct TxInternalConsistencyValidator<B> {
     db: BlockchainDatabase<B>,
-    factories: CryptoFactories,
-    bypass_range_proof_verification: bool,
-    aggregate_body_validator: InternalConsistencyAggregateBodyValidator,
+    aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
 }
 
 impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
     pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool, db: BlockchainDatabase<B>) -> Self {
         Self {
             db,
-            factories,
-            bypass_range_proof_verification,
-            aggregate_body_validator: InternalConsistencyAggregateBodyValidator::default(),
+            aggregate_body_validator: AggregateBodyInternalConsistencyValidator::new(
+                bypass_range_proof_verification,
+                factories,
+            ),
         }
     }
 }
@@ -84,13 +120,11 @@ impl<B: BlockchainBackend> MempoolTransactionValidator for TxInternalConsistency
         }?;
 
         self.aggregate_body_validator
-            .validate_internal_consistency(
+            .validate(
                 &tx.body,
                 &tx.offset,
                 &tx.script_offset,
-                self.bypass_range_proof_verification,
                 None,
-                &self.factories,
                 Some(*tip.best_block()),
                 tip.height_of_longest_chain(),
             )

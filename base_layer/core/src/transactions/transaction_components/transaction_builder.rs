@@ -38,7 +38,7 @@ use crate::{
         },
         CryptoFactories,
     },
-    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
@@ -47,7 +47,6 @@ pub struct TransactionBuilder {
     offset: Option<BlindingFactor>,
     script_offset: Option<BlindingFactor>,
     reward: Option<MicroTari>,
-    validator: InternalConsistencyTransactionValidator,
 }
 
 impl TransactionBuilder {
@@ -113,8 +112,8 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            self.validator
-                .validate_internal_consistency(&tx, true, factories, self.reward, prev_header, height)?;
+            let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
+            validator.validate(&tx, self.reward, prev_header, height)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
@@ -131,7 +130,6 @@ impl Default for TransactionBuilder {
             body: AggregateBody::empty(),
             reward: None,
             script_offset: None,
-            validator: InternalConsistencyTransactionValidator::default(),
         }
     }
 }

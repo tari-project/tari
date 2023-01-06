@@ -35,7 +35,7 @@ use tari_core::{
         transaction_components::Transaction,
         transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
     },
-    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -75,7 +75,7 @@ pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     prev_header: Option<HashOutput>,
     height: Option<u64>,
-    validator: InternalConsistencyTransactionValidator,
+    validator: TransactionInternalConsistencyValidator,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -94,6 +94,7 @@ where
         prev_header: Option<HashOutput>,
         height: Option<u64>,
     ) -> Self {
+        let factories = resources.factories.clone();
         Self {
             id,
             source_address,
@@ -104,7 +105,7 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             prev_header,
             height,
-            validator: InternalConsistencyTransactionValidator::default(),
+            validator: TransactionInternalConsistencyValidator::new(true, factories),
         }
     }
 
@@ -369,10 +370,8 @@ where
             );
 
             self.validator
-                .validate_internal_consistency(
+                .validate(
                     &finalized_transaction,
-                    true,
-                    &self.resources.factories,
                     None,
                     self.prev_header,
                     self.height.unwrap_or(u64::MAX),

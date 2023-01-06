@@ -52,7 +52,7 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
     validation::{
         mocks::MockValidator,
-        transaction_validators::TxInputAndMaturityValidator,
+        transaction::TxInputAndMaturityValidator,
         CandidateBlockValidator,
         ChainLinkedHeaderValidator,
         InternalConsistencyValidator,

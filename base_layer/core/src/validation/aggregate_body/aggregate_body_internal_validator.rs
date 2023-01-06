@@ -47,12 +47,21 @@ use crate::transactions::{
     CryptoFactories,
 };
 
-pub const LOG_TARGET: &str = "c::val::internal_consistency_aggregate_body_validator";
+pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
 
-#[derive(Default)]
-pub struct InternalConsistencyAggregateBodyValidator {}
+pub struct AggregateBodyInternalConsistencyValidator {
+    bypass_range_proof_verification: bool,
+    factories: CryptoFactories,
+}
 
-impl InternalConsistencyAggregateBodyValidator {
+impl AggregateBodyInternalConsistencyValidator {
+    pub fn new(bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+        Self {
+            bypass_range_proof_verification,
+            factories,
+        }
+    }
+
     /// Validate this transaction by checking the following:
     /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
     /// 1. The signature signs the canonical message with the private excess
@@ -61,14 +70,12 @@ impl InternalConsistencyAggregateBodyValidator {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
-    pub fn validate_internal_consistency(
+    pub fn validate(
         &self,
         body: &AggregateBody,
         tx_offset: &BlindingFactor,
         script_offset: &BlindingFactor,
-        bypass_range_proof_verification: bool,
         total_reward: Option<MicroTari>,
-        factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), TransactionError> {
@@ -76,16 +83,16 @@ impl InternalConsistencyAggregateBodyValidator {
 
         verify_kernel_signatures(body)?;
 
-        let total_offset = factories.commitment.commit_value(tx_offset, total_reward.0);
-        validate_kernel_sum(body, total_offset, &factories.commitment)?;
+        let total_offset = self.factories.commitment.commit_value(tx_offset, total_reward.0);
+        validate_kernel_sum(body, total_offset, &self.factories.commitment)?;
 
-        if !bypass_range_proof_verification {
-            validate_range_proofs(body, &factories.range_proof)?;
+        if !self.bypass_range_proof_verification {
+            validate_range_proofs(body, &self.factories.range_proof)?;
         }
         verify_metadata_signatures(body)?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        validate_script_offset(body, script_offset_g, &factories.commitment, prev_header, height)?;
+        validate_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
         validate_covenants(body, height)?;
         Ok(())
     }

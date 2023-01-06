@@ -44,7 +44,7 @@ mod benches {
             CryptoFactories,
         },
         tx,
-        validation::transaction_validators::{
+        validation::transaction::{
             MempoolValidator,
             TxConsensusValidator,
             TxInputAndMaturityValidator,

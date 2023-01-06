@@ -46,7 +46,7 @@ use tari_core::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
+    validation::{mocks::MockValidator, transaction::TxInputAndMaturityValidator},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{inputs, script, TariScript};

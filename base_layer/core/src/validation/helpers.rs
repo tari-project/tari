@@ -31,7 +31,7 @@ use tari_crypto::{
 };
 use tari_script::TariScript;
 
-use super::aggregated_body::InternalConsistencyAggregateBodyValidator;
+use super::aggregate_body::AggregateBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
@@ -237,15 +237,14 @@ pub fn check_accounting_balance(
     let offset = &block.header.total_kernel_offset;
     let script_offset = &block.header.total_script_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-    let body_validator = InternalConsistencyAggregateBodyValidator::default();
+    let body_validator =
+        AggregateBodyInternalConsistencyValidator::new(bypass_range_proof_verification, factories.clone());
     body_validator
-        .validate_internal_consistency(
+        .validate(
             &block.body,
             offset,
             script_offset,
-            bypass_range_proof_verification,
             Some(total_coinbase),
-            factories,
             Some(block.header.prev_hash),
             block.header.height,
         )
