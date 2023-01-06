@@ -244,7 +244,7 @@ pub fn check_accounting_balance(
             offset,
             script_offset,
             bypass_range_proof_verification,
-            total_coinbase,
+            Some(total_coinbase),
             factories,
             Some(block.header.prev_hash),
             block.header.height,

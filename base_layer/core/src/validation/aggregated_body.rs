@@ -67,11 +67,13 @@ impl InternalConsistencyAggregateBodyValidator {
         tx_offset: &BlindingFactor,
         script_offset: &BlindingFactor,
         bypass_range_proof_verification: bool,
-        total_reward: MicroTari,
+        total_reward: Option<MicroTari>,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), TransactionError> {
+        let total_reward = total_reward.unwrap_or(MicroTari::zero());
+
         verify_kernel_signatures(body)?;
 
         let total_offset = factories.commitment.commit_value(tx_offset, total_reward.0);

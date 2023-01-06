@@ -68,7 +68,10 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
+    validation::{
+        internal_transaction_validator::InternalConsistencyTransactionValidator,
+        transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
+    },
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
@@ -1003,8 +1006,9 @@ async fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    assert!(tx
-        .validate_internal_consistency(true, &factories, None, None, u64::MAX)
+    let validator = InternalConsistencyTransactionValidator::default();
+    assert!(validator
+        .validate_internal_consistency(&tx, true, &factories, None, None, u64::MAX)
         .is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);

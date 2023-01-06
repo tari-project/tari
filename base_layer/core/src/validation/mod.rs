@@ -58,6 +58,7 @@ mod header_iter;
 
 pub mod aggregated_body;
 pub mod header_sync_validator;
+pub mod internal_transaction_validator;
 
 #[cfg(test)]
 mod test;

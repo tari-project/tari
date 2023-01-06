@@ -23,6 +23,7 @@
 use log::*;
 use tari_utilities::hex::Hex;
 
+use super::aggregated_body::InternalConsistencyAggregateBodyValidator;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction_components::Transaction, CryptoFactories},
@@ -53,6 +54,7 @@ pub struct TxInternalConsistencyValidator<B> {
     db: BlockchainDatabase<B>,
     factories: CryptoFactories,
     bypass_range_proof_verification: bool,
+    aggregate_body_validator: InternalConsistencyAggregateBodyValidator,
 }
 
 impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
@@ -61,6 +63,7 @@ impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
             db,
             factories,
             bypass_range_proof_verification,
+            aggregate_body_validator: InternalConsistencyAggregateBodyValidator::default(),
         }
     }
 }
@@ -80,14 +83,18 @@ impl<B: BlockchainBackend> MempoolTransactionValidator for TxInternalConsistency
             db.fetch_chain_metadata()
         }?;
 
-        tx.validate_internal_consistency(
-            self.bypass_range_proof_verification,
-            &self.factories,
-            None,
-            Some(*tip.best_block()),
-            tip.height_of_longest_chain(),
-        )
-        .map_err(ValidationError::TransactionError)?;
+        self.aggregate_body_validator
+            .validate_internal_consistency(
+                &tx.body,
+                &tx.offset,
+                &tx.script_offset,
+                self.bypass_range_proof_verification,
+                None,
+                &self.factories,
+                Some(*tip.best_block()),
+                tip.height_of_longest_chain(),
+            )
+            .map_err(ValidationError::TransactionError)?;
         Ok(())
     }
 }

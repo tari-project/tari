@@ -25,11 +25,20 @@
 
 use tari_common_types::types::{BlindingFactor, HashOutput};
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::MicroTari,
-    transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    CryptoFactories,
+use crate::{
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::MicroTari,
+        transaction_components::{
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        CryptoFactories,
+    },
+    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
 };
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
@@ -38,6 +47,7 @@ pub struct TransactionBuilder {
     offset: Option<BlindingFactor>,
     script_offset: Option<BlindingFactor>,
     reward: Option<MicroTari>,
+    validator: InternalConsistencyTransactionValidator,
 }
 
 impl TransactionBuilder {
@@ -103,7 +113,8 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            tx.validate_internal_consistency(true, factories, self.reward, prev_header, height)?;
+            self.validator
+                .validate_internal_consistency(&tx, true, factories, self.reward, prev_header, height)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
@@ -120,6 +131,7 @@ impl Default for TransactionBuilder {
             body: AggregateBody::empty(),
             reward: None,
             script_offset: None,
+            validator: InternalConsistencyTransactionValidator::default(),
         }
     }
 }

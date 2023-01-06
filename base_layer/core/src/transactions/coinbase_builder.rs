@@ -604,7 +604,7 @@ mod test {
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
                 false,
-                block_reward,
+                Some(block_reward),
                 &factories,
                 None,
                 u64::MAX,

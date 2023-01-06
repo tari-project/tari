@@ -62,6 +62,7 @@ use crate::{
             TransactionProtocolError as TPE,
         },
     },
+    validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -606,8 +607,9 @@ impl SenderTransactionProtocol {
                 match result {
                     Ok(mut transaction) => {
                         transaction.body.sort();
-                        let result = transaction
-                            .validate_internal_consistency(true, factories, None, prev_header, height)
+                        let validator = InternalConsistencyTransactionValidator::default();
+                        let result = validator
+                            .validate_internal_consistency(&transaction, true, factories, None, prev_header, height)
                             .map_err(TPE::TransactionBuildError);
                         if let Err(e) = result {
                             self.state = SenderState::Failed(e.clone());
@@ -795,6 +797,7 @@ mod test {
                 TransactionProtocolError::RangeProofError,
             },
         },
+        validation::internal_transaction_validator::InternalConsistencyTransactionValidator,
     };
 
     #[test]
@@ -1106,9 +1109,9 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
-        assert!(tx
-            .clone()
-            .validate_internal_consistency(false, &factories, None, None, u64::MAX)
+        let validator = InternalConsistencyTransactionValidator::default();
+        assert!(validator
+            .validate_internal_consistency(tx, false, &factories, None, None, u64::MAX)
             .is_ok());
     }
 
