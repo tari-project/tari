@@ -135,40 +135,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
-            {
-                let sync_peer = &self.sync_peers[i];
-                self.hooks.call_on_starting_hook(sync_peer);
-            }
-            let mut conn = self.dial_sync_peer(node_id).await?;
-            debug!(
-                target: LOG_TARGET,
-                "Attempting to synchronize headers with `{}`", node_id
-            );
-
-            let config = RpcClient::builder()
-                .with_deadline(self.config.rpc_deadline)
-                .with_deadline_grace_period(Duration::from_secs(5));
-            let mut client = conn
-                .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
-                .await?;
-
-            let latency = client
-                .get_last_request_latency()
-                .expect("unreachable panic: last request latency must be set after connect");
-            self.sync_peers[i].set_latency(latency);
-            if latency > max_latency {
-                return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                    peer: conn.peer_node_id().clone(),
-                    latency,
-                    max_latency,
-                });
-            }
-            let sync_peer = self.sync_peers[i].clone();
-
-            debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
-
-            match self.attempt_sync(&sync_peer, client, max_latency).await {
-                Ok(()) => return Ok(sync_peer),
+            match self.connect_and_attempt_sync(i, node_id, max_latency).await {
+                Ok(peer) => return Ok(peer),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     warn!(target: LOG_TARGET, "{}", err);
@@ -227,6 +195,47 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         Err(BlockHeaderSyncError::SyncFailedAllPeers)
+    }
+
+    async fn connect_and_attempt_sync(
+        &mut self,
+        peer_index: usize,
+        node_id: &NodeId,
+        max_latency: Duration,
+    ) -> Result<SyncPeer, BlockHeaderSyncError> {
+        {
+            let sync_peer = &self.sync_peers[peer_index];
+            self.hooks.call_on_starting_hook(sync_peer);
+        }
+        let mut conn = self.dial_sync_peer(node_id).await?;
+        debug!(
+            target: LOG_TARGET,
+            "Attempting to synchronize headers with `{}`", node_id
+        );
+
+        let config = RpcClient::builder()
+            .with_deadline(self.config.rpc_deadline)
+            .with_deadline_grace_period(Duration::from_secs(5));
+        let mut client = conn
+            .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
+            .await?;
+
+        let latency = client
+            .get_last_request_latency()
+            .expect("unreachable panic: last request latency must be set after connect");
+        self.sync_peers[peer_index].set_latency(latency);
+        if latency > max_latency {
+            return Err(BlockHeaderSyncError::MaxLatencyExceeded {
+                peer: conn.peer_node_id().clone(),
+                latency,
+                max_latency,
+            });
+        }
+
+        debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
+        let sync_peer = self.sync_peers[peer_index].clone();
+        self.attempt_sync(&sync_peer, client, max_latency).await?;
+        Ok(sync_peer)
     }
 
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {

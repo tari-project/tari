@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.43.1"
+version = "0.43.2"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms = { version = "^0.43", path = "../core", features = ["rpc"] }
 tari_common = { path = "../../common" }
 tari_comms_rpc_macros = { version = "^0.43", path = "../rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 tari_shutdown = { version = "^0.43", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.43", path = "../../infrastructure/storage" }
