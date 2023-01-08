@@ -662,27 +662,30 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
     }
 
     #[allow(unused_assignments)]
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut client_kv = self.clone();
 
         client_kv.value = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
-            Hidden::hide(self.value.as_bytes().to_vec()),
+            Hidden::hide(client_kv.value.as_bytes().to_vec()),
         )?
         .to_hex();
+
+        // zeroize sensitive data
+        self.value.zeroize();
 
         Ok(client_kv)
     }
 
     #[allow(unused_assignments)]
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut client_kv = self.clone();
 
         let mut decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
-            &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(client_kv.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         client_kv.value = from_utf8(decrypted_value.as_slice())
@@ -691,6 +694,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
         // we zeroize the decrypted value
         decrypted_value.zeroize();
+        self.value.zeroize();
 
         Ok(client_kv)
     }

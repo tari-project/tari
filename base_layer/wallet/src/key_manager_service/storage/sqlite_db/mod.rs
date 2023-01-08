@@ -46,8 +46,8 @@ pub struct KeyManagerSqliteDatabase {
 
 impl KeyManagerSqliteDatabase {
     /// Creates a new sql backend from provided wallet db connection
-    /// * `cipher` is used to encrypt the sensitive fields in the database, if no cipher is provided, the database will
-    ///   not encrypt sensitive fields
+    /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
+    /// from a provided password, which we enforce for class instantiation
     pub fn new(database_connection: WalletDbConnection) -> Result<Self, KeyManagerStorageError> {
         let db = Self { database_connection };
         Ok(db)

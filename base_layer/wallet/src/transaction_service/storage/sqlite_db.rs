@@ -1363,26 +1363,29 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
 
         output.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            Hidden::hide(self.receiver_protocol.as_bytes().to_vec()),
+            Hidden::hide(output.receiver_protocol.as_bytes().to_vec()),
         )?
         .to_hex();
+
+        // zeroize sensitive data
+        self.receiver_protocol.zeroize();
 
         Ok(output)
     }
 
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
 
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            &from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(output.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         output.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -1390,6 +1393,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
             .to_string();
 
         // zeroize the decrypted protocol data buffer
+        self.receiver_protocol.zeroize();
         decrypted_protocol.zeroize();
 
         Ok(output)
@@ -1622,7 +1626,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut outbound_tx = self.clone();
         outbound_tx.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
@@ -1631,10 +1635,13 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         )?
         .to_hex();
 
+        // zeroize sensitive data
+        self.sender_protocol.zeroize();
+
         Ok(outbound_tx)
     }
 
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut outbound_tx = self.clone();
 
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
@@ -1649,6 +1656,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
 
         // zeroize the decrypted protocol data buffer
         decrypted_protocol.zeroize();
+        self.sender_protocol.zeroize();
 
         Ok(outbound_tx)
     }
@@ -2048,7 +2056,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
 
         output.transaction_protocol = encrypt_bytes_integral_nonce(
@@ -2058,16 +2066,19 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         )?
         .to_hex();
 
+        // zeroize sensitive data
+        self.transaction_protocol.zeroize();
+
         Ok(output)
     }
 
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
 
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(output.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
 
         output.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -2076,6 +2087,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
 
         // zeroize the decrypted protocol data buffer
         decrypted_protocol.zeroize();
+        self.transaction_protocol.zeroize();
 
         Ok(output)
     }

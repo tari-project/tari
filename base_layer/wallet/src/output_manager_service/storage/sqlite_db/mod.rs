@@ -1323,7 +1323,7 @@ impl KnownOneSidedPaymentScriptSql {
 
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
     pub fn from_known_one_sided_payment_script(
-        known_script: KnownOneSidedPaymentScript,
+        mut known_script: KnownOneSidedPaymentScript,
         cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let script_lock_height = known_script.script_lock_height as i64;
@@ -1339,6 +1339,9 @@ impl KnownOneSidedPaymentScriptSql {
             input,
             script_lock_height,
         };
+
+        // zeroize sensitive data
+        known_script.private_key.zeroize();
 
         let payment_script = payment_script
             .encrypt(cipher)
@@ -1359,17 +1362,23 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
         .to_vec()
     }
 
-    fn encrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
         output.private_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), Hidden::hide(self.private_key))?;
+            encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), Hidden::hide(output.private_key))?;
+
+        // zeroize sensitive data
+        self.private_key.zeroize();
 
         Ok(output)
     }
 
-    fn decrypt(self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut output = self.clone();
-        output.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &self.private_key)?;
+        output.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &output.private_key)?;
+
+        // we zeroize the encrypted sensitive data, as a good practice
+        self.private_key.zeroize();
 
         Ok(output)
     }
