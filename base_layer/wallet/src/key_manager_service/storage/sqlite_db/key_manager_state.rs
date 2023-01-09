@@ -22,13 +22,21 @@
 
 use std::convert::TryFrom;
 
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
+use tari_utilities::Hidden;
 
 use crate::{
-    key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState},
+    key_manager_service::{
+        error::KeyManagerStorageError,
+        storage::{database::KeyManagerState, sqlite_db::Encryptable},
+    },
     schema::key_manager_states,
-    util::diesel_ext::ExpectedRowsExtension,
+    util::{
+        diesel_ext::ExpectedRowsExtension,
+        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
+    },
 };
 
 /// Represents a row in the key_manager_states table.
@@ -181,7 +189,7 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
         Ok(self)
     }
 
-    fn decrypt(&mut self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+    fn decrypt(self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         unimplemented!("Not supported")
     }
 }

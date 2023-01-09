@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::mem::size_of;
+
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use rand::{rngs::OsRng, RngCore};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{
     storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
@@ -34,9 +38,13 @@ use crate::support::data::get_temp_sqlite_database_connection;
 async fn get_key_at_test_with_encryption() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
@@ -57,9 +65,14 @@ async fn key_manager_multiple_branches() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     assert_eq!(
         key_manager.add_new_branch("branch1").await.unwrap(),
@@ -94,9 +107,14 @@ async fn key_manager_find_index() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
@@ -112,9 +130,14 @@ async fn key_manager_update_current_key_index_if_higher() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
@@ -140,9 +163,14 @@ async fn key_manager_test_index() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
 
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+
     let key_manager = KeyManagerHandle::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection).unwrap()),
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, db_cipher).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     key_manager.add_new_branch("branch2").await.unwrap();

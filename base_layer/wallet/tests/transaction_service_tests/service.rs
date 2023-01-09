@@ -197,7 +197,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), cipher.clone());
-    let kms_backend = KeyManagerSqliteDatabase::new(db_connection).unwrap();
+    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, cipher).unwrap();
     let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
     let cipher = CipherSeed::new();

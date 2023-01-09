@@ -688,7 +688,6 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
         // we zeroize the decrypted value
         decrypted_value.zeroize();
-        self.value.zeroize();
 
         Ok(self)
     }

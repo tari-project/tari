@@ -1375,7 +1375,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
             &from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
@@ -1384,6 +1384,9 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize sensitive data
+        decrypted_protocol.zeroize();
 
         Ok(self)
     }
@@ -1627,7 +1630,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
             &from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
@@ -1636,6 +1639,9 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize sensitive data
+        decrypted_protocol.zeroize();
 
         Ok(self)
     }
@@ -2047,7 +2053,7 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let decrypted_protocol = decrypt_bytes_integral_nonce(
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
             &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
@@ -2056,6 +2062,9 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
+        // zeroize sensitive data
+        decrypted_protocol.zeroize();
 
         Ok(self)
     }
