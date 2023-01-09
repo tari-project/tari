@@ -50,7 +50,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::transaction::TransactionInternalConsistencyValidator,
+    validation::{transaction::TransactionInternalConsistencyValidator, ValidationError},
 };
 
 #[test]
@@ -425,7 +425,7 @@ fn inputs_not_malleable() {
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    unpack_enum!(TransactionError::InvalidSignatureError(_a) = err);
+    unpack_enum!(ValidationError::TransactionError(_a) = err);
 }
 
 #[test]
@@ -497,7 +497,9 @@ mod validate_internal_consistency {
         // Otherwise if this passes check again with the height
         let validator = TransactionInternalConsistencyValidator::new(false, CryptoFactories::default());
         let tx = stx_protocol.take_transaction().unwrap();
-        validator.validate(&tx, None, None, height)?;
+        validator
+            .validate(&tx, None, None, height)
+            .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
         Ok(())
     }
 
@@ -560,7 +562,7 @@ mod validate_internal_consistency {
         .unwrap_err();
 
         unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        unpack_enum!(TransactionError::CovenantError(_s) = err);
+        unpack_enum!(TransactionError::ValidationError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set

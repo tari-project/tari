@@ -255,7 +255,7 @@ pub fn check_accounting_balance(
                 block.hash().to_hex(),
                 err
             );
-            ValidationError::TransactionError(err)
+            err
         })
 }
 

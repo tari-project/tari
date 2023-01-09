@@ -52,7 +52,7 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
     validation::{
         mocks::MockValidator,
-        transaction::TxInputAndMaturityValidator,
+        transaction::TransactionChainLinkedValidator,
         CandidateBlockValidator,
         ChainLinkedHeaderValidator,
         InternalConsistencyValidator,
@@ -187,7 +187,7 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
         let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
-        let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
+        let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
             consensus_manager.clone(),

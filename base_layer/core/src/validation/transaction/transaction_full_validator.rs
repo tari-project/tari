@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,44 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The validation module defines the [Validation] trait which describes all code that can perform block,
-//! transaction, or other validation tasks. Validators implement the [Validation] trait and can be chained together
-//! in a [ValidationPipeline] object to carry out complex validation routines.
-//!
-//! This module also defines a mock [MockValidator] that is useful for testing components that require validation
-//! without having to bring in all sorts of blockchain and communications paraphernalia.
-
-mod error;
-pub use error::ValidationError;
-
-pub(crate) mod helpers;
-
-mod traits;
-pub use traits::{
-    BlockSyncBodyValidation,
-    CandidateBlockValidator,
-    ChainLinkedHeaderValidator,
-    FinalHorizonStateValidation,
-    HeaderInternalConsistencyValidator,
-    InternalConsistencyValidator,
-    TransactionValidator,
+use super::{TransactionChainLinkedValidator, TransactionInternalConsistencyValidator};
+use crate::{
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    transactions::{transaction_components::Transaction, CryptoFactories},
+    validation::{traits::TransactionValidator, ValidationError},
 };
 
-pub mod block_validators;
-mod difficulty_calculator;
-pub use difficulty_calculator::*;
-pub mod header_validator;
-pub mod mocks;
-pub mod transaction;
-// pub mod header_validator;
+pub struct TransactionFullValidator<B> {
+    db: BlockchainDatabase<B>,
+    internal_validator: TransactionInternalConsistencyValidator,
+    chain_validator: TransactionChainLinkedValidator<B>,
+}
 
-mod chain_balance;
-pub use chain_balance::ChainBalanceValidator;
+impl<B: BlockchainBackend> TransactionFullValidator<B> {
+    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool, db: BlockchainDatabase<B>) -> Self {
+        let internal_validator =
+            TransactionInternalConsistencyValidator::new(bypass_range_proof_verification, factories);
+        let chain_validator = TransactionChainLinkedValidator::new(db.clone());
+        Self {
+            db,
+            internal_validator,
+            chain_validator,
+        }
+    }
+}
 
-mod header_iter;
+impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        self.internal_validator.validate_with_current_tip(tx, self.db.clone())?;
+        self.chain_validator.validate(tx)?;
 
-pub mod aggregate_body;
-pub mod header_sync_validator;
-
-#[cfg(test)]
-mod test;
+        Ok(())
+    }
+}

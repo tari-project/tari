@@ -44,12 +44,7 @@ mod benches {
             CryptoFactories,
         },
         tx,
-        validation::transaction::{
-            MempoolValidator,
-            TxConsensusValidator,
-            TxInputAndMaturityValidator,
-            TxInternalConsistencyValidator,
-        },
+        validation::transaction::TransactionFullValidator,
     };
     use tokio::{runtime::Runtime, task};
 
@@ -78,15 +73,7 @@ mod benches {
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let db = create_new_blockchain();
 
-        let mempool_validator = MempoolValidator::new(vec![
-            Box::new(TxInternalConsistencyValidator::new(
-                CryptoFactories::default(),
-                false,
-                db.clone(),
-            )),
-            Box::new(TxInputAndMaturityValidator::new(db.clone())),
-            Box::new(TxConsensusValidator::new(db)),
-        ]);
+        let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db);
         let mempool = Mempool::new(config, rules, Box::new(mempool_validator));
         const NUM_TXNS: usize = 100;
         // Pre-generate a bunch of transactions

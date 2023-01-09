@@ -40,11 +40,14 @@ use tari_crypto::{
 use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::MicroTari,
-    transaction_components::{transaction_output::batch_verify_range_proofs, KernelSum, TransactionError},
-    CryptoFactories,
+use crate::{
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::MicroTari,
+        transaction_components::{transaction_output::batch_verify_range_proofs, KernelSum, TransactionError},
+        CryptoFactories,
+    },
+    validation::ValidationError,
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
@@ -78,7 +81,7 @@ impl AggregateBodyInternalConsistencyValidator {
         total_reward: Option<MicroTari>,
         prev_header: Option<HashOutput>,
         height: u64,
-    ) -> Result<(), TransactionError> {
+    ) -> Result<(), ValidationError> {
         let total_reward = total_reward.unwrap_or(MicroTari::zero());
 
         verify_kernel_signatures(body)?;
@@ -100,7 +103,7 @@ impl AggregateBodyInternalConsistencyValidator {
 
 /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
 /// will be added to the public key used in the signature verification.
-fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), TransactionError> {
+fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel signatures",);
     for kernel in body.kernels() {
         kernel.verify_signature().map_err(|e| {
@@ -119,7 +122,7 @@ fn validate_kernel_sum(
     body: &AggregateBody,
     offset_and_reward: Commitment,
     factory: &CommitmentFactory,
-) -> Result<(), TransactionError> {
+) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel total");
     let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward);
     let sum_io = sum_commitments(body)?;
@@ -133,7 +136,7 @@ fn validate_kernel_sum(
         fees.to_hex()
     );
     if excess != &sum_io + &fees {
-        return Err(TransactionError::ValidationError(
+        return Err(ValidationError::CustomError(
             "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
         ));
     }
@@ -156,7 +159,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Ker
 }
 
 /// Calculate the sum of the outputs - inputs
-fn sum_commitments(body: &AggregateBody) -> Result<Commitment, TransactionError> {
+fn sum_commitments(body: &AggregateBody) -> Result<Commitment, ValidationError> {
     let sum_inputs = body
         .inputs()
         .iter()
@@ -178,7 +181,7 @@ fn validate_range_proofs(
     Ok(())
 }
 
-fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), TransactionError> {
+fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking sender signatures");
     for o in body.outputs() {
         o.verify_metadata_signature()?;
@@ -193,7 +196,7 @@ fn validate_script_offset(
     factory: &CommitmentFactory,
     prev_header: Option<HashOutput>,
     height: u64,
-) -> Result<(), TransactionError> {
+) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking script offset");
     // lets count up the input script public keys
     let mut input_keys = PublicKey::default();
@@ -213,12 +216,12 @@ fn validate_script_offset(
     }
     let lhs = input_keys - output_keys;
     if lhs != script_offset {
-        return Err(TransactionError::ScriptOffset);
+        return Err(ValidationError::TransactionError(TransactionError::ScriptOffset));
     }
     Ok(())
 }
 
-fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), TransactionError> {
+fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
     for input in body.inputs() {
         input.covenant()?.execute(height, input, body.outputs())?;
     }

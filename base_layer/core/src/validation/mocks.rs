@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
-use super::ChainLinkedHeaderValidator;
+use super::{ChainLinkedHeaderValidator, TransactionValidator};
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
@@ -42,7 +42,6 @@ use crate::{
         DifficultyCalculator,
         FinalHorizonStateValidation,
         InternalConsistencyValidator,
-        MempoolTransactionValidator,
     },
 };
 
@@ -133,7 +132,7 @@ impl<B: BlockchainBackend> ChainLinkedHeaderValidator<B> for MockValidator {
     }
 }
 
-impl MempoolTransactionValidator for MockValidator {
+impl TransactionValidator for MockValidator {
     fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

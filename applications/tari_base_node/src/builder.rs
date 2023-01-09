@@ -39,12 +39,7 @@ use tari_core::{
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::DefaultHeaderValidator,
-        transaction::{
-            MempoolValidator,
-            TxConsensusValidator,
-            TxInputAndMaturityValidator,
-            TxInternalConsistencyValidator,
-        },
+        transaction::TransactionFullValidator,
         DifficultyCalculator,
     },
 };
@@ -238,15 +233,11 @@ async fn build_node_context(
         }
     })?;
 
-    let mempool_validator = MempoolValidator::new(vec![
-        Box::new(TxInternalConsistencyValidator::new(
-            factories.clone(),
-            app_config.base_node.bypass_range_proof_verification,
-            blockchain_db.clone(),
-        )),
-        Box::new(TxConsensusValidator::new(blockchain_db.clone())),
-        Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
-    ]);
+    let mempool_validator = TransactionFullValidator::new(
+        factories.clone(),
+        app_config.base_node.bypass_range_proof_verification,
+        blockchain_db.clone(),
+    );
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),
         rules.clone(),

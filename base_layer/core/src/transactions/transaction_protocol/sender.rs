@@ -48,6 +48,7 @@ use crate::{
             OutputFeatures,
             Transaction,
             TransactionBuilder,
+            TransactionError,
             TransactionInput,
             TransactionKernel,
             TransactionOutput,
@@ -610,7 +611,9 @@ impl SenderTransactionProtocol {
                         let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
                         let result = validator
                             .validate(&transaction, None, prev_header, height)
-                            .map_err(TPE::TransactionBuildError);
+                            .map_err(|err| {
+                                TPE::TransactionBuildError(TransactionError::ValidationError(err.to_string()))
+                            });
                         if let Err(e) = result {
                             self.state = SenderState::Failed(e.clone());
                             return Err(e);

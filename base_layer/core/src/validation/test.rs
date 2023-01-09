@@ -44,11 +44,9 @@ use crate::{
     tx,
     validation::{
         header_iter::HeaderIter,
-        transaction::TxInternalConsistencyValidator,
         ChainBalanceValidator,
         DifficultyCalculator,
         FinalHorizonStateValidation,
-        MempoolTransactionValidator,
         ValidationError,
     },
 };
@@ -427,17 +425,20 @@ fn chain_balance_validation_burned() {
 
 mod transaction_validator {
     use super::*;
-    use crate::transactions::transaction_components::TransactionError;
+    use crate::{
+        transactions::transaction_components::TransactionError,
+        validation::transaction::TransactionInternalConsistencyValidator,
+    };
 
     #[test]
     fn it_rejects_coinbase_outputs() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
-        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let validator = TransactionInternalConsistencyValidator::new(true, factories);
         let features = OutputFeatures::create_coinbase(0, None);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate(&tx).unwrap_err();
+        let err = validator.validate_with_current_tip(&tx, db).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
     }
 
@@ -446,11 +447,11 @@ mod transaction_validator {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
-        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let validator = TransactionInternalConsistencyValidator::new(true, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate(&tx).unwrap_err();
+        let err = validator.validate_with_current_tip(&tx, db).unwrap_err();
         assert!(matches!(
             err,
             ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)

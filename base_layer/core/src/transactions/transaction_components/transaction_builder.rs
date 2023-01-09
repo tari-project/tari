@@ -113,7 +113,9 @@ impl TransactionBuilder {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
             let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
-            validator.validate(&tx, self.reward, prev_header, height)?;
+            validator
+                .validate(&tx, self.reward, prev_header, height)
+                .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(

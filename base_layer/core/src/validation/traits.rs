@@ -46,8 +46,8 @@ pub trait CandidateBlockValidator<B>: Send + Sync {
     fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError>;
 }
 
-pub trait MempoolTransactionValidator: Send + Sync {
-    fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError>;
+pub trait TransactionValidator: Send + Sync {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
 }
 
 pub trait InternalConsistencyValidator: Send + Sync {
