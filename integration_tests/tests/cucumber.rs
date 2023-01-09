@@ -2684,7 +2684,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     cli.command2 = Some(CliCommands::ExportUtxos(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-    println!("FLAG: {}", base_node);
+
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 

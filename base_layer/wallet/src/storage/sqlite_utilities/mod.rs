@@ -45,9 +45,8 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     db_path: P,
     sqlite_pool_size: usize,
 ) -> Result<WalletDbConnection, WalletStorageError> {
-    println!("FLAG: before acquiring the db lock");
+    println!("FLAG: db_path = {:?}", db_path.as_ref());
     let file_lock = acquire_exclusive_file_lock(db_path.as_ref())?;
-    println!("FLAG: after acquiring the db lock");
 
     let path_str = db_path
         .as_ref()

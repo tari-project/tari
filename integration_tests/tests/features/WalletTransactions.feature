@@ -78,7 +78,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
-    When I wait 5 seconds
+    When I wait 30 seconds
     Then I import WALLET_B unspent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I restart wallet WALLET_C

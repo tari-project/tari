@@ -152,8 +152,6 @@ pub fn run_wallet_with_cli(
         cli.non_interactive_mode,
     ))?;
 
-    println!("FLAG: ADIJFAPODJFOAPSDJFASIODFJAOSPDFJAP");
-
     // if wallet is being set for the first time, wallet seed words are prompted on the screen
     if !cli.non_interactive_mode && not_recovery && on_init {
         match confirm_seed_words(&mut wallet) {
