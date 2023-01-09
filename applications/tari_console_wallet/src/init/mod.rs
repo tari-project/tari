@@ -349,7 +349,7 @@ pub async fn init_wallet(
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
-        config.wallet.clone(),
+        wallet_config,
         config.peer_seeds.clone(),
         config.auto_update.clone(),
         node_identity,
