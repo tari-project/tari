@@ -296,12 +296,10 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = NUM_RETIRES; // About two minutes
-
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
-    for _ in 0..=num_retries {
+    for _ in 0..=(NUM_RETIRES) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
@@ -463,11 +461,28 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
     mine_blocks_without_wallet(&mut client, num_blocks, weight).await;
 }
 
-#[then(expr = "I connect node {word} to node {word}")]
-#[when(expr = "I connect node {word} to node {word}")]
-async fn connect_node_to_node(world: &mut TariWorld, node_a: String, node_b: String) {
-    let node_a = world.get_node(&node_a).unwrap();
-    let node_b = world.get_node(&node_b).unwrap();
+#[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
+async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld, node: String, num_transactions: u64) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut unconfirmed_txs = 0;
+
+    for _ in 0..(NUM_RETIRES) {
+        let resp = client.get_mempool_stats(Empty {}).await.unwrap();
+        let inner = resp.into_inner();
+
+        unconfirmed_txs = inner.unconfirmed_txs;
+
+        if inner.unconfirmed_txs == num_transactions {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+    }
+
+    panic!(
+        "The node {} has {} unconfirmed txs instead of the expected {}",
+        node, unconfirmed_txs, num_transactions
+    );
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]

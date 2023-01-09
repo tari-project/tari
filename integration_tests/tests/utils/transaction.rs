@@ -41,8 +41,13 @@ use tari_core::transactions::{
 };
 use tari_crypto::{
     keys::PublicKey,
-    ristretto::{pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory, RistrettoSecretKey},
+    ristretto::{
+        pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
+        RistrettoPublicKey,
+        RistrettoSecretKey,
+    },
 };
+use tari_script::{inputs, script};
 
 #[derive(Clone)]
 struct TestTransactionBuilder {
@@ -73,12 +78,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    pub fn change_lock_height(&mut self, height: u64) -> &mut Self {
-        self.lock_height = height;
-        self
-    }
-
-    pub fn update_amount(&mut self, amount: MicroTari) {
+    fn update_amount(&mut self, amount: MicroTari) {
         self.amount += amount
     }
 
@@ -150,13 +150,13 @@ impl TestTransactionBuilder {
     }
 
     fn create_utxo(&mut self) {
-        let script = Default::default();
+        let input_data: RistrettoPublicKey = PublicKey::from_secret_key(&self.keys.script_private_key);
 
         let mut builder = UnblindedOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
             .with_features(Default::default())
-            .with_script(script)
+            .with_script(script!(Nop))
             .with_script_private_key(self.keys.script_private_key.clone())
-            .with_input_data(Default::default());
+            .with_input_data(inputs!(input_data));
         builder.with_sender_offset_public_key(self.keys.sender_offset_public_key.clone());
         builder
             .sign_as_sender_and_receiver(&self.keys.sender_offset_private_key.clone())
@@ -185,20 +185,6 @@ pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transactio
     for unblinded_output in utxos {
         builder.add_input(unblinded_output);
     }
-
-    builder.build()
-}
-
-pub fn build_transaction_with_weight_at_height(
-    utxos: Vec<UnblindedOutput>,
-    weight: u64,
-    height: u64,
-) -> (Transaction, UnblindedOutput) {
-    let mut builder = TestTransactionBuilder::new();
-    for unblinded_output in utxos {
-        builder.add_input(unblinded_output);
-    }
-    builder.change_lock_height(height);
 
     builder.build()
 }
