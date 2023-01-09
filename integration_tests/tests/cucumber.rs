@@ -77,7 +77,7 @@ pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
 const NUM_RETIRES: u64 = 240;
-const RETRY_TIME_IN_MS: u64 = 250;
+const RETRY_TIME_IN_MS: u64 = 500;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -296,12 +296,10 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = NUM_RETIRES; // About two minutes
-
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
-    for _ in 0..=num_retries {
+    for _ in 0..=(NUM_RETIRES) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
