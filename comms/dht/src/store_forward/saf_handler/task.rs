@@ -558,8 +558,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 header.message_signature.len()
             );
             let shared_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
-            let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
-            let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.message_signature)?;
+            let key_signature = crypt::generate_key_signature(&shared_secret);
+            let decrypted = crypt::decrypt_signature(&key_signature, &header.message_signature)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
 
             trace!(
@@ -570,7 +570,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             let key_message = crypt::generate_key_message(&shared_secret);
             let mut decrypted_bytes = BytesMut::from(body);
-            crypt::decrypt(&key_message, &mut decrypted_bytes)?;
+            crypt::decrypt_message(&key_message, &mut decrypted_bytes)?;
             let envelope_body =
                 EnvelopeBody::decode(decrypted_bytes.freeze()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
             if envelope_body.is_empty() {

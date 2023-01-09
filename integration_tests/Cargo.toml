@@ -62,7 +62,7 @@ tower-http = { version = "0.3.0", features = ["cors"] }
 
 
 [dev-dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
 
 # FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
 #cucumber = { version = "0.13.0", features = ["default"] }
