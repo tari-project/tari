@@ -28,6 +28,7 @@ use tari_app_grpc::{
     tari_rpc::{
         pow_algo::PowAlgos,
         wallet_client::WalletClient,
+        Block,
         GetCoinbaseRequest,
         GetCoinbaseResponse,
         NewBlockTemplate,
@@ -350,4 +351,17 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
     let (template, unblinded_output) = create_block_template_with_coinbase_without_wallet(&mut client, 0).await;
     world.utxos.insert(coinbase_name, unblinded_output);
     mine_block_without_wallet_with_template(&mut client, template.new_block_template.unwrap()).await;
+}
+
+pub async fn mine_block_before_submit(world: &mut TariWorld, client: &mut BaseNodeClient) -> Block {
+    let (template, unblinded_output) = create_block_template_with_coinbase_without_wallet(client, 0).await;
+    world.utxos.insert("CB-1".to_string(), unblinded_output);
+
+    let new_block = client
+        .get_new_block(template.new_block_template.unwrap())
+        .await
+        .unwrap()
+        .into_inner();
+
+    new_block.block.unwrap()
 }

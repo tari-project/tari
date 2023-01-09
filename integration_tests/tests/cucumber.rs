@@ -39,6 +39,7 @@ use tari_app_grpc::tari_rpc as grpc;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
 use tari_core::{
+    blocks::Block,
     consensus::ConsensusManager,
     transactions::transaction_components::{Transaction, UnblindedOutput},
 };
@@ -64,6 +65,7 @@ use crate::utils::{
     base_node_process::{spawn_base_node, BaseNodeProcess},
     miner::{
         mine_block,
+        mine_block_before_submit,
         mine_block_with_coinbase_on_node,
         mine_blocks_without_wallet,
         register_miner_process,
@@ -2399,6 +2401,54 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
         "Claim HTLC transaction with wallet {} at fee {} succeeded",
         wallet, fee_per_gram
     );
+}
+
+#[then(expr = "meddling with block template data from node {word} is not allowed")]
+async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    // No meddling
+    let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    let block = mine_block_before_submit(world, &mut client).await;
+    let _sumbmit_res = client.submit_block(block).await.unwrap();
+
+    let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let new_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    assert_eq!(
+        current_height + 1,
+        new_height,
+        "validating that the chain increased by 1 from {} to {} but was actually {}",
+        current_height,
+        current_height + 1,
+        new_height
+    );
+
+    // Meddle with kernal_mmr_size
+    let mut block: Block = Block::try_from(mine_block_before_submit(world, &mut client).await).unwrap();
+    block.header.kernel_mmr_size += 1;
+    match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
+        Ok(_) => panic!("The block should not have been valid"),
+        Err(e) => assert_eq!(
+            "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
+             Expected: 3, received: 4"
+                .to_string(),
+            e.message()
+        ),
+    }
+
+    // Meddle with output_mmr_size
+    let mut block: Block = Block::try_from(mine_block_before_submit(world, &mut client).await).unwrap();
+    block.header.output_mmr_size += 1;
+    match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
+        Ok(_) => panic!("The block should not have been valid"),
+        Err(e) => assert_eq!(
+            "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
+             Expected: 3, received: 4"
+                .to_string(),
+            e.message()
+        ),
+    }
 }
 
 #[when(expr = "I print the cucumber world")]
