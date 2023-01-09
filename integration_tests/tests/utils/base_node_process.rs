@@ -153,6 +153,9 @@ pub async fn spawn_base_node(
         base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::File(temp_dir.path().join("dht.sqlit"));
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
+        if pruning_horizon.is_some() {
+            base_node_config.base_node.storage.pruning_interval = 1;
+        };
 
         println!(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
