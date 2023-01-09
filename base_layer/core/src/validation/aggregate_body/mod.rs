@@ -22,3 +22,6 @@
 
 mod aggregate_body_internal_validator;
 pub use aggregate_body_internal_validator::AggregateBodyInternalConsistencyValidator;
+
+mod aggregate_body_chain_validator;
+pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;
