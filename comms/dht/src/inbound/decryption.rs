@@ -390,8 +390,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ok_or( DecryptionError::MessageSignatureNotProvidedForEncryptedMessage)?;
 
         // obtain key signature for authenticated decrypt signature
-        let key_signature = crypt::generate_key_signature_for_authenticated_encryption(shared_secret);
-        let decrypted_bytes = crypt::decrypt_with_chacha20_poly1305(&key_signature, encrypted_message_signature)
+        let key_signature = crypt::generate_key_signature(shared_secret);
+        let decrypted_bytes = crypt::decrypt_signature(&key_signature, encrypted_message_signature)
             .map_err(|_| DecryptionError::MessageSignatureDecryptedFailed)?;
         let message_signature = ProtoMessageSignature::decode(decrypted_bytes.as_slice())
             .map_err(|_| DecryptionError::MessageSignatureDeserializedFailed)?;
@@ -408,7 +408,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
         let mut decrypted = BytesMut::from(message_body);
-        crypt::decrypt(&key_message, &mut decrypted).map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
+        crypt::decrypt_message(&key_message, &mut decrypted)
+            .map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
         EnvelopeBody::decode(decrypted.freeze())
@@ -643,7 +644,7 @@ mod test {
         let msg_tag = MessageTag::new();
 
         let mut message = plain_text_msg.clone();
-        crypt::encrypt(&key_message, &mut message).unwrap();
+        crypt::encrypt_message(&key_message, &mut message).unwrap();
         let message = message.freeze();
         let header = make_dht_header(
             &node_identity,
@@ -668,10 +669,9 @@ mod test {
         // Sign invalid data. Other peers cannot validate this while propagating, but this should not cause them to be
         // banned.
         let signature = make_valid_message_signature(&node_identity, b"sign invalid data");
-        let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
+        let key_signature = crypt::generate_key_signature(&shared_secret);
 
-        inbound_msg.dht_header.message_signature =
-            crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature).unwrap();
+        inbound_msg.dht_header.message_signature = crypt::encrypt_signature(&key_signature, &signature).unwrap();
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
@@ -706,7 +706,7 @@ mod test {
         let msg_tag = MessageTag::new();
 
         let mut message = plain_text_msg.clone();
-        crypt::encrypt(&key_message, &mut message).unwrap();
+        crypt::encrypt_message(&key_message, &mut message).unwrap();
         let message = message.freeze();
         let header = make_dht_header(
             &node_identity,
