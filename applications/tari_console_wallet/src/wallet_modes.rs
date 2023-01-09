@@ -271,7 +271,12 @@ pub fn tui_mode(
     if config.grpc_enabled {
         if let Some(address) = config.grpc_address.clone() {
             let grpc = WalletGrpcServer::new(wallet.clone());
-            handle.spawn(run_grpc(grpc, address, config.grpc_authentication.clone()));
+            handle.spawn(run_grpc(
+                grpc,
+                address,
+                config.grpc_authentication.clone(),
+                wallet.clone(),
+            ));
         }
     }
 
@@ -369,10 +374,10 @@ pub fn recovery_mode(
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
-        let grpc = WalletGrpcServer::new(wallet);
+        let grpc = WalletGrpcServer::new(wallet.clone());
         let auth = config.grpc_authentication.clone();
         handle
-            .block_on(run_grpc(grpc, address, auth))
+            .block_on(run_grpc(grpc, address, auth, wallet))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("GRPC server is disabled");
@@ -385,6 +390,7 @@ async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
     auth_config: GrpcAuthentication,
+    wallet: WalletSqlite,
 ) -> Result<(), String> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (gRPC mode started)";
@@ -397,7 +403,7 @@ async fn run_grpc(
 
     Server::builder()
         .add_service(service)
-        .serve(address)
+        .serve_with_shutdown(address, wallet.wait_until_shutdown())
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
 
