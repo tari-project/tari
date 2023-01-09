@@ -620,7 +620,7 @@ mod test {
         let ecdh_key = CommsDHKE::new(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
         let mut encrypted_bytes = msg.encode_into_bytes_mut();
-        crypt::encrypt(&key_message, &mut encrypted_bytes).unwrap();
+        crypt::encrypt_message(&key_message, &mut encrypted_bytes).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             &encrypted_bytes.to_vec(),

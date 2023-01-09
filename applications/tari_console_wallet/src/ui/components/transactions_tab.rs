@@ -154,7 +154,7 @@ impl TransactionsTab {
             .highlight_style(styles::highlight())
             .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
+            .add_column(Some("Source/Destination address"), Some(69), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
@@ -267,7 +267,7 @@ impl TransactionsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
+            .add_column(Some("Source/Destination Address"), Some(69), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
@@ -295,8 +295,8 @@ impl TransactionsTab {
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
-        let source_public_key = Span::styled("Source Public Key:", Style::default().fg(Color::Magenta));
-        let destination_public_key = Span::styled("Destination Public Key:", Style::default().fg(Color::Magenta));
+        let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
+        let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
         let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
@@ -312,9 +312,9 @@ impl TransactionsTab {
         let trim = Wrap { trim: true };
         let paragraph = Paragraph::new(tx_id).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
-        let paragraph = Paragraph::new(source_public_key).wrap(trim);
+        let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
-        let paragraph = Paragraph::new(destination_public_key).wrap(trim);
+        let paragraph = Paragraph::new(destination_address).wrap(trim);
         f.render_widget(paragraph, label_layout[2]);
         let paragraph = Paragraph::new(direction).wrap(trim);
         f.render_widget(paragraph, label_layout[3]);
@@ -346,13 +346,13 @@ impl TransactionsTab {
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
 
-            let source_public_key =
+            let source_address =
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
                     Span::styled(format!("{}", tx.source_address), Style::default().fg(Color::White))
                 };
-            let destination_public_key =
+            let destination_address =
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
@@ -435,9 +435,9 @@ impl TransactionsTab {
 
             let paragraph = Paragraph::new(tx_id).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
-            let paragraph = Paragraph::new(source_public_key).wrap(trim);
+            let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
-            let paragraph = Paragraph::new(destination_public_key).wrap(trim);
+            let paragraph = Paragraph::new(destination_address).wrap(trim);
             f.render_widget(paragraph, content_layout[2]);
             let paragraph = Paragraph::new(direction).wrap(trim);
             f.render_widget(paragraph, content_layout[3]);
