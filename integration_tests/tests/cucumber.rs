@@ -2659,15 +2659,18 @@ async fn send_one_sided_stealth_transaction(
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    // let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     // wallet_a_ps.kill();
 
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
+    // let temp_dir = tempdir().unwrap();
+    // let temp_dir_path = temp_dir.path();
 
-    let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path);
-    wallet_data_dir.push("data/wallet");
+    // let mut wallet_data_dir = PathBuf::new();
+    // wallet_data_dir.push(temp_dir_path);
+    // wallet_data_dir.push("data/wallet");
+
+    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
+    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
     let mut config_path = wallet_data_dir.clone();
     config_path.push("config.toml");
@@ -2689,8 +2692,9 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
-
     let mut reader = csv::Reader::from_reader(exported_outputs);
+
+    println!("FLAG: reader = {:?}", reader);
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
