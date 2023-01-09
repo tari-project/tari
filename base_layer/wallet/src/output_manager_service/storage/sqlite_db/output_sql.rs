@@ -808,39 +808,27 @@ impl Encryptable<XChaCha20Poly1305> for OutputSql {
     }
 
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-
-        output.spending_key = encrypt_bytes_integral_nonce(
+        self.spending_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("spending_key"),
-            Hidden::hide(output.spending_key.clone()),
+            Hidden::hide(self.spending_key.clone()),
         )?;
 
-        output.script_private_key = encrypt_bytes_integral_nonce(
+        self.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            Hidden::hide(output.script_private_key),
+            Hidden::hide(self.script_private_key),
         )?;
 
-        // zeroize the sensitive data
-        self.spending_key.zeroize();
-        self.script_private_key.zeroize();
-
-        Ok(output)
+        Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
+        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
-        output.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &output.spending_key)?;
+        self.script_private_key =
+            decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
-        output.script_private_key =
-            decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &output.script_private_key)?;
-
-        // zeroize encrypted sensitive data, as a good practice
-        self.spending_key.zeroize();
-        self.script_private_key.zeroize();
-
-        Ok(output)
+        Ok(self)
     }
 }

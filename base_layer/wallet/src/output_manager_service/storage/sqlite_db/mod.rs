@@ -1363,24 +1363,14 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
     }
 
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.private_key =
-            encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), Hidden::hide(output.private_key))?;
-
-        // zeroize sensitive data
-        self.private_key.zeroize();
-
-        Ok(output)
+        self.private_key =
+            encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), Hidden::hide(self.private_key))?;
+        Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut output = self.clone();
-        output.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &output.private_key)?;
-
-        // we zeroize the encrypted sensitive data, as a good practice
-        self.private_key.zeroize();
-
-        Ok(output)
+        self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &self.private_key)?;
+        Ok(self)
     }
 }
 
