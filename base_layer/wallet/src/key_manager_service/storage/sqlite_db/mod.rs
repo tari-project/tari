@@ -42,14 +42,21 @@ const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct KeyManagerSqliteDatabase {
     database_connection: WalletDbConnection,
+    cipher: Arc<RwLock<new(cipher)>>,
 }
 
 impl KeyManagerSqliteDatabase {
     /// Creates a new sql backend from provided wallet db connection
     /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
     /// from a provided password, which we enforce for class instantiation
-    pub fn new(database_connection: WalletDbConnection) -> Result<Self, KeyManagerStorageError> {
-        let db = Self { database_connection };
+    pub fn new(
+        database_connection: WalletDbConnection,
+        cipher: XChaCha20Poly1305,
+    ) -> Result<Self, KeyManagerStorageError> {
+        let db = Self {
+            database_connection,
+            cipher: Arc::new(RwLock::new(cipher)),
+        };
         Ok(db)
     }
 }

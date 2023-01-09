@@ -139,6 +139,53 @@ impl KeyManagerStateSql {
     }
 }
 
+impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
+            .concat()
+            .to_vec()
+    }
+
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("primary_key_index"),
+            Hidden::hide(self.primary_key_index.clone()),
+        )?;
+
+        Ok(self)
+    }
+
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.primary_key_index =
+            decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), &self.primary_key_index)?;
+
+        Ok(self)
+    }
+}
+
+impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
+            .concat()
+            .to_vec()
+    }
+
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("primary_key_index"),
+            Hidden::hide(self.primary_key_index.clone()),
+        )?;
+
+        Ok(self)
+    }
+
+    fn decrypt(&mut self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        unimplemented!("Not supported")
+    }
+}
+
 #[derive(AsChangeset)]
 #[table_name = "key_manager_states"]
 pub struct KeyManagerStateUpdateSql {
