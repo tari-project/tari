@@ -73,6 +73,11 @@ impl TestTransactionBuilder {
         self
     }
 
+    pub fn change_lock_height(&mut self, height: u64) -> &mut Self {
+        self.lock_height = height;
+        self
+    }
+
     pub fn update_amount(&mut self, amount: MicroTari) {
         self.amount += amount
     }
@@ -180,6 +185,20 @@ pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transactio
     for unblinded_output in utxos {
         builder.add_input(unblinded_output);
     }
+
+    builder.build()
+}
+
+pub fn build_transaction_with_weight_at_height(
+    utxos: Vec<UnblindedOutput>,
+    weight: u64,
+    height: u64,
+) -> (Transaction, UnblindedOutput) {
+    let mut builder = TestTransactionBuilder::new();
+    for unblinded_output in utxos {
+        builder.add_input(unblinded_output);
+    }
+    builder.change_lock_height(height);
 
     builder.build()
 }

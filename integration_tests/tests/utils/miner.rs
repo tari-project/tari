@@ -128,9 +128,9 @@ pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
-pub async fn mine_blocks_without_wallet(base_client: &mut BaseNodeClient, num_blocks: u64) {
+pub async fn mine_blocks_without_wallet(base_client: &mut BaseNodeClient, num_blocks: u64, weight: u64) {
     for _ in 0..num_blocks {
-        mine_block_without_wallet(base_client).await;
+        mine_block_without_wallet(base_client, weight).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -177,8 +177,9 @@ pub async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut Wa
     );
 }
 
-async fn mine_block_without_wallet(base_client: &mut BaseNodeClient) {
-    let (block_template, _unblinded_output) = create_block_template_with_coinbase_without_wallet(base_client).await;
+async fn mine_block_without_wallet(base_client: &mut BaseNodeClient, weight: u64) {
+    let (block_template, _unblinded_output) =
+        create_block_template_with_coinbase_without_wallet(base_client, weight).await;
     mine_block_without_wallet_with_template(base_client, block_template.new_block_template.unwrap()).await;
 }
 
@@ -231,13 +232,14 @@ async fn create_block_template_with_coinbase(
 
 async fn create_block_template_with_coinbase_without_wallet(
     base_client: &mut BaseNodeClient,
+    weight: u64,
 ) -> (NewBlockTemplateResponse, UnblindedOutput) {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
         algo: Some(PowAlgo {
             pow_algo: PowAlgos::Sha3.into(),
         }),
-        max_weight: 0,
+        max_weight: weight,
     };
 
     let mut template_res = base_client
@@ -345,7 +347,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         .get_grpc_client()
         .await
         .unwrap();
-    let (template, unblinded_output) = create_block_template_with_coinbase_without_wallet(&mut client).await;
+    let (template, unblinded_output) = create_block_template_with_coinbase_without_wallet(&mut client, 0).await;
     world.utxos.insert(coinbase_name, unblinded_output);
     mine_block_without_wallet_with_template(&mut client, template.new_block_template.unwrap()).await;
 }

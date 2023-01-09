@@ -363,7 +363,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         .get_node_client(&base_node)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, blocks).await;
+    mine_blocks_without_wallet(&mut client, blocks, 0).await;
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
@@ -422,7 +422,7 @@ async fn transaction_in_state(
     let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
     // Some state changes take up to 30 minutes to make
-    for _ in 0..(NUM_RETIRES * 4) {
+    for _ in 0..(NUM_RETIRES * 2) {
         let resp = client
             .transaction_state(grpc::TransactionStateRequest {
                 excess_sig: Some(sig.into()),
@@ -431,11 +431,13 @@ async fn transaction_in_state(
 
         let inner = resp.into_inner();
 
+        // panic!("{:?}", inner);
+
         last_state = match inner.result {
             0 => "UNKNOWN",
             1 => "MEMPOOL",
-            2 => "NOT STORED",
-            3 => "MINED",
+            2 => "MINED",
+            3 => "NOT STORED",
             _ => panic!("not getting a good result"),
         };
 
@@ -443,13 +445,22 @@ async fn transaction_in_state(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 4)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 2)).await;
     }
 
     panic!(
         "The node {} has tx {} in state {} instead of the expected {}",
         node, tx_name, last_state, state
     );
+}
+
+#[when(expr = "I mine {int} custom weight blocks on {word} with weight {int}")]
+async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks: u64, node_name: String, weight: u64) {
+    let mut client = world
+        .get_node_client(&node_name)
+        .await
+        .expect("Couldn't get the node client to mine with");
+    mine_blocks_without_wallet(&mut client, num_blocks, weight).await;
 }
 
 #[then(expr = "I connect node {word} to node {word}")]
@@ -507,15 +518,15 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
             let res_state = match inner.result {
                 0 => "UNKNOWN",
                 1 => "MEMPOOL",
-                2 => "NOT STORED",
-                3 => "MINED",
+                2 => "MINED",
+                3 => "NOT STORED",
                 _ => panic!("not getting a good result"),
             };
 
             node_pool_status.insert(name, res_state);
         }
 
-        if node_pool_status.values().filter(|v| ***v == pool).count() > (nodes_count - can_fail as usize) {
+        if node_pool_status.values().filter(|v| ***v == pool).count() >= (nodes_count - can_fail as usize) {
             return Ok(());
         }
 
