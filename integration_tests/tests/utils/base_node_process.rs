@@ -149,17 +149,17 @@ pub async fn spawn_base_node(
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
 
-        base_node_config.base_node.data_dir = temp_dir_path.clone().to_path_buf();
+        base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = temp_dir_path.clone().join("base_node_id.json");
         base_node_config.base_node.tor_identity_file = temp_dir_path.clone().join("base_node_tor_id.json");
 
-        base_node_config.base_node.lmdb_path = temp_dir_path.clone().to_path_buf();
+        base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
         base_node_config.base_node.p2p.transport.tcp.listener_address =
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
         base_node_config.base_node.p2p.public_address =
             Some(base_node_config.base_node.p2p.transport.tcp.listener_address.clone());
-        base_node_config.base_node.p2p.datastore_path = temp_dir_path.clone().to_path_buf();
+        base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.dht.database_url =
             DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlit"));

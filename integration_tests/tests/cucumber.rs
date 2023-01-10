@@ -238,7 +238,7 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
 async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
     // assuming we have deployed at least a base node, we take the first one as base node for wallet to connect to
-    let nodes = world.all_seed_nodes().clone().to_vec();
+    let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
     world.wallet_connected_to_base_node.insert(name.clone(), node.clone());
     spawn_wallet(
@@ -938,7 +938,7 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
 async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
     let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
     // assuming we have at least one base node as seed node, we use the first to connect wallet to
-    let nodes = world.all_seed_nodes().clone().to_vec();
+    let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
     world.wallet_connected_to_base_node.insert(wallet.clone(), node.clone());
     spawn_wallet(
@@ -955,7 +955,7 @@ async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, w
 #[when(expr = "I have {int} non-default wallets connected to all seed nodes using {word}")]
 async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, num: u64, mechanism: String) {
     let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
-    let nodes = world.all_seed_nodes().clone().to_vec();
+    let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
     for ind in 0..num {
         let wallet_name = format!("Wallet_{}", ind);
