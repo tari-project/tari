@@ -339,6 +339,7 @@ Feature: Wallet Transactions
     When I have a base node NODE_C connected to seed SEED_B
     Then node NODE_C is at height 5
     # # Wait for the reorg to filter through
+    When I wait 15 seconds
     When I connect node SEED_A to node NODE_C
     Then all nodes are at height 4
     When I mine 2 blocks on NODE_C
