@@ -3388,6 +3388,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
     let is_seed_node = node_a_ps.is_seed_node;
     node_a_peers.push(node_b);
     node_a_ps.kill();
+    tokio::time::sleep(Duration::from_secs(15)).await;
     spawn_base_node(world, is_seed_node, node_a, node_a_peers, None).await;
 }
 
