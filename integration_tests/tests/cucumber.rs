@@ -37,6 +37,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
 use tari_core::{
@@ -63,7 +64,7 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 
 use crate::utils::{
-    base_node_process::{spawn_base_node, BaseNodeProcess},
+    base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
     miner::{
         mine_block,
         mine_block_before_submit,
@@ -2554,10 +2555,43 @@ async fn submit_block_after(world: &mut TariWorld, block_name: String, node: Str
 
 #[then(regex = r"I receive an error containing '(.*)'")]
 async fn receive_an_error(_world: &mut TariWorld, _error: String) {
-    // No-op. Was no implemented in previous suite
+    // No-op.
+    // Was not implemented in previous suite, gave it a quick try but missing other peices
 
     // assert!(world.errors.len() > 1);
     // assert!(world.errors.pop_front().unwrap().contains(&error))
+}
+
+#[when(expr = "I have a lagging delayed node {word} connected to node {word} with \
+               blocks_behind_before_considered_lagging {int}")]
+async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node: String, delay: u64) {
+    let mut config = BaseNodeConfig::default();
+    config.state_machine.blocks_behind_before_considered_lagging = delay;
+
+    spawn_base_node_with_config(world, true, delayed_node, vec![node], config).await;
+}
+
+#[then(expr = "node {word} has reached initial sync")]
+async fn node_reached_sync(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut longest_chain = 0;
+
+    for _ in 0..NUM_RETIRES {
+        let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        let metadata = tip_info.metadata.unwrap();
+        longest_chain = metadata.height_of_longest_chain;
+
+        if tip_info.initial_sync_achieved {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_secs(RETRY_TIME_IN_MS)).await;
+    }
+
+    panic!(
+        "Node {} never reached initial sync. Stuck at tip {}",
+        node, longest_chain
+    )
 }
 
 #[when(expr = "I print the cucumber world")]
