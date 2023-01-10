@@ -120,6 +120,7 @@ pub struct TariWorld {
     wallets: IndexMap<String, WalletProcess>,
     miners: IndexMap<String, MinerProcess>,
     transactions: IndexMap<String, Transaction>,
+    wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
     // mapping from tari address of wallet client to tx_id's
     wallet_tx_ids: IndexMap<String, Vec<u64>>,
     utxos: IndexMap<String, UnblindedOutput>,
@@ -761,7 +762,7 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
 
-    println!("waiting for tx with tx_id = {} to be mined_confirmed", tx_id);
+    println!("waiting for tx with tx_id = {} to be pending", tx_id);
     for retry in 0..=num_retries {
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![*tx_id],
@@ -771,7 +772,7 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
 
         if retry == num_retries {
             panic!(
-                "Wallet {} failed to detect tx with tx_id = {} to be mined_confirmed",
+                "Wallet {} failed to detect tx with tx_id = {} to be pending",
                 wallet.as_str(),
                 tx_id
             );
@@ -779,10 +780,53 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
         match tx_info.status() {
             grpc::TransactionStatus::Pending => {
                 println!(
-                    "Transaction with tx_id = {} has been detected as mined_confirmed by wallet {}",
+                    "Transaction with tx_id = {} has been detected as pending by wallet {}",
                     tx_id,
                     wallet.as_str()
                 );
+                return;
+            },
+            _ => {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            },
+        }
+    }
+}
+
+#[when(expr = "wallet {word} detects last transaction is Cancelled")]
+async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: String) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
+    let tx_id = tx_ids.last().unwrap(); // get last transaction
+    let num_retries = 100;
+
+    println!("waiting for tx with tx_id = {} to be cancelled", tx_id);
+    for retry in 0..=num_retries {
+        let request = GetTransactionInfoRequest {
+            transaction_ids: vec![*tx_id],
+        };
+        let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+        let tx_info = tx_info.transactions.first().unwrap();
+
+        if retry == num_retries {
+            panic!(
+                "Wallet {} failed to detect tx with tx_id = {} to be cancelled, current status is {:?}",
+                wallet.as_str(),
+                tx_id,
+                tx_info.status(),
+            );
+        }
+        match tx_info.status() {
+            grpc::TransactionStatus::Rejected => {
+                println!("Transaction with tx_id = {} has status {:?}", tx_id, tx_info.status());
                 return;
             },
             _ => {
@@ -992,14 +1036,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         .address
         .to_hex();
 
-    let mut dest_client = create_wallet_client(world, dest_wallet.clone()).await.unwrap();
-    let dest_wallet_address = dest_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
+    let dest_wallet_address = world.wallet_addresses.get(&dest_wallet).unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: dest_wallet_address.clone(),
@@ -1016,7 +1053,9 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
     };
+    println!("FLAG: WE ARE HEREEE2");
     let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    println!("FLAG: WE ARE HEREEE3");
     let tx_res = tx_res.results;
 
     assert_eq!(tx_res.len(), 1usize);
@@ -1520,7 +1559,17 @@ async fn stop_all_wallets(world: &mut TariWorld) {
 
 #[then(expr = "I stop wallet {word}")]
 async fn stop_wallet(world: &mut TariWorld, wallet: String) {
+    // conveniently, register wallet address
+    let mut wallet_client = create_wallet_client(&world, wallet.clone()).await.unwrap();
+    let wallet_address = wallet_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    world.wallet_addresses.insert(wallet.clone(), wallet_address);
     println!("Stopping wallet {}", wallet.as_str());
     wallet_ps.kill();
 }

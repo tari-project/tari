@@ -402,6 +402,7 @@ Feature: Wallet Transactions
     Then I stop wallet WALLET_RECV
     When I wait 15 seconds
     When I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    When I wait 15 seconds
     Then I cancel last transaction in wallet WALLET_SENDER
     Then I restart wallet WALLET_RECV
     When I wait 15 seconds
