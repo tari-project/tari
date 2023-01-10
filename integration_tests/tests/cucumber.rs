@@ -41,6 +41,7 @@ use tari_common::{configuration::Network, initialize_logging};
 use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::{
+    blocks::Block,
     consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
@@ -50,7 +51,6 @@ use tari_core::{
             OutputFeatures,
             OutputType,
             Transaction,
-            TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
         },
@@ -76,7 +76,6 @@ use tari_wallet_grpc_client::grpc::{
     SendShaAtomicSwapRequest,
     TransferRequest,
 };
-use tempfile::tempdir;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
@@ -84,12 +83,13 @@ use crate::utils::{
     base_node_process::{spawn_base_node, BaseNodeProcess},
     miner::{
         mine_block,
+        mine_block_before_submit,
         mine_block_with_coinbase_on_node,
         mine_blocks_without_wallet,
         register_miner_process,
         MinerProcess,
     },
-    transaction::build_transaction_with_output,
+    transaction::{build_transaction_with_output, build_transaction_with_output_and_fee},
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet, WalletProcess},
 };
 
@@ -97,7 +97,7 @@ pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
 const NUM_RETIRES: u64 = 240;
-const RETRY_TIME_IN_MS: u64 = 250;
+const RETRY_TIME_IN_MS: u64 = 500;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -122,7 +122,7 @@ pub struct TariWorld {
     transactions: IndexMap<String, Transaction>,
     // mapping from tari address of wallet client to tx_id's
     wallet_tx_ids: IndexMap<String, Vec<u64>>,
-    utxos: IndexMap<String, (u64, TransactionOutput)>,
+    utxos: IndexMap<String, UnblindedOutput>,
     output_hash: Option<String>,
     pre_image: Option<String>,
     wallet_connected_to_base_node: IndexMap<String, String>, // wallet -> base node,
@@ -347,12 +347,10 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
-    let num_retries = NUM_RETIRES; // About two minutes
-
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
-    for _ in 0..=num_retries {
+    for _ in 0..=(NUM_RETIRES) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
@@ -414,7 +412,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         .get_node_client(&base_node)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, blocks).await;
+    mine_blocks_without_wallet(&mut client, blocks, 0).await;
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
@@ -466,6 +464,179 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
 async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node: String, coinbase_name: String) {
     mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
+}
+
+#[then(expr = "{word} has {word} in {word} state")]
+async fn transaction_in_state(
+    world: &mut TariWorld,
+    node: String,
+    tx_name: String,
+    state: String,
+) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let sig = &tx.body.kernels()[0].excess_sig;
+    let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
+
+    // Some state changes take up to 30 minutes to make
+    for _ in 0..(NUM_RETIRES * 2) {
+        let resp = client
+            .transaction_state(grpc::TransactionStateRequest {
+                excess_sig: Some(sig.into()),
+            })
+            .await?;
+
+        let inner = resp.into_inner();
+
+        // panic!("{:?}", inner);
+
+        last_state = match inner.result {
+            0 => "UNKNOWN",
+            1 => "MEMPOOL",
+            2 => "MINED",
+            3 => "NOT STORED",
+            _ => panic!("not getting a good result"),
+        };
+
+        if last_state == state {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 2)).await;
+    }
+
+    panic!(
+        "The node {} has tx {} in state {} instead of the expected {}",
+        node, tx_name, last_state, state
+    );
+}
+
+#[when(expr = "I mine {int} custom weight blocks on {word} with weight {int}")]
+async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks: u64, node_name: String, weight: u64) {
+    let mut client = world
+        .get_node_client(&node_name)
+        .await
+        .expect("Couldn't get the node client to mine with");
+    mine_blocks_without_wallet(&mut client, num_blocks, weight).await;
+}
+
+#[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
+async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld, node: String, num_transactions: u64) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut unconfirmed_txs = 0;
+
+    for _ in 0..(NUM_RETIRES) {
+        let resp = client.get_mempool_stats(Empty {}).await.unwrap();
+        let inner = resp.into_inner();
+
+        unconfirmed_txs = inner.unconfirmed_txs;
+
+        if inner.unconfirmed_txs == num_transactions {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+    }
+
+    panic!(
+        "The node {} has {} unconfirmed txs instead of the expected {}",
+        node, unconfirmed_txs, num_transactions
+    );
+}
+
+#[then(expr = "{word} is in the {word} of all nodes")]
+async fn tx_in_state_all_nodes(world: &mut TariWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
+    tx_in_state_all_nodes_with_allowed_failure(world, tx_name, pool, 0).await
+}
+
+#[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
+async fn tx_in_state_all_nodes_with_allowed_failure(
+    world: &mut TariWorld,
+    tx_name: String,
+    pool: String,
+    can_fail_percent: u64,
+) -> anyhow::Result<()> {
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let sig = &tx.body.kernels()[0].excess_sig;
+
+    let mut node_pool_status: IndexMap<&String, &str> = IndexMap::new();
+
+    let nodes = world.base_nodes.iter().clone();
+    let nodes_count = world.base_nodes.len();
+
+    for (name, _) in nodes.clone() {
+        node_pool_status.insert(name, "UNCHECKED: DEFAULT TEST STATE");
+    }
+
+    let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
+
+    for _ in 0..(NUM_RETIRES / 2) {
+        for (name, _) in node_pool_status
+            .clone()
+            .iter()
+            .filter(|(_, in_pool)| ***in_pool != pool)
+        {
+            let mut client = world.get_node_client(name).await?;
+
+            let resp = client
+                .transaction_state(grpc::TransactionStateRequest {
+                    excess_sig: Some(sig.into()),
+                })
+                .await?;
+
+            let inner = resp.into_inner();
+
+            let res_state = match inner.result {
+                0 => "UNKNOWN",
+                1 => "MEMPOOL",
+                2 => "MINED",
+                3 => "NOT STORED",
+                _ => panic!("not getting a good result"),
+            };
+
+            node_pool_status.insert(name, res_state);
+        }
+
+        if node_pool_status.values().filter(|v| ***v == pool).count() >= (nodes_count - can_fail as usize) {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS / 2)).await;
+    }
+
+    panic!(
+        "More than {}% ({} node(s)) failed to get {} in {}, {:?}",
+        can_fail_percent, can_fail, tx_name, pool, node_pool_status
+    );
+}
+
+#[then(expr = "I submit transaction {word} to {word}")]
+#[when(expr = "I submit transaction {word} to {word}")]
+async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let resp = client
+        .submit_transaction(grpc::SubmitTransactionRequest {
+            transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
+        })
+        .await?;
+
+    let result = resp.into_inner();
+
+    if result.result == 1 {
+        Ok(())
+    } else {
+        panic!("Transaction {} wasn't submit to {}", tx_name, node)
+    }
 }
 
 #[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
@@ -715,13 +886,24 @@ async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String,
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
-        .map(|i| {
-            let (a, o) = world.utxos.get(&i.to_string()).unwrap();
-            (*a, o.clone())
-        })
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
-    let (amount, utxo, tx) = build_transaction_with_output(utxos.as_slice());
-    world.utxos.insert(output, (amount, utxo));
+
+    let (tx, utxo) = build_transaction_with_output(utxos);
+    world.utxos.insert(output, utxo);
+    world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee {word}")]
+async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs: String, output: String, fee: u64) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
+        .collect::<Vec<_>>();
+
+    let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
@@ -3297,6 +3479,54 @@ async fn create_burn_transaction(world: &mut TariWorld, amount: u64, wallet: Str
         "Burn transaction with amount {} at fee {} succeeded",
         amount, fee_per_gram
     );
+}
+
+#[then(expr = "meddling with block template data from node {word} is not allowed")]
+async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    // No meddling
+    let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    let block = mine_block_before_submit(world, &mut client).await;
+    let _sumbmit_res = client.submit_block(block).await.unwrap();
+
+    let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let new_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    assert_eq!(
+        current_height + 1,
+        new_height,
+        "validating that the chain increased by 1 from {} to {} but was actually {}",
+        current_height,
+        current_height + 1,
+        new_height
+    );
+
+    // Meddle with kernal_mmr_size
+    let mut block: Block = Block::try_from(mine_block_before_submit(world, &mut client).await).unwrap();
+    block.header.kernel_mmr_size += 1;
+    match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
+        Ok(_) => panic!("The block should not have been valid"),
+        Err(e) => assert_eq!(
+            "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
+             Expected: 3, received: 4"
+                .to_string(),
+            e.message()
+        ),
+    }
+
+    // Meddle with output_mmr_size
+    let mut block: Block = Block::try_from(mine_block_before_submit(world, &mut client).await).unwrap();
+    block.header.output_mmr_size += 1;
+    match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
+        Ok(_) => panic!("The block should not have been valid"),
+        Err(e) => assert_eq!(
+            "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
+             Expected: 3, received: 4"
+                .to_string(),
+            e.message()
+        ),
+    }
 }
 
 fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
