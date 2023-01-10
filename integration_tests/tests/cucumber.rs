@@ -916,6 +916,23 @@ async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, p
     spawn_base_node(world, false, base_node, vec![peer_node], None).await;
 }
 
+#[then(expr = "node {word} is in state {word}")]
+async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
+    let mut node_client = world.get_node_client(&node_name).await.unwrap();
+    let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
+    let state = match state.as_str() {
+        "START_UP" => 0,
+        "HEADER_SYNC" => 1,
+        "HORIZON_SYNC" => 2,
+        "CONNECTING" => 3,
+        "BLOCK_SYNC" => 4,
+        "LISTENING" => 5,
+        "SYNC_FAILED" => 6,
+        _ => panic!("Invalid state"),
+    };
+    assert_eq!(state, tip.base_node_state);
+}
+
 #[then(expr = "node {word} is at the same height as node {word}")]
 async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: String, peer_node: String) {
     let mut peer_node_client = world.get_node_client(&peer_node).await.unwrap();
