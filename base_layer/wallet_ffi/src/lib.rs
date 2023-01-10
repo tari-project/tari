@@ -4944,7 +4944,6 @@ pub unsafe extern "C" fn wallet_create(
         match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
             Ok((w, t, o, c, x)) => (w, t, o, c, x),
             Err(e) => {
-                println!("FLAG: {}", e.to_string().as_str());
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
