@@ -740,6 +740,11 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
                     return;
                 },
                 _ => {
+                    println!(
+                        "Transaction with tx_id = {} has been detected with status = {:?}",
+                        tx_id,
+                        tx_info.status()
+                    );
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 },
@@ -1053,9 +1058,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
     };
-    println!("FLAG: WE ARE HEREEE2");
     let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
-    println!("FLAG: WE ARE HEREEE3");
     let tx_res = tx_res.results;
 
     assert_eq!(tx_res.len(), 1usize);
@@ -1553,6 +1556,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
 async fn stop_all_wallets(world: &mut TariWorld) {
     for (wallet, wallet_ps) in &mut world.wallets {
         println!("Stopping wallet {}", wallet);
+
         wallet_ps.kill();
     }
 }
@@ -1584,7 +1588,15 @@ async fn stop_node(world: &mut TariWorld, node: String) {
 #[when(expr = "I start wallet {word}")]
 #[then(expr = "I start wallet {word}")]
 async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
-    spawn_wallet(world, wallet, None, vec![], None, None).await;
+    match world.wallet_connected_to_base_node.get(&wallet) {
+        None => spawn_wallet(world, wallet, None, vec![], None, None).await,
+        Some(base_node) => {
+            // start wallet
+            let base_node_ps = world.base_nodes.get(base_node).unwrap();
+            let seed_nodes = base_node_ps.seed_nodes.clone();
+            spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, None).await;
+        },
+    }
 }
 
 #[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_Confirmed")]

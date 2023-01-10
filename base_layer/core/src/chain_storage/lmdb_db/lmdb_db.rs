@@ -158,9 +158,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
     fs::create_dir_all(&path)?;
 
-    println!("FLAG: WE ARE HEREEEEEEE");
     let file_lock = acquire_exclusive_file_lock(path.as_ref())?;
-    println!("FLAG: WE ARE HEREEEEEEE2222222");
 
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)

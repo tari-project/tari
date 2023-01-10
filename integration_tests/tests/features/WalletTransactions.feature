@@ -364,6 +364,7 @@ Feature: Wallet Transactions
     When I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
     When wallet WALLET_SENDER detects last transaction is Pending
     Then I stop wallet WALLET_SENDER
+    When I wait 15 seconds
     Then I start wallet WALLET_RECV
     When I wait 5 seconds
     When wallet WALLET_RECV detects all transactions are at least Pending

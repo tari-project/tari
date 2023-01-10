@@ -174,6 +174,5 @@ async fn run_grpc(
         })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
-    println!("FLAG: IS SHUTDOWN SIGNAL WORKING? ");
     Ok(())
 }
