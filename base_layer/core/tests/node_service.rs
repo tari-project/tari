@@ -38,7 +38,7 @@ use tari_core::{
     blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{schema_to_transaction, spend_utxos},
@@ -48,8 +48,9 @@ use tari_core::{
     txn_schema,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::DefaultHeaderValidator,
+        header::HeaderFullValidator,
         mocks::MockValidator,
+        DifficultyCalculator,
     },
 };
 use tari_test_utils::unpack_enum;
@@ -499,11 +500,12 @@ async fn local_get_new_block_with_zero_conf() {
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
             BodyOnlyValidator::new(rules.clone()),
-            DefaultHeaderValidator::new(rules.clone()),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
@@ -577,11 +579,12 @@ async fn local_get_new_block_with_combined_transaction() {
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
             BodyOnlyValidator::new(rules.clone()),
-            DefaultHeaderValidator::new(rules.clone()),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())

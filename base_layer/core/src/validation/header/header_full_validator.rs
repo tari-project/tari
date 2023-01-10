@@ -26,7 +26,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     proof_of_work::AchievedTargetDifficulty,
     validation::{
@@ -38,45 +38,41 @@ use crate::{
             check_timestamp_ftl,
         },
         DifficultyCalculator,
+        HeaderChainLinkedValidator,
         ValidationError,
     },
 };
 
-pub struct HeaderFullValidator<B> {
+pub struct HeaderFullValidator {
     rules: ConsensusManager,
-    db: BlockchainDatabase<B>,
     difficulty_calculator: DifficultyCalculator,
     bypass_timestamp_count_verification: bool,
 }
 
-impl<B: BlockchainBackend> HeaderFullValidator<B> {
+impl HeaderFullValidator {
     pub fn new(
         rules: ConsensusManager,
-        db: BlockchainDatabase<B>,
         difficulty_calculator: DifficultyCalculator,
         bypass_timestamp_count_verification: bool,
     ) -> Self {
         Self {
             rules,
-            db,
             difficulty_calculator,
             bypass_timestamp_count_verification,
         }
     }
+}
 
-    pub fn validate(
+impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator {
+    fn validate(
         &self,
+        db: &B,
         header: &BlockHeader,
-        prev_headers: &[BlockHeader],
+        prev_header: &BlockHeader,
+        prev_timestamps: &[EpochTime],
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
-        let prev_header = match prev_headers.first() {
-            Some(header) => header,
-            None => return Err(ValidationError::MissingPreviousHeader),
-        };
-
-        let prev_timestamps: Vec<EpochTime> = prev_headers.iter().map(|h| h.timestamp()).collect();
         if !self.bypass_timestamp_count_verification {
             let expected_timestamp_count = cmp::min(constants.get_median_timestamp_count(), header.height as usize - 1);
             let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
@@ -88,7 +84,6 @@ impl<B: BlockchainBackend> HeaderFullValidator<B> {
             }
         }
 
-        // TODO: check also all previous headers?
         if header.height != prev_header.height + 1 {
             let result = Err(ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::InvalidHeight {
@@ -109,15 +104,14 @@ impl<B: BlockchainBackend> HeaderFullValidator<B> {
 
         check_blockchain_version(constants, header.version)?;
         check_timestamp_ftl(header, &self.rules)?;
-        check_header_timestamp_greater_than_median(header, &prev_timestamps)?;
+        check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
-        let achieved_target = {
-            let txn = self.db.db_read_access()?;
-            check_not_bad_block(&*txn, header.hash())?;
-            check_pow_data(header, &self.rules, &*txn)?;
-            self.difficulty_calculator
-                .check_achieved_and_target_difficulty(&*txn, header)?
-        };
+        check_not_bad_block(db, header.hash())?;
+        check_pow_data(header, &self.rules, db)?;
+
+        let achieved_target = self
+            .difficulty_calculator
+            .check_achieved_and_target_difficulty(db, header)?;
 
         Ok(achieved_target)
     }

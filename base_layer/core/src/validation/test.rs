@@ -53,7 +53,7 @@ use crate::{
 
 mod header_validators {
     use super::*;
-    use crate::validation::{header_validator::DefaultHeaderValidator, HeaderChainLinkedValidator};
+    use crate::validation::{header::HeaderFullValidator, HeaderChainLinkedValidator};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -112,18 +112,11 @@ mod header_validators {
 
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
 
-        let validator = DefaultHeaderValidator::new(consensus_manager.clone());
-
-        let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
         let err = validator
-            .validate(
-                &*db.db_read_access().unwrap(),
-                &[],
-                genesis.header(),
-                &header,
-                &difficulty_calculator,
-            )
+            .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[])
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX

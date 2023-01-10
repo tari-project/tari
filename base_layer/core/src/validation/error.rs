@@ -147,8 +147,6 @@ pub enum ValidationError {
     InvalidValidatorNodeSignature,
     #[error("Not enough timestamps provided. Expected {expected}, got {actual}")]
     NotEnoughTimestamps { expected: usize, actual: usize },
-    #[error("Missing previous header parameter")]
-    MissingPreviousHeader,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

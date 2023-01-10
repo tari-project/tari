@@ -38,7 +38,7 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::DefaultHeaderValidator,
+        header::HeaderFullValidator,
         transaction::TransactionFullValidator,
         DifficultyCalculator,
     },
@@ -205,9 +205,10 @@ async fn build_node_context(
     let rules = ConsensusManager::builder(app_config.base_node.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        DefaultHeaderValidator::new(rules.clone()),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         OrphanBlockValidator::new(
             rules.clone(),
             app_config.base_node.bypass_range_proof_verification,
@@ -220,7 +221,7 @@ async fn build_node_context(
         rules.clone(),
         validators,
         app_config.base_node.storage,
-        DifficultyCalculator::new(rules.clone(), randomx_factory.clone()),
+        difficulty_calculator,
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {

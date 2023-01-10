@@ -48,7 +48,7 @@ use tari_core::{
     txn_schema,
     validation::{
         block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::DefaultHeaderValidator,
+        header::HeaderFullValidator,
         mocks::MockValidator,
         BlockSyncBodyValidation,
         CandidateBlockValidator,
@@ -101,7 +101,8 @@ fn test_monero_blocks() {
         .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
-    let header_validator = DefaultHeaderValidator::new(cm.clone());
+    let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
+    let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator, false);
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
@@ -228,6 +229,7 @@ async fn inputs_are_not_malleable() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
@@ -242,9 +244,11 @@ fn test_orphan_validator() {
         .build();
     let backend = create_test_db();
     let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        DefaultHeaderValidator::new(rules.clone()),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         orphan_validator.clone(),
     );
     let db = BlockchainDatabase::new(
@@ -252,7 +256,7 @@ fn test_orphan_validator() {
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
+        difficulty_calculator,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -369,11 +373,12 @@ fn test_orphan_body_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let body_only_validator = BodyOnlyValidator::new(rules.clone());
-    let header_validator = DefaultHeaderValidator::new(rules.clone());
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        DefaultHeaderValidator::new(rules.clone()),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
@@ -399,15 +404,8 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -429,13 +427,7 @@ OutputFeatures::default()),
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -468,15 +460,8 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -500,15 +485,8 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -529,15 +507,8 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules, RandomXFactory::default());
     let achieved_target_diff = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -575,10 +546,11 @@ fn test_header_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let header_validator = DefaultHeaderValidator::new(rules.clone());
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        DefaultHeaderValidator::new(rules.clone()),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
@@ -586,7 +558,7 @@ fn test_header_validation() {
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
+        difficulty_calculator,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -604,15 +576,8 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[],)
         .is_ok());
 
     // Lets break ftl rules
@@ -622,13 +587,7 @@ OutputFeatures::default()),
     new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
     assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[],)
         .is_err());
 
     // lets break difficulty
@@ -636,13 +595,7 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let mut result = header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &[],
-            genesis.header(),
-            &new_block.header,
-            &difficulty_calculator,
-        )
+        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
         .is_err();
     new_block.header.nonce = OsRng.next_u64();
     let mut counter = 0;
@@ -651,13 +604,7 @@ OutputFeatures::default()),
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
         result = header_validator
-            .validate(
-                &*db.db_read_access().unwrap(),
-                &[],
-                genesis.header(),
-                &new_block.header,
-                &difficulty_calculator,
-            )
+            .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
             .is_err();
     }
     assert!(result);
@@ -678,10 +625,10 @@ async fn test_block_sync_body_validator() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
-        DefaultHeaderValidator::new(rules.clone()),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
 

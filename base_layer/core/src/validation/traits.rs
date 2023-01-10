@@ -29,7 +29,7 @@ use crate::{
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     transactions::transaction_components::Transaction,
-    validation::{error::ValidationError, DifficultyCalculator},
+    validation::error::ValidationError,
 };
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
@@ -52,14 +52,13 @@ pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderChainLinkedValidator<TBackend: BlockchainBackend>: Send + Sync {
+pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
-        db: &TBackend,
-        prev_timestamps: &[EpochTime],
-        prev_header: &BlockHeader,
+        db: &B,
         header: &BlockHeader,
-        difficulty: &DifficultyCalculator,
+        prev_header: &BlockHeader,
+        prev_timestamps: &[EpochTime],
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 

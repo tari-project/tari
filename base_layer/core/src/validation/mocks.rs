@@ -39,7 +39,6 @@ use crate::{
         error::ValidationError,
         BlockSyncBodyValidation,
         CandidateBlockValidator,
-        DifficultyCalculator,
         FinalHorizonStateValidation,
         InternalConsistencyValidator,
     },
@@ -112,10 +111,9 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
     fn validate(
         &self,
         _: &B,
-        _: &[EpochTime],
-        _: &BlockHeader,
         header: &BlockHeader,
-        _: &DifficultyCalculator,
+        _: &BlockHeader,
+        _: &[EpochTime],
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3x_difficulty(header);

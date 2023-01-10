@@ -2204,7 +2204,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         let timestamp = EpochTime::from(h.timestamp());
         prev_timestamps.push(timestamp);
     }
-    let tips = find_orphan_descendant_tips_of(db, chain_header, &prev_timestamps, validator, difficulty_calculator)?;
+    let tips = find_orphan_descendant_tips_of(db, chain_header, &prev_timestamps, validator)?;
 
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
@@ -2222,7 +2222,6 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     prev_chain_header: ChainHeader,
     prev_timestamps: &[EpochTime],
     validator: &dyn HeaderChainLinkedValidator<T>,
-    difficulty_calculator: &DifficultyCalculator,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
     if children.is_empty() {
@@ -2248,10 +2247,9 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         // we need to validate the header here because it may never have been validated.
         match validator.validate(
             db,
-            prev_timestamps,
-            &prev_chain_header.clone().into_header(),
             &child.header,
-            difficulty_calculator,
+            &prev_chain_header.clone().into_header(),
+            prev_timestamps,
         ) {
             Ok(achieved_target) => {
                 let child_hash = child.hash();
@@ -2274,13 +2272,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 db.write(txn)?;
                 let curr_timestamp = chain_header.header().timestamp();
                 let new_prev_timestamps = [&[curr_timestamp], prev_timestamps].concat();
-                let children = find_orphan_descendant_tips_of(
-                    db,
-                    chain_header.clone(),
-                    &new_prev_timestamps,
-                    validator,
-                    difficulty_calculator,
-                )?;
+                let children =
+                    find_orphan_descendant_tips_of(db, chain_header.clone(), &new_prev_timestamps, validator)?;
                 res.extend(children);
             },
             Err(e) => {
@@ -2530,7 +2523,7 @@ mod test {
             },
             BlockSpecs,
         },
-        validation::{header_validator::DefaultHeaderValidator, mocks::MockValidator},
+        validation::{header::HeaderFullValidator, mocks::MockValidator},
     };
 
     #[test]
@@ -3255,18 +3248,14 @@ mod test {
     impl TestHarness {
         pub fn setup() -> Self {
             let consensus = create_consensus_rules();
-            let header_validator = Box::new(DefaultHeaderValidator::new(consensus.clone()));
-            let mock_validator = Box::new(MockValidator::new(true));
-            Self::new(consensus, header_validator, mock_validator)
-        }
-
-        pub fn new(
-            consensus: ConsensusManager,
-            header_validator: Box<dyn HeaderChainLinkedValidator<TempDatabase>>,
-            post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
-        ) -> Self {
             let db = create_new_blockchain();
             let difficulty_calculator = DifficultyCalculator::new(consensus.clone(), Default::default());
+            let header_validator = Box::new(HeaderFullValidator::new(
+                consensus.clone(),
+                difficulty_calculator.clone(),
+                false,
+            ));
+            let post_orphan_body_validator = Box::new(MockValidator::new(true));
             let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
             Self {
                 db,

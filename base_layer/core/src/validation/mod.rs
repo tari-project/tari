@@ -45,7 +45,6 @@ pub use traits::{
 pub mod block_validators;
 mod difficulty_calculator;
 pub use difficulty_calculator::*;
-pub mod header_validator;
 pub mod mocks;
 pub mod transaction;
 // pub mod header_validator;
