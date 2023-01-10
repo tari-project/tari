@@ -86,7 +86,7 @@ pub async fn spawn_base_node(
     let mut config = BaseNodeConfig::default();
     config.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
 
-    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
+    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, config).await;
 }
 
 pub async fn spawn_base_node_with_config(

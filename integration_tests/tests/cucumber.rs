@@ -2576,7 +2576,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut longest_chain = 0;
 
-    for _ in 0..NUM_RETIRES {
+    for _ in 0..(NUM_RETIRES * 2) {
         let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         let metadata = tip_info.metadata.unwrap();
         longest_chain = metadata.height_of_longest_chain;

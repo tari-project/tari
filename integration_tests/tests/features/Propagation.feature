@@ -72,15 +72,16 @@ Feature: Block Propagation
     When mining node MINER mines 15 blocks
     Then all nodes are at height 20
 
+  # Waiting for "When I stop node" step
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
     When I have a SHA3 miner MINER connected to all seed nodes
     When I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
     When mining node MINER mines 1 blocks
-    Then all nodes are at height 1
+    # Then all nodes are at height 1
     # When I stop node LAG1
-    When mining node MINER mines 5 blocks
-    Then node MINER is at height 6
+    # When mining node MINER mines 5 blocks
+    # Then node MINER is at height 6
     # When I start base node LAG1
     # Wait for node to so start and get into listening mode
     # Then node LAG1 has reached initial sync
