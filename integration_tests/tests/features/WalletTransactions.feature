@@ -118,6 +118,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 15
     When I wait for wallet WALLET_B to have at least 50000 uT
     Then I stop wallet WALLET_B
+    When I wait 30 seconds
     Then I import WALLET_B spent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I restart wallet WALLET_C
@@ -143,6 +144,7 @@ Feature: Wallet Transactions
     When node B is at height 8
     Then I wait for wallet WALLET_RECEIVE_TX to have at least 1000000 uT
     Then I stop wallet WALLET_RECEIVE_TX
+    When I wait 30 seconds
     Then I import WALLET_RECEIVE_TX unspent outputs to WALLET_IMPORTED
     Then I wait for wallet WALLET_IMPORTED to have at least 1000000 uT
     # # This triggers a validation of the imported outputs
@@ -185,6 +187,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
+    When I wait 15 seconds
     Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     When I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
@@ -231,7 +234,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
     Then node SEED_A is at height 10
     Then node NODE_A1 is at height 10
-    # And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
+    When I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
     # #
     # # Chain 2:
     # #   Collects 7 coinbases into one wallet, send 7 transactions
@@ -259,6 +262,7 @@ Feature: Wallet Transactions
     When I have a base node NODE_C connected to seed SEED_B
     Then node NODE_C is at height 12
     # # Wait for the reorg to filter through
+    When I wait 15 seconds
     When I connect node SEED_A to node NODE_C
     Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
@@ -307,7 +311,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
     Then node SEED_A is at height 4
     Then node NODE_A1 is at height 4
-    # And I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
+    When I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
     # #
     # # Chain 2:
     # #   Collects 7 coinbases into one wallet, send 7 transactions

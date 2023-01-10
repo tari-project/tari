@@ -47,6 +47,7 @@ use tari_core::{
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedValue,
+            OutputFeatures,
             OutputType,
             Transaction,
             TransactionOutput,
@@ -2671,14 +2672,6 @@ async fn send_one_sided_stealth_transaction(
 #[then(expr = "I import {word} unspent outputs to {word}")]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    // wallet_a_ps.kill();
-
-    // let temp_dir = tempdir().unwrap();
-    // let temp_dir_path = temp_dir.path();
-
-    // let mut wallet_data_dir = PathBuf::new();
-    // wallet_data_dir.push(temp_dir_path);
-    // wallet_data_dir.push("data/wallet");
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
     let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
@@ -2705,14 +2698,10 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    println!("FLAG: reader = {:?}", reader);
-
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
-        println!("FLAG: value  = {:?}", output);
-        let index = output[0].parse::<i32>().unwrap();
         let version = match &output[1] {
             "V0" => TransactionOutputVersion::V0,
             "V1" => TransactionOutputVersion::V1,
@@ -2720,7 +2709,6 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         };
         let value = MicroTari(output[2].parse::<u64>().unwrap());
         let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
-        let commitment = Commitment::from_hex(&output[4]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2738,7 +2726,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
         let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
             HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PrivateKey::from_hex(&output[14]).unwrap();
+        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2746,28 +2734,32 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        println!(
-            "input_data = {}, script_private_key = {}, sender_offset_public_key = {}, ephemeral_commitment = {}, 
-            ephemeral_nonce = {}, signature_u_x = {}, signature_u_a = {}, signature_u_y = {}, script_lock_height = {},
-            encrypted_value = {}, minimum_value_promise = {}",
-            input_data.to_hex(),
-            script_private_key.to_hex(),
-            sender_offset_public_key.to_hex(),
-            ephemeral_commitment.to_hex(),
-            ephemeral_nonce.to_hex(),
-            signature_u_x.to_hex(),
-            signature_u_a.to_hex(),
-            signature_u_y.to_hex(),
-            script_lock_height,
-            encrypted_value.to_hex(),
-            minimum_value_promise
+        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let metadata_signature = ComAndPubSignature::new(
+            ephemeral_commitment,
+            ephemeral_nonce,
+            signature_u_x,
+            signature_u_a,
+            signature_u_y,
         );
-    }
-    // for output in reader.deserialize::<UnblindedOutput>() {
-    //     outputs.push(output.unwrap());
-    // }
+        let utxo = UnblindedOutput::new(
+            version,
+            value,
+            spending_key,
+            features,
+            script,
+            input_data,
+            script_private_key,
+            sender_offset_public_key,
+            metadata_signature,
+            script_lock_height,
+            covenant,
+            encrypted_value,
+            minimum_value_promise,
+        );
 
-    println!("FLAG: found outputs = {:?}", outputs.clone());
+        outputs.push(utxo);
+    }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let import_utxos_req = ImportUtxosRequest {
@@ -2783,14 +2775,9 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 #[then(expr = "I import {word} spent outputs to {word}")]
 async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_a_ps.kill();
 
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path);
-    wallet_data_dir.push("data/wallet");
+    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
+    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
     let mut config_path = wallet_data_dir.clone();
     config_path.push("config.toml");
@@ -2815,8 +2802,65 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
-    for output in reader.deserialize::<UnblindedOutput>() {
-        outputs.push(output.unwrap());
+    for output in reader.records() {
+        let output = output.unwrap();
+        let version = match &output[1] {
+            "V0" => TransactionOutputVersion::V0,
+            "V1" => TransactionOutputVersion::V1,
+            _ => panic!("Invalid output version"),
+        };
+        let value = MicroTari(output[2].parse::<u64>().unwrap());
+        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let flags = match &output[5] {
+            "Standard" => OutputType::Standard,
+            "Coinbase" => OutputType::Coinbase,
+            "Burn" => OutputType::Burn,
+            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
+            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
+            _ => panic!("Invalid output type"),
+        };
+        let maturity = output[6].parse::<u64>().unwrap();
+        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let script = TariScript::from_hex(&output[8]).unwrap();
+        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
+        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
+        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
+        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
+            HomomorphicCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
+        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
+        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
+        let script_lock_height = output[18].parse::<u64>().unwrap();
+        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+
+        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let metadata_signature = ComAndPubSignature::new(
+            ephemeral_commitment,
+            ephemeral_nonce,
+            signature_u_x,
+            signature_u_a,
+            signature_u_y,
+        );
+        let utxo = UnblindedOutput::new(
+            version,
+            value,
+            spending_key,
+            features,
+            script,
+            input_data,
+            script_private_key,
+            sender_offset_public_key,
+            metadata_signature,
+            script_lock_height,
+            covenant,
+            encrypted_value,
+            minimum_value_promise,
+        );
+
+        outputs.push(utxo);
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
@@ -2833,14 +2877,9 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 #[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
 async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_a_ps.kill();
 
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let mut wallet_data_dir = PathBuf::new();
-    wallet_data_dir.push(temp_dir_path);
-    wallet_data_dir.push("data/wallet");
+    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
+    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
     let mut config_path = wallet_data_dir.clone();
     config_path.push("config.toml");
@@ -2854,7 +2893,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let args = ExportUtxosArgs {
         output_file: Some(path_buf.clone()),
     };
-    cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
+    cli.command2 = Some(CliCommands::ExportUtxos(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
@@ -2865,20 +2904,76 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
-    for output in reader.deserialize::<UnblindedOutput>() {
-        let mut output = output.unwrap();
-        output.metadata_signature = ComAndPubSignature::new(
+    for output in reader.records() {
+        let output = output.unwrap();
+        let version = match &output[1] {
+            "V0" => TransactionOutputVersion::V0,
+            "V1" => TransactionOutputVersion::V1,
+            _ => panic!("Invalid output version"),
+        };
+        let value = MicroTari(output[2].parse::<u64>().unwrap());
+        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let flags = match &output[5] {
+            "Standard" => OutputType::Standard,
+            "Coinbase" => OutputType::Coinbase,
+            "Burn" => OutputType::Burn,
+            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
+            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
+            _ => panic!("Invalid output type"),
+        };
+        let maturity = output[6].parse::<u64>().unwrap();
+        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let script = TariScript::from_hex(&output[8]).unwrap();
+        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
+        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
+        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
+        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
+            HomomorphicCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
+        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
+        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
+        let script_lock_height = output[18].parse::<u64>().unwrap();
+        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+
+        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let metadata_signature = ComAndPubSignature::new(
+            ephemeral_commitment,
+            ephemeral_nonce,
+            signature_u_x,
+            signature_u_a,
+            signature_u_y,
+        );
+        let mut utxo = UnblindedOutput::new(
+            version,
+            value,
+            spending_key,
+            features,
+            script,
+            input_data,
+            script_private_key,
+            sender_offset_public_key,
+            metadata_signature,
+            script_lock_height,
+            covenant,
+            encrypted_value,
+            minimum_value_promise,
+        );
+
+        utxo.metadata_signature = ComAndPubSignature::new(
             Commitment::default(),
             PublicKey::default(),
             PrivateKey::default(),
             PrivateKey::default(),
             PrivateKey::default(),
         );
-        output.script_private_key = output.clone().spending_key;
+        utxo.script_private_key = utxo.clone().spending_key;
 
-        let script_public_key = PublicKey::from_secret_key(&output.script_private_key);
-        output.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
-        outputs.push(output.clone());
+        let script_public_key = PublicKey::from_secret_key(&utxo.script_private_key);
+        utxo.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
+        outputs.push(utxo.clone());
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
@@ -2901,6 +2996,10 @@ async fn restart_wallet(world: &mut TariWorld, wallet: String) {
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
     let base_node_ps = world.base_nodes.get(&base_node).unwrap();
     let seed_nodes = base_node_ps.seed_nodes.clone();
+
+    // need to wait a few seconds before spawning a new wallet
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
 
@@ -3074,7 +3173,30 @@ async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld,
         let tx_info = tx.unwrap().transaction.unwrap();
         let status = tx_info.status;
         // 3 => TRANSACTION_STATUS_IMPORTED
-        if status != 3 {
+        // 5 => TRANSACTION_STATUS_COINBASE
+        if ![3, 5].contains(&status) {
+            panic!(
+                "Imported transaction hasn't been received as such: current status code is {}, it should be 3 or 5",
+                status
+            );
+        }
+    }
+}
+
+#[then(expr = "I check if last imported transactions are valid in wallet {word}")]
+async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let mut get_completed_txs_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    while let Some(tx) = get_completed_txs_res.next().await {
+        let tx_info = tx.unwrap().transaction.unwrap();
+        let status = tx_info.status;
+        // 10 => TRANSACTION_STATUS_FAUX_CONFIRMED
+        if status != 10 {
             panic!(
                 "Imported transaction hasn't been received as such: current status code is {}, it should be 3",
                 status

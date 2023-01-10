@@ -106,6 +106,7 @@ pub async fn spawn_wallet(
     let mut send_to_thread_shutdown = shutdown.clone();
 
     let temp_dir = temp_dir_path.clone();
+    let aux_wallet_name = wallet_name.clone();
 
     thread::spawn(move || {
         let mut wallet_config = tari_console_wallet::ApplicationConfig {
@@ -159,6 +160,11 @@ pub async fn spawn_wallet(
         };
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
+            println!(
+                "FLAG: ARE WE HEREEEE AGAIN ? WALLET = {}, with err = {}",
+                aux_wallet_name,
+                e.to_string()
+            );
             panic!("{:?}", e);
         }
     });
