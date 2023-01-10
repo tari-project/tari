@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
-use super::{ChainLinkedHeaderValidator, TransactionValidator};
+use super::{HeaderChainLinkedValidator, TransactionValidator};
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
@@ -108,7 +108,7 @@ impl InternalConsistencyValidator for MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> ChainLinkedHeaderValidator<B> for MockValidator {
+impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
     fn validate(
         &self,
         _: &B,

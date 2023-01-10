@@ -53,7 +53,7 @@ use crate::{
 
 mod header_validators {
     use super::*;
-    use crate::validation::{header_validator::DefaultHeaderValidator, ChainLinkedHeaderValidator};
+    use crate::validation::{header_validator::DefaultHeaderValidator, HeaderChainLinkedValidator};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {

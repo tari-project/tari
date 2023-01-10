@@ -85,8 +85,8 @@ use crate::{
     validation::{
         helpers::calc_median_timestamp,
         CandidateBlockValidator,
-        ChainLinkedHeaderValidator,
         DifficultyCalculator,
+        HeaderChainLinkedValidator,
         InternalConsistencyValidator,
     },
     MutablePrunedOutputMmr,
@@ -129,14 +129,14 @@ impl Default for BlockchainDatabaseConfig {
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B> {
     pub block: Arc<dyn CandidateBlockValidator<B>>,
-    pub header: Arc<dyn ChainLinkedHeaderValidator<B>>,
+    pub header: Arc<dyn HeaderChainLinkedValidator<B>>,
     pub orphan: Arc<dyn InternalConsistencyValidator>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
     pub fn new(
         block: impl CandidateBlockValidator<B> + 'static,
-        header: impl ChainLinkedHeaderValidator<B> + 'static,
+        header: impl HeaderChainLinkedValidator<B> + 'static,
         orphan: impl InternalConsistencyValidator + 'static,
     ) -> Self {
         Self {
@@ -1492,7 +1492,7 @@ fn add_block<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     consensus_manager: &ConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
-    header_validator: &dyn ChainLinkedHeaderValidator<T>,
+    header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     difficulty_calculator: &DifficultyCalculator,
     block: Arc<Block>,
@@ -1897,7 +1897,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     consensus_manager: &ConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
-    header_validator: &dyn ChainLinkedHeaderValidator<T>,
+    header_validator: &dyn HeaderChainLinkedValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
@@ -2108,7 +2108,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
-    validator: &dyn ChainLinkedHeaderValidator<T>,
+    validator: &dyn HeaderChainLinkedValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
     rules: &ConsensusManager,
 ) -> Result<(), ChainStorageError> {
@@ -2221,7 +2221,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
     prev_timestamps: &[EpochTime],
-    validator: &dyn ChainLinkedHeaderValidator<T>,
+    validator: &dyn HeaderChainLinkedValidator<T>,
     difficulty_calculator: &DifficultyCalculator,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
@@ -3249,7 +3249,7 @@ mod test {
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         difficulty_calculator: DifficultyCalculator,
         post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
-        header_validator: Box<dyn ChainLinkedHeaderValidator<TempDatabase>>,
+        header_validator: Box<dyn HeaderChainLinkedValidator<TempDatabase>>,
     }
 
     impl TestHarness {
@@ -3262,7 +3262,7 @@ mod test {
 
         pub fn new(
             consensus: ConsensusManager,
-            header_validator: Box<dyn ChainLinkedHeaderValidator<TempDatabase>>,
+            header_validator: Box<dyn HeaderChainLinkedValidator<TempDatabase>>,
             post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
         ) -> Self {
             let db = create_new_blockchain();

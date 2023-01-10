@@ -13,8 +13,8 @@ use crate::{
     proof_of_work::AchievedTargetDifficulty,
     validation::{
         helpers::{check_blockchain_version, check_not_bad_block, check_pow_data, check_timestamp_ftl},
-        ChainLinkedHeaderValidator,
         DifficultyCalculator,
+        HeaderChainLinkedValidator,
         ValidationError,
     },
 };
@@ -31,7 +31,7 @@ impl DefaultHeaderValidator {
     }
 }
 
-impl<TBackend: BlockchainBackend> ChainLinkedHeaderValidator<TBackend> for DefaultHeaderValidator {
+impl<TBackend: BlockchainBackend> HeaderChainLinkedValidator<TBackend> for DefaultHeaderValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block timestamp within the Future Time Limit (FTL)?
     /// 1. Is the Proof of Work struct valid? Note it does not check the actual PoW here

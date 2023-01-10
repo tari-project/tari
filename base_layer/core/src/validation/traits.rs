@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
@@ -54,11 +52,7 @@ pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderInternalConsistencyValidator: Send + Sync {
-    fn validate_internal_consistency(&self, item: &BlockHeader) -> Result<UnlinkedValidBlockHeader, ValidationError>;
-}
-
-pub trait ChainLinkedHeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
+pub trait HeaderChainLinkedValidator<TBackend: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
         db: &TBackend,
@@ -68,8 +62,6 @@ pub trait ChainLinkedHeaderValidator<TBackend: BlockchainBackend>: Send + Sync {
         difficulty: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
-
-pub struct UnlinkedValidBlockHeader(Arc<BlockHeader>);
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {
     fn validate(
