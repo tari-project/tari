@@ -20,11 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod chain_header_validator;
-pub use chain_header_validator::ChainLinkedHeaderValidator;
-
-mod internal_header_validator;
-pub use internal_header_validator::InternalConsistencyHeaderValidator;
-
-mod valid_header;
-pub use valid_header::InternallyValidHeader;
+mod header_full_validator;
+pub use header_full_validator::HeaderFullValidator;
