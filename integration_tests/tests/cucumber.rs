@@ -36,6 +36,7 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
+use rand::Rng;
 use tari_app_grpc::tari_rpc::{self as grpc, GetConnectivityRequest};
 use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
@@ -257,6 +258,7 @@ async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: S
     .await;
 }
 
+#[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
 #[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
 async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
     register_miner_process(world, miner_name, bn_name, wallet_name);
@@ -3848,13 +3850,74 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
     }
 
     panic!(
         "Node {} never reached initial sync. Stuck at tip {}",
         node, longest_chain
     )
+}
+
+#[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
+async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee: u64) {
+    let mut client = world.get_wallet_client(&wallet).await.unwrap();
+
+    let req = grpc::CreateBurnTransactionRequest {
+        amount,
+        fee_per_gram: fee,
+        message: "Burning some tari".to_string(),
+    };
+
+    let result = client.create_burn_transaction(req).await.unwrap();
+    let tx_id = result.into_inner().transaction_id;
+
+    let mut last_status = 0;
+    for _ in 0..(NUM_RETIRES) {
+        let result = client
+            .get_transaction_info(grpc::GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            })
+            .await
+            .unwrap();
+
+        last_status = result.into_inner().transactions.last().unwrap().status;
+
+        if let 1 | 2 | 6 = last_status {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+    }
+
+    panic!(
+        "Burn transaction has status {} when we desired 1 (TRANSACTION_STATUS_BROADCAST), 2 \
+         (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)",
+        last_status
+    )
+}
+
+#[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
+async fn force_sync_node_with_an_army_of_pruned_nodes(
+    world: &mut TariWorld,
+    nodes_count: u64,
+    horizon: u64,
+    node: String,
+) {
+    for i in 0..=nodes_count {
+        let node_name = format!("BaseNode-{}", i);
+        spawn_base_node(world, false, node_name, vec![node.clone()], Some(horizon)).await;
+    }
+}
+
+#[when(expr = "I spend outputs {word} via {word}")]
+async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) {
+    let num = rand::thread_rng().gen::<u8>();
+    let tx_name = format!("TX-{}", num);
+    let utxo_name = format!("UTXO-{}", num);
+
+    create_tx_spending_coinbase(world, tx_name.clone(), inputs, utxo_name.clone()).await;
+    submit_transaction_to(world, tx_name, node).await.unwrap();
 }
 
 #[when(expr = "I print the cucumber world")]
