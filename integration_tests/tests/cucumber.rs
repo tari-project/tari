@@ -38,15 +38,26 @@ use log::*;
 use tari_app_grpc::tari_rpc::{self as grpc};
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::transaction_components::{Transaction, TransactionOutput, UnblindedOutput},
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{
+            EncryptedValue,
+            OutputType,
+            Transaction,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+        },
+    },
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
 use tari_integration_tests::error::GrpcBaseNodeError;
-use tari_script::{ExecutionStack, StackItem};
+use tari_script::{ExecutionStack, StackItem, TariScript};
 use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_wallet_grpc_client::grpc::{
@@ -2698,9 +2709,63 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 
     let mut outputs: Vec<UnblindedOutput> = vec![];
 
-    for output in reader.deserialize::<UnblindedOutput>() {
-        outputs.push(output.unwrap());
+    for output in reader.records() {
+        let output = output.unwrap();
+        println!("FLAG: value  = {:?}", output);
+        let index = output[0].parse::<i32>().unwrap();
+        let version = match &output[1] {
+            "V0" => TransactionOutputVersion::V0,
+            "V1" => TransactionOutputVersion::V1,
+            _ => panic!("Invalid output version"),
+        };
+        let value = MicroTari(output[2].parse::<u64>().unwrap());
+        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let commitment = Commitment::from_hex(&output[4]).unwrap();
+        let flags = match &output[5] {
+            "Standard" => OutputType::Standard,
+            "Coinbase" => OutputType::Coinbase,
+            "Burn" => OutputType::Burn,
+            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
+            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
+            _ => panic!("Invalid output type"),
+        };
+        let maturity = output[6].parse::<u64>().unwrap();
+        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let script = TariScript::from_hex(&output[8]).unwrap();
+        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
+        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
+        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
+        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
+            HomomorphicCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = PrivateKey::from_hex(&output[14]).unwrap();
+        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
+        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
+        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
+        let script_lock_height = output[18].parse::<u64>().unwrap();
+        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+
+        println!(
+            "input_data = {}, script_private_key = {}, sender_offset_public_key = {}, ephemeral_commitment = {}, 
+            ephemeral_nonce = {}, signature_u_x = {}, signature_u_a = {}, signature_u_y = {}, script_lock_height = {},
+            encrypted_value = {}, minimum_value_promise = {}",
+            input_data.to_hex(),
+            script_private_key.to_hex(),
+            sender_offset_public_key.to_hex(),
+            ephemeral_commitment.to_hex(),
+            ephemeral_nonce.to_hex(),
+            signature_u_x.to_hex(),
+            signature_u_a.to_hex(),
+            signature_u_y.to_hex(),
+            script_lock_height,
+            encrypted_value.to_hex(),
+            minimum_value_promise
+        );
     }
+    // for output in reader.deserialize::<UnblindedOutput>() {
+    //     outputs.push(output.unwrap());
+    // }
 
     println!("FLAG: found outputs = {:?}", outputs.clone());
 
