@@ -180,7 +180,8 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.dht.database_url =
-            DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlit"));
+            DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlite"));
+        base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon > 0 {

@@ -362,8 +362,8 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, 0);
     }
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4 * height) {
-        // About a minute per block
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 7) {
+        // ~14 minutes matching the original implementation timeout
         for (name, _) in nodes_at_height
             .clone()
             .iter()
@@ -381,7 +381,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND / 2)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
