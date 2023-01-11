@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    default::Default,
     fmt::{Debug, Formatter},
     path::PathBuf,
     str::FromStr,
@@ -83,6 +84,19 @@ pub async fn spawn_base_node(
     peers: Vec<String>,
     pruning_horizon: Option<u64>,
 ) {
+    let mut config = BaseNodeConfig::default();
+    config.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
+
+    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, config).await;
+}
+
+pub async fn spawn_base_node_with_config(
+    world: &mut TariWorld,
+    is_seed_node: bool,
+    bn_name: String,
+    peers: Vec<String>,
+    base_node_config: BaseNodeConfig,
+) {
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
@@ -113,7 +127,7 @@ pub async fn spawn_base_node(
         temp_dir_path: temp_dir_path.clone(),
         is_seed_node,
         seed_nodes: peers.clone(),
-        pruning_horizon: pruning_horizon.unwrap_or_default(),
+        pruning_horizon: base_node_config.storage.pruning_horizon,
         kill_signal: shutdown.clone(),
     };
 
@@ -135,7 +149,7 @@ pub async fn spawn_base_node(
         let mut base_node_config = tari_base_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
-            base_node: BaseNodeConfig::default(),
+            base_node: base_node_config,
             metrics: MetricsConfig::default(),
             peer_seeds: PeerSeedsConfig {
                 peer_seeds: peer_addresses.into(),
@@ -164,7 +178,9 @@ pub async fn spawn_base_node(
         base_node_config.base_node.p2p.dht.database_url =
             DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlit"));
         base_node_config.base_node.p2p.allow_test_addresses = true;
-        base_node_config.base_node.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
+        if base_node_config.base_node.storage.pruning_horizon > 0 {
+            base_node_config.base_node.storage.pruning_interval = 1;
+        };
 
         println!(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",

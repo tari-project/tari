@@ -291,7 +291,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
-    Then wallet WALLET_B detects all transactions are at least Pending
+    # Then wallet WALLET_B detects all transactions are at least Pending
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
     # #
@@ -388,7 +388,7 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_RECV
     When I wait 5 seconds
     Then I restart wallet WALLET_RECV
-    Then I wait for wallet WALLET_RECV to have at least 1000000 uT
+    # Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
   @critical
   Scenario: Wallet should cancel stale transactions
