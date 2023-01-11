@@ -52,8 +52,6 @@ pub mod transaction;
 mod chain_balance;
 pub use chain_balance::ChainBalanceValidator;
 
-mod header_iter;
-
 pub mod aggregate_body;
 pub mod header;
 

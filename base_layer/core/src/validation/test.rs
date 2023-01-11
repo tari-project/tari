@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{cmp, sync::Arc};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
@@ -30,7 +30,7 @@ use tari_test_utils::unpack_enum;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::DbTransaction,
+    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
@@ -42,13 +42,7 @@ use crate::{
         CryptoFactories,
     },
     tx,
-    validation::{
-        header_iter::HeaderIter,
-        ChainBalanceValidator,
-        DifficultyCalculator,
-        FinalHorizonStateValidation,
-        ValidationError,
-    },
+    validation::{ChainBalanceValidator, DifficultyCalculator, FinalHorizonStateValidation, ValidationError},
 };
 
 mod header_validators {
@@ -449,5 +443,72 @@ mod transaction_validator {
             err,
             ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)
         ));
+    }
+}
+
+// TODO: This is probably generally useful and should be included in the BlockchainDatabase
+/// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
+/// for a low memory footprint. The chunk buffer is allocated once and reused.
+pub struct HeaderIter<'a, B> {
+    chunk: Vec<BlockHeader>,
+    chunk_size: usize,
+    cursor: usize,
+    is_error: bool,
+    height: u64,
+    db: &'a BlockchainDatabase<B>,
+}
+
+impl<'a, B> HeaderIter<'a, B> {
+    #[allow(dead_code)]
+    pub fn new(db: &'a BlockchainDatabase<B>, height: u64, chunk_size: usize) -> Self {
+        Self {
+            db,
+            chunk_size,
+            cursor: 0,
+            is_error: false,
+            height,
+            chunk: Vec::with_capacity(chunk_size),
+        }
+    }
+
+    fn next_chunk(&self) -> (u64, u64) {
+        #[allow(clippy::cast_possible_truncation)]
+        let upper_bound = cmp::min(self.cursor + self.chunk_size, self.height as usize);
+        (self.cursor as u64, upper_bound as u64)
+    }
+}
+
+impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
+    type Item = Result<BlockHeader, ChainStorageError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_error {
+            return None;
+        }
+
+        if self.chunk.is_empty() {
+            let (start, end) = self.next_chunk();
+            // We're done: No more block headers to fetch
+            if start > end {
+                return None;
+            }
+
+            match self.db.fetch_headers(start..=end) {
+                Ok(headers) => {
+                    if headers.is_empty() {
+                        return None;
+                    }
+                    self.cursor += headers.len();
+                    self.chunk.extend(headers);
+                },
+                Err(err) => {
+                    // On the next call, the iterator will end
+                    self.is_error = true;
+                    return Some(Err(err));
+                },
+            }
+        }
+
+        Some(Ok(self.chunk.remove(0)))
     }
 }
