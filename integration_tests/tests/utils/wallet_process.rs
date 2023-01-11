@@ -128,12 +128,14 @@ pub async fn spawn_wallet(
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
         wallet_config.wallet.data_dir = temp_dir_path.clone().join("data/wallet");
         wallet_config.wallet.db_file = temp_dir_path.clone().join("db/console_wallet.db");
+        wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(5);
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
         wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db/wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        wallet_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
             wallet_config
                 .wallet
