@@ -78,17 +78,8 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(
-    world: &mut TariWorld,
-    is_seed_node: bool,
-    bn_name: String,
-    peers: Vec<String>,
-    pruning_horizon: Option<u64>,
-) {
-    let mut base_node_config = BaseNodeConfig::default();
-    base_node_config.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
-
-    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, base_node_config).await;
+pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
+    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
 }
 
 pub async fn spawn_base_node_with_config(
