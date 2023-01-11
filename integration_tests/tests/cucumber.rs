@@ -99,8 +99,8 @@ use crate::utils::{
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
-const NUM_RETIRES: u64 = 240;
-const RETRY_TIME_IN_MS: u64 = 500;
+const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
+const HALF_SECOND: u64 = 500;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -216,6 +216,7 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
     spawn_wallet(world, wallet_name, Some(node_name), seeds, None, None).await;
 }
 
+#[given(expr = "I have a base node {word} connected to all seed nodes")]
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
 async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
     spawn_base_node(world, false, name, world.all_seed_nodes().to_vec(), None).await;
@@ -322,7 +323,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, (0, vec![]));
     }
 
-    for _ in 0..(NUM_RETIRES * height) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * height) {
         for (name, _) in nodes_at_height
             .clone()
             .iter()
@@ -343,7 +344,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -361,7 +362,8 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, 0);
     }
 
-    for _ in 0..(NUM_RETIRES * height) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4 * height) {
+        // About a minute per block
         for (name, _) in nodes_at_height
             .clone()
             .iter()
@@ -379,7 +381,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND / 2)).await;
     }
 
     panic!(
@@ -394,7 +396,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
-    for _ in 0..=(NUM_RETIRES) {
+    for _ in 0..=(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
@@ -402,7 +404,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     // base node didn't synchronize successfully at height, so we bail out
@@ -417,7 +419,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut last_pruned_height = 0;
 
-    for _ in 0..=NUM_RETIRES {
+    for _ in 0..=TWO_MINUTES_WITH_HALF_SECOND_SLEEP {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         last_pruned_height = chain_tip.metadata.unwrap().pruned_height;
 
@@ -425,7 +427,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -548,7 +550,7 @@ async fn transaction_in_state(
     let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
     // Some state changes take up to 30 minutes to make
-    for _ in 0..(NUM_RETIRES * 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 2) {
         let resp = client
             .transaction_state(grpc::TransactionStateRequest {
                 excess_sig: Some(sig.into()),
@@ -571,7 +573,7 @@ async fn transaction_in_state(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 2)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND * 2)).await;
     }
 
     panic!(
@@ -594,7 +596,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut unconfirmed_txs = 0;
 
-    for _ in 0..(NUM_RETIRES) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let resp = client.get_mempool_stats(Empty {}).await.unwrap();
         let inner = resp.into_inner();
 
@@ -604,7 +606,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -642,7 +644,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
 
     let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
 
-    for _ in 0..(NUM_RETIRES / 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 2) {
         for (name, _) in node_pool_status
             .clone()
             .iter()
@@ -673,7 +675,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS / 2)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND / 2)).await;
     }
 
     panic!(
@@ -3841,7 +3843,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut longest_chain = 0;
 
-    for _ in 0..(NUM_RETIRES * 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 11) {
         let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         let metadata = tip_info.metadata.unwrap();
         longest_chain = metadata.height_of_longest_chain;
@@ -3850,7 +3852,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -3873,7 +3875,7 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
     let tx_id = result.into_inner().transaction_id;
 
     let mut last_status = 0;
-    for _ in 0..(NUM_RETIRES) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let result = client
             .get_transaction_info(grpc::GetTransactionInfoRequest {
                 transaction_ids: vec![tx_id],
@@ -3887,7 +3889,7 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
