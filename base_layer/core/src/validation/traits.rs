@@ -27,7 +27,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::AchievedTargetDifficulty,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty},
     transactions::transaction_components::Transaction,
     validation::error::ValidationError,
 };
@@ -59,6 +59,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         header: &BlockHeader,
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
+        target_difficulty: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 

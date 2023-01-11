@@ -114,6 +114,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         header: &BlockHeader,
         _: &BlockHeader,
         _: &[EpochTime],
+        _: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3x_difficulty(header);

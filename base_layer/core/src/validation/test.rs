@@ -116,7 +116,7 @@ mod header_validators {
         let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
 
         let err = validator
-            .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[])
+            .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX

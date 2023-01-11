@@ -405,7 +405,13 @@ OutputFeatures::default()),
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -427,7 +433,13 @@ OutputFeatures::default()),
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -461,7 +473,13 @@ OutputFeatures::default()),
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -486,7 +504,13 @@ OutputFeatures::default()),
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -508,7 +532,13 @@ OutputFeatures::default()),
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let achieved_target_diff = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
         .with_hash(new_block.hash())
@@ -577,7 +607,13 @@ OutputFeatures::default()),
 
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
     assert!(header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[],)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None
+        )
         .is_ok());
 
     // Lets break ftl rules
@@ -587,7 +623,13 @@ OutputFeatures::default()),
     new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
     assert!(header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[],)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None
+        )
         .is_err());
 
     // lets break difficulty
@@ -595,7 +637,13 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let mut result = header_validator
-        .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &new_block.header,
+            genesis.header(),
+            &[],
+            None,
+        )
         .is_err();
     new_block.header.nonce = OsRng.next_u64();
     let mut counter = 0;
@@ -604,7 +652,13 @@ OutputFeatures::default()),
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
         result = header_validator
-            .validate(&*db.db_read_access().unwrap(), &new_block.header, genesis.header(), &[])
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &new_block.header,
+                genesis.header(),
+                &[],
+                None,
+            )
             .is_err();
     }
     assert!(result);

@@ -2250,6 +2250,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             &child.header,
             &prev_chain_header.clone().into_header(),
             prev_timestamps,
+            None,
         ) {
             Ok(achieved_target) => {
                 let child_hash = child.hash();

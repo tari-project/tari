@@ -28,13 +28,14 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    proof_of_work::AchievedTargetDifficulty,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty},
     validation::{
         helpers::{
             check_blockchain_version,
             check_header_timestamp_greater_than_median,
             check_not_bad_block,
             check_pow_data,
+            check_target_difficulty,
             check_timestamp_ftl,
         },
         DifficultyCalculator,
@@ -43,6 +44,7 @@ use crate::{
     },
 };
 
+#[derive(Clone)]
 pub struct HeaderFullValidator {
     rules: ConsensusManager,
     difficulty_calculator: DifficultyCalculator,
@@ -70,6 +72,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         header: &BlockHeader,
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
+        target_difficulty: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
@@ -109,9 +112,12 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_not_bad_block(db, header.hash())?;
         check_pow_data(header, &self.rules, db)?;
 
-        let achieved_target = self
-            .difficulty_calculator
-            .check_achieved_and_target_difficulty(db, header)?;
+        let achieved_target = if let Some(target) = target_difficulty {
+            check_target_difficulty(header, target, &self.difficulty_calculator.randomx_factory)?
+        } else {
+            self.difficulty_calculator
+                .check_achieved_and_target_difficulty(db, header)?
+        };
 
         Ok(achieved_target)
     }

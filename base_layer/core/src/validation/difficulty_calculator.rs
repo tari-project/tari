@@ -30,8 +30,8 @@ use crate::{
 
 #[derive(Clone)]
 pub struct DifficultyCalculator {
-    rules: ConsensusManager,
-    randomx_factory: RandomXFactory,
+    pub rules: ConsensusManager,
+    pub randomx_factory: RandomXFactory,
 }
 
 impl DifficultyCalculator {
