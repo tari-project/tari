@@ -177,7 +177,7 @@ impl CliLoop {
             if let Err(err) = self.context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
-                loop {
+                while !self.done {
                     let interval = time::sleep(interval);
                     tokio::select! {
                         _ = interval => {
@@ -188,6 +188,9 @@ impl CliLoop {
                         },
                         _ = &mut interrupt => {
                             break;
+                        },
+                        _ = self.shutdown_signal.wait() => {
+                            self.done = true;
                         }
                     }
                 }
