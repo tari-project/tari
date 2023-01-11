@@ -36,6 +36,7 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
+use rand::Rng;
 use tari_app_grpc::tari_rpc::{self as grpc, GetConnectivityRequest};
 use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
@@ -67,7 +68,6 @@ use tari_wallet_grpc_client::grpc::{
     CancelTransactionRequest,
     ClaimHtlcRefundRequest,
     ClaimShaAtomicSwapRequest,
-    CreateBurnTransactionRequest,
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
@@ -83,6 +83,7 @@ use tokio::runtime::Runtime;
 
 use crate::utils::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
+    get_peer_addresses,
     miner::{
         mine_block,
         mine_block_before_submit,
@@ -98,8 +99,8 @@ use crate::utils::{
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 const CONFIRMATION_PERIOD: u64 = 4;
-const NUM_RETIRES: u64 = 240;
-const RETRY_TIME_IN_MS: u64 = 500;
+const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
+const HALF_SECOND: u64 = 500;
 
 #[derive(Error, Debug)]
 pub enum TariWorldError {
@@ -203,7 +204,7 @@ impl TariWorld {
 #[given(expr = "I have a seed node {word}")]
 #[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, true, name, vec![], None).await;
+    spawn_base_node(world, true, name, vec![]).await;
 }
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
@@ -215,9 +216,10 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
     spawn_wallet(world, wallet_name, Some(node_name), seeds, None, None).await;
 }
 
+#[given(expr = "I have a base node {word} connected to all seed nodes")]
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
 async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec(), None).await;
+    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
 }
 
 #[when(expr = "I start base node {word}")]
@@ -228,7 +230,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
         is_seed_node = node_ps.is_seed_node;
         seed_nodes = node_ps.seed_nodes.clone();
     }
-    spawn_base_node(world, is_seed_node, name, seed_nodes, None).await;
+    spawn_base_node(world, is_seed_node, name, seed_nodes).await;
 }
 
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
@@ -236,7 +238,7 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
     for i in 0..nodes {
         let node = format!("Node_{}", i);
         println!("Initializing node {}", node.clone());
-        spawn_base_node(world, false, node, world.all_seed_nodes().to_vec(), None).await;
+        spawn_base_node(world, false, node, world.all_seed_nodes().to_vec()).await;
     }
 }
 
@@ -257,6 +259,7 @@ async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: S
     .await;
 }
 
+#[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
 #[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
 async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
     register_miner_process(world, miner_name, bn_name, wallet_name);
@@ -320,7 +323,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, (0, vec![]));
     }
 
-    for _ in 0..(NUM_RETIRES * height) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * height) {
         for (name, _) in nodes_at_height
             .clone()
             .iter()
@@ -341,7 +344,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -359,7 +362,8 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, 0);
     }
 
-    for _ in 0..(NUM_RETIRES * height) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 7) {
+        // ~14 minutes matching the original implementation timeout
         for (name, _) in nodes_at_height
             .clone()
             .iter()
@@ -377,7 +381,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -392,7 +396,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
-    for _ in 0..=(NUM_RETIRES) {
+    for _ in 0..=(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
 
@@ -400,7 +404,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     // base node didn't synchronize successfully at height, so we bail out
@@ -415,7 +419,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut last_pruned_height = 0;
 
-    for _ in 0..=NUM_RETIRES {
+    for _ in 0..=TWO_MINUTES_WITH_HALF_SECOND_SLEEP {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         last_pruned_height = chain_tip.metadata.unwrap().pruned_height;
 
@@ -423,7 +427,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -466,7 +470,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
 #[given(expr = "I have a base node {word} connected to seed {word}")]
 #[when(expr = "I have a base node {word} connected to seed {word}")]
 async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
-    spawn_base_node(world, false, base_node, vec![seed], None).await;
+    spawn_base_node(world, false, base_node, vec![seed]).await;
 }
 
 #[then(expr = "I mine {int} blocks on {word}")]
@@ -507,13 +511,13 @@ async fn mining_node_mines_blocks_with_difficulty(
 #[when(expr = "I have a base node {word}")]
 #[given(expr = "I have a base node {word}")]
 async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
-    spawn_base_node(world, false, base_node, vec![], None).await;
+    spawn_base_node(world, false, base_node, vec![]).await;
 }
 
 #[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
-        spawn_base_node(world, true, format!("seed_node_{}", node), vec![], None).await;
+        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
     }
 }
 
@@ -546,7 +550,7 @@ async fn transaction_in_state(
     let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
     // Some state changes take up to 30 minutes to make
-    for _ in 0..(NUM_RETIRES * 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 2) {
         let resp = client
             .transaction_state(grpc::TransactionStateRequest {
                 excess_sig: Some(sig.into()),
@@ -569,7 +573,7 @@ async fn transaction_in_state(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS * 2)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND * 2)).await;
     }
 
     panic!(
@@ -592,7 +596,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut unconfirmed_txs = 0;
 
-    for _ in 0..(NUM_RETIRES) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let resp = client.get_mempool_stats(Empty {}).await.unwrap();
         let inner = resp.into_inner();
 
@@ -602,7 +606,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
             return;
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
@@ -640,7 +644,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
 
     let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
 
-    for _ in 0..(NUM_RETIRES / 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 2) {
         for (name, _) in node_pool_status
             .clone()
             .iter()
@@ -671,7 +675,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(RETRY_TIME_IN_MS / 2)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND / 2)).await;
     }
 
     panic!(
@@ -711,7 +715,10 @@ async fn prune_node_connected_to_base_node(
     base_node: String,
     pruning_horizon: u64,
 ) {
-    spawn_base_node(world, false, pruned_node, vec![base_node], Some(pruning_horizon)).await;
+    let mut base_node_config = BaseNodeConfig::default();
+    base_node_config.storage.pruning_horizon = pruning_horizon;
+
+    spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config).await;
 }
 
 #[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
@@ -1014,7 +1021,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
 #[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to node {word}")]
 async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String, base_node: String) {
-    spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
+    spawn_base_node(world, false, miner.clone(), vec![base_node.clone()]).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
     world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
@@ -1587,13 +1594,13 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 
 #[when(expr = "I have a base node {word} connected to node {word}")]
 async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
-    spawn_base_node(world, false, base_node, vec![peer_node], None).await;
+    spawn_base_node(world, false, base_node, vec![peer_node]).await;
 }
 
 #[when(expr = "I have a base node {word} connected to nodes {word}")]
 async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, nodes: String) {
     let nodes = nodes.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
-    spawn_base_node(world, false, base_node, nodes, None).await;
+    spawn_base_node(world, false, base_node, nodes).await;
 }
 
 #[then(expr = "node {word} is in state {word}")]
@@ -1764,6 +1771,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     wallet_ps.kill();
 }
 
+#[when(expr = "I stop node {word}")]
 #[then(expr = "I stop node {word}")]
 async fn stop_node(world: &mut TariWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
@@ -2099,7 +2107,7 @@ async fn send_num_transactions_to_wallets_at_fee(
 
 #[when(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
 async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_miner: String) {
-    spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone(), None).await;
+    spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone()).await;
 
     spawn_wallet(
         world,
@@ -2118,7 +2126,7 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
 #[when(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
 async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: String, seed_node: String) {
     println!("Create base node for SHA3 miner {}", &sha3_miner);
-    spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()], None).await;
+    spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()]).await;
 
     println!("Create wallet for SHA3 miner {}", &sha3_miner);
     spawn_wallet(
@@ -3604,7 +3612,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
     node_a_peers.push(node_b);
     node_a_ps.kill();
     tokio::time::sleep(Duration::from_secs(15)).await;
-    spawn_base_node(world, is_seed_node, node_a, node_a_peers, None).await;
+    spawn_base_node(world, is_seed_node, node_a, node_a_peers).await;
 }
 
 #[then(expr = "I check if last imported transactions are invalid in wallet {word}")]
@@ -3673,76 +3681,6 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
         cancel_tx_res.is_success,
         "Unable to cancel transaction with id = {}",
         tx_id
-    );
-}
-
-#[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
-async fn create_burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee_per_gram: u64) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let burn_tx_req = CreateBurnTransactionRequest {
-        amount,
-        fee_per_gram,
-        message: format!("Burn transaction with amount {} at fee {}", amount, fee_per_gram),
-    };
-
-    let burn_tx_res = client.create_burn_transaction(burn_tx_req).await.unwrap().into_inner();
-
-    assert!(
-        burn_tx_res.is_success,
-        "Burn transaction with amount {} fee {} failed",
-        amount, fee_per_gram
-    );
-
-    // we wait for transaction to be broadcasted
-    let tx_id = burn_tx_res.transaction_id;
-    let num_retries = 100;
-    let tx_info_req = GetTransactionInfoRequest {
-        transaction_ids: vec![tx_id],
-    };
-
-    for i in 0..num_retries {
-        let tx_info_res = client
-            .get_transaction_info(tx_info_req.clone())
-            .await
-            .unwrap()
-            .into_inner();
-        let tx_info = tx_info_res.transactions.first().unwrap();
-
-        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
-        if tx_info.status == 1_i32 {
-            println!(
-                "Burn transaction with amount {} at fee {} has been broadcasted",
-                amount, fee_per_gram
-            );
-            break;
-        }
-
-        if i == num_retries - 1 {
-            panic!(
-                "Burn transaction with amount {} at fee {} failed to be broadcasted",
-                amount, fee_per_gram
-            )
-        }
-
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-
-    // insert tx_id's to the corresponding world mapping
-    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
-
-    wallet_tx_ids.push(tx_id);
-
-    println!(
-        "Burn transaction with amount {} at fee {} succeeded",
-        amount, fee_per_gram
     );
 }
 
@@ -3828,10 +3766,10 @@ async fn receive_an_error(_world: &mut TariWorld, _error: String) {
 #[when(expr = "I have a lagging delayed node {word} connected to node {word} with \
                blocks_behind_before_considered_lagging {int}")]
 async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node: String, delay: u64) {
-    let mut config = BaseNodeConfig::default();
-    config.state_machine.blocks_behind_before_considered_lagging = delay;
+    let mut base_node_config = BaseNodeConfig::default();
+    base_node_config.state_machine.blocks_behind_before_considered_lagging = delay;
 
-    spawn_base_node_with_config(world, true, delayed_node, vec![node], config).await;
+    spawn_base_node_with_config(world, true, delayed_node, vec![node], base_node_config).await;
 }
 
 #[then(expr = "node {word} has reached initial sync")]
@@ -3839,7 +3777,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut longest_chain = 0;
 
-    for _ in 0..(NUM_RETIRES * 2) {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 11) {
         let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         let metadata = tip_info.metadata.unwrap();
         longest_chain = metadata.height_of_longest_chain;
@@ -3848,12 +3786,110 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(RETRY_TIME_IN_MS)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
     panic!(
         "Node {} never reached initial sync. Stuck at tip {}",
         node, longest_chain
+    )
+}
+
+#[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
+async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee: u64) {
+    let mut client = world.get_wallet_client(&wallet).await.unwrap();
+
+    let req = grpc::CreateBurnTransactionRequest {
+        amount,
+        fee_per_gram: fee,
+        message: "Burning some tari".to_string(),
+    };
+
+    let result = client.create_burn_transaction(req).await.unwrap();
+    let tx_id = result.into_inner().transaction_id;
+
+    let mut last_status = 0;
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let result = client
+            .get_transaction_info(grpc::GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            })
+            .await
+            .unwrap();
+
+        last_status = result.into_inner().transactions.last().unwrap().status;
+
+        if let 1 | 2 | 6 = last_status {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "Burn transaction has status {} when we desired 1 (TRANSACTION_STATUS_BROADCAST), 2 \
+         (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)",
+        last_status
+    )
+}
+
+#[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
+async fn force_sync_node_with_an_army_of_pruned_nodes(
+    world: &mut TariWorld,
+    nodes_count: u64,
+    horizon: u64,
+    node: String,
+) {
+    for i in 0..=nodes_count {
+        let node_name = format!("BaseNode-{}", i);
+
+        let mut base_node_config = BaseNodeConfig::default();
+        let peers = vec![node.clone()];
+        base_node_config.force_sync_peers = get_peer_addresses(world, &peers).await.into();
+        base_node_config.storage.pruning_horizon = horizon;
+
+        spawn_base_node_with_config(world, false, node_name, peers, base_node_config).await;
+    }
+}
+
+#[when(expr = "I spend outputs {word} via {word}")]
+async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) {
+    let num = rand::thread_rng().gen::<u8>();
+    let tx_name = format!("TX-{}", num);
+    let utxo_name = format!("UTXO-{}", num);
+
+    create_tx_spending_coinbase(world, tx_name.clone(), inputs, utxo_name.clone()).await;
+    submit_transaction_to(world, tx_name, node).await.unwrap();
+}
+
+#[then(expr = "{word} has at least {int} peers")]
+async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: u64) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut last_num_of_peers = 0;
+
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        last_num_of_peers = 0;
+
+        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
+
+        while let Some(resp) = peers_stream.next().await {
+            if let Ok(resp) = resp {
+                if let Some(_peer) = resp.peer {
+                    last_num_of_peers += 1
+                }
+            }
+        }
+
+        if last_num_of_peers >= num_peers as usize {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "Node {} only received {} of {} expected peers",
+        node, last_num_of_peers, num_peers
     )
 }
 

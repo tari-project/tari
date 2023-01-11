@@ -97,6 +97,10 @@ loggers:
     level: info # we have only single print, and it's info
     appenders:
       - stdout
+  c:
+    level: debug
+    appenders:
+      - base_layer_base_node
   tari:
     level: debug
     appenders:
@@ -146,7 +150,7 @@ loggers:
   tari_mm_proxy:
     level: debug
     appenders:
-      - base_layer
+      - base_layer_base_node
   # Route R2D2 log events
   r2d2:
     level: info
