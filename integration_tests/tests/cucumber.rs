@@ -753,6 +753,59 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
     }
 }
 
+#[when(expr = "wallet {word} detects all transactions are Not_Found")]
+async fn wallet_detects_all_txs_are_at_not_found(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
+
+    let num_retries = 100;
+
+    for tx_id in tx_ids {
+        println!("waiting for tx with tx_id = {} to be not found", tx_id);
+        for retry in 0..=num_retries {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+
+            if retry == num_retries {
+                panic!(
+                    "Wallet {} failed to detect tx with tx_id = {} to be not found",
+                    wallet_name.as_str(),
+                    tx_id
+                );
+            }
+            match tx_info.status() {
+                grpc::TransactionStatus::NotFound => {
+                    println!(
+                        "Transaction with tx_id = {} has been detected as not found by wallet {}",
+                        tx_id,
+                        wallet_name.as_str()
+                    );
+                    return;
+                },
+                _ => {
+                    println!(
+                        "Transaction with tx_id = {} has been not found with status = {:?}",
+                        tx_id,
+                        tx_info.status()
+                    );
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                },
+            }
+        }
+    }
+}
+
 #[when(expr = "wallet {word} detects last transaction is Pending")]
 async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();

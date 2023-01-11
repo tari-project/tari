@@ -361,7 +361,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
     Then I stop wallet WALLET_RECV
-    When I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    When I send 1000000 uT from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
     When wallet WALLET_SENDER detects last transaction is Pending
     Then I stop wallet WALLET_SENDER
     When I wait 15 seconds
