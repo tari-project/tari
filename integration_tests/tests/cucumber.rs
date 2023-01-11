@@ -68,7 +68,6 @@ use tari_wallet_grpc_client::grpc::{
     CancelTransactionRequest,
     ClaimHtlcRefundRequest,
     ClaimShaAtomicSwapRequest,
-    CreateBurnTransactionRequest,
     Empty,
     GetBalanceRequest,
     GetCompletedTransactionsRequest,
@@ -231,7 +230,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
         is_seed_node = node_ps.is_seed_node;
         seed_nodes = node_ps.seed_nodes.clone();
     }
-    spawn_base_node(world, is_seed_node, name, seed_nodes, None).await;
+    spawn_base_node(world, is_seed_node, name, seed_nodes).await;
 }
 
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
@@ -1601,7 +1600,7 @@ async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, p
 #[when(expr = "I have a base node {word} connected to nodes {word}")]
 async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, nodes: String) {
     let nodes = nodes.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
-    spawn_base_node(world, false, base_node, nodes, None).await;
+    spawn_base_node(world, false, base_node, nodes).await;
 }
 
 #[then(expr = "node {word} is in state {word}")]
@@ -1772,6 +1771,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     wallet_ps.kill();
 }
 
+#[when(expr = "I stop node {word}")]
 #[then(expr = "I stop node {word}")]
 async fn stop_node(world: &mut TariWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
@@ -3612,7 +3612,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
     node_a_peers.push(node_b);
     node_a_ps.kill();
     tokio::time::sleep(Duration::from_secs(15)).await;
-    spawn_base_node(world, is_seed_node, node_a, node_a_peers, None).await;
+    spawn_base_node(world, is_seed_node, node_a, node_a_peers).await;
 }
 
 #[then(expr = "I check if last imported transactions are invalid in wallet {word}")]
@@ -3681,76 +3681,6 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
         cancel_tx_res.is_success,
         "Unable to cancel transaction with id = {}",
         tx_id
-    );
-}
-
-#[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
-async fn create_burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee_per_gram: u64) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-
-    let burn_tx_req = CreateBurnTransactionRequest {
-        amount,
-        fee_per_gram,
-        message: format!("Burn transaction with amount {} at fee {}", amount, fee_per_gram),
-    };
-
-    let burn_tx_res = client.create_burn_transaction(burn_tx_req).await.unwrap().into_inner();
-
-    assert!(
-        burn_tx_res.is_success,
-        "Burn transaction with amount {} fee {} failed",
-        amount, fee_per_gram
-    );
-
-    // we wait for transaction to be broadcasted
-    let tx_id = burn_tx_res.transaction_id;
-    let num_retries = 100;
-    let tx_info_req = GetTransactionInfoRequest {
-        transaction_ids: vec![tx_id],
-    };
-
-    for i in 0..num_retries {
-        let tx_info_res = client
-            .get_transaction_info(tx_info_req.clone())
-            .await
-            .unwrap()
-            .into_inner();
-        let tx_info = tx_info_res.transactions.first().unwrap();
-
-        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
-        if tx_info.status == 1_i32 {
-            println!(
-                "Burn transaction with amount {} at fee {} has been broadcasted",
-                amount, fee_per_gram
-            );
-            break;
-        }
-
-        if i == num_retries - 1 {
-            panic!(
-                "Burn transaction with amount {} at fee {} failed to be broadcasted",
-                amount, fee_per_gram
-            )
-        }
-
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-
-    // insert tx_id's to the corresponding world mapping
-    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
-
-    wallet_tx_ids.push(tx_id);
-
-    println!(
-        "Burn transaction with amount {} at fee {} succeeded",
-        amount, fee_per_gram
     );
 }
 
