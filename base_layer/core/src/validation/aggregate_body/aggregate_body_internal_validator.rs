@@ -41,26 +41,44 @@ use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
 use crate::{
+    blocks::BlockValidationError,
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{transaction_output::batch_verify_range_proofs, KernelSum, TransactionError},
         CryptoFactories,
     },
-    validation::ValidationError,
+    validation::{
+        helpers::{
+            check_kernel_lock_height,
+            check_maturity,
+            check_permitted_output_types,
+            check_total_burned,
+            check_validator_node_registration_utxo,
+            validate_versions,
+        },
+        ValidationError,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
 
 pub struct AggregateBodyInternalConsistencyValidator {
     bypass_range_proof_verification: bool,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
 }
 
 impl AggregateBodyInternalConsistencyValidator {
-    pub fn new(bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+    pub fn new(
+        bypass_range_proof_verification: bool,
+        consensus_manager: ConsensusManager,
+        factories: CryptoFactories,
+    ) -> Self {
         Self {
             bypass_range_proof_verification,
+            consensus_manager,
             factories,
         }
     }
@@ -84,6 +102,7 @@ impl AggregateBodyInternalConsistencyValidator {
     ) -> Result<(), ValidationError> {
         let total_reward = total_reward.unwrap_or(MicroTari::zero());
 
+        // old internal validatior
         verify_kernel_signatures(body)?;
 
         let total_offset = self.factories.commitment.commit_value(tx_offset, total_reward.0);
@@ -97,6 +116,24 @@ impl AggregateBodyInternalConsistencyValidator {
         let script_offset_g = PublicKey::from_secret_key(script_offset);
         validate_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
         validate_covenants(body, height)?;
+
+        // orphan candidate block validator
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        validate_versions(body, constants)?;
+        check_weight(body, height, constants)?;
+        // check_sorting_and_duplicates(body)?;
+        for output in body.outputs() {
+            check_permitted_output_types(constants, output)?;
+            check_validator_node_registration_utxo(constants, output)?;
+        }
+        check_total_burned(body)?;
+
+        // Check that the inputs are are allowed to be spent
+        check_maturity(height, body.inputs())?;
+        check_kernel_lock_height(height, body.kernels())?;
+        // check_output_features(body, constants)?;
+
         Ok(())
     }
 }
@@ -226,4 +263,30 @@ fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), Validatio
         input.covenant()?.execute(height, input, body.outputs())?;
     }
     Ok(())
+}
+
+fn check_weight(
+    body: &AggregateBody,
+    height: u64,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let block_weight = body.calculate_weight(consensus_constants.transaction_weight());
+    let max_weight = consensus_constants.get_max_block_transaction_weight();
+    if block_weight <= max_weight {
+        trace!(
+            target: LOG_TARGET,
+            "SV - Block contents for block #{} : {}; weight {}.",
+            height,
+            body.to_counts_string(),
+            block_weight,
+        );
+
+        Ok(())
+    } else {
+        Err(BlockValidationError::BlockTooLarge {
+            actual_weight: block_weight,
+            max_weight,
+        }
+        .into())
+    }
 }

@@ -420,9 +420,9 @@ mod transaction_validator {
     #[test]
     fn it_rejects_coinbase_outputs() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-        let db = create_store_with_consensus(consensus_manager);
+        let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TransactionInternalConsistencyValidator::new(true, factories);
+        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate_with_current_tip(&tx, db).unwrap_err();
@@ -432,9 +432,9 @@ mod transaction_validator {
     #[test]
     fn coinbase_extra_must_be_empty() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-        let db = create_store_with_consensus(consensus_manager);
+        let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TransactionInternalConsistencyValidator::new(true, factories);
+        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);

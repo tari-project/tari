@@ -73,7 +73,7 @@ mod benches {
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let db = create_new_blockchain();
 
-        let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db);
+        let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());
         let mempool = Mempool::new(config, rules, Box::new(mempool_validator));
         const NUM_TXNS: usize = 100;
         // Pre-generate a bunch of transactions

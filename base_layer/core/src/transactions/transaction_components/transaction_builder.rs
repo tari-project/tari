@@ -26,6 +26,7 @@
 use tari_common_types::types::{BlindingFactor, HashOutput};
 
 use crate::{
+    consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -105,6 +106,7 @@ impl TransactionBuilder {
     /// Build the transaction.
     pub fn build(
         self,
+        rules: ConsensusManager,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
         height: u64,
@@ -112,7 +114,7 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
+            let validator = TransactionInternalConsistencyValidator::new(true, rules, factories.clone());
             validator
                 .validate(&tx, self.reward, prev_header, height)
                 .map_err(|err| TransactionError::ValidationError(err.to_string()))?;

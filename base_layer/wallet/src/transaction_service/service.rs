@@ -41,6 +41,7 @@ use tari_common_types::{
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
+    consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
@@ -224,6 +225,7 @@ where
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         wallet_identity: WalletIdentity,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
@@ -239,8 +241,8 @@ where
             wallet_identity,
             factories,
             config: config.clone(),
-
             shutdown_signal,
+            consensus_manager,
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -1134,6 +1136,7 @@ where
         // Finalize
 
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1271,6 +1274,7 @@ where
         // Finalize
 
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1423,6 +1427,7 @@ where
         // Finalize
 
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2694,6 +2699,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub wallet_identity: WalletIdentity,
+    pub consensus_manager: ConsensusManager,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,

@@ -41,7 +41,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::CryptoFactories;
+use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
@@ -312,6 +312,7 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
+    let consensus_manager = ConsensusManager::builder(config.wallet.network).build();
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
@@ -319,6 +320,7 @@ pub async fn init_wallet(
         config.peer_seeds.clone(),
         config.auto_update.clone(),
         node_identity,
+        consensus_manager,
         factories,
         wallet_db,
         output_db,

@@ -25,22 +25,11 @@ use tari_utilities::hex::Hex;
 use super::LOG_TARGET;
 use crate::{
     blocks::Block,
-    consensus::ConsensusManager,
-    transactions::CryptoFactories,
+    consensus::{ConsensusConstants, ConsensusManager},
+    transactions::{aggregated_body::AggregateBody, CryptoFactories},
     validation::{
-        helpers::{
-            check_accounting_balance,
-            check_block_weight,
-            check_coinbase_output,
-            check_kernel_lock_height,
-            check_maturity,
-            check_output_features,
-            check_permitted_output_types,
-            check_sorting_and_duplicates,
-            check_total_burned,
-            check_validator_node_registration_utxo,
-            validate_versions,
-        },
+        aggregate_body::AggregateBodyInternalConsistencyValidator,
+        helpers::{check_coinbase_output, check_sorting_and_duplicates},
         InternalConsistencyValidator,
         ValidationError,
     },
@@ -65,61 +54,56 @@ impl OrphanBlockValidator {
 }
 
 impl InternalConsistencyValidator for OrphanBlockValidator {
-    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Is the block weight of the block under the prescribed limit?
-    /// 1. Does it contain only unique inputs and outputs?
-    /// 1. Where all the rules for the spent outputs followed?
-    /// 1. Is there precisely one Coinbase output and is it correctly defined with the correct amount?
-    /// 1. Is the accounting correct?
     fn validate_internal_consistency(&self, block: &Block) -> Result<(), ValidationError> {
-        let height = block.header.height;
-
-        if height == 0 {
+        // TODO: maybe some/all of these validations should be moved to AggregateBodyInternalConsistencyValidator
+        // but many test fails in that case, need to take a look why
+        if block.header.height == 0 {
             warn!(target: LOG_TARGET, "Attempt to validate genesis block");
             return Err(ValidationError::ValidatingGenesis);
         }
-
-        let block_id = if cfg!(debug_assertions) {
-            format!(
-                "block #{} {} ({})",
-                height,
-                block.hash().to_hex(),
-                block.body.to_counts_string()
-            )
-        } else {
-            format!("block #{}", height)
-        };
-
-        let constants = self.rules.consensus_constants(height);
-
-        validate_versions(&block.body, constants)?;
-        check_block_weight(block, constants)?;
         check_sorting_and_duplicates(&block.body)?;
-
-        for output in block.body.outputs() {
-            check_permitted_output_types(constants, output)?;
-            check_validator_node_registration_utxo(constants, output)?;
-        }
-
-        check_total_burned(&block.body)?;
-
-        // Check that the inputs are are allowed to be spent
-        check_maturity(height, block.body.inputs())?;
-        check_kernel_lock_height(height, block.body.kernels())?;
-        check_output_features(block, &self.rules)?;
         check_coinbase_output(block, &self.rules, &self.factories)?;
-        check_accounting_balance(
-            block,
-            &self.rules,
-            self.bypass_range_proof_verification,
-            &self.factories,
-        )?;
+        check_output_features(&block.body, self.rules.consensus_constants(block.header.height))?;
 
-        debug!(
-            target: LOG_TARGET,
-            "{} has PASSED stateless VALIDATION check.", &block_id
+        // reusing the AggregateBodyInternalConsistencyValidator
+        let offset = &block.header.total_kernel_offset;
+        let script_offset = &block.header.total_script_offset;
+        let total_coinbase = self
+            .rules
+            .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+        let body_validator = AggregateBodyInternalConsistencyValidator::new(
+            self.bypass_range_proof_verification,
+            self.rules.clone(),
+            self.factories.clone(),
         );
+        body_validator
+            .validate(
+                &block.body,
+                offset,
+                script_offset,
+                Some(total_coinbase),
+                Some(block.header.prev_hash),
+                block.header.height,
+            )
+            .map_err(|err| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Validation failed on block:{}:{:?}",
+                    block.hash().to_hex(),
+                    err
+                );
+                err
+            })?;
 
         Ok(())
     }
+}
+
+fn check_output_features(
+    body: &AggregateBody,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let max_coinbase_metadata_size = consensus_constants.coinbase_output_features_extra_max_length();
+    body.check_output_features(max_coinbase_metadata_size)
+        .map_err(ValidationError::from)
 }

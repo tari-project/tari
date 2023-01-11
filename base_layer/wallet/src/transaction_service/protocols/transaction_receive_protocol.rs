@@ -95,6 +95,7 @@ where
         height: Option<u64>,
     ) -> Self {
         let factories = resources.factories.clone();
+        let consensus_manager = resources.consensus_manager.clone();
         Self {
             id,
             source_address,
@@ -105,7 +106,7 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             prev_header,
             height,
-            validator: TransactionInternalConsistencyValidator::new(true, factories),
+            validator: TransactionInternalConsistencyValidator::new(true, consensus_manager, factories),
         }
     }
 

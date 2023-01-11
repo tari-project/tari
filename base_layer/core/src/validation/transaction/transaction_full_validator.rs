@@ -23,6 +23,7 @@
 use super::{TransactionChainLinkedValidator, TransactionInternalConsistencyValidator};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusManager,
     transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{traits::TransactionValidator, ValidationError},
 };
@@ -34,9 +35,14 @@ pub struct TransactionFullValidator<B> {
 }
 
 impl<B: BlockchainBackend> TransactionFullValidator<B> {
-    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool, db: BlockchainDatabase<B>) -> Self {
+    pub fn new(
+        factories: CryptoFactories,
+        bypass_range_proof_verification: bool,
+        db: BlockchainDatabase<B>,
+        consensus_manager: ConsensusManager,
+    ) -> Self {
         let internal_validator =
-            TransactionInternalConsistencyValidator::new(bypass_range_proof_verification, factories);
+            TransactionInternalConsistencyValidator::new(bypass_range_proof_verification, consensus_manager, factories);
         let chain_validator = TransactionChainLinkedValidator::new(db.clone());
         Self {
             db,

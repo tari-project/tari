@@ -101,6 +101,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     borsh::FromBytes,
+    consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, UnblindedOutput},
@@ -5037,12 +5038,14 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let auto_update = AutoUpdateConfig::default();
+    let consensus_manager = ConsensusManager::builder(network).build();
 
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
         auto_update,
         node_identity,
+        consensus_manager,
         factories,
         wallet_database,
         output_manager_database,

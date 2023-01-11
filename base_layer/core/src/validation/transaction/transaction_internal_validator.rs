@@ -24,6 +24,7 @@ use tari_common_types::types::HashOutput;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusManager,
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, CryptoFactories},
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
 };
@@ -33,10 +34,15 @@ pub struct TransactionInternalConsistencyValidator {
 }
 
 impl TransactionInternalConsistencyValidator {
-    pub fn new(bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+    pub fn new(
+        bypass_range_proof_verification: bool,
+        consensus_manager: ConsensusManager,
+        factories: CryptoFactories,
+    ) -> Self {
         Self {
             aggregate_body_validator: AggregateBodyInternalConsistencyValidator::new(
                 bypass_range_proof_verification,
+                consensus_manager,
                 factories,
             ),
         }

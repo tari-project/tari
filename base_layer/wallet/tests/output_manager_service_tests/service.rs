@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+        test_helpers::{create_consensus_manager, create_unblinded_output, TestParams as TestParamsHelpers},
         transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
@@ -131,6 +131,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     with_connection: bool,
 ) -> TestOmsService<U> {
     let shutdown = Shutdown::new();
+    let consensus_manager = create_consensus_manager();
     let factories = CryptoFactories::default();
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -199,6 +200,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
         factories,
+        consensus_manager,
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
@@ -251,6 +253,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     broadcast::Sender<Arc<BaseNodeEvent>>,
 ) {
     let shutdown = Shutdown::new();
+    let consensus_manager = create_consensus_manager();
     let factories = CryptoFactories::default();
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -278,6 +281,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
         factories,
+        consensus_manager,
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),

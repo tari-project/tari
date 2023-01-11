@@ -22,7 +22,7 @@
 
 use strum::EnumIter;
 use tari_core::{
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction_protocol::RewindData, CryptoFactories},
 };
 use tari_shutdown::ShutdownSignal;
@@ -41,6 +41,7 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub factories: CryptoFactories,
     pub event_publisher: OutputManagerEventSender,
     pub master_key_manager: TKeyManagerInterface,
+    pub consensus_manager: ConsensusManager,
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,

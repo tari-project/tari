@@ -710,7 +710,8 @@ async fn test_zero_conf() {
 async fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), true, db.clone());
+    let mempool_validator =
+        TransactionFullValidator::new(CryptoFactories::default(), true, db.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
@@ -921,7 +922,12 @@ async fn consensus_validation_large_tx() {
         .build();
     let (mut store, mut blocks, mut outputs, consensus_manager) =
         create_new_blockchain_with_constants(network, consensus_constants);
-    let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), true, store.clone());
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
@@ -1007,7 +1013,7 @@ async fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    let validator = TransactionInternalConsistencyValidator::new(true, factories);
+    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
     assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
@@ -1053,7 +1059,12 @@ async fn consensus_validation_versions() {
         OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0
     );
 
-    let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), true, store.clone());
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
 
     let mempool = Mempool::new(
         MempoolConfig::default(),
@@ -1171,7 +1182,12 @@ async fn consensus_validation_unique_excess_sig() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 
-    let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), true, store.clone());
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
 
     let mempool = Mempool::new(
         MempoolConfig::default(),

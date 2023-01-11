@@ -31,7 +31,6 @@ use tari_crypto::{
 };
 use tari_script::TariScript;
 
-use super::aggregate_body::AggregateBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
@@ -170,41 +169,6 @@ pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstant
     }
 }
 
-pub fn check_accounting_balance(
-    block: &Block,
-    rules: &ConsensusManager,
-    bypass_range_proof_verification: bool,
-    factories: &CryptoFactories,
-) -> Result<(), ValidationError> {
-    if block.header.height == 0 {
-        // Gen block does not need to be checked for this.
-        return Ok(());
-    }
-    let offset = &block.header.total_kernel_offset;
-    let script_offset = &block.header.total_script_offset;
-    let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-    let body_validator =
-        AggregateBodyInternalConsistencyValidator::new(bypass_range_proof_verification, factories.clone());
-    body_validator
-        .validate(
-            &block.body,
-            offset,
-            script_offset,
-            Some(total_coinbase),
-            Some(block.header.prev_hash),
-            block.header.height,
-        )
-        .map_err(|err| {
-            warn!(
-                target: LOG_TARGET,
-                "Validation failed on block:{}:{:?}",
-                block.hash().to_hex(),
-                err
-            );
-            err
-        })
-}
-
 /// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
@@ -244,12 +208,6 @@ pub fn check_coinbase_output(
             rules.consensus_constants(block.header.height),
             factories,
         )
-        .map_err(ValidationError::from)
-}
-
-pub fn check_output_features(block: &Block, rules: &ConsensusManager) -> Result<(), ValidationError> {
-    block
-        .check_output_features(rules.consensus_constants(block.header.height))
         .map_err(ValidationError::from)
 }
 

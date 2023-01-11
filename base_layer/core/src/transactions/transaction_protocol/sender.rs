@@ -37,7 +37,7 @@ use tari_script::TariScript;
 
 use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
@@ -497,7 +497,11 @@ impl SenderTransactionProtocol {
     }
 
     /// Attempts to build the final transaction.
-    fn build_transaction(info: &RawTransactionInfo, factories: &CryptoFactories) -> Result<Transaction, TPE> {
+    fn build_transaction(
+        info: &RawTransactionInfo,
+        rules: ConsensusManager,
+        factories: &CryptoFactories,
+    ) -> Result<Transaction, TPE> {
         let mut tx_builder = TransactionBuilder::new();
         for i in &info.inputs {
             tx_builder.add_input(i.clone());
@@ -522,7 +526,7 @@ impl SenderTransactionProtocol {
             .build()?;
         tx_builder.with_kernel(kernel);
         tx_builder
-            .build(factories, info.prev_header, info.height)
+            .build(rules, factories, info.prev_header, info.height)
             .map_err(TPE::from)
     }
 
@@ -587,6 +591,7 @@ impl SenderTransactionProtocol {
     /// returns `Ok(false)` in this instance.
     pub fn finalize(
         &mut self,
+        rules: ConsensusManager,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
         height: u64,
@@ -604,11 +609,13 @@ impl SenderTransactionProtocol {
         // Validate the inputs we have, and then construct the final transaction
         match &self.state {
             SenderState::Finalizing(info) => {
-                let result = self.validate().and_then(|_| Self::build_transaction(info, factories));
+                let result = self
+                    .validate()
+                    .and_then(|_| Self::build_transaction(info, rules.clone(), factories));
                 match result {
                     Ok(mut transaction) => {
                         transaction.body.sort();
-                        let validator = TransactionInternalConsistencyValidator::new(true, factories.clone());
+                        let validator = TransactionInternalConsistencyValidator::new(true, rules, factories.clone());
                         let result = validator
                             .validate(&transaction, None, prev_header, height)
                             .map_err(|err| {
@@ -787,7 +794,7 @@ mod test {
     use super::SenderState;
     use crate::{
         covenants::Covenant,
-        test_helpers::create_consensus_constants,
+        test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
@@ -944,6 +951,7 @@ mod test {
 
     #[test]
     fn zero_recipients() {
+        let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         let p1 = TestParams::new();
         let p2 = TestParams::new();
@@ -972,7 +980,7 @@ mod test {
         let mut sender = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
-        match sender.finalize(&factories, None, u64::MAX) {
+        match sender.finalize(rules, &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
@@ -982,6 +990,7 @@ mod test {
 
     #[test]
     fn single_recipient_no_change() {
+        let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let a = TestParams::new();
@@ -1018,7 +1027,7 @@ mod test {
         alice.add_single_recipient_info(bob_info.clone()).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(&factories, None, u64::MAX) {
+        match alice.finalize(rules, &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -1039,6 +1048,7 @@ mod test {
 
     #[test]
     fn single_recipient_with_change() {
+        let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let a = TestParams::new();
@@ -1100,7 +1110,7 @@ mod test {
         alice.add_single_recipient_info(bob_info).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(&factories, None, u64::MAX) {
+        match alice.finalize(rules.clone(), &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -1112,7 +1122,7 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
-        let validator = TransactionInternalConsistencyValidator::new(false, factories);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }
 
@@ -1235,6 +1245,7 @@ mod test {
 
     #[test]
     fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
+        let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice_test_params = TestParams::new();
@@ -1297,7 +1308,7 @@ mod test {
         alice.add_single_recipient_info(bob_info).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(&factories, None, u64::MAX) {
+        match alice.finalize(rules, &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };

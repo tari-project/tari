@@ -238,6 +238,7 @@ async fn build_node_context(
         factories.clone(),
         app_config.base_node.bypass_range_proof_verification,
         blockchain_db.clone(),
+        rules.clone(),
     );
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),
