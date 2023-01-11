@@ -31,7 +31,7 @@ mod ui;
 mod utils;
 mod wallet_modes;
 
-pub use cli::Cli;
+pub use cli::{Cli, CliCommands, ExportUtxosArgs};
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};

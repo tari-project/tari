@@ -14,6 +14,7 @@ Feature: Wallet Transfer
     When I have a base node NODE_B connected to all seed nodes
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
+    When I wait 5 seconds
     When I transfer 5T from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     # BREAKS HERE

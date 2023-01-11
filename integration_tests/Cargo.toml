@@ -36,6 +36,7 @@ bytes = "1"
 chrono = "0.4.22"
 clap = { version = "3.2.5", features = ["env"] }
 config = "0.13.0"
+csv = "1.1"
 digest = "0.9.0"
 diesel = { version = "1.4.8", default-features = false, features = ["sqlite"] }
 futures = { version = "^0.3.1" }
