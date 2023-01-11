@@ -25,7 +25,6 @@ use log::*;
 use tari_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
-use super::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator};
 use crate::{
     base_node::sync::BlockHeaderSyncError,
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -33,6 +32,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
+    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";

@@ -37,7 +37,7 @@ use tari_comms::{
 use tari_utilities::hex::Hex;
 use tracing;
 
-use super::BlockHeaderSyncError;
+use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer},
     blocks::{BlockHeader, ChainBlock, ChainHeader},
@@ -49,7 +49,7 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    validation::{header_sync_validator::BlockHeaderSyncValidator, ValidationError},
+    validation::ValidationError,
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -59,7 +59,7 @@ const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
-    header_validator: BlockHeaderSyncValidator<B>,
+    header_iterator: BlockHeaderSyncValidator<B>,
     connectivity: ConnectivityRequester,
     sync_peers: &'a mut [SyncPeer],
     hooks: Hooks,
@@ -78,7 +78,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Self {
         Self {
             config,
-            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
+            header_iterator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
             db,
             connectivity,
             sync_peers,
@@ -502,7 +502,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         #[allow(clippy::cast_possible_truncation)]
         let chain_split_hash = block_hashes.get(fork_hash_index as usize).unwrap();
 
-        self.header_validator.initialize_state(chain_split_hash).await?;
+        self.header_iterator.initialize_state(chain_split_hash).await?;
         for header in headers {
             debug!(
                 target: LOG_TARGET,
@@ -511,7 +511,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.pow_algo(),
                 header.hash().to_hex(),
             );
-            self.header_validator.validate(header)?;
+            self.header_iterator.validate(header)?;
         }
 
         debug!(
@@ -570,13 +570,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
         let mut has_switched_to_new_chain = false;
-        let pending_len = self.header_validator.valid_headers().len();
+        let pending_len = self.header_iterator.valid_headers().len();
 
         // Find the hash to start syncing the rest of the headers.
         // The expectation cannot fail because there has been at least one valid header returned (checked in
         // determine_sync_status)
         let (start_header_height, start_header_hash, total_accumulated_difficulty) = self
-            .header_validator
+            .header_iterator
             .current_valid_chain_tip_header()
             .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_difficulty))
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
@@ -660,11 +660,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 continue;
             }
             let current_height = header.height;
-            last_total_accumulated_difficulty = self.header_validator.validate(header)?;
+            last_total_accumulated_difficulty = self.header_iterator.validate(header)?;
 
             if has_switched_to_new_chain {
                 // If we've switched to the new chain, we simply commit every COMMIT_EVERY_N_HEADERS headers
-                if self.header_validator.valid_headers().len() >= COMMIT_EVERY_N_HEADERS {
+                if self.header_iterator.valid_headers().len() >= COMMIT_EVERY_N_HEADERS {
                     self.commit_pending_headers().await?;
                 }
             } else {
@@ -700,7 +700,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                 claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                 actual: self
-                    .header_validator
+                    .header_iterator
                     .current_valid_chain_tip_header()
                     .map(|h| h.accumulated_data().total_accumulated_difficulty),
                 local: split_info
@@ -711,7 +711,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         // Commit the last blocks that don't fit into the COMMIT_EVENT_N_HEADERS blocks
-        if !self.header_validator.valid_headers().is_empty() {
+        if !self.header_iterator.valid_headers().is_empty() {
             self.commit_pending_headers().await?;
         }
 
@@ -733,7 +733,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     async fn commit_pending_headers(&mut self) -> Result<ChainHeader, BlockHeaderSyncError> {
-        let chain_headers = self.header_validator.take_valid_headers();
+        let chain_headers = self.header_iterator.take_valid_headers();
         let num_headers = chain_headers.len();
         let start = Instant::now();
 
@@ -757,14 +757,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     fn pending_chain_has_higher_pow(&self, current_tip: &ChainHeader) -> bool {
-        let chain_headers = self.header_validator.valid_headers();
+        let chain_headers = self.header_iterator.valid_headers();
         if chain_headers.is_empty() {
             return false;
         }
 
         // Check that the remote tip is stronger than the local tip
         let proposed_tip = chain_headers.last().unwrap();
-        self.header_validator.compare_chains(current_tip, proposed_tip).is_le()
+        self.header_iterator.compare_chains(current_tip, proposed_tip).is_le()
     }
 
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {
