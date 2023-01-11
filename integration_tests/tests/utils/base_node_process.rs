@@ -184,7 +184,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
-        if base_node_config.base_node.storage.pruning_horizon > 0 {
+        if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
         };
 
