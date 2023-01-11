@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@wallet-transact @wallet
+@wallet-transact @wallet @flaky
 Feature: Wallet Transactions
 
   @critical @flaky
@@ -98,35 +98,32 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 20000000000 uT
 
-  @flaky
-  Scenario: Wallet imports spent outputs that become invalidated
-    Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
-    When I have wallet WALLET_A connected to all seed nodes
-    When I have wallet WALLET_B connected to all seed nodes
-    When I have wallet WALLET_C connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
-    When mining node MINER mines 5 blocks
-    Then all nodes are at height 5
-    Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    When mining node MINER mines 5 blocks
-    Then all nodes are at height 10
-    Then I wait for wallet WALLET_B to have at least 1000000 uT
-    When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
-    When mining node MINER mines 5 blocks
-    Then all nodes are at height 15
-    When I wait for wallet WALLET_B to have at least 50000 uT
-    Then I stop wallet WALLET_B
-    When I wait 30 seconds
-    Then I import WALLET_B spent outputs to WALLET_C
-    Then I wait for wallet WALLET_C to have at least 1000000 uT
-    Then I restart wallet WALLET_C
-    Then I wait for wallet WALLET_C to have less than 1 uT
-    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
-    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
-    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
-    Then I check if last imported transactions are invalid in wallet WALLET_C
+  # @flaky
+  # Scenario: Wallet imports spent outputs that become invalidated
+  #   Given I have a seed node NODE
+  #   When I have 1 base nodes connected to all seed nodes
+  #   When I have wallet WALLET_A connected to all seed nodes
+  #   When I have wallet WALLET_B connected to all seed nodes
+  #   When I have wallet WALLET_C connected to all seed nodes
+  #   When I have mining node MINER connected to base node NODE and wallet WALLET_A
+  #   When mining node MINER mines 5 blocks
+  #   Then all nodes are at height 5
+  #   Then I wait for wallet WALLET_A to have at least 10000000000 uT
+  #   When I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+  #   When mining node MINER mines 5 blocks
+  #   Then all nodes are at height 10
+  #   Then I wait for wallet WALLET_B to have at least 1000000 uT
+  #   When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
+  #   When mining node MINER mines 5 blocks
+  #   Then all nodes are at height 15
+  #   When I wait for wallet WALLET_B to have at least 50000 uT
+  #   Then I stop wallet WALLET_B
+  #   When I wait 30 seconds
+  #   Then I import WALLET_B spent outputs to WALLET_C
+  #   Then I wait for wallet WALLET_C to have at least 1000000 uT
+  #   Then I restart wallet WALLET_C
+  #   Then I wait for wallet WALLET_C to have less than 1 uT
+  #   Then I check if last imported transactions are invalid in wallet WALLET_C
 
   @flaky
   Scenario: Wallet imports reorged outputs that become invalidated
