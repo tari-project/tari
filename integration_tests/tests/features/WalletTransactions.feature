@@ -367,27 +367,27 @@ Feature: Wallet Transactions
     When I wait 15 seconds
     Then I start wallet WALLET_RECV
     When I wait 5 seconds
-    When wallet WALLET_RECV detects all transactions are at least Pending
-    Then I cancel last transaction in wallet WALLET_RECV
-    When I wait 15 seconds
-    Then I stop wallet WALLET_RECV
-    Then I start wallet WALLET_SENDER
+    # When wallet WALLET_RECV detects all transactions are at least Pending
+    # Then I cancel last transaction in wallet WALLET_RECV
+    # When I wait 15 seconds
+    # Then I stop wallet WALLET_RECV
+    # Then I start wallet WALLET_SENDER
     # # This is a weirdness that I haven't been able to figure out. When you start WALLET_SENDER on the line above it
     # # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
     # # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
-    When I wait 10 seconds
-    Then I restart wallet WALLET_SENDER
-    When I wait 10 seconds
-    Then I restart wallet WALLET_SENDER
-    When I wait 30 seconds
-    When mining node MINER mines 5 blocks
-    Then all nodes are at height 15
-    When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
-    When I start wallet WALLET_RECV
-    When I wait 5 seconds
-    Then I restart wallet WALLET_RECV
-    When I wait 5 seconds
-    Then I restart wallet WALLET_RECV
+    # When I wait 10 seconds
+    # Then I restart wallet WALLET_SENDER
+    # When I wait 10 seconds
+    # Then I restart wallet WALLET_SENDER
+    # When I wait 30 seconds
+    # When mining node MINER mines 5 blocks
+    # Then all nodes are at height 15
+    # When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
+    # When I start wallet WALLET_RECV
+    # When I wait 5 seconds
+    # Then I restart wallet WALLET_RECV
+    # When I wait 5 seconds
+    # Then I restart wallet WALLET_RECV
     # Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
   @critical

@@ -1750,7 +1750,7 @@ async fn stop_all_wallets(world: &mut TariWorld) {
 #[then(expr = "I stop wallet {word}")]
 async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     // conveniently, register wallet address
-    let mut wallet_client = create_wallet_client(&world, wallet.clone()).await.unwrap();
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = wallet_client
         .get_address(Empty {})
         .await
