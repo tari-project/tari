@@ -37,6 +37,7 @@ use tokio::runtime;
 use tonic::transport::Channel;
 
 use crate::{
+    get_peer_addresses,
     utils::{get_port, wait_for_service},
     TariWorld,
 };
@@ -92,15 +93,7 @@ pub async fn spawn_wallet(
         (pubkey, port, set_base_node_request)
     });
 
-    let mut peer_addresses = vec![];
-    for peer in peer_seeds {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.public_address()
-        ));
-    }
+    let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
 
     let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
@@ -121,6 +114,7 @@ pub async fn spawn_wallet(
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
 
+        wallet_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
         wallet_config.wallet.network = Network::LocalNet;
         wallet_config.wallet.password = Some("test".into());
         wallet_config.wallet.grpc_enabled = true;
