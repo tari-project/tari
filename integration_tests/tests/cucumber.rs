@@ -84,6 +84,7 @@ use tokio::runtime::Runtime;
 
 use crate::utils::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
+    get_peer_addresses,
     miner::{
         mine_block,
         mine_block_before_submit,

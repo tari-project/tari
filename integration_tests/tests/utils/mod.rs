@@ -24,6 +24,8 @@ use std::{net::TcpListener, ops::Range, time::Duration};
 
 use rand::Rng;
 
+use crate::TariWorld;
+
 pub mod base_node;
 pub mod base_node_process;
 pub mod miner;
@@ -63,4 +65,18 @@ pub async fn wait_for_service(port: u64) {
         tokio::time::sleep(Duration::from_millis(250)).await;
         attempts += 1;
     }
+}
+
+pub async fn get_peer_addresses(world: &TariWorld, peers: &Vec<String>) -> Vec<String> {
+    let mut peer_addresses = vec![];
+    for peer in peers {
+        let peer = world.base_nodes.get(peer.as_str()).unwrap();
+        peer_addresses.push(format!(
+            "{}::{}",
+            peer.identity.public_key(),
+            peer.identity.public_address()
+        ));
+    }
+
+    peer_addresses
 }

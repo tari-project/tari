@@ -42,7 +42,7 @@ use tokio::task;
 use tonic::transport::Channel;
 
 use crate::{
-    utils::{get_port, wait_for_service},
+    utils::{get_peer_addresses, get_port, wait_for_service},
     TariWorld,
 };
 
@@ -134,15 +134,7 @@ pub async fn spawn_base_node_with_config(
 
     let name_cloned = bn_name.clone();
 
-    let mut peer_addresses = vec![];
-    for peer in &peers {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.public_address()
-        ));
-    }
+    let peer_addresses = get_peer_addresses(world, &peers).await;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
