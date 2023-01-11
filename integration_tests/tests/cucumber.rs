@@ -3870,6 +3870,24 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
     )
 }
 
+#[when(expr = "I mine {int} blocks with difficulty {int} on {word}")]
+async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, difficulty: u64, node: String) {
+    let wallet_name = format!("wallet-{}", &node);
+    if world.wallets.get(&wallet_name).is_none() {
+        spawn_wallet(world, wallet_name.clone(), Some(node.clone()), vec![], None, None).await;
+    };
+
+    let miner_name = format!("miner-{}", &node);
+    if world.miners.get(&miner_name).is_none() {
+        register_miner_process(world, miner_name.clone(), node.clone(), wallet_name.clone());
+    }
+
+    let miner = world.miners.get(&miner_name).unwrap();
+    miner
+        .mine(world, Some(num_blocks), Some(difficulty), Some(difficulty))
+        .await;
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
