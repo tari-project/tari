@@ -285,13 +285,13 @@ Feature: Wallet Transactions
     When I have a base node NODE_A connected to seed SEED
     When I have a base node NODE_B connected to seed SEED
     Then I stop wallet WALLET_A
+    When I wait 15 seconds
     When I start wallet WALLET_A
     When I start wallet WALLET_B
     Then all nodes are at height 5
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
     Then wallet WALLET_B detects all transactions are at least Pending
-    When I wait 1 seconds
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
     # #
@@ -361,7 +361,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
     Then I stop wallet WALLET_RECV
-    When I send 1000000 uT from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    When I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
     When wallet WALLET_SENDER detects last transaction is Pending
     Then I stop wallet WALLET_SENDER
     When I wait 15 seconds

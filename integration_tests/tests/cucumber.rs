@@ -35,7 +35,7 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
-use tari_app_grpc::tari_rpc::{self as grpc};
+use tari_app_grpc::tari_rpc::{self as grpc, GetConnectivityRequest};
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
 use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
@@ -701,7 +701,112 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
 }
 
 #[when(expr = "wallet {word} detects all transactions are at least Pending")]
+#[then(expr = "wallet {word} detects all transactions are at least Pending")]
 async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let wallet_address = client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
+
+    let num_retries = 100;
+
+    let wallet_a = String::from("WALLET_A");
+    let mut wallet_a_client = create_wallet_client(world, wallet_a.clone()).await.unwrap();
+
+    for tx_id in tx_ids {
+        println!("waiting for tx with tx_id = {} to be pending", tx_id);
+        for retry in 0..=num_retries {
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![*tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+
+            let wallet_a_peers_res = wallet_a_client
+                .list_connected_peers(Empty {})
+                .await
+                .unwrap()
+                .into_inner();
+
+            println!(
+                "FLAG: Wallet_A connected peers with node_id = {}, flags = {}, features = {}",
+                wallet_a_peers_res.connected_peers.first().unwrap().node_id.to_hex(),
+                wallet_a_peers_res.connected_peers.first().unwrap().flags,
+                wallet_a_peers_res.connected_peers.first().unwrap().features,
+            );
+
+            let wallet_a_connectivity_res = wallet_a_client
+                .check_connectivity(GetConnectivityRequest {})
+                .await
+                .unwrap()
+                .into_inner();
+
+            println!(
+                "FLAG: WALLET_A connectivity status = {}",
+                wallet_a_connectivity_res.status
+            );
+
+            let wallet_b_peers_res = wallet_a_client
+                .list_connected_peers(Empty {})
+                .await
+                .unwrap()
+                .into_inner();
+
+            println!(
+                "FLAG: Wallet_B connected peers with node_id = {}, flags = {}, features = {}",
+                wallet_b_peers_res.connected_peers.first().unwrap().node_id.to_hex(),
+                wallet_b_peers_res.connected_peers.first().unwrap().flags,
+                wallet_b_peers_res.connected_peers.first().unwrap().features,
+            );
+
+            let wallet_b_connectivity_res = wallet_a_client
+                .check_connectivity(GetConnectivityRequest {})
+                .await
+                .unwrap()
+                .into_inner();
+
+            println!(
+                "FLAG: WALLET_B connectivity status = {}",
+                wallet_b_connectivity_res.status
+            );
+
+            if retry == num_retries {
+                panic!(
+                    "Wallet {} failed to detect tx with tx_id = {} to be pending",
+                    wallet_name.as_str(),
+                    tx_id
+                );
+            }
+            match tx_info.status() {
+                grpc::TransactionStatus::Pending => {
+                    println!(
+                        "Transaction with tx_id = {} has been detected as pending by wallet {}",
+                        tx_id,
+                        wallet_name.as_str()
+                    );
+                    return;
+                },
+                _ => {
+                    println!(
+                        "Transaction with tx_id = {} has been detected with status = {:?}",
+                        tx_id,
+                        tx_info.status()
+                    );
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                },
+            }
+        }
+    }
+}
+
+#[then(expr = "wallet {word} detects all transactions are Broadcast")]
+async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -731,7 +836,7 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
                 );
             }
             match tx_info.status() {
-                grpc::TransactionStatus::Pending => {
+                grpc::TransactionStatus::Broadcast => {
                     println!(
                         "Transaction with tx_id = {} has been detected as mined_confirmed by wallet {}",
                         tx_id,
@@ -742,59 +847,6 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
                 _ => {
                     println!(
                         "Transaction with tx_id = {} has been detected with status = {:?}",
-                        tx_id,
-                        tx_info.status()
-                    );
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
-                },
-            }
-        }
-    }
-}
-
-#[when(expr = "wallet {word} detects all transactions are Not_Found")]
-async fn wallet_detects_all_txs_are_at_not_found(world: &mut TariWorld, wallet_name: String) {
-    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
-
-    let num_retries = 100;
-
-    for tx_id in tx_ids {
-        println!("waiting for tx with tx_id = {} to be not found", tx_id);
-        for retry in 0..=num_retries {
-            let request = GetTransactionInfoRequest {
-                transaction_ids: vec![*tx_id],
-            };
-            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
-            let tx_info = tx_info.transactions.first().unwrap();
-
-            if retry == num_retries {
-                panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be not found",
-                    wallet_name.as_str(),
-                    tx_id
-                );
-            }
-            match tx_info.status() {
-                grpc::TransactionStatus::NotFound => {
-                    println!(
-                        "Transaction with tx_id = {} has been detected as not found by wallet {}",
-                        tx_id,
-                        wallet_name.as_str()
-                    );
-                    return;
-                },
-                _ => {
-                    println!(
-                        "Transaction with tx_id = {} has been not found with status = {:?}",
                         tx_id,
                         tx_info.status()
                     );

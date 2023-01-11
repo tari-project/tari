@@ -261,15 +261,6 @@ pub struct LMDBDatabase {
     consensus_manager: ConsensusManager,
 }
 
-impl Drop for LMDBDatabase {
-    fn drop(&mut self) {
-        println!(
-            "FLAG: file_lock being dropped, count = {}",
-            Arc::strong_count(&self._file_lock)
-        );
-    }
-}
-
 impl LMDBDatabase {
     pub fn new(
         store: &LMDBStore,
