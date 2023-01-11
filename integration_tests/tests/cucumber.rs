@@ -3922,6 +3922,37 @@ async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) 
     submit_transaction_to(world, tx_name, node).await.unwrap();
 }
 
+#[then(expr = "{word} has at least {int} peers")]
+async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: u64) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut last_num_of_peers = 0;
+
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        last_num_of_peers = 0;
+
+        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
+
+        while let Some(resp) = peers_stream.next().await {
+            if let Ok(resp) = resp {
+                if let Some(_peer) = resp.peer {
+                    last_num_of_peers += 1
+                }
+            }
+        }
+
+        if last_num_of_peers >= num_peers as usize {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "Node {} only received {} of {} expected peers",
+        node, last_num_of_peers, num_peers
+    )
+}
+
 #[when(expr = "I print the cucumber world")]
 async fn print_world(world: &mut TariWorld) {
     eprintln!();
