@@ -22,27 +22,19 @@
 
 use std::cmp;
 
-use tari_utilities::epoch_time::EpochTime;
+use log::{trace, warn};
+use tari_common_types::types::FixedHash;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
-    consensus::ConsensusManager,
-    proof_of_work::{AchievedTargetDifficulty, Difficulty},
-    validation::{
-        helpers::{
-            check_blockchain_version,
-            check_header_timestamp_greater_than_median,
-            check_not_bad_block,
-            check_pow_data,
-            check_target_difficulty,
-            check_timestamp_ftl,
-        },
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        ValidationError,
-    },
+    consensus::{ConsensusConstants, ConsensusManager},
+    proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    validation::{helpers::check_target_difficulty, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
 };
+
+pub const LOG_TARGET: &str = "c::val::header_full_validator";
 
 #[derive(Clone)]
 pub struct HeaderFullValidator {
@@ -77,33 +69,11 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         let constants = self.rules.consensus_constants(header.height);
 
         if !self.bypass_timestamp_count_verification {
-            let expected_timestamp_count = cmp::min(constants.get_median_timestamp_count(), header.height as usize - 1);
-            let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
-            if timestamps.len() < expected_timestamp_count {
-                return Err(ValidationError::NotEnoughTimestamps {
-                    actual: timestamps.len() as usize,
-                    expected: expected_timestamp_count,
-                });
-            }
+            check_timestamp_count(header, prev_timestamps, constants)?;
         }
 
-        if header.height != prev_header.height + 1 {
-            let result = Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::InvalidHeight {
-                    expected: prev_header.height + 1,
-                    actual: header.height,
-                },
-            ));
-            return result;
-        }
-        if header.prev_hash != prev_header.hash() {
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::InvalidPreviousHash {
-                    expected: prev_header.hash(),
-                    actual: header.prev_hash,
-                },
-            ));
-        }
+        check_height(header, prev_header)?;
+        check_prev_hash(header, prev_header)?;
 
         check_blockchain_version(constants, header.version)?;
         check_timestamp_ftl(header, &self.rules)?;
@@ -120,5 +90,181 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         };
 
         Ok(achieved_target)
+    }
+}
+
+fn check_timestamp_count(
+    header: &BlockHeader,
+    prev_timestamps: &[EpochTime],
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let expected_timestamp_count = cmp::min(
+        consensus_constants.get_median_timestamp_count(),
+        header.height as usize - 1,
+    );
+    let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
+    if timestamps.len() < expected_timestamp_count {
+        return Err(ValidationError::NotEnoughTimestamps {
+            actual: timestamps.len() as usize,
+            expected: expected_timestamp_count,
+        });
+    }
+
+    Ok(())
+}
+
+fn check_height(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
+    if header.height != prev_header.height + 1 {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidHeight {
+                expected: prev_header.height + 1,
+                actual: header.height,
+            },
+        ));
+    }
+
+    Ok(())
+}
+
+fn check_prev_hash(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
+    if header.prev_hash != prev_header.hash() {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidPreviousHash {
+                expected: prev_header.hash(),
+                actual: header.prev_hash,
+            },
+        ));
+    }
+
+    Ok(())
+}
+
+fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Result<(), ValidationError> {
+    if constants.valid_blockchain_version_range().contains(&version) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidBlockchainVersion { version })
+    }
+}
+
+/// This function tests that the block timestamp is less than the FTL
+pub fn check_timestamp_ftl(
+    block_header: &BlockHeader,
+    consensus_manager: &ConsensusManager,
+) -> Result<(), ValidationError> {
+    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
+        warn!(
+            target: LOG_TARGET,
+            "Invalid Future Time Limit on block:{}",
+            block_header.hash().to_hex()
+        );
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
+        ));
+    }
+    Ok(())
+}
+
+pub fn check_header_timestamp_greater_than_median(
+    block_header: &BlockHeader,
+    timestamps: &[EpochTime],
+) -> Result<(), ValidationError> {
+    if timestamps.is_empty() {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
+        ));
+    }
+
+    let median_timestamp = calc_median_timestamp(timestamps);
+    if block_header.timestamp < median_timestamp {
+        warn!(
+            target: LOG_TARGET,
+            "Block header timestamp {} is less than median timestamp: {} for block:{}",
+            block_header.timestamp,
+            median_timestamp,
+            block_header.hash().to_hex()
+        );
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestamp(format!(
+                "The timestamp `{}` was less than the median timestamp `{}`",
+                block_header.timestamp, median_timestamp
+            )),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Returns the median timestamp for the provided timestamps.
+///
+/// ## Panics
+/// When an empty slice is given as this is undefined for median average.
+/// https://math.stackexchange.com/a/3451015
+pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
+    assert!(
+        !timestamps.is_empty(),
+        "calc_median_timestamp: timestamps cannot be empty"
+    );
+    trace!(
+        target: LOG_TARGET,
+        "Calculate the median timestamp from {} timestamps",
+        timestamps.len()
+    );
+
+    let mid_index = timestamps.len() / 2;
+    let median_timestamp = if timestamps.len() % 2 == 0 {
+        trace!(
+            target: LOG_TARGET,
+            "No median timestamp available, estimating median as avg of [{}] and [{}]",
+            timestamps[mid_index - 1],
+            timestamps[mid_index],
+        );
+        (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
+    } else {
+        timestamps[mid_index]
+    };
+    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
+    median_timestamp
+}
+
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash)? {
+        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
+    }
+    Ok(())
+}
+
+/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
+pub fn check_pow_data<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    rules: &ConsensusManager,
+    db: &B,
+) -> Result<(), ValidationError> {
+    use PowAlgorithm::{Monero, Sha3};
+    match block_header.pow.pow_algo {
+        Monero => {
+            let monero_data =
+                MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
+            if seed_height != 0 {
+                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
+                let seed_used_height = block_header.height.saturating_sub(seed_height);
+                if seed_used_height > rules.consensus_constants(block_header.height).max_randomx_seed_height() {
+                    return Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::OldSeedHash,
+                    ));
+                }
+            }
+
+            Ok(())
+        },
+        Sha3 => {
+            if !block_header.pow.pow_data.is_empty() {
+                return Err(ValidationError::CustomError(
+                    "Proof of work data must be empty for Sha3 blocks".to_string(),
+                ));
+            }
+            Ok(())
+        },
     }
 }
