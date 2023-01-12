@@ -24,36 +24,28 @@ name: Integration tests
         type: string
 
 env:
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
   # space seperated string list
   build_binaries: "tari_base_node tari_console_wallet tari_merge_mining_proxy tari_miner"
 
 jobs:
   cucumber_tests:
     name: Cucumber tests
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
-      - name: Checkout source code
+      - name: checkout
         uses: actions/checkout@v3
 
       - name: Envs setup
         id: envs_setup
         shell: bash
         run: |
-          VAPPS_STRING="${{ env.build_binaries }}"
-          VAPPS_ARRAY=(${VAPPS_STRING})
-          for i in "${!VAPPS_ARRAY[@]}"; do
-            if [ "${VAPPS_ARRAY[$i]:0:5}" = "tari_" ] ; then
-              VAPPS_TARGET_BINS="${VAPPS_TARGET_BINS} --bin ${VAPPS_ARRAY[$i]}"
-            fi
-          done
-          echo "TARGET_BINS=${VAPPS_TARGET_BINS}" >> $GITHUB_ENV
           if [ "${{ github.event_name }}" == "schedule" ] ; then
             echo "CI_FFI=false" >> $GITHUB_ENV
             if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
-              echo "CI_PROFILE=non-critical" >> $GITHUB_ENV
+              echo "CI_PROFILE=not @long-running" >> $GITHUB_ENV
             elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
-              echo "CI_PROFILE=long-running" >> $GITHUB_ENV
+              echo "CI_PROFILE=@long-running" >> $GITHUB_ENV
             fi
           else
             echo "CI ..."
@@ -66,12 +58,6 @@ jobs:
             echo "CI_FFI=${CI_FFI:-true}" >> $GITHUB_ENV
           fi
 
-      - name: Install ubuntu dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo bash scripts/install_ubuntu_dependencies.sh
-
       - name: Setup rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -80,107 +66,37 @@ jobs:
           toolchain: ${{ env.toolchain }}
           override: true
 
+      - name: Install ubuntu dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v2
 
-      - name: Build binaries
+      - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
-          use-cross: false
-          command: build
-          args: >
-            --release
-            --locked
-            ${{ env.TARGET_BINS }}
-
-      - name: Build ffi
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: >
-            --release
-            --locked
-            --package tari_wallet_ffi
-
-      - name: CI folder prep
-        shell: bash
-        working-directory: integration_tests
-        run: |
-          mkdir -p cucumber_output
-          mkdir -p temp/reports
-          mkdir -p temp/out
-          cd ../target/release/
-          cp -v ${{ env.build_binaries }} "$GITHUB_WORKSPACE/integration_tests/temp/out"
-          cd $GITHUB_WORKSPACE/integration_tests/temp/out
-          shasum -a 256 ${{ env.build_binaries }} > integration_tests.sha256sums
-          cat integration_tests.sha256sums
-          ls -alht
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: lts/erbium
-          cache: 'npm'
-          cache-dependency-path: integration_tests/package-lock.json
-
-      - name: Run npm ci and lint
-        shell: bash
-        working-directory: integration_tests
-        run: |
-          node -v
-          npm install
-          npm run check-fmt
-          npm run lint
-          npm ci
-          cd ../clients/nodejs/base_node_grpc_client
-          npm install
-          cd ../wallet_grpc_client
-          npm install
-          npm ci
+          command: test
+          args: --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-        shell: bash
-        working-directory: integration_tests
-        run: |
-          node_modules/.bin/cucumber-js --publish-quiet \
-            --profile "${{ env.CI_PROFILE }}" \
-            --tags "not @wallet-ffi" --format json:cucumber_output/tests.cucumber \
-            --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --test cucumber -v --all-features --release --package tari_integration_tests -- -t "${{ env.PROFILE }} and not @ffi" --retry 2
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-        shell: bash
-        working-directory: integration_tests
-        run: |
-          node_modules/.bin/cucumber-js --publish-quiet \
-            --profile "${{ env.CI_PROFILE }}" \
-            --tags "@wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber \
-            --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
-
-      - name: Generate report
-        continue-on-error: true
-        if: always()
-        shell: bash
-        working-directory: integration_tests
-        run: |
-          node ./generate_report.js
-          # Empty file check
-          if [ -s cucumber_output/tests_ffi.cucumber ] ; then
-            node ./generate_report.js "cucumber_output/tests_ffi.cucumber" "temp/reports/cucumber_ffi_report.html"
-          fi
-
-      - name: Store ${{ env.CI_PROFILE }} test results
-        uses: actions/upload-artifact@v3
-        if: always()
+      - name: cargo test
+        uses: actions-rs/cargo@v1
         with:
-          name: ${{ env.CI_PROFILE }} test results
-          path: |
-            integration_tests/cucumber_output
-            integration_tests/temp/reports
-            integration_tests/temp/out
+          command: test
+          args: --test cucumber -v --all-features --release --package tari_integration_tests -- -t "@ffi" --retry 2
