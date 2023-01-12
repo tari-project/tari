@@ -28,8 +28,8 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     borsh::SerializedSize,
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
-    consensus::ConsensusConstants,
+    chain_storage::{BlockchainBackend, MmrTree},
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -41,66 +41,76 @@ pub const LOG_TARGET: &str = "c::val::aggregate_body_chain_linked_validator";
 
 /// This validator assumes that the body was already validated for internal consistency and it will skip that step.
 #[derive(Clone)]
-pub struct AggregateBodyChainLinkedValidator<B> {
-    db: BlockchainDatabase<B>,
+pub struct AggregateBodyChainLinkedValidator {
+    consensus_manager: ConsensusManager,
 }
 
-impl<B: BlockchainBackend> AggregateBodyChainLinkedValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
-        Self { db }
+impl AggregateBodyChainLinkedValidator {
+    pub fn new(consensus_manager: ConsensusManager) -> Self {
+        Self { consensus_manager }
     }
 
-    pub fn validate(&self, body: &AggregateBody) -> Result<(), ValidationError> {
-        self.validate_consensus(body)?;
-        self.validate_input_and_maturity(body)?;
+    pub fn validate<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        height: u64,
+        db: &B,
+    ) -> Result<(), ValidationError> {
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        self.validate_consensus(body, db, constants)?;
+        self.validate_input_and_maturity(body, db, constants)?;
         Ok(())
     }
 
-    fn validate_consensus(&self, body: &AggregateBody) -> Result<(), ValidationError> {
-        let consensus_constants = self.db.consensus_constants()?;
+    fn validate_consensus<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        db: &B,
+        constants: &ConsensusConstants,
+    ) -> Result<(), ValidationError> {
+        validate_excess_sig_not_in_db(body, db)?;
 
-        self.validate_excess_sig_not_in_db(body)?;
-
-        validate_versions(body, consensus_constants)?;
+        validate_versions(body, constants)?;
         for output in body.outputs() {
-            check_permitted_output_types(consensus_constants, output)?;
-            check_validator_node_registration_utxo(consensus_constants, output)?;
+            check_permitted_output_types(constants, output)?;
+            check_validator_node_registration_utxo(constants, output)?;
         }
         Ok(())
     }
 
-    fn validate_input_and_maturity(&self, body: &AggregateBody) -> Result<(), ValidationError> {
-        let constants = self.db.consensus_constants()?;
-        {
-            let db = self.db.db_read_access()?;
-            check_inputs_are_utxos(&*db, body)?;
-            check_outputs(&*db, constants, body)?;
-        };
+    fn validate_input_and_maturity<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        db: &B,
+        constants: &ConsensusConstants,
+    ) -> Result<(), ValidationError> {
+        check_inputs_are_utxos(db, body)?;
+        check_outputs(db, constants, body)?;
 
         // verify_timelocks(tx, tip_height)?;
         verify_no_duplicated_inputs_outputs(body)?;
         check_total_burned(body)?;
         Ok(())
     }
+}
 
-    fn validate_excess_sig_not_in_db(&self, body: &AggregateBody) -> Result<(), ValidationError> {
-        for kernel in body.kernels() {
-            if let Some((db_kernel, header_hash)) = self.db.fetch_kernel_by_excess_sig(kernel.excess_sig.to_owned())? {
-                let msg = format!(
-                    "Aggregate body contains kernel excess: {} which matches already existing excess signature in \
-                     chain database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess \
-                     signature: {}",
-                    kernel.excess.to_hex(),
-                    header_hash.to_hex(),
-                    db_kernel.excess.to_hex(),
-                    db_kernel.excess_sig.get_public_nonce().to_hex(),
-                    db_kernel.excess_sig.get_signature().to_hex(),
-                );
-                return Err(ValidationError::DuplicateKernelError(msg));
-            };
-        }
-        Ok(())
+fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+    for kernel in body.kernels() {
+        if let Some((db_kernel, header_hash)) = db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
+            let msg = format!(
+                "Aggregate body contains kernel excess: {} which matches already existing excess signature in chain \
+                 database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: {}",
+                kernel.excess.to_hex(),
+                header_hash.to_hex(),
+                db_kernel.excess.to_hex(),
+                db_kernel.excess_sig.get_public_nonce().to_hex(),
+                db_kernel.excess_sig.get_signature().to_hex(),
+            );
+            return Err(ValidationError::DuplicateKernelError(msg));
+        };
     }
+    Ok(())
 }
 
 fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {

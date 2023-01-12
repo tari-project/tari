@@ -20,17 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
+use log::{debug, trace};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
 
 use super::LOG_TARGET;
 use crate::{
     blocks::{BlockHeader, ChainBlock},
-    chain_storage,
-    chain_storage::{fetch_headers, BlockchainBackend},
+    chain_storage::{self, fetch_headers, BlockchainBackend},
     consensus::{ConsensusConstants, ConsensusManager},
+    transactions::CryptoFactories,
     validation::{
+        aggregate_body::{AggregateBodyChainLinkedValidator, AggregateBodyInternalConsistencyValidator},
         helpers::{self, check_header_timestamp_greater_than_median},
         CandidateBlockValidator,
         ValidationError,
@@ -126,6 +127,33 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
         helpers::validate_covenants(block.block())?;
 
         debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
+
+        // get the timestamps from database
+        // header_full_validator
+        // aggregate_internal_consistency_validator
+        let factories = CryptoFactories::default();
+        let body_internal_validator =
+            AggregateBodyInternalConsistencyValidator::new(true, self.rules.clone(), factories);
+
+        let height = block.header().height;
+        let body = &block.block().body;
+        let prev_header_hash = *metadata.best_block();
+        let offset = &block.header().total_kernel_offset;
+        let script_offset = &block.header().total_script_offset;
+        let total_coinbase = self.rules.calculate_coinbase_and_fees(height, body.kernels());
+        body_internal_validator.validate(
+            body,
+            offset,
+            script_offset,
+            Some(total_coinbase),
+            Some(prev_header_hash),
+            height,
+        )?;
+
+        // aggregate_body_chain_validator
+        let body_chain_validator = AggregateBodyChainLinkedValidator::new(self.rules.clone());
+        body_chain_validator.validate(body, height, backend)?;
+
         Ok(())
     }
 }

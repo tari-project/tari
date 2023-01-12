@@ -260,7 +260,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         ..Default::default()
     };
     let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
-    let mempool_validator = TransactionChainLinkedValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),

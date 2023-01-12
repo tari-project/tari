@@ -89,7 +89,7 @@ mod helpers;
 async fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = TransactionChainLinkedValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
@@ -246,7 +246,7 @@ async fn test_insert_and_process_published_block() {
 async fn test_time_locked() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = TransactionChainLinkedValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
@@ -300,7 +300,7 @@ async fn test_time_locked() {
 async fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = TransactionChainLinkedValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
@@ -399,7 +399,7 @@ async fn test_retrieve() {
 async fn test_zero_conf() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = TransactionChainLinkedValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),

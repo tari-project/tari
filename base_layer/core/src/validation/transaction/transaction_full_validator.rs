@@ -41,9 +41,12 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
         db: BlockchainDatabase<B>,
         consensus_manager: ConsensusManager,
     ) -> Self {
-        let internal_validator =
-            TransactionInternalConsistencyValidator::new(bypass_range_proof_verification, consensus_manager, factories);
-        let chain_validator = TransactionChainLinkedValidator::new(db.clone());
+        let internal_validator = TransactionInternalConsistencyValidator::new(
+            bypass_range_proof_verification,
+            consensus_manager.clone(),
+            factories,
+        );
+        let chain_validator = TransactionChainLinkedValidator::new(db.clone(), consensus_manager);
         Self {
             db,
             internal_validator,

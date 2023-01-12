@@ -24,6 +24,7 @@ use log::warn;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusManager,
     transactions::transaction_components::Transaction,
     validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
 };
@@ -32,13 +33,13 @@ pub const LOG_TARGET: &str = "c::val::transaction_chain_linked_validator";
 
 pub struct TransactionChainLinkedValidator<B> {
     db: BlockchainDatabase<B>,
-    aggregate_body_validator: AggregateBodyChainLinkedValidator<B>,
+    aggregate_body_validator: AggregateBodyChainLinkedValidator,
 }
 
 impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
+    pub fn new(db: BlockchainDatabase<B>, consensus_manager: ConsensusManager) -> Self {
         Self {
-            aggregate_body_validator: AggregateBodyChainLinkedValidator::new(db.clone()),
+            aggregate_body_validator: AggregateBodyChainLinkedValidator::new(consensus_manager),
             db,
         }
     }
@@ -54,11 +55,11 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
-        self.aggregate_body_validator.validate(&tx.body)?;
-
         let tip_height = {
             let db = self.db.db_read_access()?;
-            db.fetch_chain_metadata()?.height_of_longest_chain()
+            let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+            self.aggregate_body_validator.validate(&tx.body, tip_height, &*db)?;
+            tip_height
         };
         verify_timelocks(tx, tip_height)?;
 
