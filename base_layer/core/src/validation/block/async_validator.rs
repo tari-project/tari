@@ -49,7 +49,7 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        block_validators::abort_on_drop::AbortOnDropJoinHandle,
+        block::abort_on_drop::AbortOnDropJoinHandle,
         helpers::{self, check_header_timestamp_greater_than_median},
         BlockSyncBodyValidation,
         ValidationError,

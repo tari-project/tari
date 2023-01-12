@@ -23,25 +23,29 @@
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
 
+use super::BlockInternalConsistencyValidator;
 use crate::{
     blocks::ChainBlock,
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     transactions::CryptoFactories,
-    validation::{
-        aggregate_body::{AggregateBodyChainLinkedValidator, AggregateBodyInternalConsistencyValidator},
-        CandidateBlockValidator,
-        ValidationError,
-    },
+    validation::{aggregate_body::AggregateBodyChainLinkedValidator, CandidateBlockValidator, ValidationError},
 };
 
 pub struct BodyOnlyValidator {
-    rules: ConsensusManager,
+    block_internal_validator: BlockInternalConsistencyValidator,
+    aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
 }
 
 impl BodyOnlyValidator {
     pub fn new(rules: ConsensusManager) -> Self {
-        Self { rules }
+        let factories = CryptoFactories::default();
+        let block_internal_validator = BlockInternalConsistencyValidator::new(rules.clone(), true, factories);
+        let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules);
+        Self {
+            block_internal_validator,
+            aggregate_body_chain_validator,
+        }
     }
 }
 
@@ -65,26 +69,8 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
         let height = block.header().height;
         let body = &block.block().body;
 
-        // internal consistency validation
-        let factories = CryptoFactories::default();
-        let prev_header_hash = *metadata.best_block();
-        let offset = &block.header().total_kernel_offset;
-        let script_offset = &block.header().total_script_offset;
-        let total_coinbase = self.rules.calculate_coinbase_and_fees(height, body.kernels());
-        let body_internal_validator =
-            AggregateBodyInternalConsistencyValidator::new(true, self.rules.clone(), factories);
-        body_internal_validator.validate(
-            body,
-            offset,
-            script_offset,
-            Some(total_coinbase),
-            Some(prev_header_hash),
-            height,
-        )?;
-
-        // chain linked validation
-        let body_chain_validator = AggregateBodyChainLinkedValidator::new(self.rules.clone());
-        body_chain_validator.validate(body, height, backend)?;
+        self.block_internal_validator.validate(block.block())?;
+        self.aggregate_body_chain_validator.validate(body, height, backend)?;
 
         Ok(())
     }

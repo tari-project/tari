@@ -47,7 +47,7 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
+        block::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         BlockSyncBodyValidation,

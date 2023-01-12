@@ -78,7 +78,7 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block::{BodyOnlyValidator, OrphanBlockValidator},
         mocks::MockValidator,
         DifficultyCalculator,
     },

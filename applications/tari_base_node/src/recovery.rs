@@ -48,7 +48,7 @@ use tari_core::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block::{BodyOnlyValidator, OrphanBlockValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         DifficultyCalculator,

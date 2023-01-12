@@ -47,7 +47,7 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block::{BodyOnlyValidator, OrphanBlockValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         DifficultyCalculator,

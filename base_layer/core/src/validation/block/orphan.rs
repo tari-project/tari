@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,58 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, sync::Arc};
-
+use super::BlockInternalConsistencyValidator;
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    blocks::Block,
     consensus::ConsensusManager,
     transactions::CryptoFactories,
-    validation::{block::BlockValidator, BlockSyncBodyValidation, ChainBalanceValidator, FinalHorizonStateValidation},
+    validation::{InternalConsistencyValidator, ValidationError},
 };
 
+/// This validator tests whether a candidate block is internally consistent
 #[derive(Clone)]
-pub struct SyncValidators<B> {
-    pub block_body: Arc<dyn BlockSyncBodyValidation>,
-    pub final_horizon_state: Arc<dyn FinalHorizonStateValidation<B>>,
+pub struct OrphanBlockValidator {
+    validator: BlockInternalConsistencyValidator,
 }
 
-impl<B: BlockchainBackend + 'static> SyncValidators<B> {
-    pub fn new<TBody, TFinal>(block_body: TBody, final_state: TFinal) -> Self
-    where
-        TBody: BlockSyncBodyValidation + 'static,
-        TFinal: FinalHorizonStateValidation<B> + 'static,
-    {
-        Self {
-            block_body: Arc::new(block_body),
-            final_horizon_state: Arc::new(final_state),
-        }
-    }
-
-    pub fn full_consensus(
-        db: AsyncBlockchainDb<B>,
-        rules: ConsensusManager,
-        factories: CryptoFactories,
-        bypass_range_proof_verification: bool,
-        concurrency: usize,
-    ) -> Self {
-        Self::new(
-            BlockValidator::new(
-                db,
-                rules.clone(),
-                factories.clone(),
-                bypass_range_proof_verification,
-                concurrency,
-            ),
-            ChainBalanceValidator::<B>::new(rules, factories),
-        )
+impl OrphanBlockValidator {
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+        let validator = BlockInternalConsistencyValidator::new(rules, bypass_range_proof_verification, factories);
+        Self { validator }
     }
 }
 
-impl<B: BlockchainBackend> fmt::Debug for SyncValidators<B> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HorizonHeaderValidators")
-            .field("header", &"...")
-            .field("final_state", &"...")
-            .finish()
+impl InternalConsistencyValidator for OrphanBlockValidator {
+    fn validate_internal_consistency(&self, block: &Block) -> Result<(), ValidationError> {
+        self.validator.validate(block)
     }
 }

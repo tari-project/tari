@@ -34,4 +34,7 @@ pub use orphan::OrphanBlockValidator;
 mod body_only;
 pub use body_only::BodyOnlyValidator;
 
+mod block_internal_validator;
+pub use block_internal_validator::BlockInternalConsistencyValidator;
+
 const LOG_TARGET: &str = "c::val::block_validators";

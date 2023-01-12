@@ -42,7 +42,7 @@ use crate::{
     },
     txn_schema,
     validation::{
-        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
+        block::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
         BlockSyncBodyValidation,
         InternalConsistencyValidator,
         ValidationError,

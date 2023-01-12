@@ -64,6 +64,7 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
 
+#[derive(Clone)]
 pub struct AggregateBodyInternalConsistencyValidator {
     bypass_range_proof_verification: bool,
     consensus_manager: ConsensusManager,
