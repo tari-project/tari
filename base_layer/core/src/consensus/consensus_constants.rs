@@ -101,7 +101,7 @@ pub struct ConsensusConstants {
     /// Epoch duration in blocks
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
-    vn_validity_period: VnEpoch,
+    vn_validity_period_epochs: VnEpoch,
     vn_registration_min_deposit_amount: MicroTari,
     vn_registration_lock_height: u64,
     vn_registration_shuffle_interval: VnEpoch,
@@ -303,8 +303,8 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
-    pub fn validator_node_validity_period(&self) -> VnEpoch {
-        self.vn_validity_period
+    pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
+        self.vn_validity_period_epochs
     }
 
     pub fn validator_node_registration_shuffle_interval(&self) -> VnEpoch {
@@ -371,7 +371,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: OutputType::all(),
             vn_epoch_length: 10,
-            vn_validity_period: VnEpoch(100),
+            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
@@ -417,7 +417,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
-            vn_validity_period: VnEpoch(100),
+            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
@@ -467,7 +467,7 @@ impl ConsensusConstants {
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
             vn_epoch_length: 10,
-            vn_validity_period: VnEpoch(100),
+            vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
@@ -523,7 +523,7 @@ impl ConsensusConstants {
                 kernel_version_range: kernel_version_range.clone(),
                 permitted_output_types: Self::current_permitted_output_types(),
                 vn_epoch_length: 60,
-                vn_validity_period: VnEpoch(100),
+                vn_validity_period_epochs: VnEpoch(100),
                 vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
@@ -552,7 +552,7 @@ impl ConsensusConstants {
                 kernel_version_range,
                 permitted_output_types: Self::current_permitted_output_types(),
                 vn_epoch_length: 60,
-                vn_validity_period: VnEpoch(100),
+                vn_validity_period_epochs: VnEpoch(100),
                 vn_registration_min_deposit_amount: MicroTari(0),
                 vn_registration_lock_height: 0,
                 vn_registration_shuffle_interval: VnEpoch(100),
@@ -605,7 +605,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
-            vn_validity_period: VnEpoch(100),
+            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
@@ -654,7 +654,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             vn_epoch_length: 60,
-            vn_validity_period: VnEpoch(100),
+            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
