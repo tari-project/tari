@@ -5365,6 +5365,7 @@ dependencies = [
  "openssl",
  "rand 0.7.3",
  "security-framework",
+ "serde_json",
  "tari_common",
  "tari_common_types",
  "tari_comms",
