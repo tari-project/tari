@@ -3900,9 +3900,11 @@ async fn node_on_blockchain_recovery(world: &mut TariWorld, node: String) {
     let mut cli = bn_default_cli(base_path, config_path.into_os_string().into_string().unwrap());
 
     cli.rebuild_db = true;
-    // cli.watch = Some(String::from("--rebuild-db"));
+
     let peers = base_node_ps.seed_nodes.clone();
     let is_seed_node = base_node_ps.is_seed_node;
+
+    println!("FLAG: seeds node peers are {:?}", peers);
 
     spawn_base_node(world, is_seed_node, node.clone(), peers, Some(cli)).await
 }

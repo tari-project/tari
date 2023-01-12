@@ -106,15 +106,6 @@ pub async fn run_base_node_with_cli(
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
 
-    if cli.rebuild_db {
-        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&config.base_node)?;
-        recovery::run_recovery(&config.base_node)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
-        return Ok(());
-    };
-
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
@@ -145,6 +136,15 @@ pub async fn run_base_node_with_cli(
             "Force Sync Peers have been set! This node will only sync to the nodes in this set."
         );
     }
+
+    if cli.rebuild_db {
+        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
+        recovery::initiate_recover_db(&config.base_node)?;
+        recovery::run_recovery(&config.base_node)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+        return Ok(());
+    };
 
     info!(target: LOG_TARGET, "Tari base node has STARTED");
     main_loop.cli_loop().await;
