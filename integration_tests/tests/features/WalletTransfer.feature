@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@wallet-transfer @wallet
+@wallet-transfer @wallet @flaky
 Feature: Wallet Transfer
 
   # This is probably the most important base layer test

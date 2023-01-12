@@ -54,7 +54,7 @@ pub struct BaseNodeProcess {
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
-    pub pruning_horizon: u64,
+    pub config: BaseNodeConfig,
     pub kill_signal: Shutdown,
 }
 
@@ -87,26 +87,32 @@ pub async fn spawn_base_node_with_config(
     is_seed_node: bool,
     bn_name: String,
     peers: Vec<String>,
-    base_node_config: BaseNodeConfig,
+    mut base_node_config: BaseNodeConfig,
 ) {
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
+    let base_node_identity: NodeIdentity;
+    let base_node_address: Multiaddr;
 
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
-        temp_dir_path = node_ps.temp_dir_path.clone()
+        temp_dir_path = node_ps.temp_dir_path.clone();
+        base_node_config = node_ps.config.clone();
+
+        base_node_identity = node_ps.identity.clone();
     } else {
         // each spawned wallet will use different ports
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
-        temp_dir_path = tempdir().unwrap().path().to_path_buf()
+        temp_dir_path = tempdir().unwrap().path().to_path_buf();
+
+        base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     };
 
-    let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-    let base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     println!("Base node identity: {}", base_node_identity);
     let identity = base_node_identity.clone();
 
@@ -119,7 +125,7 @@ pub async fn spawn_base_node_with_config(
         temp_dir_path: temp_dir_path.clone(),
         is_seed_node,
         seed_nodes: peers.clone(),
-        pruning_horizon: base_node_config.storage.pruning_horizon,
+        config: base_node_config.clone(),
         kill_signal: shutdown.clone(),
     };
 
