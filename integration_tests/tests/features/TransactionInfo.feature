@@ -27,13 +27,13 @@ Scenario: Get Transaction Info
     When I wait 1 seconds
     When mining node MINER mines 1 blocks
     Then all nodes are at height 5
-    Then wallet WALLET_A detects all transactions as Mined_Unconfirmed
-    Then wallet WALLET_B detects all transactions as Mined_Unconfirmed
+    Then wallet WALLET_A detects all transactions as Coinbase
+    Then wallet WALLET_B detects all transactions as Coinbase
     #     # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
     When mining node MINER mines 10 blocks
     Then all nodes are at height 15
-    # Then wallet WALLET_A detects all transactions as Mined_Confirmed
-    # Then wallet WALLET_B detects all transactions as Mined_Confirmed
+    Then wallet WALLET_A detects all transactions as Mined_Confirmed
+    Then wallet WALLET_B detects all transactions as Mined_Confirmed
     #     # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds

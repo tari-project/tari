@@ -728,9 +728,9 @@ async fn prune_node_connected_to_base_node(
     spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config, None).await;
 }
 
-#[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
-#[then(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
-async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String) {
+#[when(expr = "wallet {word} detects all transactions as {word}")]
+#[then(expr = "wallet {word} detects all transactions as {word}")]
+async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
     let mut completed_tx_stream = client
@@ -745,7 +745,7 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
         let tx_info = tx_info.unwrap();
         let tx_id = tx_info.transaction.unwrap().tx_id;
 
-        println!("waiting for tx with tx_id = {} to be mined_confirmed", tx_id);
+        println!("waiting for tx with tx_id = {} to be {}", tx_id, status);
         for retry in 0..=num_retries {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![tx_id],
@@ -755,24 +755,65 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
 
             if retry == num_retries {
                 panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be mined_confirmed",
+                    "Wallet {} failed to detect tx with tx_id = {} to be {}, current status is {:?}",
                     wallet_name.as_str(),
-                    tx_id
+                    tx_id,
+                    status,
+                    tx_info.status()
                 );
             }
-            match tx_info.status() {
-                grpc::TransactionStatus::MinedConfirmed => {
-                    println!(
-                        "Transaction with tx_id = {} has been detected as mined_confirmed by wallet {}",
-                        tx_id,
-                        wallet_name.as_str()
-                    );
-                    return;
+            match status.as_str() {
+                "Pending" => match tx_info.status() {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
-                _ => {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
+                "Completed" => match tx_info.status() {
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
+                "Broadcast" => match tx_info.status() {
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Mined_Unconfirmed" => match tx_info.status() {
+                    grpc::TransactionStatus::MinedUnconfirmed | grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Mined_Confirmed" => match tx_info.status() {
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Coinbase" => match tx_info.status() {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::Coinbase => {
+                        break;
+                    },
+                    _ => (),
+                },
+                _ => panic!("Unknown status {}, don't know what to expect", status),
             }
         }
     }
@@ -3903,8 +3944,6 @@ async fn node_on_blockchain_recovery(world: &mut TariWorld, node: String) {
 
     let peers = base_node_ps.seed_nodes.clone();
     let is_seed_node = base_node_ps.is_seed_node;
-
-    println!("FLAG: seeds node peers are {:?}", peers);
 
     spawn_base_node(world, is_seed_node, node.clone(), peers, Some(cli)).await
 }
