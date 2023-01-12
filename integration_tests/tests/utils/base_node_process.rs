@@ -26,6 +26,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use rand::rngs::OsRng;
@@ -41,7 +42,7 @@ use tokio::task;
 use tonic::transport::Channel;
 
 use crate::{
-    utils::{get_port, wait_for_service},
+    utils::{get_peer_addresses, get_port, wait_for_service},
     TariWorld,
 };
 
@@ -53,7 +54,7 @@ pub struct BaseNodeProcess {
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
-    pub pruning_horizon: u64,
+    pub config: BaseNodeConfig,
     pub kill_signal: Shutdown,
 }
 
@@ -77,17 +78,8 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(
-    world: &mut TariWorld,
-    is_seed_node: bool,
-    bn_name: String,
-    peers: Vec<String>,
-    pruning_horizon: Option<u64>,
-) {
-    let mut config = BaseNodeConfig::default();
-    config.storage.pruning_horizon = pruning_horizon.unwrap_or_default();
-
-    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, config).await;
+pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
+    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
 }
 
 pub async fn spawn_base_node_with_config(
@@ -95,26 +87,32 @@ pub async fn spawn_base_node_with_config(
     is_seed_node: bool,
     bn_name: String,
     peers: Vec<String>,
-    base_node_config: BaseNodeConfig,
+    mut base_node_config: BaseNodeConfig,
 ) {
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
+    let base_node_identity: NodeIdentity;
+    let base_node_address: Multiaddr;
 
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
-        temp_dir_path = node_ps.temp_dir_path.clone()
+        temp_dir_path = node_ps.temp_dir_path.clone();
+        base_node_config = node_ps.config.clone();
+
+        base_node_identity = node_ps.identity.clone();
     } else {
         // each spawned wallet will use different ports
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
-        temp_dir_path = tempdir().unwrap().path().to_path_buf()
+        temp_dir_path = tempdir().unwrap().path().to_path_buf();
+
+        base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     };
 
-    let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-    let base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     println!("Base node identity: {}", base_node_identity);
     let identity = base_node_identity.clone();
 
@@ -127,21 +125,13 @@ pub async fn spawn_base_node_with_config(
         temp_dir_path: temp_dir_path.clone(),
         is_seed_node,
         seed_nodes: peers.clone(),
-        pruning_horizon: base_node_config.storage.pruning_horizon,
+        config: base_node_config.clone(),
         kill_signal: shutdown.clone(),
     };
 
     let name_cloned = bn_name.clone();
 
-    let mut peer_addresses = vec![];
-    for peer in &peers {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.public_address()
-        ));
-    }
+    let peer_addresses = get_peer_addresses(world, &peers).await;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
@@ -153,6 +143,7 @@ pub async fn spawn_base_node_with_config(
             metrics: MetricsConfig::default(),
             peer_seeds: PeerSeedsConfig {
                 peer_seeds: peer_addresses.into(),
+                dns_seeds_use_dnssec: false,
                 ..Default::default()
             },
         };
@@ -162,10 +153,12 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.grpc_enabled = true;
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
+        base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(15);
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = temp_dir_path.clone().join("base_node_id.json");
         base_node_config.base_node.tor_identity_file = temp_dir_path.clone().join("base_node_tor_id.json");
+        base_node_config.base_node.max_randomx_vms = 1;
 
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
@@ -176,9 +169,11 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.dht.database_url =
-            DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlit"));
+            DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlite"));
+        base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config.base_node.p2p.allow_test_addresses = true;
-        if base_node_config.base_node.storage.pruning_horizon > 0 {
+        base_node_config.base_node.storage.orphan_storage_capacity = 10;
+        if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
         };
 

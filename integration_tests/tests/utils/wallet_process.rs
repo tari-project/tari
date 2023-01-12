@@ -37,6 +37,7 @@ use tokio::runtime;
 use tonic::transport::Channel;
 
 use crate::{
+    get_peer_addresses,
     utils::{get_port, wait_for_service},
     TariWorld,
 };
@@ -92,15 +93,7 @@ pub async fn spawn_wallet(
         (pubkey, port, set_base_node_request)
     });
 
-    let mut peer_addresses = vec![];
-    for peer in peer_seeds {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.public_address()
-        ));
-    }
+    let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
 
     let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
@@ -121,19 +114,22 @@ pub async fn spawn_wallet(
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
 
+        wallet_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
         wallet_config.wallet.network = Network::LocalNet;
         wallet_config.wallet.password = Some("test".into());
         wallet_config.wallet.grpc_enabled = true;
         wallet_config.wallet.grpc_address =
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
-        wallet_config.wallet.data_dir = temp_dir_path.clone().join("data/wallet");
-        wallet_config.wallet.db_file = temp_dir_path.clone().join("db/console_wallet.db");
+        wallet_config.wallet.data_dir = temp_dir_path.clone().join("data").join("wallet");
+        wallet_config.wallet.db_file = temp_dir_path.clone().join("db").join("console_wallet.db");
+        wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(5);
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         wallet_config.wallet.p2p.public_address = Some(wallet_config.wallet.p2p.transport.tcp.listener_address.clone());
-        wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db/wallet");
+        wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db").join("wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        wallet_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
             wallet_config
                 .wallet
@@ -147,17 +143,7 @@ pub async fn spawn_wallet(
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
-        let cli = if let Some(cli) = cli {
-            cli
-        } else {
-            let data_dir = wallet_config.wallet.data_dir.clone();
-            let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
-
-            let mut config_path = data_dir;
-            config_path.push("config.toml");
-
-            get_default_cli(data_dir_str, config_path.clone())
-        };
+        let cli = cli.unwrap_or(get_default_cli());
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
             panic!("{:?}", e);
@@ -190,11 +176,12 @@ pub async fn spawn_wallet(
     tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
-pub fn get_default_cli(data_dir_str: String, config_path: PathBuf) -> Cli {
+pub fn get_default_cli() -> Cli {
     Cli {
+        // CommonCliArgs are ignored in test, it's used only to override the config in the main.rs of the wallet.
         common: CommonCliArgs {
-            base_path: data_dir_str,
-            config: config_path.into_os_string().into_string().unwrap(),
+            base_path: Default::default(),
+            config: Default::default(),
             log_config: None,
             log_level: None,
             config_property_overrides: vec![],
