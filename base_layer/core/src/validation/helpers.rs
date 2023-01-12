@@ -23,7 +23,7 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::{Commitment, CommitmentFactory, FixedHash, PublicKey};
+use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
@@ -245,41 +245,6 @@ pub fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), Validati
     Ok(())
 }
 
-/// This function checks that all inputs in the blocks are valid UTXO's to be spent
-pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut not_found_inputs = Vec::new();
-    let mut output_hashes = None;
-
-    for input in body.inputs() {
-        // If spending a unique_id, a new output must contain the unique id
-        match check_input_is_utxo(db, input) {
-            Ok(_) => continue,
-            Err(ValidationError::UnknownInput) => {
-                // Lazily allocate and hash outputs as needed
-                if output_hashes.is_none() {
-                    output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
-                }
-
-                let output_hashes = output_hashes.as_ref().unwrap();
-                let output_hash = input.output_hash();
-                if output_hashes.iter().any(|output| output == &output_hash) {
-                    continue;
-                }
-                not_found_inputs.push(output_hash);
-            },
-            Err(err) => {
-                return Err(err);
-            },
-        }
-    }
-
-    if !not_found_inputs.is_empty() {
-        return Err(ValidationError::UnknownInputs(not_found_inputs));
-    }
-
-    Ok(())
-}
-
 /// This function checks that an input is a valid spendable UTXO
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
     let output_hash = input.output_hash();
@@ -323,25 +288,6 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         "Validation failed due to input: {} which does not exist yet", input
     );
     Err(ValidationError::UnknownInput)
-}
-
-/// This function checks:
-/// 1. that the output type is permitted
-/// 2. the byte size of TariScript does not exceed the maximum
-/// 3. that the outputs do not already exist in the UTxO set.
-pub fn check_outputs<B: BlockchainBackend>(
-    db: &B,
-    constants: &ConsensusConstants,
-    body: &AggregateBody,
-) -> Result<(), ValidationError> {
-    let max_script_size = constants.get_max_script_byte_size();
-    for output in body.outputs() {
-        check_permitted_output_types(constants, output)?;
-        check_tari_script_byte_size(&output.script, max_script_size)?;
-        check_not_duplicate_txo(db, output)?;
-        check_validator_node_registration_utxo(constants, output)?;
-    }
-    Ok(())
 }
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
@@ -472,33 +418,6 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
             kind: "Validator Node",
         }));
-    }
-    Ok(())
-}
-
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash)? {
-        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
-    }
-    Ok(())
-}
-
-/// This checks to ensure that every kernel included in the block is a unique kernel in the block chain.
-pub fn check_unique_kernels<B: BlockchainBackend>(db: &B, block_body: &AggregateBody) -> Result<(), ValidationError> {
-    for kernel in block_body.kernels() {
-        if let Some((db_kernel, header_hash)) = db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
-            let msg = format!(
-                "Block contains kernel excess: {} which matches already existing excess signature in chain database \
-                 block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: {}",
-                kernel.excess.to_hex(),
-                header_hash.to_hex(),
-                db_kernel.excess.to_hex(),
-                db_kernel.excess_sig.get_public_nonce().to_hex(),
-                db_kernel.excess_sig.get_signature().to_hex(),
-            );
-            warn!(target: LOG_TARGET, "{}", msg);
-            return Err(ValidationError::ConsensusError(msg));
-        };
     }
     Ok(())
 }

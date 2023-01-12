@@ -20,29 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::{debug, trace};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
 
-use super::LOG_TARGET;
 use crate::{
-    blocks::{BlockHeader, ChainBlock},
-    chain_storage::{self, fetch_headers, BlockchainBackend},
-    consensus::{ConsensusConstants, ConsensusManager},
+    blocks::ChainBlock,
+    chain_storage::BlockchainBackend,
+    consensus::ConsensusManager,
     transactions::CryptoFactories,
     validation::{
         aggregate_body::{AggregateBodyChainLinkedValidator, AggregateBodyInternalConsistencyValidator},
-        helpers::{self, check_header_timestamp_greater_than_median},
         CandidateBlockValidator,
         ValidationError,
     },
 };
 
-/// This validator tests whether a candidate block is internally consistent.
-/// This does not check that the orphan block has the correct mined height of utxos
-
-/// This validator checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
-/// next block on the blockchain.
 pub struct BodyOnlyValidator {
     rules: ConsensusManager,
 }
@@ -51,43 +43,12 @@ impl BodyOnlyValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         Self { rules }
     }
-
-    /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
-    fn check_median_timestamp<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        constants: &ConsensusConstants,
-        block_header: &BlockHeader,
-    ) -> Result<(), ValidationError> {
-        if block_header.height == 0 {
-            return Ok(()); // Its the genesis block, so we dont have to check median
-        }
-
-        let height = block_header.height - 1;
-        let min_height = block_header
-            .height
-            .saturating_sub(constants.get_median_timestamp_count() as u64);
-        let timestamps = fetch_headers(db, min_height, height)?
-            .iter()
-            .map(|h| h.timestamp)
-            .collect::<Vec<_>>();
-
-        check_header_timestamp_greater_than_median(block_header, &timestamps)?;
-
-        Ok(())
-    }
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
-    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Does the block satisfy the stateless checks?
-    /// 1. Are all inputs currently in the UTXO set?
-    /// 1. Are all inputs and outputs not in the STXO set?
-    /// 1. Are all kernels excesses unique?
-    /// 1. Are the block header MMR roots valid?
     fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-        let constants = self.rules.consensus_constants(block.header().height);
-
+        // TODO: these validations should not be neccesary, as they are part of header validation
+        // but some of the test break because of it
         if block.header().prev_hash != *metadata.best_block() {
             return Err(ValidationError::IncorrectPreviousHash {
                 expected: metadata.best_block().to_hex(),
@@ -101,46 +62,17 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
             });
         }
 
-        self.check_median_timestamp(backend, constants, block.header())?;
-
-        let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
-        helpers::check_inputs_are_utxos(backend, &block.block().body)?;
-        helpers::check_outputs(
-            backend,
-            self.rules.consensus_constants(block.height()),
-            &block.block().body,
-        )?;
-        helpers::check_unique_kernels(backend, &block.block().body)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: All inputs, outputs and kernels are valid for {}",
-            block_id
-        );
-        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.rules, block.block())?;
-        helpers::check_mmr_roots(block.header(), &mmr_roots)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: MMR roots are valid for {}",
-            block_id
-        );
-        helpers::check_not_bad_block(backend, *block.hash())?;
-        helpers::validate_covenants(block.block())?;
-
-        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
-
-        // get the timestamps from database
-        // header_full_validator
-        // aggregate_internal_consistency_validator
-        let factories = CryptoFactories::default();
-        let body_internal_validator =
-            AggregateBodyInternalConsistencyValidator::new(true, self.rules.clone(), factories);
-
         let height = block.header().height;
         let body = &block.block().body;
+
+        // internal consistency validation
+        let factories = CryptoFactories::default();
         let prev_header_hash = *metadata.best_block();
         let offset = &block.header().total_kernel_offset;
         let script_offset = &block.header().total_script_offset;
         let total_coinbase = self.rules.calculate_coinbase_and_fees(height, body.kernels());
+        let body_internal_validator =
+            AggregateBodyInternalConsistencyValidator::new(true, self.rules.clone(), factories);
         body_internal_validator.validate(
             body,
             offset,
@@ -150,7 +82,7 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
             height,
         )?;
 
-        // aggregate_body_chain_validator
+        // chain linked validation
         let body_chain_validator = AggregateBodyChainLinkedValidator::new(self.rules.clone());
         body_chain_validator.validate(body, height, backend)?;
 
