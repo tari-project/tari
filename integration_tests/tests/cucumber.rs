@@ -567,7 +567,7 @@ async fn transaction_in_state(
             0 => "UNKNOWN",
             1 => "MEMPOOL",
             2 => "MINED",
-            3 => "NOT STORED",
+            3 => "NOT_STORED",
             _ => panic!("not getting a good result"),
         };
 
@@ -666,7 +666,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
                 0 => "UNKNOWN",
                 1 => "MEMPOOL",
                 2 => "MINED",
-                3 => "NOT STORED",
+                3 => "NOT_STORED",
                 _ => panic!("not getting a good result"),
             };
 
