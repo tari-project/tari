@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.43.3](https://github.com/tari-project/tari/compare/v0.43.2...v0.43.3) (2023-01-12)
+
+
+### Features
+
+* add new igor seeds ([#5106](https://github.com/tari-project/tari/issues/5106)) ([61d1b5e](https://github.com/tari-project/tari/commit/61d1b5e80039c4908b6c0207939c22af2fa3e939))
+* add to/from json string for unblinded utxo in wallet ffi ([#5098](https://github.com/tari-project/tari/issues/5098)) ([af25b63](https://github.com/tari-project/tari/commit/af25b63d2909af3cdb025532784bdba118d9f876))
+
+
+### Bug Fixes
+
+* add const to FixedHash::zero ([#5084](https://github.com/tari-project/tari/issues/5084)) ([2d1bc82](https://github.com/tari-project/tari/commit/2d1bc823274e351b2b413a640bc71aa4d5d6c798))
+* console wallet spacing and naming ([#5025](https://github.com/tari-project/tari/issues/5025)) ([e4a6303](https://github.com/tari-project/tari/commit/e4a63033febd01e5b0d4c6dfc9a0b387bb58a5b1))
+* functional wallet encryption (issue [#5007](https://github.com/tari-project/tari/issues/5007)) ([#5043](https://github.com/tari-project/tari/issues/5043)) ([7b2311e](https://github.com/tari-project/tari/commit/7b2311e40e2619109dcb4572d9d86d3f4463324e))
+* header sync start info ([#5086](https://github.com/tari-project/tari/issues/5086)) ([df53843](https://github.com/tari-project/tari/commit/df53843d4e129fbc1e551f0f1d3560bbc28aed86))
+* header sync stuck trying to sync from base node  ([#5080](https://github.com/tari-project/tari/issues/5080)) ([0961f49](https://github.com/tari-project/tari/commit/0961f497ebd9e8478313b88738a2c5bde4608eb3))
+* improved encryption key handling ([#5027](https://github.com/tari-project/tari/issues/5027)) ([b2bed79](https://github.com/tari-project/tari/commit/b2bed79a744592b99c0f01a957750f12f787072e))
+* update message and signature key types  ([#5064](https://github.com/tari-project/tari/issues/5064)) ([a94189d](https://github.com/tari-project/tari/commit/a94189d3f5500ddc3222aada0bc30c014f2b7e7a))
+* use range proof batch splitting  ([#5081](https://github.com/tari-project/tari/issues/5081)) ([70c522b](https://github.com/tari-project/tari/commit/70c522b400d9406855a0b65d78c09e916ccfa274))
+* wallet errors ([#5045](https://github.com/tari-project/tari/issues/5045)) ([9b16ffb](https://github.com/tari-project/tari/commit/9b16ffb9925d07f3adeab1f1fd6f4163e493a3c7))
+
 ### [0.43.2](https://github.com/tari-project/tari/compare/v0.43.1...v0.43.2) (2022-12-19)
 
 
