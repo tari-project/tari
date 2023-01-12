@@ -10,12 +10,12 @@ Feature: Recovery
         When I mine <NumBlocks> blocks on B
         Then all nodes are at height <NumBlocks>
         When I stop node B
-        # And I run blockchain recovery on node B
-        # And I start base node B
-        # Then all nodes are at height <NumBlocks>
-        # Examples:
-        #     | NumBlocks |
-        #     | 10        |
+        When I run blockchain recovery on node B
+        When I start base node B
+        Then all nodes are at height <NumBlocks>
+        Examples:
+            | NumBlocks |
+            | 10        |
 
         # # Takes 1min+ on Circle CI
          @long-running

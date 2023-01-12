@@ -30,7 +30,8 @@ use std::{
 };
 
 use rand::rngs::OsRng;
-use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_base_node::{cli::Cli, run_base_node_with_cli, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::CommonConfig;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
@@ -78,8 +79,14 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
-    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
+pub async fn spawn_base_node(
+    world: &mut TariWorld,
+    is_seed_node: bool,
+    bn_name: String,
+    peers: Vec<String>,
+    cli: Option<Cli>,
+) {
+    spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default(), cli).await;
 }
 
 pub async fn spawn_base_node_with_config(
@@ -88,6 +95,7 @@ pub async fn spawn_base_node_with_config(
     bn_name: String,
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
+    cli: Option<Cli>,
 ) {
     let port: u64;
     let grpc_port: u64;
@@ -181,8 +189,22 @@ pub async fn spawn_base_node_with_config(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
             name_cloned, port, grpc_port, is_seed_node
         );
-        let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
+
+        let data_dir = base_node_config.base_node.data_dir.clone();
+        let mut config_path = data_dir.clone();
+
+        let base_path = data_dir.into_os_string().into_string().unwrap();
+        config_path.push("config.toml");
+
+        let cli = cli.unwrap_or(get_default_cli(
+            base_path,
+            config_path.into_os_string().into_string().unwrap(),
+        ));
+
+        let result =
+            run_base_node_with_cli(Arc::new(base_node_identity), Arc::new(base_node_config), cli, shutdown).await;
         if let Err(e) = result {
+            println!("FLAG: error = {}", e);
             panic!("{:?}", e);
         }
     });
@@ -195,6 +217,23 @@ pub async fn spawn_base_node_with_config(
 
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
+}
+
+pub fn get_default_cli(base_path: String, config: String) -> Cli {
+    Cli {
+        common: CommonCliArgs {
+            base_path,
+            config,
+            log_config: None,
+            log_level: None,
+            config_property_overrides: vec![],
+        },
+        init: true,
+        rebuild_db: false,
+        non_interactive_mode: true,
+        watch: None,
+        network: None,
+    }
 }
 
 // pub async fn get_base_node_client(port: u64) -> GrpcBaseNodeClient {

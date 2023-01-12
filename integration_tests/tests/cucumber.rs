@@ -82,7 +82,12 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 
 use crate::utils::{
-    base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
+    base_node_process::{
+        get_default_cli as bn_default_cli,
+        spawn_base_node,
+        spawn_base_node_with_config,
+        BaseNodeProcess,
+    },
     get_peer_addresses,
     miner::{
         mine_block,
@@ -206,7 +211,7 @@ impl TariWorld {
 #[given(expr = "I have a seed node {word}")]
 #[when(expr = "I have a seed node {word}")]
 async fn start_base_node(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, true, name, vec![]).await;
+    spawn_base_node(world, true, name, vec![], None).await;
 }
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
@@ -221,7 +226,7 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
 #[given(expr = "I have a base node {word} connected to all seed nodes")]
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
 async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
-    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
+    spawn_base_node(world, false, name, world.all_seed_nodes().to_vec(), None).await;
 }
 
 #[when(expr = "I start base node {word}")]
@@ -232,7 +237,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
         is_seed_node = node_ps.is_seed_node;
         seed_nodes = node_ps.seed_nodes.clone();
     }
-    spawn_base_node(world, is_seed_node, name, seed_nodes).await;
+    spawn_base_node(world, is_seed_node, name, seed_nodes, None).await;
 }
 
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
@@ -240,7 +245,7 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
     for i in 0..nodes {
         let node = format!("Node_{}", i);
         println!("Initializing node {}", node.clone());
-        spawn_base_node(world, false, node, world.all_seed_nodes().to_vec()).await;
+        spawn_base_node(world, false, node, world.all_seed_nodes().to_vec(), None).await;
     }
 }
 
@@ -472,7 +477,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
 #[given(expr = "I have a base node {word} connected to seed {word}")]
 #[when(expr = "I have a base node {word} connected to seed {word}")]
 async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
-    spawn_base_node(world, false, base_node, vec![seed]).await;
+    spawn_base_node(world, false, base_node, vec![seed], None).await;
 }
 
 #[then(expr = "I mine {int} blocks on {word}")]
@@ -513,13 +518,13 @@ async fn mining_node_mines_blocks_with_difficulty(
 #[when(expr = "I have a base node {word}")]
 #[given(expr = "I have a base node {word}")]
 async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
-    spawn_base_node(world, false, base_node, vec![]).await;
+    spawn_base_node(world, false, base_node, vec![], None).await;
 }
 
 #[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
-        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
+        spawn_base_node(world, true, format!("seed_node_{}", node), vec![], None).await;
     }
 }
 
@@ -720,7 +725,7 @@ async fn prune_node_connected_to_base_node(
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.storage.pruning_horizon = pruning_horizon;
 
-    spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config).await;
+    spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config, None).await;
 }
 
 #[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
@@ -995,7 +1000,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
 #[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to node {word}")]
 async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String, base_node: String) {
-    spawn_base_node(world, false, miner.clone(), vec![base_node.clone()]).await;
+    spawn_base_node(world, false, miner.clone(), vec![base_node.clone()], None).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
     world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
@@ -1621,13 +1626,13 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 
 #[when(expr = "I have a base node {word} connected to node {word}")]
 async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
-    spawn_base_node(world, false, base_node, vec![peer_node]).await;
+    spawn_base_node(world, false, base_node, vec![peer_node], None).await;
 }
 
 #[when(expr = "I have a base node {word} connected to nodes {word}")]
 async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, nodes: String) {
     let nodes = nodes.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
-    spawn_base_node(world, false, base_node, nodes).await;
+    spawn_base_node(world, false, base_node, nodes, None).await;
 }
 
 #[then(expr = "node {word} is in state {word}")]
@@ -2134,7 +2139,7 @@ async fn send_num_transactions_to_wallets_at_fee(
 
 #[when(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
 async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_miner: String) {
-    spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone()).await;
+    spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone(), None).await;
 
     spawn_wallet(
         world,
@@ -2153,7 +2158,7 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
 #[when(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
 async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: String, seed_node: String) {
     println!("Create base node for SHA3 miner {}", &sha3_miner);
-    spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()]).await;
+    spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()], None).await;
 
     println!("Create wallet for SHA3 miner {}", &sha3_miner);
     spawn_wallet(
@@ -3642,7 +3647,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
     node_a_peers.push(node_b);
     node_a_ps.kill();
     tokio::time::sleep(Duration::from_secs(15)).await;
-    spawn_base_node(world, is_seed_node, node_a, node_a_peers).await;
+    spawn_base_node(world, is_seed_node, node_a, node_a_peers, None).await;
 }
 
 #[then(expr = "I check if last imported transactions are invalid in wallet {word}")]
@@ -3800,7 +3805,7 @@ async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node:
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.state_machine.blocks_behind_before_considered_lagging = delay;
 
-    spawn_base_node_with_config(world, true, delayed_node, vec![node], base_node_config).await;
+    spawn_base_node_with_config(world, true, delayed_node, vec![node], base_node_config, None).await;
 }
 
 #[then(expr = "node {word} has reached initial sync")]
@@ -3879,8 +3884,27 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
         base_node_config.force_sync_peers = get_peer_addresses(world, &peers).await.into();
         base_node_config.storage.pruning_horizon = horizon;
 
-        spawn_base_node_with_config(world, false, node_name, peers, base_node_config).await;
+        spawn_base_node_with_config(world, false, node_name, peers, base_node_config, None).await;
     }
+}
+
+#[when(expr = "I run blockchain recovery on node {word}")]
+async fn node_on_blockchain_recovery(world: &mut TariWorld, node: String) {
+    let base_node_ps = world.base_nodes.get(&node).unwrap();
+    let data_dir = base_node_ps.temp_dir_path.clone();
+
+    let base_path = data_dir.clone().into_os_string().into_string().unwrap();
+    let mut config_path = data_dir;
+    config_path.push("config.toml");
+
+    let mut cli = bn_default_cli(base_path, config_path.into_os_string().into_string().unwrap());
+
+    cli.rebuild_db = true;
+    // cli.watch = Some(String::from("--rebuild-db"));
+    let peers = base_node_ps.seed_nodes.clone();
+    let is_seed_node = base_node_ps.is_seed_node;
+
+    spawn_base_node(world, is_seed_node, node.clone(), peers, Some(cli)).await
 }
 
 #[when(expr = "I spend outputs {word} via {word}")]
