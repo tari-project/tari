@@ -175,7 +175,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --test cucumber -v --all-features --release --package tari_integration_tests -- -t "@critical and not @long-running" --retry 2
+          args: >
+            --test cucumber
+            -v
+            --all-features
+            --release
+            --package tari_integration_tests
+            -- -t "@critical and not @long-running"
+            --retry 2
 
   # Allows other workflows to know the PR number
   artifacts:

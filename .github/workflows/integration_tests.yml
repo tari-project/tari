@@ -87,7 +87,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --test cucumber -v --all-features --release --package tari_integration_tests -- -t "${{ env.PROFILE }} and not @ffi" --retry 2
+          args: >
+            --test cucumber
+            -v
+            --all-features
+            --release
+            --package tari_integration_tests
+            -- -t "${{ env.PROFILE }} and not @ffi"
+            --retry 2
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
@@ -97,4 +104,11 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --test cucumber -v --all-features --release --package tari_integration_tests -- -t "@ffi" --retry 2
+          args: >
+            --test cucumber
+            -v
+            --all-features
+            --release
+            --package tari_integration_tests
+            -- -t "@ffi"
+            --retry 2
