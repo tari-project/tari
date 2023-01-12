@@ -78,7 +78,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
-    When I wait 30 seconds
+    When I wait 5 seconds
     Then I import WALLET_B unspent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I restart wallet WALLET_C
@@ -123,9 +123,9 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I restart wallet WALLET_C
     Then I wait for wallet WALLET_C to have less than 1 uT
-  # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
-  # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
-  # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
+    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
+    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
+    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
     Then I check if last imported transactions are invalid in wallet WALLET_C
 
   @flaky
@@ -167,9 +167,9 @@ Feature: Wallet Transactions
     When mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
     When node B is at height 11
     When node C is at height 11
-  # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
-  # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
-  # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
+    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
+    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
+    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   Scenario: Wallet imports faucet UTXO
@@ -291,7 +291,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
-    # Then wallet WALLET_B detects all transactions are at least Pending
+  # Then wallet WALLET_B detects all transactions are at least Pending
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
     # #
@@ -367,28 +367,28 @@ Feature: Wallet Transactions
     When I wait 15 seconds
     Then I start wallet WALLET_RECV
     When I wait 5 seconds
-    # When wallet WALLET_RECV detects all transactions are at least Pending
-    # Then I cancel last transaction in wallet WALLET_RECV
-    # When I wait 15 seconds
-    # Then I stop wallet WALLET_RECV
-    # Then I start wallet WALLET_SENDER
-    # # This is a weirdness that I haven't been able to figure out. When you start WALLET_SENDER on the line above it
-    # # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
-    # # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
-    # When I wait 10 seconds
-    # Then I restart wallet WALLET_SENDER
-    # When I wait 10 seconds
-    # Then I restart wallet WALLET_SENDER
-    # When I wait 30 seconds
-    # When mining node MINER mines 5 blocks
-    # Then all nodes are at height 15
-    # When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
-    # When I start wallet WALLET_RECV
-    # When I wait 5 seconds
-    # Then I restart wallet WALLET_RECV
-    # When I wait 5 seconds
-    # Then I restart wallet WALLET_RECV
-    # Then I wait for wallet WALLET_RECV to have at least 1000000 uT
+  # When wallet WALLET_RECV detects all transactions are at least Pending
+  # Then I cancel last transaction in wallet WALLET_RECV
+  # When I wait 15 seconds
+  # Then I stop wallet WALLET_RECV
+  # Then I start wallet WALLET_SENDER
+  # # This is a weirdness that I haven't been able to figure out. When you start WALLET_SENDER on the line above it
+  # # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
+  # # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
+  # When I wait 10 seconds
+  # Then I restart wallet WALLET_SENDER
+  # When I wait 10 seconds
+  # Then I restart wallet WALLET_SENDER
+  # When I wait 30 seconds
+  # When mining node MINER mines 5 blocks
+  # Then all nodes are at height 15
+  # When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
+  # When I start wallet WALLET_RECV
+  # When I wait 5 seconds
+  # Then I restart wallet WALLET_RECV
+  # When I wait 5 seconds
+  # Then I restart wallet WALLET_RECV
+  # Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
   @critical
   Scenario: Wallet should cancel stale transactions
@@ -409,7 +409,7 @@ Feature: Wallet Transactions
     When I wait 15 seconds
     When wallet WALLET_RECV detects last transaction is Cancelled
 
-@critical 
+  @critical
   Scenario: Create burn transaction
     Given I have a seed node NODE
     When I have 2 base nodes connected to all seed nodes

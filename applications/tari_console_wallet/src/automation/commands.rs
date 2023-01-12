@@ -1042,9 +1042,9 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
-            format!("V{}", utxo.version.as_u8()),
+            utxo.version.as_u8(),
             utxo.value.0,
             utxo.spending_key.to_hex(),
             utxo.as_transaction_input(&factory)?
