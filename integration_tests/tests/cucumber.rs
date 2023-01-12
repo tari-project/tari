@@ -37,7 +37,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
 use rand::Rng;
-use tari_app_grpc::tari_rpc::{self as grpc, GetConnectivityRequest};
+use tari_app_grpc::tari_rpc::{self as grpc};
 use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
@@ -132,6 +132,8 @@ pub struct TariWorld {
     // mapping from hex string of public key of wallet client to tx_id's
     wallet_tx_ids: IndexMap<String, Vec<u64>>,
     errors: VecDeque<String>,
+    // We need to store this in between steps when importing and checking the imports.
+    last_imported_tx_ids: Vec<u64>,
 }
 
 enum NodeClient {
@@ -771,9 +773,13 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
     }
 }
 
-#[when(expr = "wallet {word} detects all transactions are at least Pending")]
-#[then(expr = "wallet {word} detects all transactions are at least Pending")]
-async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wallet_name: String) {
+#[when(expr = "wallet {word} detects all transactions are at least {word}")]
+#[then(expr = "wallet {word} detects all transactions are at least {word}")]
+async fn wallet_detects_all_txs_are_at_least_in_some_status(
+    world: &mut TariWorld,
+    wallet_name: String,
+    status: String,
+) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -786,9 +792,6 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
 
     let num_retries = 100;
 
-    let wallet_a = String::from("WALLET_A");
-    let mut wallet_a_client = create_wallet_client(world, wallet_a.clone()).await.unwrap();
-
     for tx_id in tx_ids {
         println!("waiting for tx with tx_id = {} to be pending", tx_id);
         for retry in 0..=num_retries {
@@ -798,80 +801,51 @@ async fn wallet_detects_all_txs_are_at_least_pending(world: &mut TariWorld, wall
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
 
-            let wallet_a_peers_res = wallet_a_client
-                .list_connected_peers(Empty {})
-                .await
-                .unwrap()
-                .into_inner();
-
-            println!(
-                "FLAG: Wallet_A connected peers with node_id = {}, flags = {}, features = {}",
-                wallet_a_peers_res.connected_peers.first().unwrap().node_id.to_hex(),
-                wallet_a_peers_res.connected_peers.first().unwrap().flags,
-                wallet_a_peers_res.connected_peers.first().unwrap().features,
-            );
-
-            let wallet_a_connectivity_res = wallet_a_client
-                .check_connectivity(GetConnectivityRequest {})
-                .await
-                .unwrap()
-                .into_inner();
-
-            println!(
-                "FLAG: WALLET_A connectivity status = {}",
-                wallet_a_connectivity_res.status
-            );
-
-            let wallet_b_peers_res = wallet_a_client
-                .list_connected_peers(Empty {})
-                .await
-                .unwrap()
-                .into_inner();
-
-            println!(
-                "FLAG: Wallet_B connected peers with node_id = {}, flags = {}, features = {}",
-                wallet_b_peers_res.connected_peers.first().unwrap().node_id.to_hex(),
-                wallet_b_peers_res.connected_peers.first().unwrap().flags,
-                wallet_b_peers_res.connected_peers.first().unwrap().features,
-            );
-
-            let wallet_b_connectivity_res = wallet_a_client
-                .check_connectivity(GetConnectivityRequest {})
-                .await
-                .unwrap()
-                .into_inner();
-
-            println!(
-                "FLAG: WALLET_B connectivity status = {}",
-                wallet_b_connectivity_res.status
-            );
-
             if retry == num_retries {
                 panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be pending",
+                    "Wallet {} failed to detect tx with tx_id = {} to be at least {}",
                     wallet_name.as_str(),
-                    tx_id
+                    tx_id,
+                    status
                 );
             }
-            match tx_info.status() {
-                grpc::TransactionStatus::Pending => {
-                    println!(
-                        "Transaction with tx_id = {} has been detected as pending by wallet {}",
-                        tx_id,
-                        wallet_name.as_str()
-                    );
-                    return;
+            match status.as_str() {
+                "Pending" => match tx_info.status() {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
-                _ => {
-                    println!(
-                        "Transaction with tx_id = {} has been detected with status = {:?}",
-                        tx_id,
-                        tx_info.status()
-                    );
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
+                "Completed" => match tx_info.status() {
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
+                "Broadcast" => match tx_info.status() {
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Mined_Unconfirmed" => match tx_info.status() {
+                    grpc::TransactionStatus::MinedUnconfirmed | grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                _ => panic!("Unknown status {}, don't know what to expect", status),
             }
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
@@ -1061,40 +1035,39 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 #[then(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
 async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_txs: u64, transaction_status: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-    let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let transaction_status = match transaction_status.as_str() {
-        "TRANSACTION_STATUS_COMPLETED" => 0i32,
-        "TRANSACTION_STATUS_BROADCAST" => 1i32,
-        "TRANSACTION_STATUS_MINED_UNCONFIRMED" => 2i32,
-        "TRANSACTION_STATUS_IMPORTED" => 3i32,
-        "TRANSACTION_STATUS_PENDING" => 4i32,
-        "TRANSACTION_STATUS_COINBASE" => 5i32,
-        "TRANSACTION_STATUS_MINED_CONFIRMED" => 6i32,
-        "TRANSACTION_STATUS_NOT_FOUND" => 7i32,
-        "TRANSACTION_STATUS_REJECTED" => 8i32,
-        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 9i32,
-        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 10i32,
-        "TRANSACTION_STATUS_QUEUED" => 11i32,
+        "TRANSACTION_STATUS_COMPLETED" => 0,
+        "TRANSACTION_STATUS_BROADCAST" => 1,
+        "TRANSACTION_STATUS_MINED_UNCONFIRMED" => 2,
+        "TRANSACTION_STATUS_IMPORTED" => 3,
+        "TRANSACTION_STATUS_PENDING" => 4,
+        "TRANSACTION_STATUS_COINBASE" => 5,
+        "TRANSACTION_STATUS_MINED_CONFIRMED" => 6,
+        "TRANSACTION_STATUS_NOT_FOUND" => 7,
+        "TRANSACTION_STATUS_REJECTED" => 8,
+        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 9,
+        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 10,
+        "TRANSACTION_STATUS_QUEUED" => 11,
         _ => panic!("Invalid transaction status {}", transaction_status),
     };
 
-    let request = GetTransactionInfoRequest {
-        transaction_ids: tx_ids.clone(),
-    };
     let num_retries = 100;
 
     for _ in 0..num_retries {
-        let txs_info = client.get_transaction_info(request.clone()).await.unwrap().into_inner();
-        let txs_info = txs_info.transactions;
-        if txs_info.iter().filter(|x| x.status == transaction_status).count() as u64 >= num_txs {
+        let mut txs = client
+            .get_completed_transactions(grpc::GetCompletedTransactionsRequest {})
+            .await
+            .unwrap()
+            .into_inner();
+        let mut found_tx = 0;
+        while let Some(tx) = txs.next().await {
+            let tx_info = tx.unwrap().transaction.unwrap();
+            if tx_info.status == transaction_status {
+                found_tx += 1;
+            }
+        }
+        if found_tx >= num_txs {
             return;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -3128,12 +3101,8 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
-    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
-    let mut config_path = wallet_data_dir.clone();
-    config_path.push("config.toml");
-
-    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
+    let mut cli = get_default_cli();
 
     let mut path_buf = PathBuf::new();
     path_buf.push(temp_dir_path);
@@ -3223,7 +3192,12 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
-    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+    world.last_imported_tx_ids = wallet_b_client
+        .import_utxos(import_utxos_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .tx_ids;
 }
 
 #[then(expr = "I import {word} spent outputs to {word}")]
@@ -3231,12 +3205,8 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
-    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
-    let mut config_path = wallet_data_dir.clone();
-    config_path.push("config.toml");
-
-    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
+    let mut cli = get_default_cli();
 
     let mut path_buf = PathBuf::new();
     path_buf.push(temp_dir_path);
@@ -3325,7 +3295,12 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
-    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+    world.last_imported_tx_ids = wallet_b_client
+        .import_utxos(import_utxos_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .tx_ids;
 }
 
 #[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
@@ -3333,12 +3308,8 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
-    let wallet_data_dir = wallet_a_ps.temp_dir_path.clone();
 
-    let mut config_path = wallet_data_dir.clone();
-    config_path.push("config.toml");
-
-    let mut cli = get_default_cli(wallet_data_dir.into_os_string().into_string().unwrap(), config_path);
+    let mut cli = get_default_cli();
 
     let mut path_buf = PathBuf::new();
     path_buf.push(temp_dir_path);
@@ -3438,7 +3409,12 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
-    wallet_b_client.import_utxos(import_utxos_req).await.unwrap();
+    world.last_imported_tx_ids = wallet_b_client
+        .import_utxos(import_utxos_req)
+        .await
+        .unwrap()
+        .into_inner()
+        .tx_ids;
 }
 
 #[then(expr = "I restart wallet {word}")]
@@ -3647,17 +3623,18 @@ async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, w
         .unwrap()
         .into_inner();
 
+    let mut imported_cnt = 0;
+
     while let Some(tx) = get_completed_txs_res.next().await {
         let tx_info = tx.unwrap().transaction.unwrap();
-        let status = tx_info.status;
-        // 10 => TRANSACTION_STATUS_FAUX_CONFIRMED
-        if status != 10 {
-            panic!(
-                "Imported transaction hasn't been received as such: current status code is {}, it should be 3",
-                status
-            );
+        for &tx_id in &world.last_imported_tx_ids {
+            if tx_id == tx_info.tx_id {
+                assert_eq!(tx_info.status(), grpc::TransactionStatus::FauxConfirmed);
+                imported_cnt += 1;
+            }
         }
     }
+    assert_eq!(imported_cnt, world.last_imported_tx_ids.len());
 }
 
 #[then(expr = "I cancel last transaction in wallet {word}")]
