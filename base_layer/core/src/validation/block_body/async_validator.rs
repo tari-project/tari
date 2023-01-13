@@ -30,7 +30,6 @@ use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 use tokio::task;
 
-use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
@@ -49,12 +48,14 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        block::abort_on_drop::AbortOnDropJoinHandle,
+        block_body::abort_on_drop::AbortOnDropJoinHandle,
         helpers::{self, check_header_timestamp_greater_than_median},
         BlockSyncBodyValidation,
         ValidationError,
     },
 };
+
+pub const LOG_TARGET: &str = "c::val::block_async_validator";
 
 /// This validator checks whether a block satisfies consensus rules.
 /// It implements two validators: one for the `BlockHeader` and one for `Block`. The `Block` validator ONLY validates

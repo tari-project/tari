@@ -48,7 +48,7 @@ use tari_core::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{
-        block::{BodyOnlyValidator, OrphanBlockValidator},
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         DifficultyCalculator,
@@ -95,9 +95,9 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone()),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
-        OrphanBlockValidator::new(
+        BlockBodyInternalConsistencyValidator::new(
             rules.clone(),
             node_config.bypass_range_proof_verification,
             factories.clone(),

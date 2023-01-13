@@ -29,19 +29,18 @@ use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
-use super::{HeaderChainLinkedValidator, TransactionValidator};
+use super::{
+    traits::CandidateBlockValidator,
+    HeaderChainLinkedValidator,
+    InternalConsistencyValidator,
+    TransactionValidator,
+};
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction_components::Transaction,
-    validation::{
-        error::ValidationError,
-        BlockSyncBodyValidation,
-        CandidateBlockValidator,
-        FinalHorizonStateValidation,
-        InternalConsistencyValidator,
-    },
+    validation::{error::ValidationError, BlockSyncBodyValidation, FinalHorizonStateValidation},
 };
 
 #[derive(Clone)]

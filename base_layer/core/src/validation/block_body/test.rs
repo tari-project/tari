@@ -41,12 +41,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{
-        block::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        BlockSyncBodyValidation,
-        InternalConsistencyValidator,
-        ValidationError,
-    },
+    validation::{block_body::BlockValidator, BlockSyncBodyValidation, ValidationError},
 };
 
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
@@ -266,7 +261,7 @@ async fn it_rejects_zero_conf_double_spends() {
 
 mod body_only {
     use super::*;
-    use crate::validation::traits::CandidateBlockValidator;
+    use crate::validation::block_body::BlockBodyFullValidator;
 
     #[test]
     fn it_rejects_invalid_input_metadata() {
@@ -278,7 +273,7 @@ mod body_only {
             )
             .build();
         let mut blockchain = TestBlockchain::create(rules.clone());
-        let validator = BodyOnlyValidator::new(rules);
+        let validator = BlockBodyFullValidator::new(rules);
 
         let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
 
@@ -291,14 +286,18 @@ mod body_only {
         let metadata = blockchain.db().get_chain_metadata().unwrap();
 
         let db = blockchain.db().db_read_access().unwrap();
-        let err = validator.validate_body(&*db, &block, &metadata).unwrap_err();
+        let err = validator.validate(&*db, &block, &metadata).unwrap_err();
         assert!(matches!(err, ValidationError::UnknownInputs(_)));
     }
 }
 
 mod orphan_validator {
     use super::*;
-    use crate::{transactions::transaction_components::OutputType, txn_schema};
+    use crate::{
+        transactions::transaction_components::OutputType,
+        txn_schema,
+        validation::block_body::BlockBodyInternalConsistencyValidator,
+    };
 
     #[test]
     fn it_rejects_zero_conf_double_spends() {
@@ -310,7 +309,7 @@ mod orphan_validator {
             )
             .build();
         let mut blockchain = TestBlockchain::create(rules.clone());
-        let validator = OrphanBlockValidator::new(rules, false, CryptoFactories::default());
+        let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).unwrap();
 
         let schema = txn_schema!(from: vec![coinbase], to: vec![201 * T]);
@@ -330,7 +329,7 @@ mod orphan_validator {
             .collect::<Vec<_>>();
 
         let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
-        let err = validator.validate_internal_consistency(&unmined).unwrap_err();
+        let err = validator.validate(&unmined).unwrap_err();
         assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
     }
 
@@ -345,7 +344,7 @@ mod orphan_validator {
             )
             .build();
         let mut blockchain = TestBlockchain::create(rules.clone());
-        let validator = OrphanBlockValidator::new(rules, false, CryptoFactories::default());
+        let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).unwrap();
 
         let schema = txn_schema!(from: vec![coinbase], to: vec![201 * T]);
@@ -354,7 +353,7 @@ mod orphan_validator {
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
         let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
-        let err = validator.validate_internal_consistency(&unmined).unwrap_err();
+        let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
         assert_eq!(output_type, OutputType::Standard);
     }

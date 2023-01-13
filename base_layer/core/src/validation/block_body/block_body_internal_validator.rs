@@ -30,20 +30,21 @@ use crate::{
     validation::{
         aggregate_body::AggregateBodyInternalConsistencyValidator,
         helpers::{check_coinbase_output, check_sorting_and_duplicates},
+        InternalConsistencyValidator,
         ValidationError,
     },
 };
 
-pub const LOG_TARGET: &str = "c::val::block_internal_consistency_validator";
+pub const LOG_TARGET: &str = "c::val::block_body_internal_consistency_validator";
 
 #[derive(Clone)]
-pub struct BlockInternalConsistencyValidator {
+pub struct BlockBodyInternalConsistencyValidator {
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
 }
 
-impl BlockInternalConsistencyValidator {
+impl BlockBodyInternalConsistencyValidator {
     pub fn new(
         consensus_manager: ConsensusManager,
         bypass_range_proof_verification: bool,
@@ -64,11 +65,44 @@ impl BlockInternalConsistencyValidator {
     pub fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         // TODO: this validation should not be needed, and only use the aggregate_body validator
         validate_block_specific_checks(block, &self.consensus_manager, &self.factories)?;
-
         validate_block_aggregate_body(block, &self.aggregate_body_validator, &self.consensus_manager)?;
 
         Ok(())
     }
+}
+
+impl InternalConsistencyValidator for BlockBodyInternalConsistencyValidator {
+    fn validate_internal_consistency(&self, block: &Block) -> Result<(), ValidationError> {
+        self.validate(block)
+    }
+}
+
+// TODO: maybe some/all of these validations should be moved to AggregateBodyInternalConsistencyValidator
+// but many test fails in that case, we need to take a deeper look
+fn validate_block_specific_checks(
+    block: &Block,
+    consensus_manager: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError> {
+    let constants = consensus_manager.consensus_constants(block.header.height);
+    if block.header.height == 0 {
+        warn!(target: LOG_TARGET, "Attempt to validate genesis block");
+        return Err(ValidationError::ValidatingGenesis);
+    }
+    check_sorting_and_duplicates(&block.body)?;
+    check_coinbase_output(block, consensus_manager, factories)?;
+    check_output_features(&block.body, constants)?;
+
+    Ok(())
+}
+
+fn check_output_features(
+    body: &AggregateBody,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let max_coinbase_metadata_size = consensus_constants.coinbase_output_features_extra_max_length();
+    body.check_output_features(max_coinbase_metadata_size)
+        .map_err(ValidationError::from)
 }
 
 fn validate_block_aggregate_body(
@@ -99,32 +133,4 @@ fn validate_block_aggregate_body(
         })?;
 
     Ok(())
-}
-
-// TODO: maybe some/all of these validations should be moved to AggregateBodyInternalConsistencyValidator
-// but many test fails in that case, we need to take a deeper look
-fn validate_block_specific_checks(
-    block: &Block,
-    consensus_manager: &ConsensusManager,
-    factories: &CryptoFactories,
-) -> Result<(), ValidationError> {
-    let constants = consensus_manager.consensus_constants(block.header.height);
-    if block.header.height == 0 {
-        warn!(target: LOG_TARGET, "Attempt to validate genesis block");
-        return Err(ValidationError::ValidatingGenesis);
-    }
-    check_sorting_and_duplicates(&block.body)?;
-    check_coinbase_output(block, consensus_manager, factories)?;
-    check_output_features(&block.body, constants)?;
-
-    Ok(())
-}
-
-fn check_output_features(
-    body: &AggregateBody,
-    consensus_constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
-    let max_coinbase_metadata_size = consensus_constants.coinbase_output_features_extra_max_length();
-    body.check_output_features(max_coinbase_metadata_size)
-        .map_err(ValidationError::from)
 }

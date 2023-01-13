@@ -47,7 +47,7 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator, BlockValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         BlockSyncBodyValidation,
@@ -243,11 +243,11 @@ fn test_orphan_validator() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
+    let orphan_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone());
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
 
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone()),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         orphan_validator.clone(),
     );
@@ -374,12 +374,12 @@ fn test_orphan_body_validation() {
         .build();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
-    let body_only_validator = BodyOnlyValidator::new(rules.clone());
+    let body_only_validator = BlockBodyFullValidator::new(rules.clone());
     let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone()),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -579,9 +579,9 @@ fn test_header_validation() {
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone()),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -681,9 +681,9 @@ async fn test_block_sync_body_validator() {
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone()),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
     let db = BlockchainDatabase::new(

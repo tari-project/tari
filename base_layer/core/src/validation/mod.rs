@@ -42,7 +42,7 @@ pub use traits::{
     TransactionValidator,
 };
 
-pub mod block;
+pub mod block_body;
 mod difficulty_calculator;
 pub use difficulty_calculator::*;
 pub mod mocks;

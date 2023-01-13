@@ -26,7 +26,12 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     transactions::CryptoFactories,
-    validation::{block::BlockValidator, BlockSyncBodyValidation, ChainBalanceValidator, FinalHorizonStateValidation},
+    validation::{
+        block_body::BlockValidator,
+        BlockSyncBodyValidation,
+        ChainBalanceValidator,
+        FinalHorizonStateValidation,
+    },
 };
 
 #[derive(Clone)]

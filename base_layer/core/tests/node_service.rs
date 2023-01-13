@@ -47,7 +47,7 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block::{BodyOnlyValidator, OrphanBlockValidator},
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
         DifficultyCalculator,
@@ -323,7 +323,7 @@ async fn propagate_and_forward_invalid_block() {
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
+    let stateless_block_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
 
     let mock_validator = MockValidator::new(false);
     let (mut dan_node, rules) = BaseNodeBuilder::new(network.into())
@@ -504,9 +504,9 @@ async fn local_get_new_block_with_zero_conf() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::new(rules.clone()),
+            BlockBodyFullValidator::new(rules.clone()),
             HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
-            OrphanBlockValidator::new(rules, true, factories.clone()),
+            BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;
@@ -583,9 +583,9 @@ async fn local_get_new_block_with_combined_transaction() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::new(rules.clone()),
+            BlockBodyFullValidator::new(rules.clone()),
             HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
-            OrphanBlockValidator::new(rules, true, factories.clone()),
+            BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;

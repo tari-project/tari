@@ -23,7 +23,7 @@
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
 
-use super::BlockInternalConsistencyValidator;
+use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::ChainBlock,
     chain_storage::BlockchainBackend,
@@ -32,46 +32,63 @@ use crate::{
     validation::{aggregate_body::AggregateBodyChainLinkedValidator, CandidateBlockValidator, ValidationError},
 };
 
-pub struct BodyOnlyValidator {
-    block_internal_validator: BlockInternalConsistencyValidator,
+pub struct BlockBodyFullValidator {
+    block_internal_validator: BlockBodyInternalConsistencyValidator,
     aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
 }
 
-impl BodyOnlyValidator {
+impl BlockBodyFullValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         let factories = CryptoFactories::default();
-        let block_internal_validator = BlockInternalConsistencyValidator::new(rules.clone(), true, factories);
+        let block_internal_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
         let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules);
         Self {
             block_internal_validator,
             aggregate_body_chain_validator,
         }
     }
-}
 
-impl<B: BlockchainBackend> CandidateBlockValidator<B> for BodyOnlyValidator {
-    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-        // TODO: these validations should not be neccesary, as they are part of header validation
-        // but some of the test break because of it
-        if block.header().prev_hash != *metadata.best_block() {
-            return Err(ValidationError::IncorrectPreviousHash {
-                expected: metadata.best_block().to_hex(),
-                block_hash: block.hash().to_hex(),
-            });
-        }
-        if block.height() != metadata.height_of_longest_chain() + 1 {
-            return Err(ValidationError::IncorrectHeight {
-                expected: metadata.height_of_longest_chain() + 1,
-                block_height: block.height(),
-            });
-        }
+    pub fn validate<B: BlockchainBackend>(
+        &self,
+        backend: &B,
+        block: &ChainBlock,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        // TODO: this validation should not be neccesary, as it's overlaps with header validation
+        // but some of the test break without it
+        validate_block_metadata(block, metadata)?;
 
-        let height = block.header().height;
-        let body = &block.block().body;
-
+        // validate the internal consistency of the block body
         self.block_internal_validator.validate(block.block())?;
+
+        // validate the block body against the current db
+        let body = &block.block().body;
+        let height = block.header().height;
         self.aggregate_body_chain_validator.validate(body, height, backend)?;
 
         Ok(())
     }
+}
+
+impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator {
+    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+        self.validate(backend, block, metadata)
+    }
+}
+
+fn validate_block_metadata(block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    if block.header().prev_hash != *metadata.best_block() {
+        return Err(ValidationError::IncorrectPreviousHash {
+            expected: metadata.best_block().to_hex(),
+            block_hash: block.hash().to_hex(),
+        });
+    }
+    if block.height() != metadata.height_of_longest_chain() + 1 {
+        return Err(ValidationError::IncorrectHeight {
+            expected: metadata.height_of_longest_chain() + 1,
+            block_height: block.height(),
+        });
+    }
+
+    Ok(())
 }
