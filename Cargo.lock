@@ -5580,6 +5580,7 @@ dependencies = [
  "tari_console_wallet",
  "tari_core",
  "tari_crypto",
+ "tari_merge_mining_proxy",
  "tari_miner",
  "tari_p2p",
  "tari_script",
