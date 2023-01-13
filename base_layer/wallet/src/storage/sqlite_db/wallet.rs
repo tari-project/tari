@@ -866,7 +866,7 @@ mod test {
         let value2 = "value2".to_string();
 
         let passphrase = "a very very secret key example.".to_string().into();
-        let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
+        let db = WalletSqliteDatabase::new(connection, passphrase).unwrap();
         let cipher = db.cipher();
 
         ClientKeyValueSql::new(key1.clone(), value1.clone(), &cipher)

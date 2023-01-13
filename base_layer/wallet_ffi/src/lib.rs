@@ -1613,7 +1613,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
         match serde_json::to_string(&*output) {
-            Ok(json_string) => match CString::new(json_string.to_string()) {
+            Ok(json_string) => match CString::new(json_string) {
                 Ok(v) => hex_bytes = v,
                 _ => {
                     error = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;
@@ -10428,7 +10428,7 @@ mod test {
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let source_address_ptr = Box::into_raw(Box::new(TariWalletAddress::default()));
+            let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));

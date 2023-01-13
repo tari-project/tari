@@ -143,7 +143,7 @@ pub async fn spawn_wallet(
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
-        let cli = cli.unwrap_or(get_default_cli());
+        let cli = cli.unwrap_or_else(get_default_cli);
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
             panic!("{:?}", e);
