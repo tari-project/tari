@@ -26,13 +26,19 @@ use tari_utilities::hex::Hex;
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::ChainBlock,
-    chain_storage::BlockchainBackend,
+    chain_storage::{self, BlockchainBackend},
     consensus::ConsensusManager,
     transactions::CryptoFactories,
-    validation::{aggregate_body::AggregateBodyChainLinkedValidator, CandidateBlockValidator, ValidationError},
+    validation::{
+        aggregate_body::AggregateBodyChainLinkedValidator,
+        helpers::check_mmr_roots,
+        CandidateBlockValidator,
+        ValidationError,
+    },
 };
 
 pub struct BlockBodyFullValidator {
+    consensus_manager: ConsensusManager,
     block_internal_validator: BlockBodyInternalConsistencyValidator,
     aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
 }
@@ -41,8 +47,9 @@ impl BlockBodyFullValidator {
     pub fn new(rules: ConsensusManager) -> Self {
         let factories = CryptoFactories::default();
         let block_internal_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
-        let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules);
+        let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules.clone());
         Self {
+            consensus_manager: rules,
             block_internal_validator,
             aggregate_body_chain_validator,
         }
@@ -65,6 +72,10 @@ impl BlockBodyFullValidator {
         let body = &block.block().body;
         let height = block.header().height;
         self.aggregate_body_chain_validator.validate(body, height, backend)?;
+
+        // validate the merkle mountain range roots
+        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, block.block())?;
+        check_mmr_roots(&block.block().header, &mmr_roots)?;
 
         Ok(())
     }

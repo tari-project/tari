@@ -40,19 +40,19 @@ pub const LOG_TARGET: &str = "c::val::header_full_validator";
 pub struct HeaderFullValidator {
     rules: ConsensusManager,
     difficulty_calculator: DifficultyCalculator,
-    bypass_timestamp_count_verification: bool,
+    bypass_prev_timestamp_verification: bool,
 }
 
 impl HeaderFullValidator {
     pub fn new(
         rules: ConsensusManager,
         difficulty_calculator: DifficultyCalculator,
-        bypass_timestamp_count_verification: bool,
+        bypass_prev_timestamp_verification: bool,
     ) -> Self {
         Self {
             rules,
             difficulty_calculator,
-            bypass_timestamp_count_verification,
+            bypass_prev_timestamp_verification,
         }
     }
 }
@@ -68,17 +68,16 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
-        if !self.bypass_timestamp_count_verification {
+        check_blockchain_version(constants, header.version)?;
+
+        if !self.bypass_prev_timestamp_verification {
             check_timestamp_count(header, prev_timestamps, constants)?;
+            check_header_timestamp_greater_than_median(header, prev_timestamps)?;
         }
 
         check_height(header, prev_header)?;
         check_prev_hash(header, prev_header)?;
-
-        check_blockchain_version(constants, header.version)?;
         check_timestamp_ftl(header, &self.rules)?;
-        check_header_timestamp_greater_than_median(header, prev_timestamps)?;
-
         check_not_bad_block(db, header.hash())?;
         check_pow_data(header, &self.rules, db)?;
 

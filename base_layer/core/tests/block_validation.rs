@@ -375,10 +375,10 @@ fn test_orphan_body_validation() {
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let body_only_validator = BlockBodyFullValidator::new(rules.clone());
-    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true);
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone()),
-        HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator, true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
@@ -432,7 +432,7 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let achieved_target_diff = header_validator
+    assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
@@ -440,22 +440,11 @@ OutputFeatures::default()),
             &[],
             None,
         )
-        .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
-        .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
-        .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build()
-        .unwrap();
-
-    let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
-    let metadata = db.get_chain_metadata().unwrap();
-    assert!(body_only_validator
-        .validate_body(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
+    let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
     let test_params1 = TestParams::new();
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
@@ -476,7 +465,7 @@ OutputFeatures::default()),
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            genesis.header(),
+            &prev_header,
             &[],
             None,
         )
@@ -527,6 +516,7 @@ OutputFeatures::default()),
 
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
+    let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
     new_block.header.output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
@@ -535,7 +525,7 @@ OutputFeatures::default()),
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            genesis.header(),
+            &prev_header,
             &[],
             None,
         )
