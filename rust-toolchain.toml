@@ -8,7 +8,7 @@
 # AND update the action-buildlibs dockerfile.
 
 
-# Hours spent updating the Rust Toolchain = 7
+# Hours spent updating the Rust Toolchain = 10
 # other places to check:
 # - the CI files in .github folder
 # - the Makefile in base_layer/key_manager/Makefile
