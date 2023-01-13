@@ -7,7 +7,7 @@ version = "0.43.3"
 edition = "2018"
 
 [dependencies]
-tari_core = { version = "^0.43", path = "../../base_layer/core", default-features = false, features = ["tari_mmr", "transactions"]}
+tari_core = { version = "^0.43", path = "../../base_layer/core", default-features = false, features = ["tari_mmr", "base_node", "transactions"]}
 tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
 tari_comms = { version = "^0.43", path = "../../comms/core", features = ["c_integration"]}
