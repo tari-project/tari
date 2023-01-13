@@ -31,6 +31,10 @@ name: Integration tests
 env:
   toolchain: nightly-2022-11-03
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cucumber_tests:
     name: Cucumber tests
