@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
 use tari_common_types::types::{
@@ -46,20 +46,17 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction_components::{transaction_output::batch_verify_range_proofs, KernelSum, TransactionError},
+        transaction_components::{
+            transaction_output::batch_verify_range_proofs,
+            KernelSum,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
-    validation::{
-        helpers::{
-            check_kernel_lock_height,
-            check_maturity,
-            check_permitted_output_types,
-            check_total_burned,
-            check_validator_node_registration_utxo,
-            validate_versions,
-        },
-        ValidationError,
-    },
+    validation::ValidationError,
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
@@ -289,5 +286,321 @@ fn check_weight(
             max_weight,
         }
         .into())
+    }
+}
+
+/// Checks that all transactions (given by their kernels) are spendable at the given height
+fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), BlockValidationError> {
+    if kernels.iter().any(|k| k.lock_height > height) {
+        return Err(BlockValidationError::MaturityError);
+    }
+    Ok(())
+}
+
+/// Checks that all inputs have matured at the given height
+fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
+    if let Err(e) = inputs
+        .iter()
+        .map(|input| match input.is_mature_at(height) {
+            Ok(mature) => {
+                if mature {
+                    Ok(0)
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Input found that has not yet matured to spending height: {}", input
+                    );
+                    Err(TransactionError::InputMaturity)
+                }
+            },
+            Err(e) => Err(e),
+        })
+        .sum::<Result<usize, TransactionError>>()
+    {
+        return Err(e);
+    }
+    Ok(())
+}
+
+fn check_permitted_output_types(
+    constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if !constants
+        .permitted_output_types()
+        .contains(&output.features.output_type)
+    {
+        return Err(ValidationError::OutputTypeNotPermitted {
+            output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
+}
+
+/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// sum.
+#[allow(clippy::mutable_key_type)]
+fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
+    let mut burned_outputs = HashSet::new();
+    for output in body.outputs() {
+        if output.is_burned() {
+            // we dont care about duplicate commitments are they should have already been checked
+            burned_outputs.insert(output.commitment.clone());
+        }
+    }
+    for kernel in body.kernels() {
+        if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
+            return Err(ValidationError::InvalidBurnError(
+                "Burned kernel does not match burned output".to_string(),
+            ));
+        }
+    }
+
+    if !burned_outputs.is_empty() {
+        return Err(ValidationError::InvalidBurnError(
+            "Burned output has no matching burned kernel".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn check_validator_node_registration_utxo(
+    consensus_constants: &ConsensusConstants,
+    utxo: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
+        }
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(),
+                actual: utxo.features.maturity,
+            });
+        }
+
+        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
+        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
+        //                 keys this becomes difficult. Fix this once we have decided on a solution.
+        if !reg.is_valid_signature_for(&[]) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+    }
+    Ok(())
+}
+
+fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    // validate input version
+    for input in body.inputs() {
+        validate_input_version(consensus_constants, input)?;
+    }
+
+    // validate output version and output features version
+    for output in body.outputs() {
+        validate_output_version(consensus_constants, output)?;
+    }
+
+    // validate kernel version
+    for kernel in body.kernels() {
+        validate_kernel_version(consensus_constants, kernel)?;
+    }
+
+    Ok(())
+}
+
+fn validate_input_version(
+    consensus_constants: &ConsensusConstants,
+    input: &TransactionInput,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.input_version_range().contains(&input.version) {
+        let msg = format!(
+            "Transaction input contains a version not allowed by consensus ({:?})",
+            input.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    Ok(())
+}
+
+fn validate_output_version(
+    consensus_constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    let valid_output_version = consensus_constants
+        .output_version_range()
+        .outputs
+        .contains(&output.version);
+
+    if !valid_output_version {
+        let msg = format!(
+            "Transaction output version is not allowed by consensus ({:?})",
+            output.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    let valid_features_version = consensus_constants
+        .output_version_range()
+        .features
+        .contains(&output.features.version);
+
+    if !valid_features_version {
+        let msg = format!(
+            "Transaction output features version is not allowed by consensus ({:?})",
+            output.features.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+
+    for opcode in output.script.as_slice() {
+        if !consensus_constants
+            .output_version_range()
+            .opcode
+            .contains(&opcode.get_version())
+        {
+            let msg = format!(
+                "Transaction output script opcode is not allowed by consensus ({})",
+                opcode
+            );
+            return Err(ValidationError::ConsensusError(msg));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_kernel_version(
+    consensus_constants: &ConsensusConstants,
+    kernel: &TransactionKernel,
+) -> Result<(), ValidationError> {
+    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
+        let msg = format!(
+            "Transaction kernel version is not allowed by consensus ({:?})",
+            kernel.version
+        );
+        return Err(ValidationError::ConsensusError(msg));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use tari_script::TariScript;
+
+    use super::*;
+    use crate::{
+        covenants::Covenant,
+        transactions::{
+            test_helpers,
+            transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
+        },
+    };
+
+    mod check_lock_height {
+        use super::*;
+
+        #[test]
+        fn it_checks_the_kernel_timelock() {
+            let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
+            kernel.lock_height = 2;
+            assert!(matches!(
+                check_kernel_lock_height(1, &[kernel.clone()]),
+                Err(BlockValidationError::MaturityError)
+            ));
+
+            check_kernel_lock_height(2, &[kernel.clone()]).unwrap();
+            check_kernel_lock_height(3, &[kernel]).unwrap();
+        }
+    }
+
+    mod check_maturity {
+        use super::*;
+
+        #[test]
+        fn it_checks_the_input_maturity() {
+            let input = TransactionInput::new_with_output_data(
+                TransactionInputVersion::get_current_version(),
+                OutputFeatures {
+                    maturity: 5,
+                    ..Default::default()
+                },
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                MicroTari::zero(),
+            );
+
+            assert!(matches!(
+                check_maturity(1, &[input.clone()]),
+                Err(TransactionError::InputMaturity)
+            ));
+
+            assert!(matches!(
+                check_maturity(4, &[input.clone()]),
+                Err(TransactionError::InputMaturity)
+            ));
+
+            check_maturity(5, &[input.clone()]).unwrap();
+            check_maturity(6, &[input]).unwrap();
+        }
+    }
+
+    #[test]
+    fn check_burned_succeeds_for_valid_outputs() {
+        let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+
+        let (output1, _, _) = test_helpers::create_utxo(
+            100.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let (output2, _, _) = test_helpers::create_utxo(
+            101.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let (output3, _, _) = test_helpers::create_utxo(
+            102.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+
+        kernel1.burn_commitment = Some(output1.commitment.clone());
+        kernel2.burn_commitment = Some(output2.commitment.clone());
+        let kernel3 = kernel1.clone();
+
+        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
+            kernel1.clone(),
+            kernel2.clone(),
+        ]);
+        assert!(check_total_burned(&body).is_ok());
+        // lets add an extra kernel
+        body.add_kernels(&mut vec![kernel3]);
+        assert!(check_total_burned(&body).is_err());
+        // lets add a kernel commitment mismatch
+        body.add_outputs(&mut vec![output3.clone()]);
+        assert!(check_total_burned(&body).is_err());
+        // Lets try one with a commitment with no kernel
+        let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
+        assert!(check_total_burned(&body2).is_err());
     }
 }

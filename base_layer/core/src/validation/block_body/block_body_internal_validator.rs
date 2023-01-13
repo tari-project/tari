@@ -29,7 +29,7 @@ use crate::{
     transactions::{aggregated_body::AggregateBody, CryptoFactories},
     validation::{
         aggregate_body::AggregateBodyInternalConsistencyValidator,
-        helpers::{check_coinbase_output, check_sorting_and_duplicates},
+        helpers::is_all_unique_and_sorted,
         InternalConsistencyValidator,
         ValidationError,
     },
@@ -131,6 +131,38 @@ fn validate_block_aggregate_body(
             );
             err
         })?;
+
+    Ok(())
+}
+
+fn check_coinbase_output(
+    block: &Block,
+    rules: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError> {
+    let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+    block
+        .check_coinbase_output(
+            total_coinbase,
+            rules.consensus_constants(block.header.height),
+            factories,
+        )
+        .map_err(ValidationError::from)
+}
+
+// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
+fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
+    if !is_all_unique_and_sorted(body.inputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateInput);
+    }
+
+    if !is_all_unique_and_sorted(body.outputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateOutput);
+    }
+
+    if !is_all_unique_and_sorted(body.kernels()) {
+        return Err(ValidationError::UnsortedOrDuplicateKernel);
+    }
 
     Ok(())
 }

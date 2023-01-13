@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashSet;
-
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
@@ -46,10 +44,8 @@ use crate::{
         PowError,
     },
     transactions::{
-        aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        CryptoFactories,
     },
     validation::ValidationError,
 };
@@ -169,48 +165,6 @@ pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstant
     }
 }
 
-/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
-/// sum.
-#[allow(clippy::mutable_key_type)]
-pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut burned_outputs = HashSet::new();
-    for output in body.outputs() {
-        if output.is_burned() {
-            // we dont care about duplicate commitments are they should have already been checked
-            burned_outputs.insert(output.commitment.clone());
-        }
-    }
-    for kernel in body.kernels() {
-        if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
-            return Err(ValidationError::InvalidBurnError(
-                "Burned kernel does not match burned output".to_string(),
-            ));
-        }
-    }
-
-    if !burned_outputs.is_empty() {
-        return Err(ValidationError::InvalidBurnError(
-            "Burned output has no matching burned kernel".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-pub fn check_coinbase_output(
-    block: &Block,
-    rules: &ConsensusManager,
-    factories: &CryptoFactories,
-) -> Result<(), ValidationError> {
-    let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-    block
-        .check_coinbase_output(
-            total_coinbase,
-            rules.consensus_constants(block.header.height),
-            factories,
-        )
-        .map_err(ValidationError::from)
-}
-
 pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
     let mut items = items.into_iter();
     let prev_item = items.next();
@@ -226,23 +180,6 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
     }
 
     true
-}
-
-// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
-pub fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
-    if !is_all_unique_and_sorted(body.inputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateInput);
-    }
-
-    if !is_all_unique_and_sorted(body.outputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateOutput);
-    }
-
-    if !is_all_unique_and_sorted(body.kernels()) {
-        return Err(ValidationError::UnsortedOrDuplicateKernel);
-    }
-
-    Ok(())
 }
 
 /// This function checks that an input is a valid spendable UTXO
@@ -501,39 +438,6 @@ pub fn check_script_offset(
     Ok(())
 }
 
-/// Checks that all transactions (given by their kernels) are spendable at the given height
-pub fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), BlockValidationError> {
-    if kernels.iter().any(|k| k.lock_height > height) {
-        return Err(BlockValidationError::MaturityError);
-    }
-    Ok(())
-}
-
-/// Checks that all inputs have matured at the given height
-pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
-    if let Err(e) = inputs
-        .iter()
-        .map(|input| match input.is_mature_at(height) {
-            Ok(mature) => {
-                if mature {
-                    Ok(0)
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Input found that has not yet matured to spending height: {}", input
-                    );
-                    Err(TransactionError::InputMaturity)
-                }
-            },
-            Err(e) => Err(e),
-        })
-        .sum::<Result<usize, TransactionError>>()
-    {
-        return Err(e);
-    }
-    Ok(())
-}
-
 pub fn check_permitted_output_types(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
@@ -626,28 +530,6 @@ pub fn validate_kernel_version(
     Ok(())
 }
 
-pub fn validate_versions(
-    body: &AggregateBody,
-    consensus_constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
-    // validate input version
-    for input in body.inputs() {
-        validate_input_version(consensus_constants, input)?;
-    }
-
-    // validate output version and output features version
-    for output in body.outputs() {
-        validate_output_version(consensus_constants, output)?;
-    }
-
-    // validate kernel version
-    for kernel in body.kernels() {
-        validate_kernel_version(consensus_constants, kernel)?;
-    }
-
-    Ok(())
-}
-
 pub fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
@@ -699,11 +581,7 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::transactions::{
-        test_helpers,
-        test_helpers::TestParams,
-        transaction_components::{OutputFeatures, TransactionInputVersion},
-    };
+    use crate::transactions::{test_helpers, test_helpers::TestParams, CryptoFactories};
 
     mod is_all_unique_and_sorted {
         use super::*;
@@ -770,59 +648,6 @@ mod test {
         }
     }
 
-    mod check_lock_height {
-        use super::*;
-
-        #[test]
-        fn it_checks_the_kernel_timelock() {
-            let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
-            kernel.lock_height = 2;
-            assert!(matches!(
-                check_kernel_lock_height(1, &[kernel.clone()]),
-                Err(BlockValidationError::MaturityError)
-            ));
-
-            check_kernel_lock_height(2, &[kernel.clone()]).unwrap();
-            check_kernel_lock_height(3, &[kernel]).unwrap();
-        }
-    }
-
-    mod check_maturity {
-        use super::*;
-
-        #[test]
-        fn it_checks_the_input_maturity() {
-            let input = TransactionInput::new_with_output_data(
-                TransactionInputVersion::get_current_version(),
-                OutputFeatures {
-                    maturity: 5,
-                    ..Default::default()
-                },
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                MicroTari::zero(),
-            );
-
-            assert!(matches!(
-                check_maturity(1, &[input.clone()]),
-                Err(TransactionError::InputMaturity)
-            ));
-
-            assert!(matches!(
-                check_maturity(4, &[input.clone()]),
-                Err(TransactionError::InputMaturity)
-            ));
-
-            check_maturity(5, &[input.clone()]).unwrap();
-            check_maturity(6, &[input]).unwrap();
-        }
-    }
-
     mod check_coinbase_maturity {
         use super::*;
 
@@ -847,9 +672,7 @@ mod test {
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
     }
-
     mod check_coinbase_reward {
-
         use super::*;
 
         #[test]
@@ -890,57 +713,5 @@ mod test {
             unpack_enum!(ValidationError::TransactionError(err) = err);
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }
-    }
-
-    use crate::{covenants::Covenant, transactions::transaction_components::KernelFeatures};
-
-    #[test]
-    fn check_burned_succeeds_for_valid_outputs() {
-        let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
-        let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
-
-        let (output1, _, _) = test_helpers::create_utxo(
-            100.into(),
-            &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
-            &Covenant::default(),
-            0.into(),
-        );
-        let (output2, _, _) = test_helpers::create_utxo(
-            101.into(),
-            &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
-            &Covenant::default(),
-            0.into(),
-        );
-        let (output3, _, _) = test_helpers::create_utxo(
-            102.into(),
-            &CryptoFactories::default(),
-            &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
-            &Covenant::default(),
-            0.into(),
-        );
-
-        kernel1.burn_commitment = Some(output1.commitment.clone());
-        kernel2.burn_commitment = Some(output2.commitment.clone());
-        let kernel3 = kernel1.clone();
-
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
-            kernel1.clone(),
-            kernel2.clone(),
-        ]);
-        assert!(check_total_burned(&body).is_ok());
-        // lets add an extra kernel
-        body.add_kernels(&mut vec![kernel3]);
-        assert!(check_total_burned(&body).is_err());
-        // lets add a kernel commitment mismatch
-        body.add_outputs(&mut vec![output3.clone()]);
-        assert!(check_total_burned(&body).is_err());
-        // Lets try one with a commitment with no kernel
-        let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
-        assert!(check_total_burned(&body2).is_err());
     }
 }
