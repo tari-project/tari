@@ -127,6 +127,15 @@ impl NodeIdentity {
         }
     }
 
+    /// Modify the peer features
+    pub fn set_peer_features(&mut self, features: PeerFeatures) {
+        let must_sign = features != self.features;
+        self.features = features;
+        if must_sign {
+            self.sign()
+        }
+    }
+
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If public_address
     /// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
     #[cfg(test)]

@@ -4408,11 +4408,12 @@ async fn test_resend_on_startup() {
         .restart_broadcast_protocols()
         .await
         .is_ok());
-    assert!(alice_ts_interface
+
+    alice_ts_interface
         .transaction_service_handle
         .restart_transaction_protocols()
         .await
-        .is_ok());
+        .unwrap();
 
     // Check that if the cooldown is not done that a message will not be sent.
     assert!(alice_ts_interface

@@ -927,6 +927,12 @@ where
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
         if destination.network() != self.resources.wallet_identity.network {
+            let _result = reply_channel
+                .send(Err(TransactionServiceError::InvalidNetwork))
+                .map_err(|e| {
+                    warn!(target: LOG_TARGET, "Failed to send service reply");
+                    e
+                });
             return Err(TransactionServiceError::InvalidNetwork);
         }
         let dest_pubkey = destination.public_key();

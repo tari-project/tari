@@ -43,8 +43,10 @@ pub trait Encryptable<C> {
     const CLIENT_KEY_VALUE: &'static [u8] = b"CLIENT_KEY_VALUE";
 
     fn domain(&self, field_name: &'static str) -> Vec<u8>;
-    fn encrypt(&mut self, cipher: &C) -> Result<(), String>;
-    fn decrypt(&mut self, cipher: &C) -> Result<(), String>;
+    fn encrypt(self, cipher: &C) -> Result<Self, String>
+    where Self: Sized;
+    fn decrypt(self, cipher: &C) -> Result<Self, String>
+    where Self: Sized;
 }
 
 // Decrypt data (with domain binding and authentication) using XChaCha20-Poly1305
@@ -179,7 +181,7 @@ mod test {
         assert!(decrypt_bytes_integral_nonce(
             &cipher,
             b"correct_domain".to_vec(),
-            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)]
+            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)].to_vec()
         )
         .is_err());
     }

@@ -839,7 +839,8 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * transaction is null
  *
  * # Safety
- * None
+ *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ * prevent a memory leak
  */
 TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
                                                   TariPrivateKey *spending_key,
@@ -868,6 +869,41 @@ TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
  * None
  */
 void tari_unblinded_output_destroy(TariUnblindedOutput *output);
+
+/**
+ * returns the TariUnblindedOutput as a json string
+ *
+ * ## Arguments
+ * `output` - The pointer to a TariUnblindedOutput
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+ * TariUnblindedOutput is null or the position is invalid
+ *
+ * # Safety
+ *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ * prevent a memory leak
+ */
+char *tari_unblinded_output_to_json(TariUnblindedOutput *output,
+                                    int *error_out);
+
+/**
+ * Creates a TariUnblindedOutput from a char array
+ *
+ * ## Arguments
+ * `output_json` - The pointer to a char array which is json of the TariUnblindedOutput
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariUnblindedOutput` - Returns a pointer to a TariUnblindedOutput. Note that it returns ptr::null_mut()
+ * if key is null or if there was an error creating the TariUnblindedOutput from key
+ *
+ * # Safety
+ * The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ */
+TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_json,
+                                                            int *error_out);
 
 /**
  * -------------------------------------------------------------------------------------------- ///

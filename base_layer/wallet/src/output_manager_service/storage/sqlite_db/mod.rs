@@ -1279,13 +1279,13 @@ impl KnownOneSidedPaymentScriptSql {
 
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
     pub fn to_known_one_sided_payment_script(
-        mut self,
+        self,
         cipher: &XChaCha20Poly1305,
     ) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
-        self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
+        let mut output = self.decrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
 
-        let script_hash = self.script_hash;
-        let private_key = PrivateKey::from_bytes(&self.private_key).map_err(|_| {
+        let script_hash = output.script_hash;
+        let private_key = PrivateKey::from_bytes(&output.private_key).map_err(|_| {
             error!(
                 target: LOG_TARGET,
                 "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -1296,21 +1296,21 @@ impl KnownOneSidedPaymentScriptSql {
         })?;
 
         // in order to avoid memory leaks of sensitive data, we zeroize the current private key buffer
-        self.private_key.zeroize();
+        output.private_key.zeroize();
 
-        let script = TariScript::from_bytes(&self.script).map_err(|_| {
+        let script = TariScript::from_bytes(&output.script).map_err(|_| {
             error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
             OutputManagerStorageError::ConversionError {
                 reason: "Tari Script could not be converted from bytes".to_string(),
             }
         })?;
-        let input = ExecutionStack::from_bytes(&self.input).map_err(|_| {
+        let input = ExecutionStack::from_bytes(&output.input).map_err(|_| {
             error!(target: LOG_TARGET, "Could not create execution stack from stored bytes");
             OutputManagerStorageError::ConversionError {
                 reason: "ExecutionStack could not be converted from bytes".to_string(),
             }
         })?;
-        let script_lock_height = self.script_lock_height as u64;
+        let script_lock_height = output.script_lock_height as u64;
 
         Ok(KnownOneSidedPaymentScript {
             script_hash,
@@ -1323,7 +1323,7 @@ impl KnownOneSidedPaymentScriptSql {
 
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
     pub fn from_known_one_sided_payment_script(
-        known_script: KnownOneSidedPaymentScript,
+        mut known_script: KnownOneSidedPaymentScript,
         cipher: &XChaCha20Poly1305,
     ) -> Result<Self, OutputManagerStorageError> {
         let script_lock_height = known_script.script_lock_height as i64;
@@ -1332,7 +1332,7 @@ impl KnownOneSidedPaymentScriptSql {
         let script = known_script.script.to_bytes().to_vec();
         let input = known_script.input.to_bytes().to_vec();
 
-        let mut output = KnownOneSidedPaymentScriptSql {
+        let payment_script = KnownOneSidedPaymentScriptSql {
             script_hash,
             private_key,
             script,
@@ -1340,10 +1340,14 @@ impl KnownOneSidedPaymentScriptSql {
             script_lock_height,
         };
 
-        // encrypt in place the output, so no private_key memory leaks remain
-        output.encrypt(cipher).map_err(OutputManagerStorageError::AeadError)?;
+        // zeroize sensitive data
+        known_script.private_key.zeroize();
 
-        Ok(output)
+        let payment_script = payment_script
+            .encrypt(cipher)
+            .map_err(OutputManagerStorageError::AeadError)?;
+
+        Ok(payment_script)
     }
 }
 
@@ -1358,18 +1362,15 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.private_key = encrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("private_key"),
-            Hidden::hide(self.private_key.clone()),
-        )?;
-        Ok(())
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.private_key =
+            encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), Hidden::hide(self.private_key))?;
+        Ok(self)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), &self.private_key)?;
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -1557,29 +1558,29 @@ mod test {
 
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
 
-        let mut output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
 
         output.commit(&conn).unwrap();
-        let mut encrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();
+        let encrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();
 
         // Aead encryption of spending key contains 24 bytes nonce + 16 bytes tag + 32 bytes encrypted spneding key
         assert_eq!(encrypted_output.spending_key.len(), 32 + 24 + 16);
         assert_eq!(encrypted_output.spending_key, output.spending_key);
 
-        let mut decrypted_output = encrypted_output.clone();
+        let decrypted_output = encrypted_output.clone();
 
-        decrypted_output.decrypt(&cipher).unwrap();
+        let decrypted_output = decrypted_output.decrypt(&cipher).unwrap();
         assert_eq!(decrypted_output.spending_key.len(), 32);
         assert_eq!(decrypted_output.spending_key, decrypted_spending_key);
 
-        let mut output_2 = output.clone();
-        output_2.decrypt(&cipher).unwrap();
+        let output_2 = output.clone();
+        let output_2 = output_2.decrypt(&cipher).unwrap();
         assert_eq!(decrypted_output.spending_key, output_2.spending_key);
 
         let wrong_key = Key::from_slice(b"an example very very wrong key!!");
         let wrong_cipher = XChaCha20Poly1305::new(wrong_key);
         assert!(encrypted_output.decrypt(&wrong_cipher).is_err());
-        assert!(output.decrypt(&wrong_cipher).is_err());
+        assert!(output.clone().decrypt(&wrong_cipher).is_err());
 
         assert_eq!(
             OutputSql::find(output.spending_key.as_slice(), &conn)
@@ -1589,8 +1590,8 @@ mod test {
         );
 
         let outputs = OutputSql::index(&conn).unwrap();
-        let mut decrypted_output2 = outputs[0].clone();
-        decrypted_output2.decrypt(&cipher).unwrap();
+        let decrypted_output2 = outputs[0].clone();
+        let decrypted_output2 = decrypted_output2.decrypt(&cipher).unwrap();
         assert_eq!(decrypted_output2.spending_key, decrypted_output.spending_key);
     }
 }

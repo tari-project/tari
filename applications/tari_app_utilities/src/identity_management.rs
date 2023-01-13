@@ -54,12 +54,15 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     match load_node_identity(&identity_file) {
-        Ok(id) => match public_address {
-            Some(public_address) => {
-                id.set_public_address(public_address.clone());
-                Ok(Arc::new(id))
-            },
-            None => Ok(Arc::new(id)),
+        Ok(mut id) => {
+            id.set_peer_features(peer_features);
+            match public_address {
+                Some(public_address) => {
+                    id.set_public_address(public_address.clone());
+                    Ok(Arc::new(id))
+                },
+                None => Ok(Arc::new(id)),
+            }
         },
         Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
             ExitCode::ConfigError,
