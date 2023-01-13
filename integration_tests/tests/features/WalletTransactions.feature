@@ -21,13 +21,13 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
-    # # Spend one of the recovered UTXOs to self in a standard MW transaction
+    # Spend one of the recovered UTXOs to self in a standard MW transaction
     Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     Then I wait for wallet WALLET_B to have less than 1100000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 25
     Then I wait for wallet WALLET_B to have at least 1900000 uT
-    # # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
+    # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     Then I send a one-sided transaction of 1500000 uT from WALLET_B to WALLET_C at fee 20
     Then I wait for wallet WALLET_B to have less than 1000000 uT
     When mining node MINER mines 5 blocks
@@ -50,13 +50,13 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
-    # # Spend one of the recovered UTXOs to self in a standard MW transaction
+    # Spend one of the recovered UTXOs to self in a standard MW transaction
     Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     Then I wait for wallet WALLET_B to have less than 2100000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 25
     Then I wait for wallet WALLET_B to have at least 1900000 uT
-    # # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
+    # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     Then I send a one-sided stealth transaction of 1500000 uT from WALLET_B to WALLET_C at fee 20
     Then I wait for wallet WALLET_B to have less than 1000000 uT
     When mining node MINER mines 5 blocks
@@ -164,9 +164,6 @@ Feature: Wallet Transactions
     When mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
     When node B is at height 11
     When node C is at height 11
-    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
-    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
-    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   Scenario: Wallet imports faucet UTXO
@@ -290,57 +287,57 @@ Feature: Wallet Transactions
     Then all nodes are at height 6
   # Then wallet WALLET_B detects all transactions are at least Pending
 
-  Scenario: Short wallet clearing out invalid transactions after a reorg
-    # #
-    # # Chain 1:
-    # #   Collects 7 coinbases into one wallet, send 7 transactions
-    # #   Stronger chain
-    # #
-    # Given I have a seed node SEED_A
-    # When I have a base node NODE_A1 connected to seed SEED_A
-    # When I have wallet WALLET_A1 connected to seed node SEED_A
-    # When I have wallet WALLET_A2 connected to seed node SEED_A
-    # When I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
-    # When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
-    # Then node SEED_A is at height 1
-    # Then node NODE_A1 is at height 1
-    # When I mine 3 blocks on SEED_A
-    # Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
-    # Then node SEED_A is at height 4
-    # Then node NODE_A1 is at height 4
-    # When I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
-    # #
-    # # Chain 2:
-    # #   Collects 7 coinbases into one wallet, send 7 transactions
-    # #   Weaker chain
-    # #
-    # When I have a seed node SEED_B
-    # When I have a base node NODE_B1 connected to seed SEED_B
-    # When I have wallet WALLET_B1 connected to seed node SEED_B
-    # When I have wallet WALLET_B2 connected to seed node SEED_B
-    # When I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
-    # When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
-    # Then node SEED_B is at height 2
-    # Then node NODE_B1 is at height 2
-    # When I mine 3 blocks on SEED_B
-    # Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
-    # Then node SEED_B is at height 5
-    # Then node NODE_B1 is at height 5
-    # When I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
-    # #
-    # # Connect Chain 1 and 2 in stages
-    # #    # New node connects to weaker chain, receives all broadcast (not mined) transactions into mempool
-    # #    # New node connects to stronger chain, then reorgs its complete chain
-    # #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
-    # #
-    # When I have a base node NODE_C connected to seed SEED_B
-    # Then node NODE_C is at height 5
-    # # Wait for the reorg to filter through
-    # When I wait 15 seconds
-    # When I connect node SEED_A to node NODE_C
-    # Then all nodes are at height 4
-    # When I mine 2 blocks on NODE_C
-    # Then all nodes are at height 6
+  # Scenario: Short wallet clearing out invalid transactions after a reorg
+  #   #
+  #   # Chain 1:
+  #   #   Collects 7 coinbases into one wallet, send 7 transactions
+  #   #   Stronger chain
+  #   #
+  #   Given I have a seed node SEED_A
+  #   When I have a base node NODE_A1 connected to seed SEED_A
+  #   When I have wallet WALLET_A1 connected to seed node SEED_A
+  #   When I have wallet WALLET_A2 connected to seed node SEED_A
+  #   When I have mining node MINER_A1 connected to base node SEED_A and wallet WALLET_A1
+  #   When mining node MINER_A1 mines 1 blocks with min difficulty 200 and max difficulty 100000
+  #   Then node SEED_A is at height 1
+  #   Then node NODE_A1 is at height 1
+  #   When I mine 3 blocks on SEED_A
+  #   Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
+  #   Then node SEED_A is at height 4
+  #   Then node NODE_A1 is at height 4
+  #   When I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
+  #   #
+  #   # Chain 2:
+  #   #   Collects 7 coinbases into one wallet, send 7 transactions
+  #   #   Weaker chain
+  #   #
+  #   When I have a seed node SEED_B
+  #   When I have a base node NODE_B1 connected to seed SEED_B
+  #   When I have wallet WALLET_B1 connected to seed node SEED_B
+  #   When I have wallet WALLET_B2 connected to seed node SEED_B
+  #   When I have mining node MINER_B1 connected to base node SEED_B and wallet WALLET_B1
+  #   When mining node MINER_B1 mines 2 blocks with min difficulty 1 and max difficulty 100
+  #   Then node SEED_B is at height 2
+  #   Then node NODE_B1 is at height 2
+  #   When I mine 3 blocks on SEED_B
+  #   Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
+  #   Then node SEED_B is at height 5
+  #   Then node NODE_B1 is at height 5
+  #   When I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
+  #   #
+  #   # Connect Chain 1 and 2 in stages
+  #   #    # New node connects to weaker chain, receives all broadcast (not mined) transactions into mempool
+  #   #    # New node connects to stronger chain, then reorgs its complete chain
+  #   #    # New node mines blocks; no invalid inputs from the weaker chain should be used in the block template
+  #   #
+  #   When I have a base node NODE_C connected to seed SEED_B
+  #   Then node NODE_C is at height 5
+  #   # Wait for the reorg to filter through
+  #   When I wait 15 seconds
+  #   When I connect node SEED_A to node NODE_C
+  #   Then all nodes are at height 4
+  #   When I mine 2 blocks on NODE_C
+  #   Then all nodes are at height 6
 
   # @flaky @long-running
   # Scenario: Wallet SAF negotiation and cancellation with offline peers

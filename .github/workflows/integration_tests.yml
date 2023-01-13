@@ -2,6 +2,11 @@
 name: Integration tests
 
 'on':
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
   push:
     paths-ignore:
       - '**/*.md'
@@ -26,6 +31,10 @@ name: Integration tests
 env:
   toolchain: nightly-2022-11-03
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cucumber_tests:
     name: Cucumber tests
@@ -47,7 +56,7 @@ jobs:
             fi
           else
             echo "CI ..."
-            echo "CI_PROFILE=ci" >> $GITHUB_ENV
+            echo "CI_PROFILE=@critical and not @long-running" >> $GITHUB_ENV
             CI_BINS=${{ inputs.ci_bins }}
             echo "Run binary - ${CI_BINS}"
             echo "CI_BINS=${CI_BINS:-true}" >> $GITHUB_ENV
@@ -83,7 +92,6 @@ jobs:
         if: ${{ env.CI_BINS == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -93,14 +101,13 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.PROFILE }} and not @ffi"
+            -- -t "${{ env.CI_PROFILE }} and not @ffi and not @broken"
             --retry 2
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -110,5 +117,5 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@ffi"
+            -- -t "@ffi and ${{ env.CI_PROFILE }} and not @broken"
             --retry 2

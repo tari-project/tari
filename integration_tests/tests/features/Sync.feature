@@ -9,7 +9,6 @@ Feature: Block Sync
     When I have a base node MINER connected to all seed nodes
     When I mine <NumBlocks> blocks on MINER
     When I have <NumSyncers> base nodes connected to all seed nodes
-    # All nodes should sync to tip
     Then all nodes are at height <NumBlocks>
 
     Examples:
@@ -29,7 +28,6 @@ Feature: Block Sync
     When I have a SHA3 miner MINER connected to all seed nodes
     When mining node MINER mines 20 blocks
     When I have 2 base nodes connected to all seed nodes
-    # All nodes should sync to tip
     Then all nodes are at height 20
 
   @critical
