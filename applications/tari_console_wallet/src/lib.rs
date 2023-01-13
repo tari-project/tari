@@ -36,10 +36,12 @@ pub use cli::{
     Cli,
     CliCommands,
     CoinSplitArgs,
+    DiscoverPeerArgs,
     ExportUtxosArgs,
     MakeItRainArgs,
     SendTariArgs,
     SetBaseNodeArgs,
+    WhoisArgs,
 };
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;

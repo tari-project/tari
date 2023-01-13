@@ -144,10 +144,10 @@ Feature: Wallet CLI
         When I have wallet WALLET connected to seed node SEED
         When I have a base node BASE1 connected to seed SEED
         When I have a base node BASE2 connected to seed SEED
-        # And I discover peer BASE2 on wallet WALLET via command line
-        # Then WALLET is connected to BASE2
+        When I discover peer BASE2 on wallet WALLET via command line
+        Then WALLET is connected to BASE2
 
     Scenario: As a user I want to run whois via command line
         Given I have a base node BASE
-        # When I have wallet WALLET connected to base node BASE
-        # Then I run whois BASE on wallet WALLET via command line
+        When I have wallet WALLET connected to base node BASE
+        Then I run whois BASE on wallet WALLET via command line
