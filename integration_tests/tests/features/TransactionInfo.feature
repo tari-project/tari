@@ -11,7 +11,7 @@ Scenario: Get Transaction Info
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
-    #     # We need to ensure the coinbase lock heights are gone; mine enough blocks
+    # We need to ensure the coinbase lock heights are gone; mine enough blocks
     When mining node MINER mines 4 blocks
     Then all nodes are at height 4
     Then I list all COINBASE transactions for wallet WALLET_A
@@ -23,17 +23,17 @@ Scenario: Get Transaction Info
     Then wallet WALLET_B detects all transactions are at least Completed
     Then wallet WALLET_A detects all transactions are at least Broadcast
     Then wallet WALLET_B detects all transactions are at least Broadcast
-    #     # TODO: This wait is needed to stop next merge mining task from continuing
+    # TODO: This wait is needed to stop next merge mining task from continuing
     When I wait 1 seconds
     When mining node MINER mines 1 blocks
     Then all nodes are at height 5
     Then wallet WALLET_A detects all transactions are at least Mined_Unconfirmed
     Then wallet WALLET_B detects all transactions are at least Mined_Unconfirmed
-    #     # TODO: This wait is needed to stop base nodes from shutting down
+    # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
     When mining node MINER mines 10 blocks
     Then all nodes are at height 15
     Then wallet WALLET_A detects all transactions as Mined_Confirmed
     Then wallet WALLET_B detects all transactions as Mined_Confirmed
-    #     # TODO: This wait is needed to stop base nodes from shutting down
+    # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
