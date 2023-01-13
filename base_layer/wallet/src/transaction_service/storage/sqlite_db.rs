@@ -92,21 +92,21 @@ impl TransactionServiceSqliteDatabase {
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        let cipher = acquire_read_lock!(self.cipher);
+
         match kvp {
             DbKeyValuePair::PendingOutboundTransaction(k, v) => {
                 if OutboundTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
-                let mut o = OutboundTransactionSql::try_from(*v)?;
-                self.encrypt_if_necessary(&mut o)?;
+                let o = OutboundTransactionSql::try_from(*v, &cipher)?;
                 o.commit(conn)?;
             },
             DbKeyValuePair::PendingInboundTransaction(k, v) => {
                 if InboundTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
-                let mut i = InboundTransactionSql::try_from(*v)?;
-                self.encrypt_if_necessary(&mut i)?;
+                let i = InboundTransactionSql::try_from(*v, &cipher)?;
 
                 i.commit(conn)?;
             },
@@ -114,8 +114,7 @@ impl TransactionServiceSqliteDatabase {
                 if CompletedTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
-                let mut c = CompletedTransactionSql::try_from(*v)?;
-                self.encrypt_if_necessary(&mut c)?;
+                let c = CompletedTransactionSql::try_from(*v, &cipher)?;
 
                 c.commit(conn)?;
             },
@@ -124,14 +123,14 @@ impl TransactionServiceSqliteDatabase {
     }
 
     fn remove(&self, key: DbKey, conn: &SqliteConnection) -> Result<Option<DbValue>, TransactionStorageError> {
+        let cipher = acquire_read_lock!(self.cipher);
         match key {
             DbKey::PendingOutboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|| match OutboundTransactionSql::find_by_cancelled(k, false, conn) {
-                    Ok(mut v) => {
+                    Ok(v) => {
                         v.delete(conn)?;
-                        self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
-                            OutboundTransaction::try_from(v)?,
+                            OutboundTransaction::try_from(v, &cipher)?,
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
@@ -142,11 +141,10 @@ impl TransactionServiceSqliteDatabase {
             },
             DbKey::PendingInboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|| match InboundTransactionSql::find_by_cancelled(k, false, conn) {
-                    Ok(mut v) => {
+                    Ok(v) => {
                         v.delete(conn)?;
-                        self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingInboundTransaction(Box::new(
-                            InboundTransaction::try_from(v)?,
+                            InboundTransaction::try_from(v, &cipher)?,
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
@@ -157,11 +155,10 @@ impl TransactionServiceSqliteDatabase {
             },
             DbKey::CompletedTransaction(k) => {
                 conn.transaction::<_, _, _>(|| match CompletedTransactionSql::find_by_cancelled(k, false, conn) {
-                    Ok(mut v) => {
+                    Ok(v) => {
                         v.delete(conn)?;
-                        self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::CompletedTransaction(Box::new(
-                            CompletedTransaction::try_from(v)?,
+                            CompletedTransaction::try_from(v, &cipher)?,
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -178,11 +175,10 @@ impl TransactionServiceSqliteDatabase {
             DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|| match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
-                    Ok(mut v) => {
+                    Ok(v) => {
                         v.delete(conn)?;
-                        self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
-                            OutboundTransaction::try_from(v)?,
+                            OutboundTransaction::try_from(v, &cipher)?,
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
@@ -193,11 +189,10 @@ impl TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledPendingInboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|| match InboundTransactionSql::find_by_cancelled(k, true, conn) {
-                    Ok(mut v) => {
+                    Ok(v) => {
                         v.delete(conn)?;
-                        self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingInboundTransaction(Box::new(
-                            InboundTransaction::try_from(v)?,
+                            InboundTransaction::try_from(v, &cipher)?,
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
@@ -209,28 +204,6 @@ impl TransactionServiceSqliteDatabase {
             DbKey::AnyTransaction(_) => Err(TransactionStorageError::OperationNotSupported),
         }
     }
-
-    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
-        &self,
-        o: &mut T,
-    ) -> Result<(), TransactionStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-        o.decrypt(&cipher)
-            .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
-
-        Ok(())
-    }
-
-    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
-        &self,
-        o: &mut T,
-    ) -> Result<(), TransactionStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-        o.encrypt(&cipher)
-            .map_err(|_| TransactionStorageError::AeadError("Encryption Error".to_string()))?;
-
-        Ok(())
-    }
 }
 
 impl TransactionBackend for TransactionServiceSqliteDatabase {
@@ -239,66 +212,53 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
         let result = match key {
             DbKey::PendingOutboundTransaction(t) => match OutboundTransactionSql::find_by_cancelled(*t, false, &conn) {
-                Ok(mut o) => {
-                    self.decrypt_if_necessary(&mut o)?;
-
-                    Some(DbValue::PendingOutboundTransaction(Box::new(
-                        OutboundTransaction::try_from(o)?,
-                    )))
-                },
+                Ok(o) => Some(DbValue::PendingOutboundTransaction(Box::new(
+                    OutboundTransaction::try_from(o, &cipher)?,
+                ))),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
             DbKey::PendingInboundTransaction(t) => match InboundTransactionSql::find_by_cancelled(*t, false, &conn) {
-                Ok(mut i) => {
-                    self.decrypt_if_necessary(&mut i)?;
-                    Some(DbValue::PendingInboundTransaction(Box::new(
-                        InboundTransaction::try_from(i)?,
-                    )))
-                },
+                Ok(i) => Some(DbValue::PendingInboundTransaction(Box::new(
+                    InboundTransaction::try_from(i, &cipher)?,
+                ))),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
             DbKey::CompletedTransaction(t) => match CompletedTransactionSql::find(*t, &conn) {
-                Ok(mut c) => {
-                    self.decrypt_if_necessary(&mut c)?;
-                    Some(DbValue::CompletedTransaction(Box::new(CompletedTransaction::try_from(
-                        c,
-                    )?)))
-                },
+                Ok(c) => Some(DbValue::CompletedTransaction(Box::new(CompletedTransaction::try_from(
+                    c, &cipher,
+                )?))),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
             DbKey::AnyTransaction(t) => {
                 match OutboundTransactionSql::find(*t, &conn) {
-                    Ok(mut o) => {
-                        self.decrypt_if_necessary(&mut o)?;
-
+                    Ok(o) => {
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
-                            WalletTransaction::PendingOutbound(OutboundTransaction::try_from(o)?),
+                            WalletTransaction::PendingOutbound(OutboundTransaction::try_from(o, &cipher)?),
                         ))));
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 };
                 match InboundTransactionSql::find(*t, &conn) {
-                    Ok(mut i) => {
-                        self.decrypt_if_necessary(&mut i)?;
+                    Ok(i) => {
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
-                            WalletTransaction::PendingInbound(InboundTransaction::try_from(i)?),
+                            WalletTransaction::PendingInbound(InboundTransaction::try_from(i, &cipher)?),
                         ))));
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 };
                 match CompletedTransactionSql::find(*t, &conn) {
-                    Ok(mut c) => {
-                        self.decrypt_if_necessary(&mut c)?;
+                    Ok(c) => {
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
-                            WalletTransaction::Completed(CompletedTransaction::try_from(c)?),
+                            WalletTransaction::Completed(CompletedTransaction::try_from(c, &cipher)?),
                         ))));
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
@@ -309,79 +269,84 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, false)? {
-                    self.decrypt_if_necessary(o)?;
-                    result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
+                for o in OutboundTransactionSql::index_by_cancelled(&conn, false)? {
+                    result.insert(
+                        (o.tx_id as u64).into(),
+                        OutboundTransaction::try_from(o.clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in &mut InboundTransactionSql::index_by_cancelled(&conn, false)? {
-                    self.decrypt_if_necessary(i)?;
-                    result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
+                for i in InboundTransactionSql::index_by_cancelled(&conn, false)? {
+                    result.insert(
+                        (i.tx_id as u64).into(),
+                        InboundTransaction::try_from((i).clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, false)? {
-                    self.decrypt_if_necessary(c)?;
-                    result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
+                for c in CompletedTransactionSql::index_by_cancelled(&conn, false)? {
+                    result.insert(
+                        (c.tx_id as u64).into(),
+                        CompletedTransaction::try_from((c).clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, true)? {
-                    self.decrypt_if_necessary(o)?;
-                    result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
+                for o in OutboundTransactionSql::index_by_cancelled(&conn, true)? {
+                    result.insert(
+                        (o.tx_id as u64).into(),
+                        OutboundTransaction::try_from((o).clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in &mut InboundTransactionSql::index_by_cancelled(&conn, true)? {
-                    self.decrypt_if_necessary(i)?;
-                    result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
+                for i in InboundTransactionSql::index_by_cancelled(&conn, true)? {
+                    result.insert(
+                        (i.tx_id as u64).into(),
+                        InboundTransaction::try_from(i.clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CancelledCompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, true)? {
-                    self.decrypt_if_necessary(c)?;
-                    result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
+                for c in CompletedTransactionSql::index_by_cancelled(&conn, true)? {
+                    result.insert(
+                        (c.tx_id as u64).into(),
+                        CompletedTransaction::try_from((c).clone(), &cipher)?,
+                    );
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransaction(t) => {
                 match OutboundTransactionSql::find_by_cancelled(*t, true, &conn) {
-                    Ok(mut o) => {
-                        self.decrypt_if_necessary(&mut o)?;
-
-                        Some(DbValue::PendingOutboundTransaction(Box::new(
-                            OutboundTransaction::try_from(o)?,
-                        )))
-                    },
+                    Ok(o) => Some(DbValue::PendingOutboundTransaction(Box::new(
+                        OutboundTransaction::try_from(o, &cipher)?,
+                    ))),
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                     Err(e) => return Err(e),
                 }
             },
             DbKey::CancelledPendingInboundTransaction(t) => {
                 match InboundTransactionSql::find_by_cancelled(*t, true, &conn) {
-                    Ok(mut i) => {
-                        self.decrypt_if_necessary(&mut i)?;
-                        Some(DbValue::PendingInboundTransaction(Box::new(
-                            InboundTransaction::try_from(i)?,
-                        )))
-                    },
+                    Ok(i) => Some(DbValue::PendingInboundTransaction(Box::new(
+                        InboundTransaction::try_from(i, &cipher)?,
+                    ))),
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                     Err(e) => return Err(e),
                 }
@@ -499,10 +464,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
-        if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
-            self.decrypt_if_necessary(&mut outbound_tx_sql)?;
-            let outbound_tx = OutboundTransaction::try_from(outbound_tx_sql)?;
+        if let Ok(outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
+            let outbound_tx = OutboundTransaction::try_from(outbound_tx_sql, &cipher)?;
             if start.elapsed().as_millis() > 0 {
                 trace!(
                     target: LOG_TARGET,
@@ -515,9 +480,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             }
             return Ok(outbound_tx.destination_address);
         }
-        if let Ok(mut inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
-            self.decrypt_if_necessary(&mut inbound_tx_sql)?;
-            let inbound_tx = InboundTransaction::try_from(inbound_tx_sql)?;
+        if let Ok(inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
+            let inbound_tx = InboundTransaction::try_from(inbound_tx_sql, &cipher)?;
             if start.elapsed().as_millis() > 0 {
                 trace!(
                     target: LOG_TARGET,
@@ -539,32 +503,31 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
     ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
 
         match OutboundTransactionSql::find_by_cancelled(tx_id, true, &conn) {
-            Ok(mut o) => {
-                self.decrypt_if_necessary(&mut o)?;
-
+            Ok(o) => {
                 return Ok(Some(WalletTransaction::PendingOutbound(OutboundTransaction::try_from(
-                    o,
+                    o, &cipher,
                 )?)));
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
             Err(e) => return Err(e),
         };
         match InboundTransactionSql::find_by_cancelled(tx_id, true, &conn) {
-            Ok(mut i) => {
-                self.decrypt_if_necessary(&mut i)?;
+            Ok(i) => {
                 return Ok(Some(WalletTransaction::PendingInbound(InboundTransaction::try_from(
-                    i,
+                    i, &cipher,
                 )?)));
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
             Err(e) => return Err(e),
         };
         match CompletedTransactionSql::find_by_cancelled(tx_id, true, &conn) {
-            Ok(mut c) => {
-                self.decrypt_if_necessary(&mut c)?;
-                return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(c)?)));
+            Ok(c) => {
+                return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(
+                    c, &cipher,
+                )?)));
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
             Err(e) => return Err(e),
@@ -580,13 +543,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
-        let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction)?;
-        self.encrypt_if_necessary(&mut completed_tx_sql)?;
+        let completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction, &cipher)?;
 
         conn.transaction::<_, _, _>(|| {
             match OutboundTransactionSql::complete_outbound_transaction(tx_id, &conn) {
@@ -621,13 +584,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
-        let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction)?;
-        self.encrypt_if_necessary(&mut completed_tx_sql)?;
+        let completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction, &cipher)?;
 
         conn.transaction::<_, _, _>(|| {
             match InboundTransactionSql::complete_inbound_transaction(tx_id, &conn) {
@@ -821,11 +784,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
-        let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
-        for c in &mut coinbase_txs {
-            self.decrypt_if_necessary(c)?;
-            let completed_tx = CompletedTransaction::try_from(c.clone())?;
+        let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
+        for c in coinbase_txs {
+            let completed_tx = CompletedTransaction::try_from(c, &cipher)?;
             if completed_tx.amount == amount {
                 return Ok(Some(completed_tx));
             }
@@ -927,6 +890,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
+
         let tx = completed_transactions::table
             // Note: Check 'mined_in_block' as well as 'mined_height' is populated for faux transactions before it is confirmed
             .filter(completed_transactions::mined_in_block.is_not_null())
@@ -936,10 +901,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .first::<CompletedTransactionSql>(&*conn)
             .optional()?;
         let result = match tx {
-            Some(mut tx) => {
-                self.decrypt_if_necessary(&mut tx)?;
-                Some(tx.try_into()?)
-            },
+            Some(tx) => Some(CompletedTransaction::try_from(tx, &cipher)?),
             None => None,
         };
         if start.elapsed().as_millis() > 0 {
@@ -985,6 +947,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
+
         let txs = completed_transactions::table
             .filter(
                 completed_transactions::status
@@ -1001,9 +965,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .load::<CompletedTransactionSql>(&*conn)?;
 
         let mut result = vec![];
-        for mut tx in txs {
-            self.decrypt_if_necessary(&mut tx)?;
-            result.push(tx.try_into()?);
+        for tx in txs {
+            result.push(CompletedTransaction::try_from(tx, &cipher)?);
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1097,22 +1060,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
             .into_iter()
-            .map(|mut ct: CompletedTransactionSql| {
-                self.decrypt_if_necessary(&mut ct)?;
-                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
     fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::FauxUnconfirmed, false, &conn)?
             .into_iter()
-            .map(|mut ct: CompletedTransactionSql| {
-                self.decrypt_if_necessary(&mut ct)?;
-                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1122,6 +1087,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
         CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
             TransactionStatus::FauxConfirmed,
             false,
@@ -1129,9 +1096,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             &conn,
         )?
         .into_iter()
-        .map(|mut ct: CompletedTransactionSql| {
-            self.decrypt_if_necessary(&mut ct)?;
-            CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1368,6 +1334,22 @@ impl InboundTransactionSql {
             conn,
         )
     }
+
+    fn try_from(i: InboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let i = Self {
+            tx_id: i.tx_id.as_u64() as i64,
+            source_address: i.source_address.to_bytes().to_vec(),
+            amount: u64::from(i.amount) as i64,
+            receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
+            message: i.message,
+            timestamp: i.timestamp,
+            cancelled: i32::from(i.cancelled),
+            direct_send_success: i32::from(i.direct_send_success),
+            send_count: i.send_count as i32,
+            last_send_timestamp: i.last_send_timestamp,
+        };
+        i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
+    }
 }
 
 impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
@@ -1381,7 +1363,7 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
@@ -1389,10 +1371,10 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         )?
         .to_hex();
 
-        Ok(())
+        Ok(self)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
@@ -1403,36 +1385,16 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
             .map_err(|e| e.to_string())?
             .to_string();
 
-        // zeroize the decrypted protocol data buffer
+        // zeroize sensitive data
         decrypted_protocol.zeroize();
 
-        Ok(())
+        Ok(self)
     }
 }
 
-impl TryFrom<InboundTransaction> for InboundTransactionSql {
-    type Error = TransactionStorageError;
-
-    fn try_from(i: InboundTransaction) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tx_id: i.tx_id.as_u64() as i64,
-            source_address: i.source_address.to_bytes().to_vec(),
-            amount: u64::from(i.amount) as i64,
-            receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
-            message: i.message,
-            timestamp: i.timestamp,
-            cancelled: i32::from(i.cancelled),
-            direct_send_success: i32::from(i.direct_send_success),
-            send_count: i.send_count as i32,
-            last_send_timestamp: i.last_send_timestamp,
-        })
-    }
-}
-
-impl TryFrom<InboundTransactionSql> for InboundTransaction {
-    type Error = TransactionStorageError;
-
-    fn try_from(i: InboundTransactionSql) -> Result<Self, Self::Error> {
+impl InboundTransaction {
+    fn try_from(i: InboundTransactionSql, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let i = i.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
@@ -1625,6 +1587,24 @@ impl OutboundTransactionSql {
             conn,
         )
     }
+
+    fn try_from(o: OutboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let outbound_tx = Self {
+            tx_id: o.tx_id.as_u64() as i64,
+            destination_address: o.destination_address.to_bytes().to_vec(),
+            amount: u64::from(o.amount) as i64,
+            fee: u64::from(o.fee) as i64,
+            sender_protocol: serde_json::to_string(&o.sender_protocol)?,
+            message: o.message,
+            timestamp: o.timestamp,
+            cancelled: i32::from(o.cancelled),
+            direct_send_success: i32::from(o.direct_send_success),
+            send_count: o.send_count as i32,
+            last_send_timestamp: o.last_send_timestamp,
+        };
+
+        outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
+    }
 }
 
 impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
@@ -1638,7 +1618,7 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
@@ -1646,10 +1626,10 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         )?
         .to_hex();
 
-        Ok(())
+        Ok(self)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         let mut decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
@@ -1660,38 +1640,18 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
             .map_err(|e| e.to_string())?
             .to_string();
 
-        // zeroize the decrypted protocol data buffer
+        // zeroize sensitive data
         decrypted_protocol.zeroize();
 
-        Ok(())
+        Ok(self)
     }
 }
 
-impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
-    type Error = TransactionStorageError;
+impl OutboundTransaction {
+    fn try_from(o: OutboundTransactionSql, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let mut o = o.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
 
-    fn try_from(o: OutboundTransaction) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tx_id: o.tx_id.as_u64() as i64,
-            destination_address: o.destination_address.to_bytes().to_vec(),
-            amount: u64::from(o.amount) as i64,
-            fee: u64::from(o.fee) as i64,
-            sender_protocol: serde_json::to_string(&o.sender_protocol)?,
-            message: o.message,
-            timestamp: o.timestamp,
-            cancelled: i32::from(o.cancelled),
-            direct_send_success: i32::from(o.direct_send_success),
-            send_count: o.send_count as i32,
-            last_send_timestamp: o.last_send_timestamp,
-        })
-    }
-}
-
-impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
-    type Error = TransactionStorageError;
-
-    fn try_from(o: OutboundTransactionSql) -> Result<Self, Self::Error> {
-        Ok(Self {
+        let outbound_tx = Self {
             tx_id: (o.tx_id as u64).into(),
             destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
@@ -1705,7 +1665,12 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp,
-        })
+        };
+
+        // zeroize decrypted data
+        o.sender_protocol.zeroize();
+
+        Ok(outbound_tx)
     }
 }
 
@@ -2036,53 +2001,9 @@ impl CompletedTransactionSql {
 
         Ok(())
     }
-}
 
-impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
-    fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [
-            Self::COMPLETED_TRANSACTION,
-            self.tx_id.to_le_bytes().as_slice(),
-            field_name.as_bytes(),
-        ]
-        .concat()
-        .to_vec()
-    }
-
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        self.transaction_protocol = encrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("transaction_protocol"),
-            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
-        )?
-        .to_hex();
-
-        Ok(())
-    }
-
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
-        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("transaction_protocol"),
-            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // zeroize the decrypted protocol data buffer
-        decrypted_protocol.zeroize();
-
-        Ok(())
-    }
-}
-
-impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
-    type Error = TransactionStorageError;
-
-    fn try_from(c: CompletedTransaction) -> Result<Self, Self::Error> {
-        Ok(Self {
+    fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_bytes().to_vec(),
             destination_address: c.destination_address.to_bytes().to_vec(),
@@ -2103,7 +2024,49 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             mined_timestamp: c.mined_timestamp,
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
-        })
+        };
+
+        output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
+    }
+}
+
+impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::COMPLETED_TRANSACTION,
+            self.tx_id.to_le_bytes().as_slice(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.transaction_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("transaction_protocol"),
+            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
+        )?
+        .to_hex();
+
+        Ok(self)
+    }
+
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("transaction_protocol"),
+            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
+        )?;
+
+        self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
+            .map_err(|e| e.to_string())?
+            .to_string();
+
+        // zeroize sensitive data
+        decrypted_protocol.zeroize();
+
+        Ok(self)
     }
 }
 
@@ -2117,12 +2080,18 @@ pub enum CompletedTransactionConversionError {
     JsonError(#[from] serde_json::Error),
     #[error("CompletedTransaction conversion failed with key error: {0}")]
     KeyError(#[from] TransactionKeyError),
+    #[error("Aead Error: {0}")]
+    AeadError(String),
 }
 
-impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
-    type Error = CompletedTransactionConversionError;
-
-    fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
+impl CompletedTransaction {
+    fn try_from(
+        c: CompletedTransactionSql,
+        cipher: &XChaCha20Poly1305,
+    ) -> Result<Self, CompletedTransactionConversionError> {
+        let mut c = c
+            .decrypt(cipher)
+            .map_err(CompletedTransactionConversionError::AeadError)?;
         let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
                 Ok(signature) => Signature::new(public_nonce, signature),
@@ -2137,7 +2106,8 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             },
             None => None,
         };
-        Ok(Self {
+
+        let output = Self {
             tx_id: (c.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
             destination_address: TariAddress::from_bytes(&c.destination_address)
@@ -2160,7 +2130,12 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp,
-        })
+        };
+
+        // zeroize sensitive data
+        c.transaction_protocol.zeroize();
+
+        Ok(output)
     }
 }
 
@@ -2259,7 +2234,7 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, mem::size_of, time::Duration};
+    use std::{mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2318,6 +2293,11 @@ mod test {
 
         embed_migrations!("./migrations");
         let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
@@ -2382,23 +2362,26 @@ mod test {
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
-            tx_id: 2u64.into(),
-            destination_address: address,
-            amount,
-            fee: stp.get_fee_amount().unwrap(),
-            sender_protocol: stp.clone(),
-            status: TransactionStatus::Pending,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direct_send_success: false,
-            send_count: 0,
-            last_send_timestamp: None,
-        })
+        let outbound_tx2 = OutboundTransactionSql::try_from(
+            OutboundTransaction {
+                tx_id: 2u64.into(),
+                destination_address: address,
+                amount,
+                fee: stp.get_fee_amount().unwrap(),
+                sender_protocol: stp.clone(),
+                status: TransactionStatus::Pending,
+                message: "Hey!".to_string(),
+                timestamp: Utc::now().naive_utc(),
+                cancelled: false,
+                direct_send_success: false,
+                send_count: 0,
+                last_send_timestamp: None,
+            },
+            &cipher,
+        )
         .unwrap();
 
-        OutboundTransactionSql::try_from(outbound_tx1.clone())
+        OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2409,11 +2392,20 @@ mod test {
 
         let returned_outbound_tx = OutboundTransaction::try_from(
             OutboundTransactionSql::find_by_cancelled(1u64.into(), false, &conn).unwrap(),
+            &cipher,
         )
         .unwrap();
+
+        assert_eq!(returned_outbound_tx, outbound_tx1);
         assert_eq!(
-            OutboundTransactionSql::try_from(returned_outbound_tx).unwrap(),
-            OutboundTransactionSql::try_from(outbound_tx1.clone()).unwrap()
+            OutboundTransactionSql::try_from(returned_outbound_tx, &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap(),
+            OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap()
         );
 
         let rtp = ReceiverTransactionProtocol::new(
@@ -2457,11 +2449,11 @@ mod test {
             last_send_timestamp: None,
         };
 
-        InboundTransactionSql::try_from(inbound_tx1.clone())
+        InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        InboundTransactionSql::try_from(inbound_tx2)
+        InboundTransactionSql::try_from(inbound_tx2, &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2469,12 +2461,20 @@ mod test {
         let inbound_txs = InboundTransactionSql::index_by_cancelled(&conn, false).unwrap();
         assert_eq!(inbound_txs.len(), 2);
 
-        let returned_inbound_tx =
-            InboundTransaction::try_from(InboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap())
-                .unwrap();
+        let returned_inbound_tx = InboundTransaction::try_from(
+            InboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap(),
+            &cipher,
+        )
+        .unwrap();
         assert_eq!(
-            InboundTransactionSql::try_from(returned_inbound_tx).unwrap(),
-            InboundTransactionSql::try_from(inbound_tx1.clone()).unwrap()
+            InboundTransactionSql::try_from(returned_inbound_tx, &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap(),
+            InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap()
         );
 
         let tx = Transaction::new(
@@ -2543,16 +2543,16 @@ mod test {
             mined_timestamp: None,
         };
 
-        CompletedTransactionSql::try_from(completed_tx1.clone())
+        CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        assert!(CompletedTransactionSql::try_from(completed_tx1.clone())
+        assert!(CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .is_err());
 
-        CompletedTransactionSql::try_from(completed_tx2)
+        CompletedTransactionSql::try_from(completed_tx2, &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2562,47 +2562,54 @@ mod test {
 
         let returned_completed_tx = CompletedTransaction::try_from(
             CompletedTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap(),
+            &cipher,
         )
         .unwrap();
         assert_eq!(
-            CompletedTransactionSql::try_from(returned_completed_tx).unwrap(),
-            CompletedTransactionSql::try_from(completed_tx1.clone()).unwrap()
+            CompletedTransactionSql::try_from(returned_completed_tx, &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap(),
+            CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
+                .unwrap()
+                .decrypt(&cipher)
+                .unwrap()
         );
 
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_ok());
-        InboundTransactionSql::try_from(inbound_tx1.clone())
+        InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .unwrap();
-        assert!(InboundTransactionSql::try_from(inbound_tx1.clone())
+        assert!(InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .is_err());
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_err());
 
         assert!(OutboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_ok());
-        OutboundTransactionSql::try_from(outbound_tx1.clone())
+        OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .unwrap();
-        assert!(OutboundTransactionSql::try_from(outbound_tx1.clone())
+        assert!(OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .is_err());
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, false, &conn).is_err());
 
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &conn).is_ok());
-        CompletedTransactionSql::try_from(completed_tx1.clone())
+        CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .unwrap();
-        assert!(CompletedTransactionSql::try_from(completed_tx1.clone())
+        assert!(CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .delete(&conn)
             .is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &conn).is_err());
 
-        InboundTransactionSql::try_from(inbound_tx1.clone())
+        InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2614,7 +2621,7 @@ mod test {
         InboundTransactionSql::find_and_set_cancelled(inbound_tx1.tx_id, false, &conn).unwrap();
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_err());
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_ok());
-        OutboundTransactionSql::try_from(outbound_tx1.clone())
+        OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2627,13 +2634,13 @@ mod test {
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, true, &conn).is_err());
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, false, &conn).is_ok());
 
-        CompletedTransactionSql::try_from(completed_tx1.clone())
+        CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
 
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_err());
-        CompletedTransactionSql::try_from(completed_tx1.clone())
+        CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
             .unwrap()
             .update(
                 UpdateCompletedTransactionSql {
@@ -2737,15 +2744,15 @@ mod test {
             mined_timestamp: None,
         };
 
-        CompletedTransactionSql::try_from(coinbase_tx1)
+        CompletedTransactionSql::try_from(coinbase_tx1, &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx2)
+        CompletedTransactionSql::try_from(coinbase_tx2, &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx3)
+        CompletedTransactionSql::try_from(coinbase_tx3, &cipher)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2795,13 +2802,13 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+        let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone(), &cipher).unwrap();
         inbound_tx_sql.commit(&conn).unwrap();
-        inbound_tx_sql.encrypt(&cipher).unwrap();
+        let inbound_tx_sql = inbound_tx_sql.encrypt(&cipher).unwrap();
         inbound_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_inbound_tx = InboundTransactionSql::find_by_cancelled(1u64.into(), false, &conn).unwrap();
-        db_inbound_tx.decrypt(&cipher).unwrap();
-        let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx).unwrap();
+        let db_inbound_tx = InboundTransactionSql::find_by_cancelled(1u64.into(), false, &conn).unwrap();
+        let db_inbound_tx = db_inbound_tx.decrypt(&cipher).unwrap();
+        let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx, &cipher).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
         let destination_address = TariAddress::new(
@@ -2823,13 +2830,13 @@ mod test {
             last_send_timestamp: None,
         };
 
-        let mut outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone()).unwrap();
+        let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
         outbound_tx_sql.commit(&conn).unwrap();
-        outbound_tx_sql.encrypt(&cipher).unwrap();
+        let outbound_tx_sql = outbound_tx_sql.encrypt(&cipher).unwrap();
         outbound_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_outbound_tx = OutboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap();
-        db_outbound_tx.decrypt(&cipher).unwrap();
-        let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx).unwrap();
+        let db_outbound_tx = OutboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap();
+        let db_outbound_tx = db_outbound_tx.decrypt(&cipher).unwrap();
+        let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx, &cipher).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
         let source_address = TariAddress::new(
@@ -2868,13 +2875,13 @@ mod test {
             mined_timestamp: None,
         };
 
-        let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+        let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
         completed_tx_sql.commit(&conn).unwrap();
-        completed_tx_sql.encrypt(&cipher).unwrap();
+        let completed_tx_sql = completed_tx_sql.encrypt(&cipher).unwrap();
         completed_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_completed_tx = CompletedTransactionSql::find_by_cancelled(3u64.into(), false, &conn).unwrap();
-        db_completed_tx.decrypt(&cipher).unwrap();
-        let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx).unwrap();
+        let db_completed_tx = CompletedTransactionSql::find_by_cancelled(3u64.into(), false, &conn).unwrap();
+        let db_completed_tx = db_completed_tx.decrypt(&cipher).unwrap();
+        let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx, &cipher).unwrap();
         assert_eq!(completed_tx, decrypted_completed_tx);
     }
 
@@ -2922,9 +2929,8 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx, &cipher).unwrap();
 
-            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             let destination_address = TariAddress::new(
@@ -2945,9 +2951,8 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
             };
-            let mut outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+            let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 
-            outbound_tx_sql.encrypt(&cipher).unwrap();
             outbound_tx_sql.commit(&conn).unwrap();
 
             let source_address = TariAddress::new(
@@ -2985,9 +2990,8 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
-            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
         }
 
@@ -3120,15 +3124,13 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
             };
-            let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 
-            completed_tx_sql.encrypt(&cipher).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
 
             let inbound_tx = InboundTransaction::from(completed_tx);
-            let mut inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone(), &cipher).unwrap();
 
-            inbound_tx_sql.encrypt(&cipher).unwrap();
             inbound_tx_sql.commit(&conn).unwrap();
 
             if cancelled.is_none() {

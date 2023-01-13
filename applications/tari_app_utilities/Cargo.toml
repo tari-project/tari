@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.43.2"
+version = "0.43.3"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -19,7 +19,7 @@ dirs-next = "1.0.2"
 json5 = "0.2.2"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.7.3"
-tokio = { version = "1.20", features = ["signal"] }
+tokio = { version = "1.23", features = ["signal"] }
 serde = "1.0.126"
 structopt = { version = "0.3.13", default_features = false }
 thiserror = "^1.0.26"

@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.43.2"
+version = "0.43.3"
 edition = "2018"
 
 [features]
@@ -71,7 +71,7 @@ serde_repr = "0.1.8"
 sha3 = "0.9"
 strum_macros = "0.22"
 thiserror = "1.0.26"
-tokio = { version = "1.20", features = ["time", "sync", "macros"] }
+tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 tracing-attributes = "*"
 uint = { version = "0.9", default-features = false }

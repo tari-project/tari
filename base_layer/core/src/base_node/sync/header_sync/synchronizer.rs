@@ -346,7 +346,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             },
             SyncStatus::Lagging(split_info) => {
                 self.hooks.call_on_progress_header_hooks(
-                    split_info.local_tip_header.height(),
+                    split_info
+                        .local_tip_header
+                        .height()
+                        .checked_sub(split_info.reorg_steps_back)
+                        .unwrap_or_default(),
                     split_info.remote_tip_height,
                     sync_peer,
                 );
