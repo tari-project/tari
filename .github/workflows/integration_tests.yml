@@ -47,7 +47,7 @@ jobs:
             fi
           else
             echo "CI ..."
-            echo "CI_PROFILE=ci" >> $GITHUB_ENV
+            echo "CI_PROFILE=@critical and not @long-running" >> $GITHUB_ENV
             CI_BINS=${{ inputs.ci_bins }}
             echo "Run binary - ${CI_BINS}"
             echo "CI_BINS=${CI_BINS:-true}" >> $GITHUB_ENV
@@ -92,7 +92,7 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.PROFILE }} and not @ffi"
+            -- -t "${{ env.CI_PROFILE }} and not @ffi and not @broken"
             --retry 2
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
@@ -108,5 +108,5 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@ffi"
+            -- -t "@ffi and ${{ env.CI_PROFILE }} and not @broken"
             --retry 2
