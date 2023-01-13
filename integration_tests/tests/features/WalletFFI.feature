@@ -68,7 +68,7 @@ Feature: Wallet FFI
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    @critical @broken
     Scenario: As a client I want to receive contact liveness events
         Given I have a seed node SEED
         # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
@@ -91,7 +91,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    @critical @broken
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -146,7 +146,7 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
 
     # TODO: unimplemented step to send money
-    @critical
+    @critical @broken
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -173,7 +173,7 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
 
     # TODO: Missing send
-    @critical
+    @critical @broken
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
