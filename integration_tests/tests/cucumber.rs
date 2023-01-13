@@ -1006,17 +1006,19 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
 #[when(expr = "I list all {word} transactions for wallet {word}")]
 #[then(expr = "I list all {word} transactions for wallet {word}")]
 async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String, wallet: String) {
-    if vec!["COINBASE", "NORMAL"].contains(&transaction_type.as_str()) {
-        panic!("Invalid transaction type. Values should be COINBASE or NORMAL, for now");
+    if transaction_type.as_str() != "COINBASE" && transaction_type.as_str() != "NORMAL" {
+        panic!(
+            "Invalid transaction type. Values should be COINBASE or NORMAL, value passed is {}",
+            transaction_type
+        );
     }
-
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
 
     let request = GetCompletedTransactionsRequest {};
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
 
-    while let Ok(tx) = completed_txs.next().await.unwrap() {
-        let tx_info = tx.transaction.unwrap();
+    while let Some(tx) = completed_txs.next().await {
+        let tx_info = tx.unwrap().transaction.unwrap();
         if (tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "COINBASE") ||
             (!tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "NORMAL")
         {
@@ -1509,6 +1511,58 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
     } else {
         panic!(
             "Wallet {} failed to detect at least {} coinbase transactions as Mined_Confirmed",
+            wallet_name, coinbases
+        );
+    }
+}
+
+#[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Unconfirmed")]
+async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let mut completed_tx_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    let num_retries = 100;
+    let mut total_mined_unconfirmed_coinbases = 0;
+
+    'outer: for _ in 0..num_retries {
+        println!("Detecting mined unconfirmed coinbase transactions");
+        'inner: while let Some(tx_info) = completed_tx_res.next().await {
+            let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedUnconfirmed => {
+                    total_mined_unconfirmed_coinbases += 1;
+                    if total_mined_unconfirmed_coinbases >= coinbases {
+                        break 'outer;
+                    }
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        if total_mined_unconfirmed_coinbases < coinbases {
+            total_mined_unconfirmed_coinbases = 0;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    if total_mined_unconfirmed_coinbases >= coinbases {
+        println!(
+            "Wallet {} detected at least {} coinbase transactions as Mined_Unconfirmed",
+            &wallet_name, coinbases
+        );
+    } else {
+        panic!(
+            "Wallet {} failed to detect at least {} coinbase transactions as Mined_Unconfirmed",
             wallet_name, coinbases
         );
     }
