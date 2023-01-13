@@ -18,8 +18,4 @@
 ./buildtools/vagrant/Vagrantfile
 ./docs/src/theme/book.js
 ./docs/src/theme/highlight.js
-./integration_tests/Makefile
-./integration_tests/cucumber.js
-./integration_tests/environment
-./integration_tests/generate_report.js
 ./scripts/env_sample
