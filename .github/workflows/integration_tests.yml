@@ -83,7 +83,6 @@ jobs:
         if: ${{ env.CI_BINS == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -100,7 +99,6 @@ jobs:
         if: ${{ env.CI_FFI == 'true' }}
         continue-on-error: true
         timeout-minutes: 90
-      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
