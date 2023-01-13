@@ -1415,7 +1415,7 @@ impl LMDBDatabase {
         let prev_shard_key = store.get_shard_key(
             current_epoch
                 .as_u64()
-                .saturating_sub(constants.validator_node_validity_period().as_u64()) *
+                .saturating_sub(constants.validator_node_validity_period_epochs().as_u64()) *
                 constants.epoch_length(),
             current_epoch.as_u64() * constants.epoch_length(),
             vn_reg.public_key(),
@@ -1431,7 +1431,7 @@ impl LMDBDatabase {
         let validator_node = ValidatorNodeEntry {
             shard_key,
             start_epoch: next_epoch,
-            end_epoch: next_epoch + constants.validator_node_validity_period(),
+            end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
         };
@@ -2498,7 +2498,7 @@ impl BlockchainBackend for LMDBDatabase {
         // Get the current epoch for the height
         let end_epoch = constants.block_height_to_epoch(height);
         // Subtract the registration validaty period to get the start epoch
-        let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period());
+        let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
         // Convert these back to height as validators regs are indexed by height
         let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = end_epoch.as_u64() * constants.epoch_length();
@@ -2513,7 +2513,7 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Get the epoch height boundaries for our query
         let current_epoch = constants.block_height_to_epoch(height);
-        let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period());
+        let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
         let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = current_epoch.as_u64() * constants.epoch_length();
         let maybe_shard_id = store.get_shard_key(start_height, end_height, &public_key)?;

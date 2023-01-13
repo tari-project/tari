@@ -3,7 +3,7 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.43.2"
+version = "0.43.3"
 edition = "2018"
 
 [dependencies]
@@ -30,10 +30,11 @@ log4rs = {version = "1.2.0", features = ["console_appender", "file_appender", "y
 openssl = { version = "0.10.41", features = ["vendored"] }
 rand = "0.7.3"
 thiserror = "1.0.26"
-tokio = "1.20"
+tokio = "1.23"
 num-traits = "0.2.15"
 itertools = "0.10.3"
 zeroize = "1"
+serde_json = "1.0"
 
 # <workaround>
 # Temporary workaround until crates utilizing openssl have been updated from security-framework 2.4.0

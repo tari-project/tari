@@ -127,7 +127,11 @@ use tari_p2p::{
 };
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, hex::Hex, SafePassword};
+use tari_utilities::{
+    hex,
+    hex::{Hex, HexError},
+    SafePassword,
+};
 use tari_wallet::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::storage::database::Contact,
@@ -1435,7 +1439,8 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// transaction is null
 ///
 /// # Safety
-/// None
+///  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+/// prevent a memory leak
 #[no_mangle]
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn create_tari_unblinded_output(
@@ -1580,6 +1585,99 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
 pub unsafe extern "C" fn tari_unblinded_output_destroy(output: *mut TariUnblindedOutput) {
     if !output.is_null() {
         drop(Box::from_raw(output))
+    }
+}
+
+/// returns the TariUnblindedOutput as a json string
+///
+/// ## Arguments
+/// `output` - The pointer to a TariUnblindedOutput
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+/// TariUnblindedOutput is null or the position is invalid
+///
+/// # Safety
+///  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_unblinded_output_to_json(
+    output: *mut TariUnblindedOutput,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut hex_bytes = CString::new("").expect("Blank CString will not fail.");
+    if output.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("output".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        match serde_json::to_string(&*output) {
+            Ok(json_string) => match CString::new(json_string) {
+                Ok(v) => hex_bytes = v,
+                _ => {
+                    error = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                },
+            },
+            Err(_) => {
+                error = LibWalletError::from(HexError::HexConversionError).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        }
+    }
+    CString::into_raw(hex_bytes)
+}
+
+/// Creates a TariUnblindedOutput from a char array
+///
+/// ## Arguments
+/// `output_json` - The pointer to a char array which is json of the TariUnblindedOutput
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariUnblindedOutput` - Returns a pointer to a TariUnblindedOutput. Note that it returns ptr::null_mut()
+/// if key is null or if there was an error creating the TariUnblindedOutput from key
+///
+/// # Safety
+/// The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+// /// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
+    output_json: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariUnblindedOutput {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let output_json_str;
+    if output_json.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("output_json".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(output_json).to_str() {
+            Ok(v) => {
+                output_json_str = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("output_json".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    }
+    let output: Result<TariUnblindedOutput, _> = serde_json::from_str(&output_json_str);
+
+    match output {
+        Ok(output) => Box::into_raw(Box::new(output)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
+
+            error = LibWalletError::from(HexError::HexConversionError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -10312,6 +10410,68 @@ mod test {
 
             comms_config_destroy(config);
             wallet_destroy(wallet_ptr);
+        }
+    }
+
+    #[test]
+    pub fn test_utxo_json() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let utxo_1 = create_unblinded_output(
+                script!(Nop),
+                OutputFeatures::default(),
+                &TestParams::new(),
+                MicroTari(1234u64),
+            );
+            let amount = utxo_1.value.as_u64();
+            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
+            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value.clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+
+            let tari_utxo = create_tari_unblinded_output(
+                amount,
+                spending_key_ptr,
+                features_ptr,
+                script_ptr,
+                input_data_ptr,
+                metadata_signature_ptr,
+                sender_offset_public_key_ptr,
+                script_private_key_ptr,
+                covenant_ptr,
+                encrypted_value_ptr,
+                minimum_value_promise,
+                0,
+                error_ptr,
+            );
+            let json_string = tari_unblinded_output_to_json(tari_utxo, error_ptr);
+            assert_eq!(error, 0);
+            let tari_utxo2 = create_tari_unblinded_output_from_json(json_string, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*tari_utxo, *tari_utxo2);
+            // Cleanup
+            tari_unblinded_output_destroy(tari_utxo);
+            tari_unblinded_output_destroy(tari_utxo2);
+            string_destroy(message_ptr as *mut c_char);
+            string_destroy(script_ptr as *mut c_char);
+            string_destroy(input_data_ptr as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr);
+            let _script_private_key = Box::from_raw(script_private_key_ptr);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
+            let _features = Box::from_raw(features_ptr);
+            let _source_address = Box::from_raw(source_address_ptr);
+            let _spending_key = Box::from_raw(spending_key_ptr);
         }
     }
 }

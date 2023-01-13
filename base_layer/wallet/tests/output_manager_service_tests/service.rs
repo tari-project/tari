@@ -349,7 +349,7 @@ async fn fee_estimate() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher.clone()).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
 
     let factories = CryptoFactories::default();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
