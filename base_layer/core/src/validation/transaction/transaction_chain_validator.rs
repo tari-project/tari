@@ -20,16 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::warn;
-
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     transactions::transaction_components::Transaction,
     validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
 };
-
-pub const LOG_TARGET: &str = "c::val::transaction_chain_linked_validator";
 
 pub struct TransactionChainLinkedValidator<B> {
     db: BlockchainDatabase<B>,
@@ -55,27 +51,12 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
-        let tip_height = {
+        {
             let db = self.db.db_read_access()?;
             let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
             self.aggregate_body_validator.validate(&tx.body, tip_height, &*db)?;
-            tip_height
         };
-        verify_timelocks(tx, tip_height)?;
 
         Ok(())
     }
-}
-
-// This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
-// input maturities
-fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), ValidationError> {
-    if tx.min_spendable_height() > current_height + 1 {
-        warn!(
-            target: LOG_TARGET,
-            "Transaction has a min spend height higher than the current tip"
-        );
-        return Err(ValidationError::MaturityError);
-    }
-    Ok(())
 }

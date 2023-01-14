@@ -24,7 +24,6 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
-    cmp::{max, min},
     fmt::{Display, Formatter},
     ops::Add,
 };
@@ -35,7 +34,7 @@ use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    transaction_components::{OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     weight::TransactionWeight,
 };
 
@@ -83,34 +82,12 @@ impl Transaction {
 
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
-        self.body.inputs().iter().fold(u64::MAX, |min_maturity, input| {
-            min(
-                min_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: u64::MAX,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+        self.body.min_input_maturity()
     }
 
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
-        self.body.inputs().iter().fold(0, |max_maturity, input| {
-            max(
-                max_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: 0,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+        self.body.max_input_maturity()
     }
 
     /// Returns the maximum time lock of the kernels inside of the transaction
@@ -121,7 +98,7 @@ impl Transaction {
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
     /// transaction kernel lock_heights and the maturity of the input UTXOs.
     pub fn min_spendable_height(&self) -> u64 {
-        max(self.max_kernel_timelock(), self.max_input_maturity())
+        self.body.min_spendable_height()
     }
 
     /// This function adds two transactions together. It does not do cut-through. Calling Tx1 + Tx2 will result in

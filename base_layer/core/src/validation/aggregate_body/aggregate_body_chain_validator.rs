@@ -59,7 +59,8 @@ impl AggregateBodyChainLinkedValidator {
         let constants = self.consensus_manager.consensus_constants(height);
 
         self.validate_consensus(body, db, constants)?;
-        self.validate_input_and_maturity(body, db, constants)?;
+        self.validate_input_and_maturity(body, db, constants, height)?;
+
         Ok(())
     }
 
@@ -76,6 +77,7 @@ impl AggregateBodyChainLinkedValidator {
             check_permitted_output_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
         }
+
         Ok(())
     }
 
@@ -84,13 +86,14 @@ impl AggregateBodyChainLinkedValidator {
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
+        height: u64,
     ) -> Result<(), ValidationError> {
         check_inputs_are_utxos(db, body)?;
         check_outputs(db, constants, body)?;
-
-        // verify_timelocks(tx, tip_height)?;
         verify_no_duplicated_inputs_outputs(body)?;
         check_total_burned(body)?;
+        verify_timelocks(body, height)?;
+
         Ok(())
     }
 }
@@ -432,5 +435,18 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }
 
+    Ok(())
+}
+
+// This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
+// input maturities
+fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
+    if body.min_spendable_height() > current_height + 1 {
+        warn!(
+            target: LOG_TARGET,
+            "AggregateBody has a min spend height higher than the current tip"
+        );
+        return Err(ValidationError::MaturityError);
+    }
     Ok(())
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    cmp::max,
+    cmp::{max, min},
     fmt::{Display, Error, Formatter},
 };
 
@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlindingFactor;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
+use super::transaction_components::OutputFeatures;
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroTari,
@@ -366,10 +367,48 @@ impl AggregateBody {
         )
     }
 
+    /// Returns the minimum maturity of the input UTXOs
+    pub fn min_input_maturity(&self) -> u64 {
+        self.inputs().iter().fold(u64::MAX, |min_maturity, input| {
+            min(
+                min_maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures {
+                        maturity: u64::MAX,
+                        ..Default::default()
+                    })
+                    .maturity,
+            )
+        })
+    }
+
+    /// Returns the maximum maturity of the input UTXOs
+    pub fn max_input_maturity(&self) -> u64 {
+        self.inputs().iter().fold(0, |max_maturity, input| {
+            max(
+                max_maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures {
+                        maturity: 0,
+                        ..Default::default()
+                    })
+                    .maturity,
+            )
+        })
+    }
+
     pub fn max_kernel_timelock(&self) -> u64 {
         self.kernels()
             .iter()
             .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
+
+    /// Returns the height of the minimum height where the body is spendable. This is calculated from the
+    /// kernel lock_heights and the maturity of the input UTXOs.
+    pub fn min_spendable_height(&self) -> u64 {
+        max(self.max_kernel_timelock(), self.max_input_maturity())
     }
 
     /// Return a cloned version of self with TransactionInputs in their compact form
