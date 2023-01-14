@@ -199,7 +199,7 @@ pub fn check_header_timestamp_greater_than_median(
 /// ## Panics
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
-pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
+fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     assert!(
         !timestamps.is_empty(),
         "calc_median_timestamp: timestamps cannot be empty"
@@ -226,7 +226,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     median_timestamp
 }
 
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
     if db.bad_block_exists(hash)? {
         return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
     }
@@ -234,7 +234,7 @@ pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Res
 }
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-pub fn check_pow_data<B: BlockchainBackend>(
+fn check_pow_data<B: BlockchainBackend>(
     block_header: &BlockHeader,
     rules: &ConsensusManager,
     db: &B,

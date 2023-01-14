@@ -567,10 +567,10 @@ fn test_header_validation() {
         .build();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
-    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false);
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true);
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone()),
-        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
