@@ -146,7 +146,7 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
 
     # TODO: unimplemented step to send money
-    @critical @broken
+    @critical
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
