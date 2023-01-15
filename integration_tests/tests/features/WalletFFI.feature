@@ -68,7 +68,7 @@ Feature: Wallet FFI
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    @critical @broken
+    @critical
     Scenario: As a client I want to receive contact liveness events
         Given I have a seed node SEED
         # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
@@ -91,7 +91,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
-    @critical @broken
+    @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -101,8 +101,8 @@ Feature: Wallet FFI
         When I have wallet RECEIVER connected to base node BASE2
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
-        Then I wait for wallet SENDER to have at least 1000000 uT
-        And I send 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        Then I wait for wallet SENDER to have at least 2000000 uT
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
@@ -211,29 +211,3 @@ Feature: Wallet FFI
         And The fee per gram stats for FFI_WALLET are 20, 40, 60
         When mining node MINER mines 1 blocks
         And The fee per gram stats for FFI_WALLET are 1, 1, 1
-
-# Scenario: As a client I want to get my balance
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-#Scenario: As a client I want to send Tari to a Public Key
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-#Scenario: As a client I want to specify a custom fee when I send tari
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-#Scenario: As a client I want to receive Tari via my Public Key while I am online
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-# Scenario: As a client I want to be able to initiate TXO and TX validation with the specifed base node.
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-# Scenario: As a client I want feedback about the progress of sending and receiving a transaction
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
-
-# Scenario: As a client I want feedback about my connection status to the specifed Base Node
-
-# Scenario: As a client I want feedback about the wallet restoration process
-# It's a subtest of "As a client I want to be able to restore my wallet from seed words"
-
-# Scenario: As a client I want feedback about TXO and TX validation processes
-# It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
