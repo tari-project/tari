@@ -22,7 +22,7 @@
 
 use std::cmp;
 
-use log::{trace, warn};
+use log::warn;
 use tari_common_types::types::FixedHash;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
@@ -31,7 +31,12 @@ use crate::{
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    validation::{helpers::check_target_difficulty, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
+    validation::{
+        helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        ValidationError,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
@@ -162,68 +167,6 @@ pub fn check_timestamp_ftl(
         ));
     }
     Ok(())
-}
-
-pub fn check_header_timestamp_greater_than_median(
-    block_header: &BlockHeader,
-    timestamps: &[EpochTime],
-) -> Result<(), ValidationError> {
-    if timestamps.is_empty() {
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
-        ));
-    }
-
-    let median_timestamp = calc_median_timestamp(timestamps);
-    if block_header.timestamp < median_timestamp {
-        warn!(
-            target: LOG_TARGET,
-            "Block header timestamp {} is less than median timestamp: {} for block:{}",
-            block_header.timestamp,
-            median_timestamp,
-            block_header.hash().to_hex()
-        );
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestamp(format!(
-                "The timestamp `{}` was less than the median timestamp `{}`",
-                block_header.timestamp, median_timestamp
-            )),
-        ));
-    }
-
-    Ok(())
-}
-
-/// Returns the median timestamp for the provided timestamps.
-///
-/// ## Panics
-/// When an empty slice is given as this is undefined for median average.
-/// https://math.stackexchange.com/a/3451015
-fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
-    assert!(
-        !timestamps.is_empty(),
-        "calc_median_timestamp: timestamps cannot be empty"
-    );
-    trace!(
-        target: LOG_TARGET,
-        "Calculate the median timestamp from {} timestamps",
-        timestamps.len()
-    );
-
-    let mid_index = timestamps.len() / 2;
-    let median_timestamp = if timestamps.len() % 2 == 0 {
-        trace!(
-            target: LOG_TARGET,
-            "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps[mid_index - 1],
-            timestamps[mid_index],
-        );
-        (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
-    } else {
-        timestamps[mid_index]
-    };
-    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
-    median_timestamp
 }
 
 fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {

@@ -56,7 +56,15 @@ use crate::{
         },
         CryptoFactories,
     },
-    validation::ValidationError,
+    validation::{
+        helpers::{
+            check_permitted_output_types,
+            validate_input_version,
+            validate_kernel_version,
+            validate_output_version,
+        },
+        ValidationError,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
@@ -322,22 +330,6 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
     Ok(())
 }
 
-fn check_permitted_output_types(
-    constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    if !constants
-        .permitted_output_types()
-        .contains(&output.features.output_type)
-    {
-        return Err(ValidationError::OutputTypeNotPermitted {
-            output_type: output.features.output_type,
-        });
-    }
-
-    Ok(())
-}
-
 /// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
@@ -409,82 +401,6 @@ fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConsta
         validate_kernel_version(consensus_constants, kernel)?;
     }
 
-    Ok(())
-}
-
-fn validate_input_version(
-    consensus_constants: &ConsensusConstants,
-    input: &TransactionInput,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.input_version_range().contains(&input.version) {
-        let msg = format!(
-            "Transaction input contains a version not allowed by consensus ({:?})",
-            input.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    Ok(())
-}
-
-fn validate_output_version(
-    consensus_constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let valid_output_version = consensus_constants
-        .output_version_range()
-        .outputs
-        .contains(&output.version);
-
-    if !valid_output_version {
-        let msg = format!(
-            "Transaction output version is not allowed by consensus ({:?})",
-            output.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    let valid_features_version = consensus_constants
-        .output_version_range()
-        .features
-        .contains(&output.features.version);
-
-    if !valid_features_version {
-        let msg = format!(
-            "Transaction output features version is not allowed by consensus ({:?})",
-            output.features.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    for opcode in output.script.as_slice() {
-        if !consensus_constants
-            .output_version_range()
-            .opcode
-            .contains(&opcode.get_version())
-        {
-            let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({})",
-                opcode
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_kernel_version(
-    consensus_constants: &ConsensusConstants,
-    kernel: &TransactionKernel,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
-        let msg = format!(
-            "Transaction kernel version is not allowed by consensus ({:?})",
-            kernel.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
     Ok(())
 }
 
