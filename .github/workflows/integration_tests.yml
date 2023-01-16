@@ -90,7 +90,6 @@ jobs:
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
-        continue-on-error: true
         timeout-minutes: 90
         uses: actions-rs/cargo@v1
         with:
@@ -106,7 +105,6 @@ jobs:
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
-        continue-on-error: true
         timeout-minutes: 90
         uses: actions-rs/cargo@v1
         with:
