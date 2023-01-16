@@ -26,9 +26,12 @@ use log::warn;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{TransactionError, TransactionOutput},
+    },
     validation::{
         helpers::{check_input_is_utxo, check_not_duplicate_txo, check_tari_script_byte_size},
         ValidationError,
@@ -89,9 +92,37 @@ impl AggregateBodyChainLinkedValidator {
         verify_no_duplicated_inputs_outputs(body)?;
         check_total_burned(body)?;
         verify_timelocks(body, height)?;
+        validate_input_not_pruned(body, db)?;
+        validate_input_maturity(body, height)?;
 
         Ok(())
     }
+}
+
+fn validate_input_not_pruned<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+    for input in body.inputs() {
+        if input.is_compact() {
+            let output_mined_info = db
+                .fetch_output(&input.output_hash())?
+                .ok_or(ValidationError::TransactionInputSpentOutputMissing)?;
+
+            if let PrunedOutput::Pruned { .. } = output_mined_info.output {
+                return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_input_maturity(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
+    for input in body.inputs() {
+        if !input.is_mature_at(height)? {
+            return Err(TransactionError::InputMaturity.into());
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
