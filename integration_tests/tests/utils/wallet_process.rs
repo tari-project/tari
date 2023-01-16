@@ -146,6 +146,7 @@ pub async fn spawn_wallet(
         let cli = cli.unwrap_or_else(get_default_cli);
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
+            println!("FLAG: WE ARE HERREEEEE: {}", e);
             panic!("{:?}", e);
         }
     });

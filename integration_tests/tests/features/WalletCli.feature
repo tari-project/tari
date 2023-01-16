@@ -20,7 +20,8 @@ Feature: Wallet CLI
     Scenario: As a user I want to change password via command line
         Given I have a seed node SEED
         When I have wallet WALLET connected to all seed nodes
-        When I stop wallet WALLET
+        Then I stop wallet WALLET
+        When I wait 15 seconds
         When I change the password of wallet WALLET to changedpwd via command line
         # Then the password of wallet WALLET is not kensentme
         # Then the password of wallet WALLET is changedpwd
@@ -100,7 +101,7 @@ Feature: Wallet CLI
         Then I stop wallet SENDER
         When I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
         Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
-        # Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         When mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 84500 uT
 
