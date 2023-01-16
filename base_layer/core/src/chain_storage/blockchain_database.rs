@@ -2105,6 +2105,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 }
 
 /// Insert the provided block into the orphan pool and returns any new tips that were created.
+#[allow(clippy::too_many_lines)]
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
@@ -2168,6 +2169,23 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         },
     };
 
+    // validate the block header
+    let prev_timestamps_count = cmp::min(
+        rules
+            .consensus_constants(block.header.height)
+            .get_median_timestamp_count(),
+        block.header.height as usize - 1,
+    );
+    let mut prev_timestamps = Vec::with_capacity(prev_timestamps_count);
+    prev_timestamps.push(block.header.timestamp());
+    let mut curr_header = block.header.prev_hash;
+    for _ in 0..prev_timestamps_count {
+        let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
+        curr_header = h.header().prev_hash;
+        let timestamp = EpochTime::from(h.timestamp());
+        prev_timestamps.push(timestamp);
+    }
+    validator.validate(db, &block.header, parent.header(), &prev_timestamps, None)?;
     let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, &block.header)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
