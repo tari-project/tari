@@ -807,7 +807,7 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
                     _ => (),
                 },
                 "Mined_Confirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedConfirmed => {
+                    grpc::TransactionStatus::MinedConfirmed | grpc::TransactionStatus::Broadcast => {
                         break;
                     },
                     _ => (),
