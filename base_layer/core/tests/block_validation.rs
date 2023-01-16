@@ -828,7 +828,7 @@ async fn test_block_sync_body_validator() {
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(&*txn, &new_block).unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap();
 
     // lets break accounting
     let (mut template, _) =
