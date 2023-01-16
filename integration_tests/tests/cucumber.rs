@@ -1019,7 +1019,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
 
-    println!("waiting for tx with tx_id = {} to be cancelled", tx_id);
+    println!("waiting for tx with tx_id = {} to be Cancelled", tx_id);
     for retry in 0..=num_retries {
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![*tx_id],
