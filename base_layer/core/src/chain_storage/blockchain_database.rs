@@ -1938,7 +1938,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         let block_hash = *block.hash();
         txn.delete_orphan(block_hash);
         let chain_metadata = backend.fetch_chain_metadata()?;
-        if let Err(e) = block_validator.validate_body(backend, block, &chain_metadata) {
+        if let Err(e) = block_validator.validate_body_with_metadata(backend, block, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",

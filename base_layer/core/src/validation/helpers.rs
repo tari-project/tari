@@ -21,19 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{epoch_time::EpochTime, hex::Hex},
-};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
+    blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
+    consensus::ConsensusConstants,
     proof_of_work::{
         monero_difficulty,
         randomx_factory::RandomXFactory,
@@ -43,10 +38,7 @@ use crate::{
         PowAlgorithm,
         PowError,
     },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    },
+    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::ValidationError,
 };
 
@@ -139,29 +131,6 @@ pub fn check_target_difficulty(
                 BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
             ))
         },
-    }
-}
-
-pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
-    // The genesis block has a larger weight than other blocks may have so we have to exclude it here
-    let block_weight = block.body.calculate_weight(consensus_constants.transaction_weight());
-    let max_weight = consensus_constants.get_max_block_transaction_weight();
-    if block_weight <= max_weight || block.header.height == 0 {
-        trace!(
-            target: LOG_TARGET,
-            "SV - Block contents for block #{} : {}; weight {}.",
-            block.header.height,
-            block.body.to_counts_string(),
-            block_weight,
-        );
-
-        Ok(())
-    } else {
-        Err(BlockValidationError::BlockTooLarge {
-            actual_weight: block_weight,
-            max_weight,
-        }
-        .into())
     }
 }
 
@@ -359,85 +328,6 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     Ok(())
 }
 
-pub fn validate_covenants(block: &Block) -> Result<(), ValidationError> {
-    for input in block.body.inputs() {
-        let output_set_size = input
-            .covenant()?
-            .execute(block.header.height, input, block.body.outputs())?;
-        trace!(target: LOG_TARGET, "{} output(s) passed covenant", output_set_size);
-    }
-    Ok(())
-}
-
-pub fn check_coinbase_reward(
-    factory: &CommitmentFactory,
-    rules: &ConsensusManager,
-    height: u64,
-    total_fees: MicroTari,
-    coinbase_kernel: &TransactionKernel,
-    coinbase_output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let reward = rules.emission_schedule().block_reward(height) + total_fees;
-    let rhs = &coinbase_kernel.excess + &factory.commit_value(&Default::default(), reward.into());
-    if rhs != coinbase_output.commitment {
-        warn!(
-            target: LOG_TARGET,
-            "Coinbase {} amount validation failed", coinbase_output
-        );
-        return Err(ValidationError::TransactionError(TransactionError::InvalidCoinbase));
-    }
-    Ok(())
-}
-
-pub fn check_coinbase_maturity(
-    rules: &ConsensusManager,
-    height: u64,
-    coinbase_output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let constants = rules.consensus_constants(height);
-    if coinbase_output.features.maturity < height + constants.coinbase_lock_height() {
-        warn!(
-            target: LOG_TARGET,
-            "Coinbase {} found with maturity set too low", coinbase_output
-        );
-        return Err(ValidationError::TransactionError(
-            TransactionError::InvalidCoinbaseMaturity,
-        ));
-    }
-    Ok(())
-}
-
-pub fn check_kernel_sum(
-    factory: &CommitmentFactory,
-    kernel_sum: &KernelSum,
-    output_commitment_sum: &Commitment,
-    input_commitment_sum: &Commitment,
-) -> Result<(), ValidationError> {
-    let KernelSum { sum: excess, fees } = kernel_sum;
-    let sum_io = output_commitment_sum - input_commitment_sum;
-    let fees = factory.commit_value(&Default::default(), fees.as_u64());
-    if *excess != &sum_io + &fees {
-        return Err(TransactionError::ValidationError(
-            "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-        )
-        .into());
-    }
-    Ok(())
-}
-
-pub fn check_script_offset(
-    header: &BlockHeader,
-    aggregate_offset_pubkey: &PublicKey,
-    aggregate_input_key: &PublicKey,
-) -> Result<(), ValidationError> {
-    let script_offset = PublicKey::from_secret_key(&header.total_script_offset);
-    let lhs = aggregate_input_key - aggregate_offset_pubkey;
-    if lhs != script_offset {
-        return Err(TransactionError::ScriptOffset.into());
-    }
-    Ok(())
-}
-
 pub fn check_permitted_output_types(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
@@ -530,52 +420,6 @@ pub fn validate_kernel_version(
     Ok(())
 }
 
-pub fn check_validator_node_registration_utxo(
-    consensus_constants: &ConsensusConstants,
-    utxo: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    if let Some(reg) = utxo.features.validator_node_registration() {
-        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-                min: consensus_constants.validator_node_registration_min_deposit_amount(),
-                actual: utxo.minimum_value_promise,
-            });
-        }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
-                actual: utxo.features.maturity,
-            });
-        }
-
-        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
-        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
-        //                 keys this becomes difficult. Fix this once we have decided on a solution.
-        if !reg.is_valid_signature_for(&[]) {
-            return Err(ValidationError::InvalidValidatorNodeSignature);
-        }
-    }
-    Ok(())
-}
-
-pub fn check_output_feature(output: &TransactionOutput, max_coinbase_extra_size: u32) -> Result<(), TransactionError> {
-    // This field is optional for coinbases (mining pools and
-    // other merge mined coins can use it), but must be empty for non-coinbases
-    if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
-        return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
-    }
-
-    // For coinbases, the maximum length should be 64 bytes (2x hashes),
-    // so that arbitrary data cannot be included
-    if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_extra_size as usize {
-        return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
-            len: output.features.coinbase_extra.len(),
-            max: max_coinbase_extra_size,
-        });
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod test {
     use tari_test_utils::unpack_enum;
@@ -650,67 +494,63 @@ mod test {
 
     mod check_coinbase_maturity {
         use super::*;
+        use crate::transactions::{aggregated_body::AggregateBody, transaction_components::TransactionError};
 
         #[test]
         fn it_succeeds_for_valid_coinbase() {
+            let height = 1;
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
+            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+
+            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .unwrap();
         }
 
         #[test]
         fn it_returns_error_for_invalid_coinbase_maturity() {
+            let height = 1;
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let err = check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap_err();
-            unpack_enum!(ValidationError::TransactionError(err) = err);
-            unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
-        }
-    }
-    mod check_coinbase_reward {
-        use super::*;
-
-        #[test]
-        fn it_succeeds_for_valid_coinbase() {
-            let test_params = TestParams::new();
-            let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
-            check_coinbase_reward(
-                &CommitmentFactory::default(),
-                &rules,
-                1,
-                0.into(),
-                &coinbase_kernel,
-                &coinbase_output,
-            )
-            .unwrap();
+
+            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+
+            let err = body
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .unwrap_err();
+            unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
 
         #[test]
         fn it_returns_error_for_invalid_coinbase_reward() {
+            let height = 1;
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1, None);
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
             coinbase.value = 123.into();
             let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
-            let err = check_coinbase_reward(
-                &CommitmentFactory::default(),
-                &rules,
-                1,
-                0.into(),
-                &coinbase_kernel,
-                &coinbase_output,
-            )
-            .unwrap_err();
-            unpack_enum!(ValidationError::TransactionError(err) = err);
+
+            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+
+            let err = body
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }
     }

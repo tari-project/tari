@@ -25,12 +25,12 @@ use std::sync::{
     Arc,
 };
 
-use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
     traits::CandidateBlockValidator,
+    BlockBodyValidator,
     HeaderChainLinkedValidator,
     InternalConsistencyValidator,
     TransactionValidator,
@@ -40,7 +40,7 @@ use crate::{
     chain_storage::BlockchainBackend,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction_components::Transaction,
-    validation::{error::ValidationError, BlockSyncBodyValidation, FinalHorizonStateValidation},
+    validation::{error::ValidationError, FinalHorizonStateValidation},
 };
 
 #[derive(Clone)]
@@ -68,11 +68,10 @@ impl MockValidator {
     }
 }
 
-#[async_trait]
-impl BlockSyncBodyValidation for MockValidator {
-    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError> {
+impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
+    fn validate_body(&self, _: &B, _: &Block) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            Ok(block)
+            Ok(())
         } else {
             Err(ValidationError::custom_error(
                 "This mock validator always returns an error",
@@ -82,7 +81,7 @@ impl BlockSyncBodyValidation for MockValidator {
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
-    fn validate_body(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate_body_with_metadata(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

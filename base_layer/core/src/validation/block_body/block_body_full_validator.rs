@@ -25,13 +25,14 @@ use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
-    blocks::ChainBlock,
+    blocks::{Block, ChainBlock},
     chain_storage::{self, BlockchainBackend},
     consensus::ConsensusManager,
     transactions::CryptoFactories,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
         helpers::check_mmr_roots,
+        BlockBodyValidator,
         CandidateBlockValidator,
         ValidationError,
     },
@@ -44,9 +45,10 @@ pub struct BlockBodyFullValidator {
 }
 
 impl BlockBodyFullValidator {
-    pub fn new(rules: ConsensusManager) -> Self {
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool) -> Self {
         let factories = CryptoFactories::default();
-        let block_internal_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
+        let block_internal_validator =
+            BlockBodyInternalConsistencyValidator::new(rules.clone(), bypass_range_proof_verification, factories);
         let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules.clone());
         Self {
             consensus_manager: rules,
@@ -58,46 +60,59 @@ impl BlockBodyFullValidator {
     pub fn validate<B: BlockchainBackend>(
         &self,
         backend: &B,
-        block: &ChainBlock,
-        metadata: &ChainMetadata,
+        block: &Block,
+        metadata_option: Option<&ChainMetadata>,
     ) -> Result<(), ValidationError> {
         // TODO: this validation should not be neccesary, as it's overlaps with header validation
         // but some of the test break without it
-        validate_block_metadata(block, metadata)?;
+        if let Some(metadata) = metadata_option {
+            validate_block_metadata(block, metadata)?;
+        }
 
         // validate the internal consistency of the block body
-        self.block_internal_validator.validate(block.block())?;
+        self.block_internal_validator.validate(block)?;
 
         // validate the block body against the current db
-        let body = &block.block().body;
-        let height = block.header().height;
+        let body = &block.body;
+        let height = block.header.height;
         self.aggregate_body_chain_validator.validate(body, height, backend)?;
 
         // validate the merkle mountain range roots
-        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, block.block())?;
-        check_mmr_roots(&block.block().header, &mmr_roots)?;
+        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, block)?;
+        check_mmr_roots(&block.header, &mmr_roots)?;
 
         Ok(())
     }
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator {
-    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-        self.validate(backend, block, metadata)
+    fn validate_body_with_metadata(
+        &self,
+        backend: &B,
+        block: &ChainBlock,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        self.validate(backend, block.block(), Some(metadata))
     }
 }
 
-fn validate_block_metadata(block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-    if block.header().prev_hash != *metadata.best_block() {
+impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<(), ValidationError> {
+        self.validate(backend, block, None)
+    }
+}
+
+fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    if block.header.prev_hash != *metadata.best_block() {
         return Err(ValidationError::IncorrectPreviousHash {
             expected: metadata.best_block().to_hex(),
             block_hash: block.hash().to_hex(),
         });
     }
-    if block.height() != metadata.height_of_longest_chain() + 1 {
+    if block.header.height != metadata.height_of_longest_chain() + 1 {
         return Err(ValidationError::IncorrectHeight {
             expected: metadata.height_of_longest_chain() + 1,
-            block_height: block.height(),
+            block_height: block.header.height,
         });
     }
 

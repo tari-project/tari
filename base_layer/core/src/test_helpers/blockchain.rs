@@ -136,7 +136,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
 pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        BlockBodyFullValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
         MockValidator::new(true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );

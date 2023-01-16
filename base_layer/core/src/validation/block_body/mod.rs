@@ -23,11 +23,6 @@
 #[cfg(test)]
 mod test;
 
-mod abort_on_drop;
-
-mod async_validator;
-pub use async_validator::BlockValidator;
-
 mod block_body_internal_validator;
 pub use block_body_internal_validator::BlockBodyInternalConsistencyValidator;
 

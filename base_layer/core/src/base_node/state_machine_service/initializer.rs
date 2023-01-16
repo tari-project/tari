@@ -110,11 +110,10 @@ where B: BlockchainBackend + 'static
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let sync_validators = SyncValidators::full_consensus(
-                db.clone(),
                 rules.clone(),
                 factories,
                 bypass_range_proof_verification,
-                config.blockchain_sync_config.validation_concurrency,
+                // config.blockchain_sync_config.validation_concurrency,
             );
 
             let node = BaseNodeStateMachine::new(

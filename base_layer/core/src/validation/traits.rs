@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -34,14 +33,18 @@ use crate::{
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
-#[async_trait]
-pub trait BlockSyncBodyValidation: Send + Sync {
-    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError>;
+pub trait BlockBodyValidator<B>: Send + Sync {
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<(), ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
 pub trait CandidateBlockValidator<B>: Send + Sync {
-    fn validate_body(&self, backend: &B, block: &ChainBlock, metadata: &ChainMetadata) -> Result<(), ValidationError>;
+    fn validate_body_with_metadata(
+        &self,
+        backend: &B,
+        block: &ChainBlock,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError>;
 }
 
 pub trait TransactionValidator: Send + Sync {

@@ -275,12 +275,16 @@ impl AggregateBody {
                 coinbase_utxo = Some(utxo.clone());
             }
         }
-        if coinbase_counter != 1 {
+        if coinbase_counter > 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbase);
+        }
+
+        if coinbase_counter == 0 {
+            return Err(TransactionError::NoCoinbase);
         }
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
