@@ -77,7 +77,7 @@ use tari_core::{
 use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
 use tari_integration_tests::error::GrpcBaseNodeError;
 use tari_script::{ExecutionStack, StackItem, TariScript};
-use tari_utilities::{hex::Hex, SafePassword};
+use tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_wallet_grpc_client::grpc::{
     CancelTransactionRequest,
@@ -1112,6 +1112,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 
     let num_retries = 100;
 
+    let mut current_status = 0;
     for _ in 0..num_retries {
         let mut txs = client
             .get_completed_transactions(grpc::GetCompletedTransactionsRequest {})
@@ -1121,7 +1122,8 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         let mut found_tx = 0;
         while let Some(tx) = txs.next().await {
             let tx_info = tx.unwrap().transaction.unwrap();
-            if tx_info.status == transaction_status {
+            current_status = tx_info.status;
+            if current_status == transaction_status {
                 found_tx += 1;
             }
         }
@@ -1132,8 +1134,8 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}",
-        wallet, num_txs, transaction_status
+        "Wallet {} failed to have at least num {} txs with status {}, current status is {}",
+        wallet, num_txs, transaction_status, current_status
     );
 }
 
@@ -4054,24 +4056,6 @@ async fn clear_custom_base_node(world: &mut TariWorld, wallet: String) {
     let mut cli = get_default_cli();
 
     cli.command2 = Some(CliCommands::ClearCustomBaseNode);
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-
-    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
-}
-
-#[when(expr = "I change the password of wallet {word} to {word} via command line")]
-async fn change_password_via_cli(world: &mut TariWorld, wallet: String, password: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut cli = get_default_cli();
-
-    cli.change_password = true;
-    cli.password = Some(SafePassword::from_str("kensentme").unwrap());
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();

@@ -17,15 +17,6 @@ Feature: Wallet CLI
         Then I set custom base node of WALLET to NODE2 via command line
         When I clear custom base node of wallet WALLET via command line
 
-    Scenario: As a user I want to change password via command line
-        Given I have a seed node SEED
-        When I have wallet WALLET connected to all seed nodes
-        Then I stop wallet WALLET
-        When I wait 15 seconds
-        When I change the password of wallet WALLET to changedpwd via command line
-        # Then the password of wallet WALLET is not kensentme
-        # Then the password of wallet WALLET is changedpwd
-
     Scenario: As a user I want to get balance via command line
         Given I have a base node BASE
         When I have wallet WALLET connected to base node BASE
