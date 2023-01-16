@@ -120,7 +120,7 @@ impl AggregateBodyInternalConsistencyValidator {
         verify_metadata_signatures(body)?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        validate_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
+        validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
         validate_covenants(body, height)?;
 
         // orphan candidate block validator
@@ -232,15 +232,15 @@ fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), ValidationErro
     Ok(())
 }
 
-/// this will validate the script offset of the aggregate body.
-fn validate_script_offset(
+/// this will validate the script and script offset of the aggregate body.
+fn validate_script_and_script_offset(
     body: &AggregateBody,
     script_offset: PublicKey,
     factory: &CommitmentFactory,
     prev_header: Option<HashOutput>,
     height: u64,
 ) -> Result<(), ValidationError> {
-    trace!(target: LOG_TARGET, "Checking script offset");
+    trace!(target: LOG_TARGET, "Checking script and script offset");
     // lets count up the input script public keys
     let mut input_keys = PublicKey::default();
     let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
