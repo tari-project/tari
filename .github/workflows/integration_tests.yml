@@ -50,13 +50,13 @@ jobs:
           if [ "${{ github.event_name }}" == "schedule" ] ; then
             echo "CI_FFI=false" >> $GITHUB_ENV
             if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
-              echo "CI_PROFILE=not @long-running" >> $GITHUB_ENV
+              echo "CI_PROFILE=(not @long-running)" >> $GITHUB_ENV
             elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
               echo "CI_PROFILE=@long-running" >> $GITHUB_ENV
             fi
           else
             echo "CI ..."
-            echo "CI_PROFILE=@critical and not @long-running" >> $GITHUB_ENV
+            echo "CI_PROFILE=@critical and (not @long-running)" >> $GITHUB_ENV
             CI_BINS=${{ inputs.ci_bins }}
             echo "Run binary - ${CI_BINS}"
             echo "CI_BINS=${CI_BINS:-true}" >> $GITHUB_ENV
@@ -97,7 +97,7 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and not @wallet-ffi and not @broken"
+            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @broken)"
             -c 5
             --retry 2
 
@@ -115,13 +115,13 @@ jobs:
           if [ "${{ github.event_name }}" == "schedule" ] ; then
             echo "CI_FFI=false" >> $GITHUB_ENV
             if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
-              echo "CI_PROFILE=not @long-running" >> $GITHUB_ENV
+              echo "CI_PROFILE=(not @long-running)" >> $GITHUB_ENV
             elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
               echo "CI_PROFILE=@long-running" >> $GITHUB_ENV
             fi
           else
             echo "CI ..."
-            echo "CI_PROFILE=@critical and not @long-running" >> $GITHUB_ENV
+            echo "CI_PROFILE=@critical and (not @long-running)" >> $GITHUB_ENV
             CI_FFI=${{ inputs.ci_ffi }}
             echo "Run FFI - ${CI_FFI}"
             echo "CI_FFI=${CI_FFI:-true}" >> $GITHUB_ENV
@@ -166,6 +166,6 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and not @broken"
+            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and (not @broken)"
             -c 1
             --retry 2
