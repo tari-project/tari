@@ -97,7 +97,8 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and not @ffi and not @broken"
+            -- -t "${{ env.CI_PROFILE }} and not @wallet-ffi and not @broken"
+            -c 5
             --retry 2
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
@@ -179,5 +180,6 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@ffi and ${{ env.CI_PROFILE }} and not @broken"
+            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and not @broken"
+            -c 1
             --retry 2
