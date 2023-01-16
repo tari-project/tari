@@ -145,8 +145,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
-    # TODO: unimplemented step to send money
-    @critical
+    @critical @broken
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
