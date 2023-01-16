@@ -247,7 +247,7 @@ async fn inbound_fetch_blocks() {
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManager::builder(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let block0 = consensus_manager.get_genesis_block();
     let validators = Validators::new(
         MockValidator::new(true),
