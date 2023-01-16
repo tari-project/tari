@@ -97,23 +97,10 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and not @ffi and not @broken"
+            -- -t "${{ env.CI_PROFILE }} and not @wallet-ffi and not @broken"
+            -c 5
             --retry 2
 
-      - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
-        if: ${{ env.CI_FFI == 'true' }}
-        timeout-minutes: 90
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --test cucumber
-            -v
-            --all-features
-            --release
-            --package tari_integration_tests
-            -- -t "@ffi and ${{ env.CI_PROFILE }} and not @broken"
-            --retry 2
   ffi:
     name: Cucumber tests / FFI
     runs-on: [self-hosted, ubuntu18.04-high-cpu]
@@ -179,5 +166,6 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@ffi and ${{ env.CI_PROFILE }} and not @broken"
+            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and not @broken"
+            -c 1
             --retry 2
