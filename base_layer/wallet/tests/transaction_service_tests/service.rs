@@ -1470,7 +1470,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         tokio::select! {
             event = alice_event_stream.recv() => {
                 if let TransactionEvent::Error(s) = &*event.unwrap() {
-                    if s == &"TransactionProtocolError(TransactionBuildError(InvalidSignatureError(\"Verifying kernel signature\")))".to_string()                         {
+                    if s == &"TransactionProtocolError(TransactionBuildError(ValidationError(\"The transaction is invalid: Signature is invalid: Verifying kernel signature\")))".to_string() {
                         errors+=1;
                     }
                     if errors >= 1 {
