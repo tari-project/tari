@@ -4110,7 +4110,7 @@ async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
 }
 
 #[then(expr = "I get balance of wallet {word} is at least {int} uT via command line")]
-async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, amount: u64) {
+async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
