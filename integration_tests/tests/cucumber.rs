@@ -4362,18 +4362,31 @@ fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
     buffer.lock().unwrap().clear();
 }
 
-async fn run_cucumber(is_ffi: bool, stdout_buffer: Arc<Mutex<Vec<u8>>>) {
-    let world = TariWorld::cucumber()
+fn main() {
+    initialize_logging(
+        &PathBuf::from("log4rs/cucumber.yml"),
+        include_str!("../log4rs/cucumber.yml"),
+    )
+    .expect("logging not configured");
+    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+    #[cfg(test)]
+    std::io::set_output_capture(Some(stdout_buffer.clone()));
+    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
+    // not be affected by the output capture.
+    let stdout_buffer_clone = stdout_buffer.clone();
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(async {
+        let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(if is_ffi {1} else {5})
+        .max_concurrent_scenarios(5)
         //.with_writer(
         //    writer::Basic::raw(io::stdout(), writer::Coloring::Never, 0)
         //        .summarized()
         //        .assert_normalized(),
         //)
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
-            let stdout_buffer = stdout_buffer.clone();
+            let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {
                 flush_stdout(&stdout_buffer);
                 match ev {
@@ -4401,31 +4414,8 @@ async fn run_cucumber(is_ffi: bool, stdout_buffer: Arc<Mutex<Vec<u8>>>) {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
-    world
-        .filter_run_and_exit("tests/features/", move |feature, _, _| {
-            if is_ffi {
-                feature.name == "Wallet FFI"
-            } else {
-                feature.name != "Wallet FFI"
-            }
-        })
-        .await;
-}
-
-fn main() {
-    initialize_logging(
-        &PathBuf::from("log4rs/cucumber.yml"),
-        include_str!("../log4rs/cucumber.yml"),
-    )
-    .expect("logging not configured");
-    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
-    #[cfg(test)]
-    std::io::set_output_capture(Some(stdout_buffer.clone()));
-    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
-    // not be affected by the output capture.
-    let runtime = Runtime::new().unwrap();
-    runtime.block_on(run_cucumber(false, stdout_buffer.clone()));
-    runtime.block_on(run_cucumber(true, stdout_buffer.clone()));
+        world.run_and_exit("tests/features/").await;
+    });
 
     // If by any chance we have anything in the stdout buffer just log it.
     flush_stdout(&stdout_buffer);
