@@ -20,6 +20,7 @@ tari_test_utils = { path = "../infrastructure/test_utils" }
 tari_base_node = { path = "../applications/tari_base_node" }
 tari_console_wallet = { path = "../applications/tari_console_wallet" }
 tari_wallet = { path = "../base_layer/wallet" }
+tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_script = { path = "../infrastructure/tari_script" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
@@ -42,6 +43,7 @@ diesel = { version = "1.4.8", default-features = false, features = ["sqlite"] }
 futures = { version = "^0.3.1" }
 json5 = "0.2.2"
 include_dir = "0.7.2"
+libc = "0.2.65"
 log = { version = "0.4.8", features = ["std"] }
 log4rs = { version = "1.1.1", features = ["rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 lmdb-zero = "0.4.4"

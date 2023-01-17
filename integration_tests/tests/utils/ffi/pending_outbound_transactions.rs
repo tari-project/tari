@@ -20,65 +20,48 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::TcpListener, ops::Range, time::Duration};
+use std::ptr::null_mut;
 
-use rand::Rng;
+use libc::c_void;
 
-use crate::TariWorld;
+use super::{ffi_import, PendingOutboundTransaction};
 
-pub mod base_node;
-pub mod base_node_process;
-pub mod ffi;
-pub mod miner;
-pub mod transaction;
-pub mod wallet;
-pub mod wallet_client;
-pub mod wallet_ffi;
-pub mod wallet_process;
-
-pub fn get_port(range: Range<u16>) -> Option<u64> {
-    let min = range.clone().min().expect("A minimum possible port number");
-    let max = range.max().expect("A maximum possible port number");
-
-    loop {
-        let port = rand::thread_rng().gen_range(min, max);
-
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return Some(u64::from(port));
-        }
-    }
+pub struct PendingOutboundTransactions {
+    ptr: *mut c_void,
 }
 
-pub async fn wait_for_service(port: u64) {
-    // The idea is that if the port is taken it means the service is running.
-    // If it's not taken the port hasn't come up yet
-    let max_tries = 40;
-    let mut attempts = 0;
-
-    loop {
-        if TcpListener::bind(("127.0.0.1", port as u16)).is_err() {
-            return;
-        }
-
-        if attempts >= max_tries {
-            panic!("Service on port {} never started", port);
-        }
-
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        attempts += 1;
+impl Drop for PendingOutboundTransactions {
+    fn drop(&mut self) {
+        unsafe { ffi_import::pending_outbound_transactions_destroy(self.ptr) };
+        self.ptr = null_mut();
     }
 }
-
-pub async fn get_peer_addresses(world: &TariWorld, peers: &Vec<String>) -> Vec<String> {
-    let mut peer_addresses = vec![];
-    for peer in peers {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.public_address()
-        ));
+impl PendingOutboundTransactions {
+    pub fn from_ptr(ptr: *mut c_void) -> Self {
+        Self { ptr }
     }
 
-    peer_addresses
+    pub fn get_length(&self) -> u32 {
+        let length;
+        let mut error = 0;
+        unsafe {
+            length = ffi_import::pending_outbound_transactions_get_length(self.ptr, &mut error);
+            if error > 0 {
+                println!("pending_outbound_transactions_get_length error {}", error);
+            }
+        }
+        length
+    }
+
+    pub fn get_at(&self, position: u32) -> PendingOutboundTransaction {
+        let ptr;
+        let mut error = 0;
+        unsafe {
+            ptr = ffi_import::pending_outbound_transactions_get_at(self.ptr, position, &mut error);
+            if error > 0 {
+                println!("pending_outbound_transactions_get_at error {}", error);
+            }
+        }
+        PendingOutboundTransaction::from_ptr(ptr)
+    }
 }

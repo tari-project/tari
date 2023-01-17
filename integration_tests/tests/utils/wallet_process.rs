@@ -143,7 +143,11 @@ pub async fn spawn_wallet(
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
-        let cli = cli.unwrap_or_else(get_default_cli);
+        let mut cli = cli.unwrap_or_else(get_default_cli);
+        // We expect only file_name to be passed from cucumber.rs, now we put it in the right directory.
+        if let Some(file_name) = cli.seed_words_file_name {
+            cli.seed_words_file_name = Some(temp_dir_path.join(file_name));
+        }
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
             panic!("{:?}", e);
