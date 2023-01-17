@@ -578,6 +578,33 @@ mod test {
         assert_eq!(decrypted.decryption_result.unwrap_err(), inbound_msg.body);
     }
 
+    #[test]
+    fn decrypt_inbound_fail_empty_contents() {
+        let service = service_fn(
+            move |_msg: DecryptedDhtMessage| -> future::Ready<Result<(), PipelineError>> {
+                panic!("Should not be called")
+            },
+        );
+        let node_identity = make_node_identity();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+
+        let some_other_node_identity = make_node_identity();
+        let mut inbound_msg = make_dht_inbound_message(
+            &some_other_node_identity,
+            &Vec::new(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            true,
+        )
+        .unwrap();
+        inbound_msg.body = Vec::new();
+
+        let err = block_on(service.call(inbound_msg.clone())).unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::EncryptedMessageEmptyBody = err);
+    }
+
     #[runtime::test]
     async fn decrypt_inbound_fail_destination() {
         let (connectivity, mock) = create_connectivity_mock();
