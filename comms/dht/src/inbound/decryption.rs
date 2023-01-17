@@ -75,6 +75,8 @@ enum DecryptionError {
     EncryptedMessageNoDestination,
     #[error("Decryption failed: {0}")]
     DecryptionFailedMalformedCipher(#[from] DhtEncryptError),
+    #[error("Encrypted message must have a non-empty body")]
+    EncryptedMessageEmptyBody,
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -346,6 +348,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// Performs message validation that should be performed by all nodes. If an error is encountered, the message is
     /// invalid and should never have been sent.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
+        if message.body.is_empty() {
+            return Err(DecryptionError::EncryptedMessageEmptyBody);
+        }
+
         if message.dht_header.flags.is_encrypted() {
             // Check if there is no destination specified and discard
             if message.dht_header.destination.is_unknown() {
