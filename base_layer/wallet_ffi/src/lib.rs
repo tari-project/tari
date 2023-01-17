@@ -4717,6 +4717,65 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
     }
 }
 
+/// Gets the length of the public keys vector
+///
+/// ## Arguments
+/// `public_keys` - Pointer to TariPublicKeys
+///
+/// ## Returns
+/// `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_keys.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*public_keys).0.len() as c_uint
+}
+
+/// Gets a ByteVector at position in a EmojiSet
+///
+/// ## Arguments
+/// `public_keys` - The pointer to a TariPublicKeys
+/// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
+/// is null or if the position is invalid
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_get_at(
+    public_keys: *const TariPublicKeys,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_keys.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let last_index = public_keys_get_length(public_keys, error_out) - 1;
+    if position > last_index {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let result = (*public_keys).0[position as usize].clone();
+    Box::into_raw(Box::new(result))
+}
+
 /// ---------------------------------------------------------------------------------------------- ///
 
 /// ------------------------------------- Wallet -------------------------------------------------///
