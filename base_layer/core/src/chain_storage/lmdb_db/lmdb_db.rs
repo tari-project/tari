@@ -580,7 +580,7 @@ impl LMDBDatabase {
         let output_hash = output.hash();
         let witness_hash = output.witness_hash();
 
-        let output_key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_le_bytes().as_slice()])?;
+        let output_key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_be_bytes().as_slice()])?;
 
         lmdb_insert(
             txn,
@@ -632,7 +632,7 @@ impl LMDBDatabase {
                 header_hash.to_hex(),
             )));
         }
-        let key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_le_bytes().as_slice()])?;
+        let key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_be_bytes().as_slice()])?;
         lmdb_insert(
             txn,
             &*self.txos_hash_to_index_db,
@@ -667,7 +667,7 @@ impl LMDBDatabase {
         let hash = kernel.hash();
         let key = KernelKey::try_from_parts(&[
             header_hash.as_slice(),
-            mmr_position.to_le_bytes().as_slice(),
+            mmr_position.to_be_bytes().as_slice(),
             hash.as_slice(),
         ])?;
 
@@ -734,7 +734,7 @@ impl LMDBDatabase {
         let hash = input.canonical_hash();
         let key = InputKey::try_from_parts(&[
             header_hash.as_slice(),
-            mmr_position.to_le_bytes().as_slice(),
+            mmr_position.to_be_bytes().as_slice(),
             hash.as_slice(),
         ])?;
         lmdb_insert(
@@ -2047,7 +2047,7 @@ impl BlockchainBackend for LMDBDatabase {
         {
             let key = KernelKey::try_from_parts(&[
                 header_hash.as_slice(),
-                mmr_position.to_le_bytes().as_slice(),
+                mmr_position.to_be_bytes().as_slice(),
                 hash.as_slice(),
             ])?;
             Ok(lmdb_get(&txn, &self.kernels_db, &key)?
