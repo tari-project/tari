@@ -765,6 +765,7 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
+                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.0).collect();
                     let count = utxos.len();
                     let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
                     if let Some(file) = args.output_file {
@@ -801,6 +802,7 @@ pub async fn command_runner(
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
+                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.0).collect();
                     let count = utxos.len();
                     let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                     let sum: MicroTari = values.iter().sum();

@@ -351,7 +351,11 @@ where
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
+                let outputs = self
+                    .fetch_unspent_outputs()?
+                    .into_iter()
+                    .map(|(output, tx_id)| (output.into(), tx_id))
+                    .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
             OutputManagerRequest::GetOutputsBy(q) => {
@@ -1533,7 +1537,7 @@ where
         Ok(self.resources.db.fetch_spent_outputs()?)
     }
 
-    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub fn fetch_unspent_outputs(&self) -> Result<Vec<(DbUnblindedOutput, u64)>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 

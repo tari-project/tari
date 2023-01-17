@@ -495,8 +495,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert_eq!(utxos.len(), 8);
     for (index, utxo) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
-        assert_eq!(utxo.features.maturity, i);
-        assert_eq!(utxo.value, i * amount);
+        assert_eq!(utxo.0.features.maturity, i);
+        assert_eq!(utxo.0.value, i * amount);
     }
 
     // test that we can get a fee estimate with no chain metadata
@@ -530,7 +530,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     // test that largest utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
-    for (index, utxo) in utxos.iter().enumerate() {
+    for (index, (utxo, _)) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
         assert_eq!(utxo.features.maturity, i);
         assert_eq!(utxo.value, i * amount);
@@ -621,7 +621,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 9);
-    let found = utxos.iter().any(|u| u.value == 6 * amount);
+    let found = utxos.iter().any(|u| u.0.value == 6 * amount);
     assert!(!found, "An unspendable utxo was selected");
 
     // test transactions
@@ -645,7 +645,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
-    for utxo in &utxos {
+    for (utxo, _) in &utxos {
         assert_ne!(utxo.features.maturity, 1);
         assert_ne!(utxo.value, amount);
         assert_ne!(utxo.features.maturity, 2);
@@ -673,7 +673,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the highest spendable 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 5);
-    for utxo in &utxos {
+    for (utxo, _) in &utxos {
         assert_ne!(utxo.features.maturity, 4);
         assert_ne!(utxo.value, 4 * amount);
         assert_ne!(utxo.features.maturity, 5);
@@ -752,7 +752,7 @@ async fn test_utxo_selection_with_tx_priority() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 1);
 
-    assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
+    assert_ne!(utxos[0].0.features.output_type, OutputType::Coinbase);
 }
 
 #[tokio::test]
