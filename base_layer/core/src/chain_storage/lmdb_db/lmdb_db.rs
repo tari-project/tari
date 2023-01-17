@@ -1537,7 +1537,7 @@ impl LMDBDatabase {
                 &u64::from(pos + 1).to_be_bytes(),
             )
             .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
-            let key = OutputKey::try_from_parts(&[hash.as_slice(), pos.to_le_bytes().as_slice()])?;
+            let key = OutputKey::try_from_parts(&[hash.as_slice(), pos.to_be_bytes().as_slice()])?;
             debug!(target: LOG_TARGET, "Pruning output: {}", key);
             self.prune_output(write_txn, &key)?;
         }
