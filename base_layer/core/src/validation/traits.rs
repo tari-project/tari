@@ -34,7 +34,7 @@ use crate::{
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
 pub trait BlockBodyValidator<B>: Send + Sync {
-    fn validate_body(&self, backend: &B, block: &Block) -> Result<(), ValidationError>;
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan

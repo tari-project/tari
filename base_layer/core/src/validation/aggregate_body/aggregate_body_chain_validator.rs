@@ -30,7 +30,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionOutput},
+        transaction_components::{TransactionError, TransactionInput, TransactionOutput},
     },
     validation::{
         helpers::{check_input_is_utxo, check_not_duplicate_txo, check_tari_script_byte_size},
@@ -56,13 +56,13 @@ impl AggregateBodyChainLinkedValidator {
         body: &AggregateBody,
         height: u64,
         db: &B,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<AggregateBody, ValidationError> {
         let constants = self.consensus_manager.consensus_constants(height);
 
         self.validate_consensus(body, db, constants)?;
-        self.validate_input_and_maturity(body, db, constants, height)?;
+        let body = self.validate_input_and_maturity(body, db, constants, height)?;
 
-        Ok(())
+        Ok(body)
     }
 
     fn validate_consensus<B: BlockchainBackend>(
@@ -86,33 +86,55 @@ impl AggregateBodyChainLinkedValidator {
         db: &B,
         constants: &ConsensusConstants,
         height: u64,
-    ) -> Result<(), ValidationError> {
-        check_inputs_are_utxos(db, body)?;
-        check_outputs(db, constants, body)?;
-        verify_no_duplicated_inputs_outputs(body)?;
-        check_total_burned(body)?;
-        verify_timelocks(body, height)?;
-        validate_input_not_pruned(body, db)?;
-        validate_input_maturity(body, height)?;
+    ) -> Result<AggregateBody, ValidationError> {
+        // inputs may be "slim", only containing references to outputs
+        // so we need to resolve those references, creating a new body in the process
+        let inputs = validate_input_not_pruned(body, db)?;
+        let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
-        Ok(())
+        validate_input_maturity(&body, height)?;
+        check_inputs_are_utxos(db, &body)?;
+        check_outputs(db, constants, &body)?;
+        verify_no_duplicated_inputs_outputs(&body)?;
+        check_total_burned(&body)?;
+        verify_timelocks(&body, height)?;
+
+        Ok(body)
     }
 }
 
-fn validate_input_not_pruned<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
-    for input in body.inputs() {
+fn validate_input_not_pruned<B: BlockchainBackend>(
+    body: &AggregateBody,
+    db: &B,
+) -> Result<Vec<TransactionInput>, ValidationError> {
+    let mut inputs: Vec<TransactionInput> = body.inputs().clone();
+    for input in &mut inputs {
         if input.is_compact() {
             let output_mined_info = db
                 .fetch_output(&input.output_hash())?
                 .ok_or(ValidationError::TransactionInputSpentOutputMissing)?;
 
-            if let PrunedOutput::Pruned { .. } = output_mined_info.output {
-                return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+            match output_mined_info.output {
+                PrunedOutput::Pruned { .. } => {
+                    return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+                },
+                PrunedOutput::NotPruned { output } => {
+                    input.add_output_data(
+                        output.version,
+                        output.features,
+                        output.commitment,
+                        output.script,
+                        output.sender_offset_public_key,
+                        output.covenant,
+                        output.encrypted_value,
+                        output.minimum_value_promise,
+                    );
+                },
             }
         }
     }
 
-    Ok(())
+    Ok(inputs)
 }
 
 fn validate_input_maturity(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {

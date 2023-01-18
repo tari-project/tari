@@ -62,26 +62,29 @@ impl BlockBodyFullValidator {
         backend: &B,
         block: &Block,
         metadata_option: Option<&ChainMetadata>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<Block, ValidationError> {
         // TODO: this validation should not be neccesary, as it's overlaps with header validation
         // but some of the test break without it
         if let Some(metadata) = metadata_option {
             validate_block_metadata(block, metadata)?;
         }
 
-        // validate the internal consistency of the block body
-        self.block_internal_validator.validate(block)?;
-
         // validate the block body against the current db
         let body = &block.body;
         let height = block.header.height;
-        self.aggregate_body_chain_validator.validate(body, height, backend)?;
+        // the inputs may be only references to outputs, that's why the validator returns a new body and we need a new
+        // block
+        let body = self.aggregate_body_chain_validator.validate(body, height, backend)?;
+        let block = Block::new(block.header.clone(), body);
+
+        // validate the internal consistency of the block body
+        self.block_internal_validator.validate(&block)?;
 
         // validate the merkle mountain range roots
-        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, block)?;
+        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block)?;
         check_mmr_roots(&block.header, &mmr_roots)?;
 
-        Ok(())
+        Ok(block)
     }
 }
 
@@ -92,12 +95,13 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         block: &ChainBlock,
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError> {
-        self.validate(backend, block.block(), Some(metadata))
+        self.validate(backend, block.block(), Some(metadata))?;
+        Ok(())
     }
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
-    fn validate_body(&self, backend: &B, block: &Block) -> Result<(), ValidationError> {
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError> {
         self.validate(backend, block, None)
     }
 }

@@ -309,8 +309,8 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             .await
             .map_err(|err| ValidationError::CustomError(err.to_string()))?;
 
-            match res {
-                Ok(_) => (),
+            let block = match res {
+                Ok(block) => block,
                 Err(err @ ValidationError::BadBlockFound { .. }) |
                 Err(err @ ValidationError::FatalStorageError(_)) |
                 Err(err @ ValidationError::AsyncTaskFailed(_)) |

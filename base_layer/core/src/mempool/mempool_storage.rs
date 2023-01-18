@@ -126,6 +126,7 @@ impl MempoolStorage {
                 TxStorageResponse::NotStoredAlreadyMined
             },
             Err(e) => {
+                eprintln!("Validation failed due to error: {}", e);
                 warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
                 TxStorageResponse::NotStored
             },
