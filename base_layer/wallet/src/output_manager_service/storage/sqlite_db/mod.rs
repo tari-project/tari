@@ -1439,7 +1439,7 @@ mod test {
 
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -1448,7 +1448,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None, &cipher).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
@@ -1556,7 +1556,7 @@ mod test {
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let decrypted_spending_key = uo.spending_key.to_vec();
 
-        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
 
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None, &cipher).unwrap();
 
