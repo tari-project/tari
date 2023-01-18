@@ -53,7 +53,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{KnownOneSidedPaymentScript, SpendingPriority},
+        models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -252,7 +252,7 @@ pub enum OutputManagerResponse {
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),
-    UnspentOutputs(Vec<UnblindedOutput>),
+    UnspentOutputs(Vec<DbUnblindedOutput>),
     Outputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
     BaseNodePublicKeySet,
@@ -625,7 +625,7 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),

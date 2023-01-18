@@ -203,7 +203,7 @@ pub type TariEncryptedValue = tari_core::transactions::transaction_components::E
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<TariUnblindedOutput>);
+pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -1616,7 +1616,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
             Ok(json_string) => match CString::new(json_string) {
                 Ok(v) => hex_bytes = v,
                 _ => {
-                    error = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;
+                    error = LibWalletError::from(InterfaceError::PointerError("output".to_string())).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
                 },
             },
@@ -1747,7 +1747,48 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
+    Box::into_raw(Box::new((*outputs).0[position as usize].unblinded_output.clone()))
+}
+
+/// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
+///
+/// ## Arguments
+/// `outputs` - The pointer to a TariUnblindedOutputs
+/// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
+/// TariUnblindedOutputs is null or position is invalid
+///
+/// # Safety
+/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn unblinded_outputs_received_tx_id_get_at(
+    outputs: *mut TariUnblindedOutputs,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if outputs.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let len = unblinded_outputs_get_length(outputs, error_out) as c_int - 1;
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new(
+        (*outputs).0[position as usize]
+            .received_in_tx_id
+            .unwrap_or_default()
+            .as_u64(),
+    ))
 }
 
 /// Frees memory for a TariUnblindedOutputs
@@ -3676,6 +3717,99 @@ pub unsafe extern "C" fn completed_transaction_get_cancellation_reason(
     match (*tx).cancelled {
         None => -1i32,
         Some(reason) => reason as i32,
+    }
+}
+
+/// returns the TariCompletedTransaction as a json string
+///
+/// ## Arguments
+/// `tx` - The pointer to a TariCompletedTransaction
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+/// TariCompletedTransaction is null or the position is invalid
+///
+/// # Safety
+///  The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_completed_transaction_to_json(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut hex_bytes = CString::new("").expect("Blank CString will not fail.");
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        match serde_json::to_string(&*tx) {
+            Ok(json_string) => match CString::new(json_string) {
+                Ok(v) => hex_bytes = v,
+                _ => {
+                    error = LibWalletError::from(InterfaceError::PointerError("transaction".to_string())).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                },
+            },
+            Err(_) => {
+                error = LibWalletError::from(HexError::HexConversionError).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        }
+    }
+    CString::into_raw(hex_bytes)
+}
+
+/// Creates a TariUnblindedOutput from a char array
+///
+/// ## Arguments
+/// `tx_json` - The pointer to a char array which is json of the TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns
+/// ptr::null_mut() if key is null or if there was an error creating the TariCompletedTransaction from key
+///
+/// # Safety
+/// The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+// /// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
+    tx_json: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransaction {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let tx_json_str;
+    if tx_json.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx_json".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(tx_json).to_str() {
+            Ok(v) => {
+                tx_json_str = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("tx_json".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    }
+    let tx: Result<TariCompletedTransaction, _> = serde_json::from_str(&tx_json_str);
+
+    match tx {
+        Ok(tx) => Box::into_raw(Box::new(tx)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
+
+            error = LibWalletError::from(HexError::HexConversionError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 

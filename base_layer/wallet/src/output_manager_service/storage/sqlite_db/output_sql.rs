@@ -795,6 +795,8 @@ impl OutputSql {
             marked_deleted_in_block,
             spending_priority,
             source: o.source.try_into()?,
+            received_in_tx_id: o.received_in_tx_id.map(|d| (d as u64).into()),
+            spent_in_tx_id: o.spent_in_tx_id.map(|d| (d as u64).into()),
         })
     }
 }
