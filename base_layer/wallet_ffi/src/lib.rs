@@ -1613,7 +1613,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
         match serde_json::to_string(&*output) {
-            Ok(json_string) => match CString::new(json_string.to_string()) {
+            Ok(json_string) => match CString::new(json_string) {
                 Ok(v) => hex_bytes = v,
                 _ => {
                     error = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;

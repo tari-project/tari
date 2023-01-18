@@ -273,13 +273,6 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernels_in_block(header_hash)
     }
 
-    fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_kernel_by_excess(excess)
-    }
-
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,

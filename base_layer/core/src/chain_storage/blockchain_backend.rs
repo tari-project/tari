@@ -90,12 +90,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch all the kernels in a block
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
 
-    /// Fetch a kernel with this excess and returns a `TransactionKernel` and the hash of the block that it is in
-    fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
-
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
     fn fetch_kernel_by_excess_sig(

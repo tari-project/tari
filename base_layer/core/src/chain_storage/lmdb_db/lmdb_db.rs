@@ -2018,22 +2018,6 @@ impl BlockchainBackend for LMDBDatabase {
             .collect())
     }
 
-    fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        if let Some((header_hash, mmr_position, hash)) =
-            lmdb_get::<_, (HashOutput, u32, HashOutput)>(&txn, &self.kernel_excess_index, excess)?
-        {
-            let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
-            Ok(lmdb_get(&txn, &self.kernels_db, key.as_str())?
-                .map(|kernel: TransactionKernelRowData| (kernel.kernel, header_hash)))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,
