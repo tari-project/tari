@@ -353,7 +353,7 @@ where
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
+                let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
             OutputManagerRequest::GetOutputsBy(q) => {
@@ -652,6 +652,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -690,6 +692,8 @@ where
             spend_priority,
             None,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -730,6 +734,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
@@ -846,6 +852,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(single_round_sender_data.tx_id),
+            None,
         )?;
 
         self.resources
@@ -1048,6 +1056,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -1116,6 +1126,8 @@ where
             None,
             None,
             OutputSource::Coinbase,
+            Some(tx_id),
+            None,
         )?;
 
         // If there is no existing output available, we store the one we produced.
@@ -1209,13 +1221,15 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?)
         }
 
         let mut stp = builder
             .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
+        let tx_id = stp.get_tx_id()?;
         if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
@@ -1224,9 +1238,10 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
-        let tx_id = stp.get_tx_id()?;
 
         self.resources
             .db
@@ -1336,6 +1351,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
@@ -1376,6 +1393,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?;
             outputs.push(change_output);
         }
@@ -1836,6 +1855,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -2056,6 +2077,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -2114,6 +2137,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -2264,6 +2289,8 @@ where
             None,
             None,
             OutputSource::default(),
+            None,
+            None,
         )?;
 
         tx_builder
@@ -2427,6 +2454,8 @@ where
                     None,
                     None,
                     OutputSource::AtomicSwap,
+                    Some(tx_id),
+                    None,
                 )?;
                 outputs.push(change_output);
 
@@ -2519,6 +2548,8 @@ where
             None,
             None,
             OutputSource::Refund,
+            Some(tx_id),
+            None,
         )?;
         outputs.push(change_output);
 
@@ -2674,6 +2705,7 @@ where
                         output.minimum_value_promise,
                     );
 
+                    let tx_id = TxId::new_random();
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                         rewound_output.clone(),
                         &self.resources.factories,
@@ -2684,10 +2716,11 @@ where
                         None,
                         Some(&output.proof),
                         output_source,
+                        Some(tx_id),
+                        None,
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    let tx_id = TxId::new_random();
 
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                         Ok(_) => {

@@ -410,14 +410,6 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_kernel_by_excess(excess)
-    }
-
     pub fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: Signature,

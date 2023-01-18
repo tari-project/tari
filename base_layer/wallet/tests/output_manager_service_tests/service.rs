@@ -499,8 +499,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert_eq!(utxos.len(), 8);
     for (index, utxo) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
-        assert_eq!(utxo.features.maturity, i);
-        assert_eq!(utxo.value, i * amount);
+        assert_eq!(utxo.unblinded_output.features.maturity, i);
+        assert_eq!(utxo.unblinded_output.value, i * amount);
     }
 
     // test that we can get a fee estimate with no chain metadata
@@ -536,8 +536,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert_eq!(utxos.len(), 7);
     for (index, utxo) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
-        assert_eq!(utxo.features.maturity, i);
-        assert_eq!(utxo.value, i * amount);
+        assert_eq!(utxo.unblinded_output.features.maturity, i);
+        assert_eq!(utxo.unblinded_output.value, i * amount);
     }
 }
 
@@ -625,7 +625,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 9);
-    let found = utxos.iter().any(|u| u.value == 6 * amount);
+    let found = utxos.iter().any(|u| u.unblinded_output.value == 6 * amount);
     assert!(!found, "An unspendable utxo was selected");
 
     // test transactions
@@ -650,10 +650,10 @@ async fn test_utxo_selection_with_chain_metadata() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
     for utxo in &utxos {
-        assert_ne!(utxo.features.maturity, 1);
-        assert_ne!(utxo.value, amount);
-        assert_ne!(utxo.features.maturity, 2);
-        assert_ne!(utxo.value, 2 * amount);
+        assert_ne!(utxo.unblinded_output.features.maturity, 1);
+        assert_ne!(utxo.unblinded_output.value, amount);
+        assert_ne!(utxo.unblinded_output.features.maturity, 2);
+        assert_ne!(utxo.unblinded_output.value, 2 * amount);
     }
 
     // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
@@ -678,10 +678,10 @@ async fn test_utxo_selection_with_chain_metadata() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 5);
     for utxo in &utxos {
-        assert_ne!(utxo.features.maturity, 4);
-        assert_ne!(utxo.value, 4 * amount);
-        assert_ne!(utxo.features.maturity, 5);
-        assert_ne!(utxo.value, 5 * amount);
+        assert_ne!(utxo.unblinded_output.features.maturity, 4);
+        assert_ne!(utxo.unblinded_output.value, 4 * amount);
+        assert_ne!(utxo.unblinded_output.features.maturity, 5);
+        assert_ne!(utxo.unblinded_output.value, 5 * amount);
     }
 }
 
@@ -756,7 +756,7 @@ async fn test_utxo_selection_with_tx_priority() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 1);
 
-    assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
+    assert_ne!(utxos[0].unblinded_output.features.output_type, OutputType::Coinbase);
 }
 
 #[tokio::test]

@@ -231,6 +231,10 @@ impl From<WalletError> for LibWalletError {
                 code: 210,
                 message: format!("{:?}", w),
             },
+            WalletError::TransactionServiceError(TransactionServiceError::NoBaseNodeKeysProvided) => Self {
+                code: 212,
+                message: format!("{:?}", w),
+            },
             WalletError::TransactionServiceError(_) => Self {
                 code: 211,
                 message: format!("{:?}", w),

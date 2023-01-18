@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.43.3"
+version = "0.44.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -52,6 +52,7 @@ tracing = "0.1.26"
 unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
 zeroize = "1"
+zxcvbn = "2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
