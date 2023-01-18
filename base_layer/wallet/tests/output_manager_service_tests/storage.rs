@@ -55,7 +55,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         ));
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
+        let mut uo =
+            DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
@@ -102,7 +103,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None)
+                .unwrap();
             db.add_unspent_output(uo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
         }
@@ -112,7 +114,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None)
+                .unwrap();
             pending_tx.outputs_to_be_received.push(uo);
         }
         db.encumber_outputs(
@@ -360,7 +363,8 @@ pub async fn test_short_term_encumberance() {
             &factories.commitment,
         )
         .await;
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
+        let mut uo =
+            DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
