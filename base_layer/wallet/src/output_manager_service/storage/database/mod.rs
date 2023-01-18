@@ -99,7 +99,7 @@ pub enum DbKey {
 pub enum DbValue {
     SpentOutput(Box<DbUnblindedOutput>),
     UnspentOutput(Box<DbUnblindedOutput>),
-    UnspentOutputs(Vec<(DbUnblindedOutput, u64)>),
+    UnspentOutputs(Vec<DbUnblindedOutput>),
     SpentOutputs(Vec<DbUnblindedOutput>),
     InvalidOutputs(Vec<DbUnblindedOutput>),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
@@ -218,7 +218,7 @@ where T: OutputManagerBackend + 'static
         self.db.cancel_pending_transaction(tx_id)
     }
 
-    pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<(DbUnblindedOutput, u64)>, OutputManagerStorageError> {
+    pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let result = match self.db.fetch(&DbKey::UnspentOutputs)? {
             Some(DbValue::UnspentOutputs(outputs)) => outputs,
             Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
@@ -300,8 +300,7 @@ where T: OutputManagerBackend + 'static
             Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         }?;
-        let outputs = uo.into_iter().map(|(output, _)| (output)).collect();
-        Ok(outputs)
+        Ok(uo)
     }
 
     pub fn get_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {

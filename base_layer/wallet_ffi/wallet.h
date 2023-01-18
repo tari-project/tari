@@ -960,9 +960,9 @@ TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outpu
  * # Safety
  * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
  */
-unsigned long long *unblinded_outputs_tx_id_get_at(struct TariUnblindedOutputs *outputs,
-                                                   unsigned int position,
-                                                   int *error_out);
+unsigned long long *unblinded_outputs_received_tx_id_get_at(struct TariUnblindedOutputs *outputs,
+                                                            unsigned int position,
+                                                            int *error_out);
 
 /**
  * Frees memory for a TariUnblindedOutputs
@@ -2018,8 +2018,8 @@ char *tari_completed_transaction_to_json(TariCompletedTransaction *tx,
  * as an out parameter.
  *
  * ## Returns
- * `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns ptr::null_mut()
- * if key is null or if there was an error creating the TariCompletedTransaction from key
+ * `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns
+ * ptr::null_mut() if key is null or if there was an error creating the TariCompletedTransaction from key
  *
  * # Safety
  * The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to

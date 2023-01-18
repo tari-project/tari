@@ -203,7 +203,7 @@ pub type TariEncryptedValue = tari_core::transactions::transaction_components::E
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<(TariUnblindedOutput, u64)>);
+pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -1747,7 +1747,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].0.clone()))
+    Box::into_raw(Box::new((*outputs).0[position as usize].unblinded_output.clone()))
 }
 
 /// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
@@ -1765,7 +1765,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn unblinded_outputs_tx_id_get_at(
+pub unsafe extern "C" fn unblinded_outputs_received_tx_id_get_at(
     outputs: *mut TariUnblindedOutputs,
     position: c_uint,
     error_out: *mut c_int,
@@ -1783,7 +1783,12 @@ pub unsafe extern "C" fn unblinded_outputs_tx_id_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].1))
+    Box::into_raw(Box::new(
+        (*outputs).0[position as usize]
+            .received_in_tx_id
+            .unwrap_or_default()
+            .as_u64(),
+    ))
 }
 
 /// Frees memory for a TariUnblindedOutputs

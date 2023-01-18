@@ -202,11 +202,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| {
-                            o.clone()
-                                .to_db_unblinded_output(&cipher)
-                                .map(|v| (v, o.received_in_tx_id.unwrap_or_default() as u64))
-                        })
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -226,11 +222,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| {
-                            o.clone()
-                                .to_db_unblinded_output(&cipher)
-                                .map(|v| (v, o.received_in_tx_id.unwrap_or_default() as u64))
-                        })
+                        .map(|o| o.clone().to_db_unblinded_output(&cipher))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
