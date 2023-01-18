@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.44.0](https://github.com/tari-project/tari/compare/v0.43.3...v0.44.0) (2023-01-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* prune mode sync (#5124)
+
+### Features
+
+* add tx_id_to export ([#5126](https://github.com/tari-project/tari/issues/5126)) ([7eeeff4](https://github.com/tari-project/tari/commit/7eeeff4bbd5a147bd35e9ae7af75dba1da87383b))
+* increase wallet FFI error codes ([#5118](https://github.com/tari-project/tari/issues/5118)) ([d5db596](https://github.com/tari-project/tari/commit/d5db596a2f4522427af7ff380b6e4974152d6ada))
+* provide password feedback ([#5111](https://github.com/tari-project/tari/issues/5111)) ([a568e04](https://github.com/tari-project/tari/commit/a568e0464c5da047df316356edb856bff34de4f0))
+
+
+### Bug Fixes
+
+* add burnt utxos to side chain query ([#5125](https://github.com/tari-project/tari/issues/5125)) ([fb2fa4b](https://github.com/tari-project/tari/commit/fb2fa4b4c7b3a72360926c4d300cd0ce0056dc54))
+* automatically set base node fetures on startup, sign only if necessary ([#5108](https://github.com/tari-project/tari/issues/5108)) ([9aa9436](https://github.com/tari-project/tari/commit/9aa9436e945f6db59b34ad9c29a973fdc6515eda))
+* **dht:** check for empty body contents in initial msg validation ([#5123](https://github.com/tari-project/tari/issues/5123)) ([48bf2d9](https://github.com/tari-project/tari/commit/48bf2d9302dcc1c8c0953a4576d09dc07577cb3f))
+* prune mode sync ([#5124](https://github.com/tari-project/tari/issues/5124)) ([8fa076a](https://github.com/tari-project/tari/commit/8fa076ad0ea5d9c4408b0e863e4f24cfa2a8258a))
+* vanity_id example should create id with base node features ([#5107](https://github.com/tari-project/tari/issues/5107)) ([3b21199](https://github.com/tari-project/tari/commit/3b21199dcf4639a7ca5cff727bcb49927b624842))
+
 ### [0.43.3](https://github.com/tari-project/tari/compare/v0.43.2...v0.43.3) (2023-01-12)
 
 
