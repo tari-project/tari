@@ -39,6 +39,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::{
+    consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
         tari_amount::{uT, MicroTari},
@@ -110,6 +111,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 async fn create_wallet(
     data_path: &Path,
     database_name: &str,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
     passphrase: SafePassword,
@@ -182,6 +184,7 @@ async fn create_wallet(
         PeerSeedsConfig::default(),
         AutoUpdateConfig::default(),
         Arc::new(node_identity.clone()),
+        consensus_manager,
         factories,
         wallet_db,
         output_db,
@@ -203,6 +206,7 @@ async fn test_wallet() {
     let alice_db_tempdir = tempdir().unwrap();
     let bob_db_tempdir = tempdir().unwrap();
 
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
 
     let base_node_identity =
@@ -214,6 +218,7 @@ async fn test_wallet() {
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_a.to_signal(),
         alice_passphrase.clone(),
@@ -227,6 +232,7 @@ async fn test_wallet() {
     let bob_wallet = create_wallet(
         bob_db_tempdir.path(),
         "bob_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_b.to_signal(),
         bob_passphrase,
@@ -348,6 +354,7 @@ async fn test_wallet() {
     let alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_a.to_signal(),
         alice_passphrase.clone(),
@@ -370,6 +377,7 @@ async fn test_wallet() {
     let alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_a.to_signal(),
         alice_passphrase.clone(),
@@ -415,6 +423,7 @@ async fn test_wallet() {
 
 #[tokio::test]
 async fn test_do_not_overwrite_master_key() {
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
 
@@ -424,6 +433,7 @@ async fn test_do_not_overwrite_master_key() {
     let wallet = create_wallet(
         dir.path(),
         "wallet_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown.to_signal(),
         "beautiful moon outside".to_string().into(),
@@ -440,6 +450,7 @@ async fn test_do_not_overwrite_master_key() {
     match create_wallet(
         dir.path(),
         "wallet_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown.to_signal(),
         "beautiful moon outside".to_string().into(),
@@ -456,6 +467,7 @@ async fn test_do_not_overwrite_master_key() {
     let _wallet = create_wallet(
         dir.path(),
         "wallet_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown.to_signal(),
         "very safe".to_string().into(),
@@ -467,6 +479,7 @@ async fn test_do_not_overwrite_master_key() {
 
 #[tokio::test]
 async fn test_sign_message() {
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
 
@@ -474,6 +487,7 @@ async fn test_sign_message() {
     let mut wallet = create_wallet(
         dir.path(),
         "wallet_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown.to_signal(),
         "sha256(my_password)".to_string().into(),
@@ -507,10 +521,12 @@ async fn test_store_and_forward_send_tx() {
     let base_node_tempdir = tempdir().unwrap();
     // create wallet uses local net
     let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
 
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_a.to_signal(),
         "satoshi is alice".to_string().into(),
@@ -539,6 +555,7 @@ async fn test_store_and_forward_send_tx() {
     let carol_wallet = create_wallet(
         carol_db_tempdir.path(),
         "carol_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_c.to_signal(),
         "carol wallet".to_string().into(),
@@ -633,6 +650,7 @@ async fn test_store_and_forward_send_tx() {
 #[tokio::test]
 async fn test_import_utxo() {
     let network = Network::Weatherwax;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
     let alice_identity = Arc::new(NodeIdentity::random(
@@ -687,6 +705,7 @@ async fn test_import_utxo() {
         PeerSeedsConfig::default(),
         AutoUpdateConfig::default(),
         alice_identity.clone(),
+        consensus_manager.clone(),
         factories.clone(),
         WalletDatabase::new(
             WalletSqliteDatabase::new(connection.clone(), "a new passphrase".to_string().into()).unwrap(),
@@ -775,6 +794,7 @@ fn test_db_file_locking() {
 #[tokio::test]
 async fn test_recovery_birthday() {
     let dir = tempdir().unwrap();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
 
@@ -802,6 +822,7 @@ async fn test_recovery_birthday() {
     let wallet = create_wallet(
         dir.path(),
         "wallet_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown.to_signal(),
         "my wallet passphrase".to_string().into(),
@@ -819,6 +840,7 @@ async fn test_recovery_birthday() {
 async fn test_contacts_service_liveness() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let alice_db_tempdir = tempdir().unwrap();
     let bob_db_tempdir = tempdir().unwrap();
@@ -827,6 +849,7 @@ async fn test_contacts_service_liveness() {
     let mut alice_wallet = create_wallet(
         alice_db_tempdir.path(),
         "alice_db",
+        consensus_manager.clone(),
         factories.clone(),
         shutdown_a.to_signal(),
         "alice and bob safe passphrase".to_string().into(),
@@ -840,6 +863,7 @@ async fn test_contacts_service_liveness() {
     let mut bob_wallet = create_wallet(
         bob_db_tempdir.path(),
         "bob_db",
+        consensus_manager.clone(),
         factories,
         shutdown_b.to_signal(),
         "bob unique safe passphrase".to_string().into(),

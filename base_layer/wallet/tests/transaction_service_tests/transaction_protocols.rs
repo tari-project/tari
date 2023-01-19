@@ -44,6 +44,7 @@ use tari_core::{
         rpc::BaseNodeWalletRpcServer,
     },
     blocks::BlockHeader,
+    consensus::ConsensusManager,
     proto::{
         base_node::{
             TxLocation as TxLocationProto,
@@ -151,7 +152,9 @@ pub async fn setup() -> (
         broadcast::channel(200);
 
     let shutdown = Shutdown::new();
-    let wallet_identity = WalletIdentity::new(client_node_identity, Network::LocalNet);
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let wallet_identity = WalletIdentity::new(client_node_identity, network);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -159,6 +162,7 @@ pub async fn setup() -> (
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
         wallet_identity,
+        consensus_manager,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {
             broadcast_monitoring_timeout: Duration::from_secs(3),

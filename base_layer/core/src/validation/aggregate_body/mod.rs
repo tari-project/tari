@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,40 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The validation module defines the [Validation] trait which describes all code that can perform block,
-//! transaction, or other validation tasks. Validators implement the [Validation] trait and can be chained together
-//! in a [ValidationPipeline] object to carry out complex validation routines.
-//!
-//! This module also defines a mock [MockValidator] that is useful for testing components that require validation
-//! without having to bring in all sorts of blockchain and communications paraphernalia.
+mod aggregate_body_internal_validator;
+pub use aggregate_body_internal_validator::AggregateBodyInternalConsistencyValidator;
 
-mod error;
-pub use error::ValidationError;
-
-pub(crate) mod helpers;
-
-mod traits;
-pub use traits::{
-    BlockBodyValidator,
-    CandidateBlockValidator,
-    FinalHorizonStateValidation,
-    HeaderChainLinkedValidator,
-    InternalConsistencyValidator,
-    TransactionValidator,
-};
-
-pub mod block_body;
-mod difficulty_calculator;
-pub use difficulty_calculator::*;
-pub mod mocks;
-pub mod transaction;
-// pub mod header_validator;
-
-mod chain_balance;
-pub use chain_balance::ChainBalanceValidator;
-
-pub mod aggregate_body;
-pub mod header;
-
-#[cfg(test)]
-mod test;
+mod aggregate_body_chain_validator;
+pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;

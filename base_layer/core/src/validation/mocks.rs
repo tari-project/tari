@@ -25,24 +25,22 @@ use std::sync::{
     Arc,
 };
 
-use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_utilities::epoch_time::EpochTime;
 
+use super::{
+    traits::CandidateBlockValidator,
+    BlockBodyValidator,
+    HeaderChainLinkedValidator,
+    InternalConsistencyValidator,
+    TransactionValidator,
+};
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction_components::Transaction,
-    validation::{
-        error::ValidationError,
-        BlockSyncBodyValidation,
-        DifficultyCalculator,
-        FinalHorizonStateValidation,
-        HeaderValidation,
-        MempoolTransactionValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
-    },
+    validation::{error::ValidationError, FinalHorizonStateValidation},
 };
 
 #[derive(Clone)]
@@ -70,11 +68,10 @@ impl MockValidator {
     }
 }
 
-#[async_trait]
-impl BlockSyncBodyValidation for MockValidator {
-    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError> {
+impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
+    fn validate_body(&self, _: &B, block: &Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            Ok(block)
+            Ok(block.clone())
         } else {
             Err(ValidationError::custom_error(
                 "This mock validator always returns an error",
@@ -83,8 +80,8 @@ impl BlockSyncBodyValidation for MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
-    fn validate_body_for_valid_orphan(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
+    fn validate_body_with_metadata(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -96,8 +93,8 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
 }
 
 // #[async_trait]
-impl OrphanValidation for MockValidator {
-    fn validate(&self, _item: &Block) -> Result<(), ValidationError> {
+impl InternalConsistencyValidator for MockValidator {
+    fn validate_internal_consistency(&self, _item: &Block) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -108,12 +105,14 @@ impl OrphanValidation for MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
+impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
     fn validate(
         &self,
         _: &B,
         header: &BlockHeader,
-        _: &DifficultyCalculator,
+        _: &BlockHeader,
+        _: &[EpochTime],
+        _: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3x_difficulty(header);
@@ -130,7 +129,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
     }
 }
 
-impl MempoolTransactionValidation for MockValidator {
+impl TransactionValidator for MockValidator {
     fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

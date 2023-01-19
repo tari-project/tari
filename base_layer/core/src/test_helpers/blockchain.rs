@@ -78,7 +78,7 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         mocks::MockValidator,
         DifficultyCalculator,
     },
@@ -136,9 +136,9 @@ pub fn create_store_with_consensus_and_validators_and_config(
 pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
         MockValidator::new(true),
-        OrphanBlockValidator::new(rules.clone(), false, factories),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }

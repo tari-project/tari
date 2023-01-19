@@ -35,7 +35,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -134,6 +134,7 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
+        consensus_manager: ConsensusManager,
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
@@ -160,6 +161,7 @@ where
             connectivity,
             event_publisher,
             master_key_manager: key_manager,
+            consensus_manager,
             consensus_constants,
             shutdown_signal,
             rewind_data,
@@ -1111,7 +1113,11 @@ where
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
             .with_extra(extra)
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
+            .build_with_reward(
+                self.resources.consensus_manager.clone(),
+                &self.resources.consensus_constants,
+                reward,
+            )?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
@@ -1240,7 +1246,12 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(&self.resources.factories, None, u64::MAX)?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &self.resources.factories,
+            None,
+            u64::MAX,
+        )?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1399,7 +1410,12 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1882,6 +1898,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2139,6 +2156,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2311,6 +2329,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2445,7 +2464,12 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+                stp.finalize(
+                    self.resources.consensus_manager.clone(),
+                    &factories,
+                    None,
+                    self.last_seen_tip_height.unwrap_or(u64::MAX),
+                )?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2533,7 +2557,12 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
 
         let tx = stp.take_transaction()?;
 

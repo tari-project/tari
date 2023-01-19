@@ -85,7 +85,7 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
         .with_fees(0.into())
         .with_nonce(0.into())
         .with_spend_key(block_height.into())
-        .build_with_reward(rules.consensus_constants(block_height), reward)
+        .build_with_reward(rules.clone(), rules.consensus_constants(block_height), reward)
         .unwrap();
 
     let mut block = header
@@ -103,6 +103,7 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
     block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
     block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
+
     (block, coinbase_output)
 }
 

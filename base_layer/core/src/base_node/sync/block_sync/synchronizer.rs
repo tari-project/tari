@@ -36,6 +36,7 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_utilities::hex::Hex;
+use tokio::task;
 use tracing;
 
 use super::error::BlockSyncError;
@@ -49,7 +50,7 @@ use crate::{
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
     transactions::aggregated_body::AggregateBody,
-    validation::{BlockSyncBodyValidation, ValidationError},
+    validation::{BlockBodyValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::block_sync";
@@ -59,7 +60,7 @@ pub struct BlockSynchronizer<B> {
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
     sync_peers: Vec<SyncPeer>,
-    block_validator: Arc<dyn BlockSyncBodyValidation>,
+    block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
 }
 
@@ -69,7 +70,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         sync_peers: Vec<SyncPeer>,
-        block_validator: Arc<dyn BlockSyncBodyValidation>,
+        block_validator: Arc<dyn BlockBodyValidator<B>>,
     ) -> Self {
         Self {
             config,
@@ -295,8 +296,20 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let timer = Instant::now();
             let (header, header_accum_data) = header.into_parts();
+            let block = Block::new(header, body);
 
-            let block = match self.block_validator.validate_body(Block::new(header, body)).await {
+            // Validate the block inside a tokio task
+            let task_block = block.clone();
+            let db = self.db.inner().clone();
+            let validator = self.block_validator.clone();
+            let res = task::spawn_blocking(move || {
+                let txn = db.db_read_access()?;
+                validator.validate_body(&*txn, &task_block)
+            })
+            .await
+            .map_err(|err| ValidationError::CustomError(err.to_string()))?;
+
+            let block = match res {
                 Ok(block) => block,
                 Err(err @ ValidationError::BadBlockFound { .. }) |
                 Err(err @ ValidationError::FatalStorageError(_)) |

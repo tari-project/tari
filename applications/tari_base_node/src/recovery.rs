@@ -48,8 +48,8 @@ use tari_core::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
         mocks::MockValidator,
         DifficultyCalculator,
     },
@@ -93,10 +93,11 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     };
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
+        BlockBodyInternalConsistencyValidator::new(
             rules.clone(),
             node_config.bypass_range_proof_verification,
             factories.clone(),
@@ -109,7 +110,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         rules.clone(),
         validators,
         node_config.storage,
-        DifficultyCalculator::new(rules, randomx_factory),
+        difficulty_calculator,
     )?;
     do_recovery(db.into(), temp_db).await?;
 

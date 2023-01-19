@@ -109,13 +109,8 @@ where B: BlockchainBackend + 'static
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let sync_validators = SyncValidators::full_consensus(
-                db.clone(),
-                rules.clone(),
-                factories,
-                bypass_range_proof_verification,
-                config.blockchain_sync_config.validation_concurrency,
-            );
+            let sync_validators =
+                SyncValidators::full_consensus(rules.clone(), factories, bypass_range_proof_verification);
 
             let node = BaseNodeStateMachine::new(
                 db,

@@ -26,6 +26,7 @@ use futures::{Stream, StreamExt};
 use log::*;
 use tari_comms_dht::Dht;
 use tari_core::{
+    consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
 };
@@ -79,6 +80,7 @@ where
     subscription_factory: Arc<SubscriptionFactory>,
     tx_backend: Option<T>,
     wallet_identity: WalletIdentity,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
 }
@@ -93,6 +95,7 @@ where
         subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         wallet_identity: WalletIdentity,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<W>,
     ) -> Self {
@@ -101,6 +104,7 @@ where
             subscription_factory,
             tx_backend: Some(backend),
             wallet_identity,
+            consensus_manager,
             factories,
             wallet_database: Some(wallet_database),
         }
@@ -205,6 +209,7 @@ where
             .expect("Cannot start Transaction Service without providing a wallet database");
 
         let wallet_identity = self.wallet_identity.clone();
+        let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
 
@@ -229,6 +234,7 @@ where
                 connectivity,
                 publisher,
                 wallet_identity,
+                consensus_manager,
                 factories,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,

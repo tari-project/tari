@@ -24,27 +24,18 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
-    cmp::{max, min},
     fmt::{Display, Formatter},
     ops::Add,
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
+use tari_common_types::types::{BlindingFactor, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_components::{
-        OutputFeatures,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-    },
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     weight::TransactionWeight,
-    CryptoFactories,
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
@@ -80,33 +71,6 @@ impl Transaction {
         }
     }
 
-    /// Validate this transaction by checking the following:
-    /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
-    /// 1. The signature signs the canonical message with the private excess
-    /// 1. Range proofs of the outputs are valid
-    ///
-    /// This function does NOT check that inputs come from the UTXO set
-    #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub fn validate_internal_consistency(
-        &self,
-        bypass_range_proof_verification: bool,
-        factories: &CryptoFactories,
-        reward: Option<MicroTari>,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), TransactionError> {
-        let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body.validate_internal_consistency(
-            &self.offset,
-            &self.script_offset,
-            bypass_range_proof_verification,
-            reward,
-            factories,
-            prev_header,
-            height,
-        )
-    }
-
     pub fn body(&self) -> &AggregateBody {
         &self.body
     }
@@ -118,34 +82,12 @@ impl Transaction {
 
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
-        self.body.inputs().iter().fold(u64::MAX, |min_maturity, input| {
-            min(
-                min_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: u64::MAX,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+        self.body.min_input_maturity()
     }
 
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
-        self.body.inputs().iter().fold(0, |max_maturity, input| {
-            max(
-                max_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: 0,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+        self.body.max_input_maturity()
     }
 
     /// Returns the maximum time lock of the kernels inside of the transaction
@@ -156,7 +98,7 @@ impl Transaction {
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
     /// transaction kernel lock_heights and the maturity of the input UTXOs.
     pub fn min_spendable_height(&self) -> u64 {
-        max(self.max_kernel_timelock(), self.max_input_maturity())
+        self.body.min_spendable_height()
     }
 
     /// This function adds two transactions together. It does not do cut-through. Calling Tx1 + Tx2 will result in

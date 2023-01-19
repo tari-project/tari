@@ -38,7 +38,10 @@ use std::{marker::PhantomData, sync::Arc};
 use futures::future;
 use log::*;
 use tari_comms::NodeIdentity;
-use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
+use tari_core::{
+    consensus::{ConsensusManager, NetworkConsensus},
+    transactions::CryptoFactories,
+};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -115,6 +118,7 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
+        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
         let node_identity = self.node_identity.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
@@ -127,6 +131,7 @@ where
                 OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
+                consensus_manager,
                 constants,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,

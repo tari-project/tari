@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,38 +21,42 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::BlockHeader,
-    chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
-    validation::{helpers::check_target_difficulty, ValidationError},
+    transactions::transaction_components::Transaction,
+    validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
 };
 
-#[derive(Clone)]
-pub struct DifficultyCalculator {
-    pub rules: ConsensusManager,
-    pub randomx_factory: RandomXFactory,
+pub struct TransactionChainLinkedValidator<B> {
+    db: BlockchainDatabase<B>,
+    aggregate_body_validator: AggregateBodyChainLinkedValidator,
 }
 
-impl DifficultyCalculator {
-    pub fn new(rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
-        Self { rules, randomx_factory }
+impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
+    pub fn new(db: BlockchainDatabase<B>, consensus_manager: ConsensusManager) -> Self {
+        Self {
+            aggregate_body_validator: AggregateBodyChainLinkedValidator::new(consensus_manager),
+            db,
+        }
     }
+}
 
-    pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        block_header: &BlockHeader,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
-        let difficulty_window =
-            fetch_target_difficulty_for_next_block(db, &self.rules, block_header.pow_algo(), &block_header.prev_hash)?;
-        let constants = self.rules.consensus_constants(block_header.height);
-        let target = difficulty_window.calculate(
-            constants.min_pow_difficulty(block_header.pow.pow_algo),
-            constants.max_pow_difficulty(block_header.pow.pow_algo),
-        );
-        let achieved_target = check_target_difficulty(block_header, target, &self.randomx_factory)?;
+impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let consensus_constants = self.db.consensus_constants()?;
+        // validate maximum tx weight
+        if tx.calculate_weight(consensus_constants.transaction_weight()) >
+            consensus_constants.get_max_block_weight_excluding_coinbase()
+        {
+            return Err(ValidationError::MaxTransactionWeightExceeded);
+        }
 
-        Ok(achieved_target)
+        {
+            let db = self.db.db_read_access()?;
+            let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+            self.aggregate_body_validator.validate(&tx.body, tip_height, &*db)?;
+        };
+
+        Ok(())
     }
 }

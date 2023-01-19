@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{TransactionChainLinkedValidator, TransactionInternalConsistencyValidator};
 use crate::{
-    blocks::BlockHeader,
-    chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
-    validation::{helpers::check_target_difficulty, ValidationError},
+    transactions::{transaction_components::Transaction, CryptoFactories},
+    validation::{traits::TransactionValidator, ValidationError},
 };
 
-#[derive(Clone)]
-pub struct DifficultyCalculator {
-    pub rules: ConsensusManager,
-    pub randomx_factory: RandomXFactory,
+pub struct TransactionFullValidator<B> {
+    db: BlockchainDatabase<B>,
+    internal_validator: TransactionInternalConsistencyValidator,
+    chain_validator: TransactionChainLinkedValidator<B>,
 }
 
-impl DifficultyCalculator {
-    pub fn new(rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
-        Self { rules, randomx_factory }
-    }
-
-    pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        block_header: &BlockHeader,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
-        let difficulty_window =
-            fetch_target_difficulty_for_next_block(db, &self.rules, block_header.pow_algo(), &block_header.prev_hash)?;
-        let constants = self.rules.consensus_constants(block_header.height);
-        let target = difficulty_window.calculate(
-            constants.min_pow_difficulty(block_header.pow.pow_algo),
-            constants.max_pow_difficulty(block_header.pow.pow_algo),
+impl<B: BlockchainBackend> TransactionFullValidator<B> {
+    pub fn new(
+        factories: CryptoFactories,
+        bypass_range_proof_verification: bool,
+        db: BlockchainDatabase<B>,
+        consensus_manager: ConsensusManager,
+    ) -> Self {
+        let internal_validator = TransactionInternalConsistencyValidator::new(
+            bypass_range_proof_verification,
+            consensus_manager.clone(),
+            factories,
         );
-        let achieved_target = check_target_difficulty(block_header, target, &self.randomx_factory)?;
+        let chain_validator = TransactionChainLinkedValidator::new(db.clone(), consensus_manager);
+        Self {
+            db,
+            internal_validator,
+            chain_validator,
+        }
+    }
+}
 
-        Ok(achieved_target)
+impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        self.internal_validator.validate_with_current_tip(tx, self.db.clone())?;
+        self.chain_validator.validate(tx)?;
+
+        Ok(())
     }
 }
