@@ -301,7 +301,6 @@ async fn test_time_locked() {
 
 // TODO: this test fails after the validation refactors, as the test was probably not written correctly due to
 // maturities not being checked before
-#[ignore]
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn test_retrieve() {
@@ -1228,7 +1227,6 @@ async fn consensus_validation_unique_excess_sig() {
     assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
 }
 
-#[ignore]
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
