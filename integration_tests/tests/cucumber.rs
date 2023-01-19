@@ -29,7 +29,7 @@ use std::{
     io::BufRead,
     path::PathBuf,
     ptr::null,
-    str,
+    str::{self, FromStr},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -40,11 +40,26 @@ use indexmap::IndexMap;
 use log::*;
 use rand::Rng;
 use tari_app_grpc::tari_rpc::{self as grpc};
+use tari_app_utilities::utilities::UniPublicKey;
 use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
 use tari_common::{configuration::Network, initialize_logging};
-use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
-use tari_console_wallet::{CliCommands, ExportUtxosArgs};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey},
+};
+use tari_comms::multiaddr::Multiaddr;
+use tari_console_wallet::{
+    BurnTariArgs,
+    CliCommands,
+    CoinSplitArgs,
+    DiscoverPeerArgs,
+    ExportUtxosArgs,
+    MakeItRainArgs,
+    SendTariArgs,
+    SetBaseNodeArgs,
+    WhoisArgs,
+};
 use tari_core::{
     blocks::Block,
     consensus::ConsensusManager,
@@ -772,9 +787,9 @@ async fn prune_node_connected_to_base_node(
     spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config).await;
 }
 
-#[when(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
-#[then(expr = "wallet {word} detects all transactions as Mined_Confirmed")]
-async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String) {
+#[when(expr = "wallet {word} detects all transactions as {word}")]
+#[then(expr = "wallet {word} detects all transactions as {word}")]
+async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
     let mut completed_tx_stream = client
@@ -789,7 +804,7 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
         let tx_info = tx_info.unwrap();
         let tx_id = tx_info.transaction.unwrap().tx_id;
 
-        println!("waiting for tx with tx_id = {} to be mined_confirmed", tx_id);
+        println!("waiting for tx with tx_id = {} to be {}", tx_id, status);
         for retry in 0..=num_retries {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![tx_id],
@@ -799,24 +814,65 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
 
             if retry == num_retries {
                 panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be mined_confirmed",
+                    "Wallet {} failed to detect tx with tx_id = {} to be {}, current status is {:?}",
                     wallet_name.as_str(),
-                    tx_id
+                    tx_id,
+                    status,
+                    tx_info.status()
                 );
             }
-            match tx_info.status() {
-                grpc::TransactionStatus::MinedConfirmed => {
-                    println!(
-                        "Transaction with tx_id = {} has been detected as mined_confirmed by wallet {}",
-                        tx_id,
-                        wallet_name.as_str()
-                    );
-                    return;
+            match status.as_str() {
+                "Pending" => match tx_info.status() {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
-                _ => {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
+                "Completed" => match tx_info.status() {
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
                 },
+                "Broadcast" => match tx_info.status() {
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Mined_Unconfirmed" => match tx_info.status() {
+                    grpc::TransactionStatus::MinedUnconfirmed | grpc::TransactionStatus::MinedConfirmed => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Mined_Confirmed" => match tx_info.status() {
+                    grpc::TransactionStatus::MinedConfirmed | grpc::TransactionStatus::Broadcast => {
+                        break;
+                    },
+                    _ => (),
+                },
+                "Coinbase" => match tx_info.status() {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::Coinbase => {
+                        break;
+                    },
+                    _ => (),
+                },
+                _ => panic!("Unknown status {}, don't know what to expect", status),
             }
         }
     }
@@ -1012,7 +1068,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
 
-    println!("waiting for tx with tx_id = {} to be cancelled", tx_id);
+    println!("waiting for tx with tx_id = {} to be Cancelled", tx_id);
     for retry in 0..=num_retries {
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![*tx_id],
@@ -1103,6 +1159,8 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     };
 
     let num_retries = 100;
+    let mut current_status = 0;
+
     for _ in 0..num_retries {
         let mut txs = client
             .get_completed_transactions(grpc::GetCompletedTransactionsRequest {})
@@ -1112,7 +1170,8 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         let mut found_tx = 0;
         while let Some(tx) = txs.next().await {
             let tx_info = tx.unwrap().transaction.unwrap();
-            if tx_info.status == transaction_status {
+            current_status = tx_info.status;
+            if current_status == transaction_status {
                 found_tx += 1;
             }
         }
@@ -1123,8 +1182,8 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}",
-        wallet, num_txs, transaction_status
+        "Wallet {} failed to have at least num {} txs with status {}, current status is {}",
+        wallet, num_txs, transaction_status, current_status
     );
 }
 
@@ -2007,8 +2066,8 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
             println!("Wallet {} has found exactly {}", &wallet, amount_of_coinbases);
         } else {
             panic!(
-                "Wallet {} hasn't found {} {} spendable outputs",
-                wallet, comparison, amount_of_coinbases
+                "Wallet {} hasn't found {} {} spendable outputs, instead got {}",
+                wallet, comparison, amount_of_coinbases, spendable_coinbase_count
             );
         }
     }
@@ -3847,6 +3906,344 @@ async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, diff
     miner
         .mine(world, Some(num_blocks), Some(difficulty), Some(difficulty))
         .await;
+}
+
+#[then(expr = "I change base node of {word} to {word} via command line")]
+async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
+
+    let args = SetBaseNodeArgs {
+        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
+        address: Multiaddr::from_str(node_identity.public_address.as_str()).unwrap(),
+    };
+
+    cli.command2 = Some(CliCommands::SetBaseNode(args));
+
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I set custom base node of {word} to {word} via command line")]
+async fn change_custom_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
+
+    let args = SetBaseNodeArgs {
+        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
+        address: Multiaddr::from_str(node_identity.public_address.as_str()).unwrap(),
+    };
+
+    cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
+
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I clear custom base node of wallet {word} via command line")]
+async fn clear_custom_base_node(world: &mut TariWorld, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    cli.command2 = Some(CliCommands::ClearCustomBaseNode);
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "the password of wallet {word} is not {word}")]
+async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    let _config_path = wallet_ps.temp_dir_path.clone();
+}
+
+#[then(expr = "I get balance of wallet {word} is at least {int} uT via command line")]
+async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    cli.command2 = Some(CliCommands::GetBalance);
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await
+}
+
+#[when(expr = "I send {int} uT from {word} to {word} via command line")]
+async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let wallet_b_address = wallet_b_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+
+    let mut cli = get_default_cli();
+
+    let args = SendTariArgs {
+        amount: MicroTari(amount),
+        message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
+        destination: wallet_b_address,
+    };
+    cli.command2 = Some(CliCommands::SendTari(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I create a burn transaction of {int} uT from {word} via command line")]
+async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let args = BurnTariArgs {
+        amount: MicroTari(amount),
+        message: format!("Burn, burn amount {} !!!", amount,),
+    };
+    cli.command2 = Some(CliCommands::BurnTari(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I send one-sided {int} uT from {word} to {word} via command line")]
+async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let wallet_b_address = wallet_b_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+
+    let mut cli = get_default_cli();
+
+    let args = SendTariArgs {
+        amount: MicroTari(amount),
+        message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
+        destination: wallet_b_address,
+    };
+    cli.command2 = Some(CliCommands::SendOneSided(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(
+    expr = "I make it rain from wallet {word} {int} tx per sec {int} sec {int} uT {int} increment to {word} via \
+            command line"
+)]
+async fn make_it_rain(
+    world: &mut TariWorld,
+    wallet_a: String,
+    txs_per_second: u64,
+    duration: u64,
+    start_amount: u64,
+    increment_amount: u64,
+    wallet_b: String,
+) {
+    let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
+    let wallet_b_address = wallet_b_client
+        .get_address(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .address
+        .to_hex();
+    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+
+    let mut cli = get_default_cli();
+
+    let args = MakeItRainArgs {
+        start_amount: MicroTari(start_amount),
+        transactions_per_second: txs_per_second as u32,
+        duration: Duration::from_secs(duration),
+        message: format!(
+            "Make it raing amount {} from {} to {}",
+            start_amount, wallet_a, wallet_b
+        ),
+        increase_amount: MicroTari(increment_amount),
+        destination: wallet_b_address,
+        start_time: None,
+        one_sided: false,
+        stealth: false,
+        burn_tari: false,
+    };
+
+    cli.command2 = Some(CliCommands::MakeItRain(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I do coin split on wallet {word} to {int} uT {int} coins via command line")]
+async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, splits: u64) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let args = CoinSplitArgs {
+        amount_per_split: MicroTari(amount),
+        num_splits: splits as usize,
+        fee_per_gram: MicroTari(20),
+        message: format!("coin split amount {} with splits {}", amount, splits),
+    };
+
+    cli.command2 = Some(CliCommands::CoinSplit(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I get count of utxos of wallet {word} and it's at least {int} via command line")]
+async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    cli.command2 = Some(CliCommands::CountUtxos);
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I export the utxos of wallet {word} via command line")]
+async fn export_utxos(world: &mut TariWorld, wallet: String) {
+    let wallet_a_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_a_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
+
+    let mut cli = get_default_cli();
+
+    let mut path_buf = PathBuf::new();
+    path_buf.push(temp_dir_path);
+    path_buf.push("exported_utxos.csv");
+
+    let args = ExportUtxosArgs {
+        output_file: Some(path_buf.clone()),
+    };
+    cli.command2 = Some(CliCommands::ExportUtxos(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+
+    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I discover peer {word} on wallet {word} via command line")]
+async fn discover_peer(world: &mut TariWorld, node: String, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
+
+    let args = DiscoverPeerArgs {
+        dest_public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
+    };
+
+    cli.command2 = Some(CliCommands::DiscoverPeer(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I run whois {word} on wallet {word} via command line")]
+async fn whois(world: &mut TariWorld, node: String, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut cli = get_default_cli();
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
+
+    let args = WhoisArgs {
+        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
+    };
+
+    cli.command2 = Some(CliCommands::Whois(args));
+
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 }
 
 #[when(expr = "I print the cucumber world")]
