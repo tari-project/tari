@@ -41,7 +41,7 @@ use tari_core::{
         sync::rpc::BaseNodeSyncRpcService,
     },
     blocks::ChainBlock,
-    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus, ConsensusConstantsBuilder},
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -79,14 +79,15 @@ async fn setup() -> (
     TempDir,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet).with_coinbase_lockheight(1).build();
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
 
     let (block0, utxo0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
+        .add_consensus_constants(consensus_constants)
         .build();
 
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
@@ -123,8 +124,6 @@ async fn setup() -> (
     )
 }
 
-// FIXME: this test fails due to a unexpected validation failure of input maturity
-#[ignore]
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn test_base_node_wallet_rpc() {
