@@ -24,7 +24,10 @@ use std::cmp::Ordering;
 
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use tari_common_types::types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey},
+};
 use tari_core::transactions::{
     transaction_components::UnblindedOutput,
     transaction_protocol::RewindData,
@@ -51,6 +54,8 @@ pub struct DbUnblindedOutput {
     pub marked_deleted_in_block: Option<BlockHash>,
     pub spending_priority: SpendingPriority,
     pub source: OutputSource,
+    pub received_in_tx_id: Option<TxId>,
+    pub spent_in_tx_id: Option<TxId>,
 }
 
 impl DbUnblindedOutput {
@@ -59,6 +64,8 @@ impl DbUnblindedOutput {
         factory: &CryptoFactories,
         spend_priority: Option<SpendingPriority>,
         source: OutputSource,
+        received_in_tx_id: Option<TxId>,
+        spent_in_tx_id: Option<TxId>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
@@ -74,6 +81,8 @@ impl DbUnblindedOutput {
             marked_deleted_in_block: None,
             spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
             source,
+            received_in_tx_id,
+            spent_in_tx_id,
         })
     }
 
@@ -84,6 +93,8 @@ impl DbUnblindedOutput {
         spending_priority: Option<SpendingPriority>,
         proof: Option<&BulletRangeProof>,
         source: OutputSource,
+        received_in_tx_id: Option<TxId>,
+        spent_in_tx_id: Option<TxId>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, proof)?;
         Ok(DbUnblindedOutput {
@@ -99,6 +110,8 @@ impl DbUnblindedOutput {
             marked_deleted_in_block: None,
             spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),
             source,
+            received_in_tx_id,
+            spent_in_tx_id,
         })
     }
 }

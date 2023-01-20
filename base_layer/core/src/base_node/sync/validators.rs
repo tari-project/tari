@@ -23,12 +23,12 @@
 use std::{fmt, sync::Arc};
 
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     transactions::CryptoFactories,
     validation::{
-        block_validators::BlockValidator,
-        BlockSyncBodyValidation,
+        block_body::BlockBodyFullValidator,
+        BlockBodyValidator,
         ChainBalanceValidator,
         FinalHorizonStateValidation,
     },
@@ -36,14 +36,14 @@ use crate::{
 
 #[derive(Clone)]
 pub struct SyncValidators<B> {
-    pub block_body: Arc<dyn BlockSyncBodyValidation>,
+    pub block_body: Arc<dyn BlockBodyValidator<B>>,
     pub final_horizon_state: Arc<dyn FinalHorizonStateValidation<B>>,
 }
 
 impl<B: BlockchainBackend + 'static> SyncValidators<B> {
     pub fn new<TBody, TFinal>(block_body: TBody, final_state: TFinal) -> Self
     where
-        TBody: BlockSyncBodyValidation + 'static,
+        TBody: BlockBodyValidator<B> + 'static,
         TFinal: FinalHorizonStateValidation<B> + 'static,
     {
         Self {
@@ -53,20 +53,12 @@ impl<B: BlockchainBackend + 'static> SyncValidators<B> {
     }
 
     pub fn full_consensus(
-        db: AsyncBlockchainDb<B>,
         rules: ConsensusManager,
         factories: CryptoFactories,
         bypass_range_proof_verification: bool,
-        concurrency: usize,
     ) -> Self {
         Self::new(
-            BlockValidator::new(
-                db,
-                rules.clone(),
-                factories.clone(),
-                bypass_range_proof_verification,
-                concurrency,
-            ),
+            BlockBodyFullValidator::new(rules.clone(), bypass_range_proof_verification),
             ChainBalanceValidator::<B>::new(rules, factories),
         )
     }

@@ -28,9 +28,10 @@ use crate::{
     validation::{helpers::check_target_difficulty, ValidationError},
 };
 
+#[derive(Clone)]
 pub struct DifficultyCalculator {
-    rules: ConsensusManager,
-    randomx_factory: RandomXFactory,
+    pub rules: ConsensusManager,
+    pub randomx_factory: RandomXFactory,
 }
 
 impl DifficultyCalculator {

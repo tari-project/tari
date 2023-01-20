@@ -39,7 +39,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
-    consensus::NetworkConsensus,
+    consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -141,6 +141,7 @@ where
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
         node_identity: Arc<NodeIdentity>,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
         output_manager_database: OutputManagerDatabase<V>,
@@ -191,6 +192,7 @@ where
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
                 wallet_identity.clone(),
+                consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
             ))

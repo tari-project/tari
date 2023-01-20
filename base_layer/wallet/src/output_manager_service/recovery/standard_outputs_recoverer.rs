@@ -161,6 +161,8 @@ where
                 None,
                 Some(proof),
                 output_source,
+                None,
+                None,
             )?;
             let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();

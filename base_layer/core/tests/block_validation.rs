@@ -47,14 +47,14 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
         mocks::MockValidator,
-        BlockSyncBodyValidation,
+        BlockBodyValidator,
+        CandidateBlockValidator,
         DifficultyCalculator,
-        HeaderValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        HeaderChainLinkedValidator,
+        InternalConsistencyValidator,
         ValidationError,
     },
 };
@@ -101,7 +101,8 @@ fn test_monero_blocks() {
         .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
-    let header_validator = HeaderValidator::new(cm.clone());
+    let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
+    let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator, false);
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
@@ -212,14 +213,9 @@ async fn inputs_are_not_malleable() {
     input_mut.input_data = malicious_input.input_data;
     input_mut.script_signature = malicious_input.script_signature;
 
-    let validator = BlockValidator::new(
-        blockchain.store().clone().into(),
-        blockchain.consensus_manager().clone(),
-        CryptoFactories::default(),
-        true,
-        10,
-    );
-    let err = validator.validate_body(block).await.unwrap_err();
+    let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
+    let txn = blockchain.store().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, &block).unwrap_err();
 
     // All validations pass, except the Input MMR.
     unpack_enum!(ValidationError::BlockError(err) = err);
@@ -228,6 +224,7 @@ async fn inputs_are_not_malleable() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
@@ -241,10 +238,12 @@ fn test_orphan_validator() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
+    let orphan_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone());
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
         orphan_validator.clone(),
     );
     let db = BlockchainDatabase::new(
@@ -252,7 +251,7 @@ fn test_orphan_validator() {
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
+        difficulty_calculator,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -277,7 +276,7 @@ OutputFeatures::default()),
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
-    assert!(orphan_validator.validate(&new_block).is_ok());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_ok());
 
     // lets break the block weight
     let (template, _) = chain_block_with_new_coinbase(
@@ -288,7 +287,7 @@ OutputFeatures::default()),
         None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break the sorting
     let (mut template, _) =
@@ -296,13 +295,13 @@ OutputFeatures::default()),
     let outputs = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break spend rules
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase value
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -319,7 +318,7 @@ OutputFeatures::default()),
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -336,14 +335,14 @@ OutputFeatures::default()),
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // lets break accounting
     let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    assert!(orphan_validator.validate(&new_block).is_err());
+    assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 }
 
 #[test]
@@ -369,12 +368,13 @@ fn test_orphan_body_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let body_only_validator = BodyOnlyValidator::new(rules.clone());
-    let header_validator = HeaderValidator::new(rules.clone());
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let body_only_validator = BlockBodyFullValidator::new(rules.clone(), true);
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator, true),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -399,12 +399,13 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None,
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -418,7 +419,7 @@ OutputFeatures::default()),
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
@@ -426,28 +427,19 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let achieved_target_diff = header_validator
+    assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None,
         )
-        .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
-        .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
-        .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build()
-        .unwrap();
-
-    let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
-    let metadata = db.get_chain_metadata().unwrap();
-    assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
+    let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
     let test_params1 = TestParams::new();
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
@@ -464,12 +456,13 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            &prev_header,
+            &[],
+            None,
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -482,7 +475,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
@@ -494,12 +487,13 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None,
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -512,21 +506,23 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
+    let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
     new_block.header.output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules, RandomXFactory::default());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            &prev_header,
+            &[],
+            None,
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -539,7 +535,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
@@ -565,18 +561,19 @@ fn test_header_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let header_validator = HeaderValidator::new(rules.clone());
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true);
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
     let db = BlockchainDatabase::new(
         backend,
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
-        DifficultyCalculator::new(rules.clone(), Default::default()),
+        difficulty_calculator,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -594,12 +591,13 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
-    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None
         )
         .is_ok());
 
@@ -613,7 +611,9 @@ OutputFeatures::default()),
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None
         )
         .is_err());
 
@@ -625,7 +625,9 @@ OutputFeatures::default()),
         .validate(
             &*db.db_read_access().unwrap(),
             &new_block.header,
-            &difficulty_calculator,
+            genesis.header(),
+            &[],
+            None,
         )
         .is_err();
     new_block.header.nonce = OsRng.next_u64();
@@ -638,7 +640,9 @@ OutputFeatures::default()),
             .validate(
                 &*db.db_read_access().unwrap(),
                 &new_block.header,
-                &difficulty_calculator,
+                genesis.header(),
+                &[],
+                None,
             )
             .is_err();
     }
@@ -660,11 +664,11 @@ async fn test_block_sync_body_validator() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
     let db = BlockchainDatabase::new(
@@ -675,7 +679,7 @@ async fn test_block_sync_body_validator() {
         DifficultyCalculator::new(rules.clone(), Default::default()),
     )
     .unwrap();
-    let validator = BlockValidator::new(db.clone().into(), rules.clone(), factories.clone(), false, 2);
+    let validator = BlockBodyFullValidator::new(rules.clone(), true);
 
     // we have created the blockchain, lets create a second valid block
 
@@ -703,7 +707,8 @@ async fn test_block_sync_body_validator() {
     );
     let new_block = db.prepare_new_block(template).unwrap();
     let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
-    let err = validator.validate_body(new_block).await.unwrap_err();
+    let txn = db.db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, &new_block).unwrap_err();
     assert!(
         matches!(
             err,
@@ -718,7 +723,7 @@ async fn test_block_sync_body_validator() {
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
-    validator.validate_body(new_block).await.unwrap();
+    validator.validate_body(&*txn, &new_block).unwrap();
 
     // lets break the block weight
     let (template, _) = chain_block_with_new_coinbase(
@@ -737,7 +742,7 @@ async fn test_block_sync_body_validator() {
             400,
         "If this is not more than 400, then the next line should fail"
     );
-    let err = validator.validate_body(new_block).await.unwrap_err();
+    let err = validator.validate_body(&*txn, &new_block).unwrap_err();
     assert!(
         matches!(
             err,
@@ -752,7 +757,7 @@ async fn test_block_sync_body_validator() {
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories, None);
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // lets break the sorting
     let (mut template, _) =
@@ -760,7 +765,7 @@ async fn test_block_sync_body_validator() {
     let output = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), output, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // lets have unknown inputs;
     let (template, _) =
@@ -779,7 +784,7 @@ async fn test_block_sync_body_validator() {
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // lets check duplicate txos
     let (template, _) =
@@ -789,7 +794,7 @@ async fn test_block_sync_body_validator() {
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // let break coinbase value
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -806,7 +811,7 @@ async fn test_block_sync_body_validator() {
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -823,7 +828,7 @@ async fn test_block_sync_body_validator() {
         &rules,
     );
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap();
+    validator.validate_body(&*txn, &new_block).unwrap();
 
     // lets break accounting
     let (mut template, _) =
@@ -831,11 +836,11 @@ async fn test_block_sync_body_validator() {
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 
     // lets the mmr root
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories, None);
     let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.output_mr = FixedHash::zero();
-    validator.validate_body(new_block).await.unwrap_err();
+    validator.validate_body(&*txn, &new_block).unwrap_err();
 }

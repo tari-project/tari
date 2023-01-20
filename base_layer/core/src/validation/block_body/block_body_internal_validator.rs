@@ -1,0 +1,168 @@
+//  Copyright 2021, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use log::warn;
+use tari_utilities::hex::Hex;
+
+use crate::{
+    blocks::Block,
+    consensus::{ConsensusConstants, ConsensusManager},
+    transactions::{aggregated_body::AggregateBody, CryptoFactories},
+    validation::{
+        aggregate_body::AggregateBodyInternalConsistencyValidator,
+        helpers::is_all_unique_and_sorted,
+        InternalConsistencyValidator,
+        ValidationError,
+    },
+};
+
+pub const LOG_TARGET: &str = "c::val::block_body_internal_consistency_validator";
+
+#[derive(Clone)]
+pub struct BlockBodyInternalConsistencyValidator {
+    consensus_manager: ConsensusManager,
+    factories: CryptoFactories,
+    aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
+}
+
+impl BlockBodyInternalConsistencyValidator {
+    pub fn new(
+        consensus_manager: ConsensusManager,
+        bypass_range_proof_verification: bool,
+        factories: CryptoFactories,
+    ) -> Self {
+        let aggregate_body_validator = AggregateBodyInternalConsistencyValidator::new(
+            bypass_range_proof_verification,
+            consensus_manager.clone(),
+            factories.clone(),
+        );
+        Self {
+            consensus_manager,
+            factories,
+            aggregate_body_validator,
+        }
+    }
+
+    pub fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+        // TODO: this validation should not be needed, and only use the aggregate_body validator
+        validate_block_specific_checks(block, &self.consensus_manager, &self.factories)?;
+        validate_block_aggregate_body(block, &self.aggregate_body_validator, &self.consensus_manager)?;
+
+        Ok(())
+    }
+}
+
+impl InternalConsistencyValidator for BlockBodyInternalConsistencyValidator {
+    fn validate_internal_consistency(&self, block: &Block) -> Result<(), ValidationError> {
+        self.validate(block)
+    }
+}
+
+// TODO: maybe some/all of these validations should be moved to AggregateBodyInternalConsistencyValidator
+// but many test fails in that case, we need to take a deeper look
+fn validate_block_specific_checks(
+    block: &Block,
+    consensus_manager: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError> {
+    let constants = consensus_manager.consensus_constants(block.header.height);
+    if block.header.height == 0 {
+        warn!(target: LOG_TARGET, "Attempt to validate genesis block");
+        return Err(ValidationError::ValidatingGenesis);
+    }
+    check_sorting_and_duplicates(&block.body)?;
+    check_coinbase_output(block, consensus_manager, factories)?;
+    check_output_features(&block.body, constants)?;
+
+    Ok(())
+}
+
+fn check_output_features(
+    body: &AggregateBody,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let max_coinbase_metadata_size = consensus_constants.coinbase_output_features_extra_max_length();
+    body.check_output_features(max_coinbase_metadata_size)
+        .map_err(ValidationError::from)
+}
+
+fn validate_block_aggregate_body(
+    block: &Block,
+    validator: &AggregateBodyInternalConsistencyValidator,
+    consensus_manager: &ConsensusManager,
+) -> Result<(), ValidationError> {
+    let offset = &block.header.total_kernel_offset;
+    let script_offset = &block.header.total_script_offset;
+    let total_coinbase = consensus_manager.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+    validator
+        .validate(
+            &block.body,
+            offset,
+            script_offset,
+            Some(total_coinbase),
+            Some(block.header.prev_hash),
+            block.header.height,
+        )
+        .map_err(|err| {
+            warn!(
+                target: LOG_TARGET,
+                "Validation failed on block:{}:{:?}",
+                block.hash().to_hex(),
+                err
+            );
+            err
+        })?;
+
+    Ok(())
+}
+
+fn check_coinbase_output(
+    block: &Block,
+    rules: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError> {
+    let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+    block
+        .check_coinbase_output(
+            total_coinbase,
+            rules.consensus_constants(block.header.height),
+            factories,
+        )
+        .map_err(ValidationError::from)
+}
+
+// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
+fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
+    if !is_all_unique_and_sorted(body.inputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateInput);
+    }
+
+    if !is_all_unique_and_sorted(body.outputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateOutput);
+    }
+
+    if !is_all_unique_and_sorted(body.kernels()) {
+        return Err(ValidationError::UnsortedOrDuplicateKernel);
+    }
+
+    Ok(())
+}

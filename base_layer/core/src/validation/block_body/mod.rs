@@ -23,15 +23,8 @@
 #[cfg(test)]
 mod test;
 
-mod abort_on_drop;
+mod block_body_internal_validator;
+pub use block_body_internal_validator::BlockBodyInternalConsistencyValidator;
 
-mod async_validator;
-pub use async_validator::BlockValidator;
-
-mod orphan;
-pub use orphan::OrphanBlockValidator;
-
-mod body_only;
-pub use body_only::BodyOnlyValidator;
-
-const LOG_TARGET: &str = "c::val::block_validators";
+mod block_body_full_validator;
+pub use block_body_full_validator::BlockBodyFullValidator;

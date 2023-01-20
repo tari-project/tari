@@ -35,7 +35,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -134,6 +134,7 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
+        consensus_manager: ConsensusManager,
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
@@ -160,6 +161,7 @@ where
             connectivity,
             event_publisher,
             master_key_manager: key_manager,
+            consensus_manager,
             consensus_constants,
             shutdown_signal,
             rewind_data,
@@ -351,7 +353,7 @@ where
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
+                let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
             OutputManagerRequest::GetOutputsBy(q) => {
@@ -650,6 +652,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -688,6 +692,8 @@ where
             spend_priority,
             None,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -728,6 +734,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
@@ -844,6 +852,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(single_round_sender_data.tx_id),
+            None,
         )?;
 
         self.resources
@@ -1046,6 +1056,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -1101,7 +1113,11 @@ where
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
             .with_extra(extra)
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
+            .build_with_reward(
+                self.resources.consensus_manager.clone(),
+                &self.resources.consensus_constants,
+                reward,
+            )?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
@@ -1110,6 +1126,8 @@ where
             None,
             None,
             OutputSource::Coinbase,
+            Some(tx_id),
+            None,
         )?;
 
         // If there is no existing output available, we store the one we produced.
@@ -1203,13 +1221,15 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?)
         }
 
         let mut stp = builder
             .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
+        let tx_id = stp.get_tx_id()?;
         if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
@@ -1218,14 +1238,20 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
-        let tx_id = stp.get_tx_id()?;
 
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(&self.resources.factories, None, u64::MAX)?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &self.resources.factories,
+            None,
+            u64::MAX,
+        )?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1325,6 +1351,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
@@ -1365,6 +1393,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?;
             outputs.push(change_output);
         }
@@ -1380,7 +1410,12 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1820,6 +1855,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -1861,6 +1898,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2039,6 +2077,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -2097,6 +2137,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -2114,6 +2156,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2246,6 +2289,8 @@ where
             None,
             None,
             OutputSource::default(),
+            None,
+            None,
         )?;
 
         tx_builder
@@ -2284,6 +2329,7 @@ where
 
         // finalizing transaction
         stp.finalize(
+            self.resources.consensus_manager.clone(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2408,6 +2454,8 @@ where
                     None,
                     None,
                     OutputSource::AtomicSwap,
+                    Some(tx_id),
+                    None,
                 )?;
                 outputs.push(change_output);
 
@@ -2416,7 +2464,12 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+                stp.finalize(
+                    self.resources.consensus_manager.clone(),
+                    &factories,
+                    None,
+                    self.last_seen_tip_height.unwrap_or(u64::MAX),
+                )?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2495,6 +2548,8 @@ where
             None,
             None,
             OutputSource::Refund,
+            Some(tx_id),
+            None,
         )?;
         outputs.push(change_output);
 
@@ -2502,7 +2557,12 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize(
+            self.resources.consensus_manager.clone(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
 
         let tx = stp.take_transaction()?;
 
@@ -2645,6 +2705,7 @@ where
                         output.minimum_value_promise,
                     );
 
+                    let tx_id = TxId::new_random();
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                         rewound_output.clone(),
                         &self.resources.factories,
@@ -2655,10 +2716,11 @@ where
                         None,
                         Some(&output.proof),
                         output_source,
+                        Some(tx_id),
+                        None,
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    let tx_id = TxId::new_random();
 
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                         Ok(_) => {

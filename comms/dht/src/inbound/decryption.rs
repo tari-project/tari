@@ -75,6 +75,8 @@ enum DecryptionError {
     EncryptedMessageNoDestination,
     #[error("Decryption failed: {0}")]
     DecryptionFailedMalformedCipher(#[from] DhtEncryptError),
+    #[error("Encrypted message must have a non-empty body")]
+    EncryptedMessageEmptyBody,
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -222,8 +224,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
+        // Perform initial checks on message validity
         let validated_msg = Self::initial_validation(message)?;
 
+        // The message is unencrypted and valid
         if !validated_msg.header().flags.is_encrypted() {
             return Self::success_not_encrypted(validated_msg).await;
         }
@@ -235,22 +239,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             validated_msg.message().dht_header.message_tag
         );
 
-        let dht_header = validated_msg.header();
-
-        let e_pk = dht_header
-            .ephemeral_public_key
-            .as_ref()
-            // No ephemeral key with ENCRYPTED flag set
-            .ok_or( DecryptionError::EphemeralKeyNotProvidedForEncryptedMessage)?;
-
-        if !validated_msg.message().dht_header.destination.is_unknown() &&
-            validated_msg
-                .message()
-                .dht_header
-                .destination
-                .public_key()
-                .map(|pk| pk != node_identity.public_key())
-                .unwrap_or(false)
+        // The message is encrypted, so see if it is for us
+        if validated_msg
+            .message()
+            .dht_header
+            .destination
+            .public_key()
+            .map(|pk| pk != node_identity.public_key())
+            .unwrap_or(false)
         {
             debug!(
                 target: LOG_TARGET,
@@ -262,6 +258,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(DecryptedDhtMessage::failed(validated_msg.into_message()));
         }
 
+        // The message is encrypted and for us, so derive its encryption key
+        let dht_header = validated_msg.header();
+        let e_pk = dht_header
+            .ephemeral_public_key
+            .as_ref()
+            // This has already been checked, but we need it to avoid an unwrap
+            .ok_or( DecryptionError::EphemeralKeyNotProvidedForEncryptedMessage)?;
         let shared_secret = CommsDHKE::new(node_identity.secret_key(), e_pk);
         let message = validated_msg.message();
 
@@ -308,6 +311,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.tag,
             message.dht_header.message_tag
         );
+        // Decrypt and verify the message
         match Self::attempt_decrypt_message_body(&shared_secret, &message.body) {
             Ok(message_body) => {
                 debug!(
@@ -344,9 +348,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     /// Performs message validation that should be performed by all nodes. If an error is encountered, the message is
-    /// invalid and should never have been sent.
+    /// invalid and should never have been propagated.
+    ///
+    /// These failure modes are detectable by any node, so it is generally safe to ban an offending peer.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
+        // Messages must not be empty
+        if message.body.is_empty() {
+            return Err(DecryptionError::EncryptedMessageEmptyBody);
+        }
+
         if message.dht_header.flags.is_encrypted() {
+            // An encrypted message needs:
+            // - a destination
+            // - an ephemeral public key used for DHKE
+            // - an encrypted message signature
+
             // Check if there is no destination specified and discard
             if message.dht_header.destination.is_unknown() {
                 return Err(DecryptionError::EncryptedMessageNoDestination);
@@ -357,10 +373,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 return Err(DecryptionError::EphemeralKeyNotProvidedForEncryptedMessage);
             }
 
+            // An encrypted message signature is required
+            if message.dht_header.message_signature.is_empty() {
+                return Err(DecryptionError::MessageSignatureNotProvidedForEncryptedMessage);
+            }
+
             Ok(ValidatedDhtInboundMessage::new(message, None))
         } else if message.dht_header.message_signature.is_empty() {
+            // An unencrypted message does not require a message signature
             Ok(ValidatedDhtInboundMessage::new(message, None))
         } else {
+            // But if it has one, it must be valid!
             let message_signature: MessageSignature =
                 ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
                     .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
@@ -387,6 +410,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let encrypted_message_signature = Some(&dht_header.message_signature)
             .filter(|b| !b.is_empty())
             // This should not have been sent/propagated
+            // This is already checked elsewhere, but we need it to avoid an unwrap
             .ok_or( DecryptionError::MessageSignatureNotProvidedForEncryptedMessage)?;
 
         // obtain key signature for authenticated decrypt signature
@@ -570,6 +594,33 @@ mod test {
 
         assert!(!decrypted.decryption_succeeded());
         assert_eq!(decrypted.decryption_result.unwrap_err(), inbound_msg.body);
+    }
+
+    #[test]
+    fn decrypt_inbound_fail_empty_contents() {
+        let service = service_fn(
+            move |_msg: DecryptedDhtMessage| -> future::Ready<Result<(), PipelineError>> {
+                panic!("Should not be called")
+            },
+        );
+        let node_identity = make_node_identity();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+
+        let some_other_node_identity = make_node_identity();
+        let mut inbound_msg = make_dht_inbound_message(
+            &some_other_node_identity,
+            &Vec::new(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            true,
+        )
+        .unwrap();
+        inbound_msg.body = Vec::new();
+
+        let err = block_on(service.call(inbound_msg.clone())).unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::EncryptedMessageEmptyBody = err);
     }
 
     #[runtime::test]

@@ -32,14 +32,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::helpers::{
-        check_blockchain_version,
-        check_header_timestamp_greater_than_median,
-        check_not_bad_block,
-        check_pow_data,
-        check_target_difficulty,
-        check_timestamp_ftl,
-    },
+    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -49,7 +42,7 @@ pub struct BlockHeaderSyncValidator<B> {
     db: AsyncBlockchainDb<B>,
     state: Option<State>,
     consensus_rules: ConsensusManager,
-    randomx_factory: RandomXFactory,
+    validator: HeaderFullValidator,
 }
 
 #[derive(Debug, Clone)]
@@ -58,16 +51,19 @@ struct State {
     timestamps: RollingVec<EpochTime>,
     target_difficulties: TargetDifficulties,
     previous_accum: BlockHeaderAccumulatedData,
+    previous_header: BlockHeader,
     valid_headers: Vec<ChainHeader>,
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+        let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
+        let validator = HeaderFullValidator::new(consensus_rules.clone(), difficulty_calculator, true);
         Self {
             db,
             state: None,
             consensus_rules,
-            randomx_factory,
+            validator,
         }
     }
 
@@ -101,6 +97,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             timestamps,
             target_difficulties,
             previous_accum,
+            previous_header: start_header,
             // One large allocation is usually better even if it is not always used.
             valid_headers: Vec::with_capacity(1000),
         });
@@ -115,44 +112,28 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
-        check_blockchain_version(constants, header.version)?;
-
-        let expected_height = state.current_height + 1;
-        if header.height != expected_height {
-            return Err(BlockHeaderSyncError::InvalidBlockHeight {
-                expected: expected_height,
-                actual: header.height,
-            });
-        }
-        if header.prev_hash != state.previous_accum.hash {
-            return Err(BlockHeaderSyncError::ChainLinkBroken {
-                height: header.height,
-                actual: header.prev_hash.to_hex(),
-                expected: state.previous_accum.hash.to_hex(),
-            });
-        }
-        check_timestamp_ftl(&header, &self.consensus_rules)?;
-
-        check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
         let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate(
             constants.min_pow_difficulty(header.pow_algo()),
             constants.max_pow_difficulty(header.pow_algo()),
         );
-        let achieved_target = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
 
-        let block_hash = header.hash();
-
-        {
+        let achieved_target = {
             let txn = self.db.inner().db_read_access()?;
-            check_not_bad_block(&*txn, block_hash)?;
-            check_pow_data(&header, &self.consensus_rules, &*txn)?;
-        }
+            self.validator.validate(
+                &*txn,
+                &header,
+                &state.previous_header,
+                &state.timestamps,
+                Some(target_difficulty),
+            )?
+        };
 
         // Header is valid, add this header onto the validation state for the next round
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
         // nothing to do with locking or concurrency.
         let state = self.state_mut();
+        state.previous_header = header.clone();
 
         // Ensure that timestamps are inserted in sorted order
         let maybe_index = state.timestamps.iter().position(|ts| ts >= &header.timestamp());
@@ -168,7 +149,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         state.target_difficulties.add_back(&header, target_difficulty);
 
         let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
-            .with_hash(block_hash)
+            .with_hash(header.hash())
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
@@ -310,6 +291,7 @@ mod test {
 
     mod validate {
         use super::*;
+        use crate::{blocks::BlockHeaderValidationError, validation::ValidationError};
 
         #[tokio::test]
         async fn it_passes_if_headers_are_valid() {
@@ -332,7 +314,9 @@ mod test {
             let mut next = BlockHeader::from_previous(tip.header());
             next.height = 10;
             let err = validator.validate(next).unwrap_err();
-            unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);
+            unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
+            unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
+            unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);
             assert_eq!(actual, 10);
             assert_eq!(expected, 3);
         }

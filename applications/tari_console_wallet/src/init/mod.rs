@@ -41,7 +41,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::CryptoFactories;
+use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
@@ -59,6 +59,7 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use zxcvbn::zxcvbn;
 
 use crate::{
     cli::Cli,
@@ -75,6 +76,40 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
+}
+
+/// Get feedback, if available, for a weak passphrase
+fn get_password_feedback(passphrase: &SafePassword) -> Option<Vec<String>> {
+    std::str::from_utf8(passphrase.reveal())
+        .ok()
+        .and_then(|passphrase| zxcvbn(passphrase, &[]).ok())
+        .and_then(|scored| scored.feedback().to_owned())
+        .map(|feedback| feedback.suggestions().to_owned())
+        .map(|suggestion| suggestion.into_iter().map(|item| item.to_string()).collect())
+}
+
+// Display password feedback to the user
+fn display_password_feedback(passphrase: &SafePassword) {
+    if passphrase.reveal().is_empty() {
+        // The passphrase is empty, which the scoring library doesn't handle
+        println!("However, an empty password puts your wallet at risk against an attacker with access to this device.");
+        println!("Use this only if you are sure that your device is safe from prying eyes!");
+        println!();
+    } else if let Some(feedback) = get_password_feedback(passphrase) {
+        // The scoring library provided feedback
+        println!(
+            "However, the password you chose is weak; a determined attacker with access to your device may be able to \
+             guess it."
+        );
+        println!("You may want to consider changing it to a stronger one.");
+        println!("Here are some suggestions:");
+        for suggestion in feedback {
+            println!("- {}", suggestion);
+        }
+        println!();
+    } else {
+        // There is no feedback to provide
+    }
 }
 
 /// Gets the password provided by command line argument or environment variable if available.
@@ -105,15 +140,7 @@ pub fn get_or_prompt_password(
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
-    let password = loop {
-        let pass = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
-        if pass.is_empty() {
-            println!("Password cannot be empty!");
-            continue;
-        } else {
-            break pass;
-        }
-    };
+    let password = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
     Ok(SafePassword::from(password))
 }
@@ -144,7 +171,14 @@ pub async fn change_password(
     //     .await
     //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
-    println!("Wallet password changed successfully.");
+    println!("Passwords match.");
+
+    // If the passphrase is weak, let the user know
+    display_password_feedback(&passphrase);
+
+    // TODO: remove this warning when this functionality is added
+    println!();
+    println!("WARNING: Password change functionality is not yet completed, so continue to use your existing password!");
 
     Ok(())
 }
@@ -312,6 +346,7 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
+    let consensus_manager = ConsensusManager::builder(config.wallet.network).build();
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
@@ -319,6 +354,7 @@ pub async fn init_wallet(
         config.peer_seeds.clone(),
         config.auto_update.clone(),
         node_identity,
+        consensus_manager,
         factories,
         wallet_db,
         output_db,
@@ -622,6 +658,11 @@ pub(crate) fn boot_with_password(
                 return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
             }
 
+            println!("Passwords match.");
+
+            // If the passphrase is weak, let the user know
+            display_password_feedback(&password);
+
             password
         },
         WalletBoot::Existing | WalletBoot::Recovery => {
@@ -631,4 +672,23 @@ pub(crate) fn boot_with_password(
     };
 
     Ok((boot_mode, password))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_utilities::SafePassword;
+
+    use super::get_password_feedback;
+
+    #[test]
+    fn weak_password() {
+        let weak_password = SafePassword::from("weak");
+        assert!(get_password_feedback(&weak_password).is_some());
+    }
+
+    #[test]
+    fn strong_password() {
+        let strong_password = SafePassword::from("This is a reasonably strong password!");
+        assert!(get_password_feedback(&strong_password).is_none());
+    }
 }

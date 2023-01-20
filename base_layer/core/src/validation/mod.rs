@@ -34,26 +34,26 @@ pub(crate) mod helpers;
 
 mod traits;
 pub use traits::{
-    BlockSyncBodyValidation,
+    BlockBodyValidator,
+    CandidateBlockValidator,
     FinalHorizonStateValidation,
-    HeaderValidation,
-    MempoolTransactionValidation,
-    OrphanValidation,
-    PostOrphanBodyValidation,
+    HeaderChainLinkedValidator,
+    InternalConsistencyValidator,
+    TransactionValidator,
 };
 
-pub mod block_validators;
+pub mod block_body;
 mod difficulty_calculator;
 pub use difficulty_calculator::*;
-pub mod header_validator;
 pub mod mocks;
-pub mod transaction_validators;
+pub mod transaction;
 // pub mod header_validator;
 
 mod chain_balance;
 pub use chain_balance::ChainBalanceValidator;
 
-mod header_iter;
+pub mod aggregate_body;
+pub mod header;
 
 #[cfg(test)]
 mod test;

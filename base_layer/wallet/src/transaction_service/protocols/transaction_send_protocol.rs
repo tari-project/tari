@@ -552,6 +552,7 @@ where
         outbound_tx
             .sender_protocol
             .finalize(
+                self.resources.consensus_manager.clone(),
                 &self.resources.factories,
                 self.prev_header,
                 self.height.unwrap_or(u64::MAX),

@@ -52,10 +52,10 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
     validation::{
         mocks::MockValidator,
-        transaction_validators::TxInputAndMaturityValidator,
-        HeaderValidation,
-        OrphanValidation,
-        PostOrphanBodyValidation,
+        transaction::TransactionChainLinkedValidator,
+        CandidateBlockValidator,
+        HeaderChainLinkedValidator,
+        InternalConsistencyValidator,
     },
 };
 use tari_p2p::{
@@ -157,9 +157,9 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl PostOrphanBodyValidation<TempDatabase> + 'static,
-        header: impl HeaderValidation<TempDatabase> + 'static,
-        orphan: impl OrphanValidation + 'static,
+        block: impl CandidateBlockValidator<TempDatabase> + 'static,
+        header: impl HeaderChainLinkedValidator<TempDatabase> + 'static,
+        orphan: impl InternalConsistencyValidator + 'static,
     ) -> Self {
         let validators = Validators::new(block, header, orphan);
         self.validators = Some(validators);
@@ -187,7 +187,7 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
         let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
-        let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
+        let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
             consensus_manager.clone(),
