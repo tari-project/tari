@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.44.1](https://github.com/tari-project/tari/compare/v0.44.0...v0.44.1) (2023-01-19)
+
 ## [0.44.0](https://github.com/tari-project/tari/compare/v0.43.3...v0.44.0) (2023-01-18)
 
 
