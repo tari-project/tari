@@ -41,9 +41,10 @@ use tari_app_grpc::{
 };
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
+use tari_common::configuration::Network;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
 use tari_core::{
-    consensus::consensus_constants::ConsensusConstants,
+    consensus::ConsensusManager,
     transactions::{transaction_components::UnblindedOutput, CoinbaseBuilder, CryptoFactories},
 };
 use tari_crypto::keys::SecretKey;
@@ -309,6 +310,9 @@ pub fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput
     let script_private_key = PrivateKey::random(&mut OsRng);
     let nonce = PrivateKey::random(&mut OsRng);
 
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_constants = consensus_manager.consensus_constants(height);
+
     let (tx, ubutxo) = CoinbaseBuilder::new(CryptoFactories::default())
         .with_block_height(height)
         .with_fees(fee.into())
@@ -316,7 +320,7 @@ pub fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput
         .with_script_key(script_private_key)
         .with_nonce(nonce)
         .with_extra(extra)
-        .build_with_reward(ConsensusConstants::localnet().first().unwrap(), reward.into())
+        .build_with_reward(consensus_manager.clone(), consensus_constants, reward.into())
         .unwrap();
 
     let tx_out = tx.body().outputs().first().unwrap().clone();
