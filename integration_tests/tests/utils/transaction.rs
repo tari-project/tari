@@ -58,6 +58,7 @@ struct TestTransactionBuilder {
     amount: MicroTari,
     factories: CryptoFactories,
     fee: MicroTari,
+    inputs_max_height: u64,
     inputs: Vec<(TransactionInput, UnblindedOutput)>,
     keys: TestParams,
     lock_height: u64,
@@ -70,6 +71,7 @@ impl TestTransactionBuilder {
             amount: MicroTari(0),
             factories: CryptoFactories::default(),
             fee: MicroTari(0),
+            inputs_max_height: 0,
             inputs: vec![],
             keys: TestParams::new(),
             lock_height: 0,
@@ -82,12 +84,21 @@ impl TestTransactionBuilder {
         self
     }
 
+    pub fn update_inputs_max_height(&mut self, height: u64) -> &mut Self {
+        self.inputs_max_height = height;
+        self
+    }
+
     fn update_amount(&mut self, amount: MicroTari) {
         self.amount += amount
     }
 
     pub fn add_input(&mut self, u: UnblindedOutput) -> &mut Self {
         self.update_amount(u.value);
+
+        if u.features.maturity > self.inputs_max_height {
+            self.update_inputs_max_height(u.features.maturity);
+        }
 
         self.inputs.push((
             u.as_transaction_input(&ExtendedPedersenCommitmentFactory::default())
@@ -114,7 +125,9 @@ impl TestTransactionBuilder {
             .with_kernel(kernel.clone());
 
         let rules = ConsensusManager::builder(Network::LocalNet).build();
-        let tx = tx_builder.build(rules, &self.factories, None, 0).unwrap();
+        let tx = tx_builder
+            .build(rules, &self.factories, None, self.inputs_max_height)
+            .unwrap();
         (tx, output.1)
     }
 
