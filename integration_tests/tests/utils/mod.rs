@@ -26,13 +26,12 @@ use rand::Rng;
 
 use crate::TariWorld;
 
-pub mod base_node;
 pub mod base_node_process;
 pub mod ffi;
+pub mod merge_mining_proxy;
 pub mod miner;
 pub mod transaction;
 pub mod wallet;
-pub mod wallet_client;
 pub mod wallet_ffi;
 pub mod wallet_process;
 

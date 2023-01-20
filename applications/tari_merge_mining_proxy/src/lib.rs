@@ -20,39 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_merge_mining_proxy::Cli;
-
 mod block_template_data;
 mod block_template_protocol;
 mod cli;
+pub use cli::Cli;
 mod common;
 mod config;
 mod error;
 mod proxy;
 mod run_merge_miner;
+use run_merge_miner::start_merge_miner;
 
-#[cfg(test)]
-mod test;
-
-use std::io::stdout;
-
-use clap::Parser;
-use crossterm::{execute, terminal::SetTitle};
-use tari_app_utilities::consts;
-use tari_common::initialize_logging;
-
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let terminal_title = format!("Tari Merge Mining Proxy - Version {}", consts::APP_VERSION);
-    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
-    }
-
-    let cli = Cli::parse();
-
-    initialize_logging(
-        &cli.common.log_config_path("proxy"),
-        include_str!("../log4rs_sample.yml"),
-    )?;
-    run_merge_miner::start_merge_miner(cli).await
+pub async fn merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
+    start_merge_miner(cli).await
 }
