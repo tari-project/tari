@@ -53,7 +53,7 @@ fn create_next_block(
         rules,
         prev_block,
         BlockSpec::new()
-            .with_transactions(transactions.into_iter().map(|t| (&*t).clone()).collect())
+            .with_transactions(transactions.into_iter().map(|t| (*t).clone()).collect())
             .finish(),
     );
     let block = apply_mmr_to_block(db, block);

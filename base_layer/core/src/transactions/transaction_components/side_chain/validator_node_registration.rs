@@ -58,12 +58,12 @@ impl ValidatorNodeRegistration {
         match prev_shard_key {
             Some(prev) => {
                 if does_require_new_shard_key(self.public_key(), epoch, interval) {
-                    generate_shard_key(self.public_key(), &**block_hash)
+                    generate_shard_key(self.public_key(), block_hash)
                 } else {
                     prev
                 }
             },
-            None => generate_shard_key(self.public_key(), &**block_hash),
+            None => generate_shard_key(self.public_key(), block_hash),
         }
     }
 

@@ -328,7 +328,7 @@ mod test {
     fn sanity_check() {
         let mut key = CommsSignatureKey::from(SafeArray::default());
         comms_dht_hash_domain_key_signature()
-            .chain(&[10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
+            .chain([10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
             .finalize_into(GenericArray::from_mut_slice(key.reveal_mut()));
 
         let signature = b"Top secret message, handle with care".as_slice();

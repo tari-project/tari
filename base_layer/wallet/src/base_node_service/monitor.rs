@@ -198,7 +198,7 @@ where
 
     async fn update_state(&self, new_state: BaseNodeState) {
         let mut lock = self.state.write().await;
-        let (new_block_detected, height) = match (new_state.chain_metadata.clone(), (*lock).chain_metadata.clone()) {
+        let (new_block_detected, height) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
             (Some(new_metadata), Some(old_metadata)) => (
                 new_metadata.height_of_longest_chain() != old_metadata.height_of_longest_chain(),
                 new_metadata.height_of_longest_chain(),

@@ -109,7 +109,7 @@ fn check_timestamp_count(
     let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
     if timestamps.len() < expected_timestamp_count {
         return Err(ValidationError::NotEnoughTimestamps {
-            actual: timestamps.len() as usize,
+            actual: timestamps.len(),
             expected: expected_timestamp_count,
         });
     }

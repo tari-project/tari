@@ -618,7 +618,7 @@ mod test {
         .unwrap();
         inbound_msg.body = Vec::new();
 
-        let err = block_on(service.call(inbound_msg.clone())).unwrap_err();
+        let err = block_on(service.call(inbound_msg)).unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
         unpack_enum!(DecryptionError::EncryptedMessageEmptyBody = err);
     }

@@ -307,7 +307,7 @@ fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Resul
 
 /// Checks that all inputs have matured at the given height
 fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
-    if let Err(e) = inputs
+    inputs
         .iter()
         .map(|input| match input.is_mature_at(height) {
             Ok(mature) => {
@@ -323,10 +323,8 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
             },
             Err(e) => Err(e),
         })
-        .sum::<Result<usize, TransactionError>>()
-    {
-        return Err(e);
-    }
+        .sum::<Result<usize, TransactionError>>()?;
+
     Ok(())
 }
 

@@ -160,7 +160,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutputHash(hash) => {
-                match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
+                match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &conn) {
                     Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_unblinded_output(&cipher)?))),
                     Err(e) => {
                         match e {

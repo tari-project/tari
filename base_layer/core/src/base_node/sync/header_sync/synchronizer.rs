@@ -421,7 +421,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 },
             };
 
-            let steps_back = resp.fork_hash_index as u64 + offset as u64;
+            let steps_back = resp.fork_hash_index + offset as u64;
             return Ok((resp, block_hashes, steps_back));
         }
     }

@@ -94,7 +94,7 @@ impl FromStr for Network {
             invalid => Err(ConfigurationError::new(
                 "network",
                 Some(value.to_string()),
-                &format!("Invalid network option: {}", invalid),
+                format!("Invalid network option: {}", invalid),
             )),
         }
     }
@@ -129,7 +129,7 @@ impl TryFrom<u8> for Network {
             _ => Err(ConfigurationError::new(
                 "network",
                 Some(v.to_string()),
-                &format!("Invalid network option: {}", v),
+                format!("Invalid network option: {}", v),
             )),
         }
     }

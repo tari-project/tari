@@ -441,7 +441,7 @@ impl AppState {
     }
 
     pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
-        (&self.cached_data.confirmations).get(&tx_id)
+        self.cached_data.confirmations.get(&tx_id)
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {

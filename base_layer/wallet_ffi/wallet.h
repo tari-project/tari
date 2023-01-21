@@ -2529,6 +2529,40 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
                                                         int *error_out);
 
 /**
+ * Gets the length of the public keys vector
+ *
+ * ## Arguments
+ * `public_keys` - Pointer to TariPublicKeys
+ *
+ * ## Returns
+ * `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys, int *error_out);
+
+/**
+ * Gets a ByteVector at position in a EmojiSet
+ *
+ * ## Arguments
+ * `public_keys` - The pointer to a TariPublicKeys
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
+ */
+TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
+                                  unsigned int position,
+                                  int *error_out);
+
+/**
  * Creates a TariWallet
  *
  * ## Arguments

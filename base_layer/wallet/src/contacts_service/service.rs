@@ -169,7 +169,7 @@ where T: ContactsBackend + 'static
                 },
 
                 Ok(event) = liveness_event_stream.recv() => {
-                    let _result = self.handle_liveness_event(&*event).await.map_err(|e| {
+                    let _result = self.handle_liveness_event(&event).await.map_err(|e| {
                         error!(target: LOG_TARGET, "Failed to handle contact status liveness event: {:?}", e);
                         e
                     });
@@ -306,18 +306,15 @@ where T: ContactsBackend + 'static
 
     async fn get_online_status(&self, contact: &Contact) -> Result<ContactOnlineStatus, ContactsServiceError> {
         let mut online_status = ContactOnlineStatus::NeverSeen;
-        match self.connectivity.get_peer_info(contact.node_id.clone()).await? {
-            Some(peer_data) => {
-                if let Some(banned_until) = peer_data.banned_until() {
-                    let msg = format!(
-                        "Until {} ({})",
-                        banned_until.format("%m-%d %H:%M"),
-                        peer_data.banned_reason
-                    );
-                    return Ok(ContactOnlineStatus::Banned(msg));
-                }
-            },
-            None => {},
+        if let Some(peer_data) = self.connectivity.get_peer_info(contact.node_id.clone()).await? {
+            if let Some(banned_until) = peer_data.banned_until() {
+                let msg = format!(
+                    "Until {} ({})",
+                    banned_until.format("%m-%d %H:%M"),
+                    peer_data.banned_reason
+                );
+                return Ok(ContactOnlineStatus::Banned(msg));
+            }
         };
         if let Some(time) = contact.last_seen {
             if self.is_online(time) {

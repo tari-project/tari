@@ -322,7 +322,7 @@ where TSocket: AsyncRead + Unpin
                     decrypted_len,
                     ref mut offset,
                 } => {
-                    let bytes_to_copy = cmp::min(decrypted_len as usize - *offset, buf.len());
+                    let bytes_to_copy = cmp::min(decrypted_len - *offset, buf.len());
                     buf[..bytes_to_copy]
                         .copy_from_slice(&self.buffers.read_decrypted[*offset..(*offset + bytes_to_copy)]);
                     trace!(
@@ -332,7 +332,7 @@ where TSocket: AsyncRead + Unpin
                         decrypted_len
                     );
                     *offset += bytes_to_copy;
-                    if *offset == decrypted_len as usize {
+                    if *offset == decrypted_len {
                         self.read_state = ReadState::Init;
                     }
                     return Poll::Ready(Ok(bytes_to_copy));

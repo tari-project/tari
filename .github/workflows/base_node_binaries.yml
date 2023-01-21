@@ -23,7 +23,7 @@ concurrency:
 env:
   TBN_FILENAME: "tari_suite"
   TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
 

@@ -129,7 +129,7 @@ pub async fn setup() -> (
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name), 16).unwrap();
+    let db_connection = run_migration_and_create_sqlite_connection(format!("{}/{}", db_folder, db_name), 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);

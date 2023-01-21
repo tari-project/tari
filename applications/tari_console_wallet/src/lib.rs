@@ -31,7 +31,18 @@ mod ui;
 mod utils;
 mod wallet_modes;
 
-pub use cli::Cli;
+pub use cli::{
+    BurnTariArgs,
+    Cli,
+    CliCommands,
+    CoinSplitArgs,
+    DiscoverPeerArgs,
+    ExportUtxosArgs,
+    MakeItRainArgs,
+    SendTariArgs,
+    SetBaseNodeArgs,
+    WhoisArgs,
+};
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
@@ -53,7 +64,7 @@ use crate::init::{boot_with_password, confirm_seed_words, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
-pub fn run_wallet(runtime: Runtime, config: &mut ApplicationConfig) -> Result<(), ExitError> {
+pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut ApplicationConfig) -> Result<(), ExitError> {
     let data_dir = config.wallet.data_dir.clone();
     let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
 
@@ -84,10 +95,15 @@ pub fn run_wallet(runtime: Runtime, config: &mut ApplicationConfig) -> Result<()
         command2: None,
     };
 
-    run_wallet_with_cli(runtime, config, cli)
+    run_wallet_with_cli(shutdown, runtime, config, cli)
 }
 
-pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli: Cli) -> Result<(), ExitError> {
+pub fn run_wallet_with_cli(
+    shutdown: &mut Shutdown,
+    runtime: Runtime,
+    config: &mut ApplicationConfig,
+    cli: Cli,
+) -> Result<(), ExitError> {
     info!(
         target: LOG_TARGET,
         "== {} ({}) ==",
@@ -109,7 +125,6 @@ pub fn run_wallet_with_cli(runtime: Runtime, config: &mut ApplicationConfig, cli
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();
 
-    let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
     if cli.change_password {

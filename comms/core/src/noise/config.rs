@@ -72,9 +72,8 @@ impl NoiseConfig {
         TSocket: AsyncWrite + AsyncRead + Unpin,
     {
         let handshake_state = {
-            let builder =
-                snow::Builder::with_resolver(self.parameters.clone(), Box::new(TariCryptoResolver::default()))
-                    .local_private_key(self.node_identity.secret_key().as_bytes());
+            let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::<TariCryptoResolver>::default())
+                .local_private_key(self.node_identity.secret_key().as_bytes());
 
             match direction {
                 ConnectionDirection::Outbound => {

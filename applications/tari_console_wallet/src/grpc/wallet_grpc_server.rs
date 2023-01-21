@@ -45,6 +45,7 @@ use tari_app_grpc::{
         CreateBurnTransactionResponse,
         CreateTemplateRegistrationRequest,
         CreateTemplateRegistrationResponse,
+        GetAddressResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -223,6 +224,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             public_key: identity.public_key().to_vec(),
             public_address: identity.public_address().to_string(),
             node_id: identity.node_id().to_vec(),
+        }))
+    }
+
+    async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
+        let network = self.wallet.network.as_network();
+        let pk = self.wallet.comms.node_identity().public_key().clone();
+        let address = TariAddress::new(pk, network);
+        Ok(Response::new(GetAddressResponse {
+            address: address.to_bytes().to_vec(),
         }))
     }
 

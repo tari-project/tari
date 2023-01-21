@@ -65,7 +65,7 @@ mod test {
         };
         let mut hasher = Challenge::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
-        let hash = hasher.chain(&features.try_to_vec().unwrap()).finalize();
+        let hash = hasher.chain(features.try_to_vec().unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {

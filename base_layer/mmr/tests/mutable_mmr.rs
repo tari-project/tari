@@ -34,7 +34,7 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     let hasher = MmrTestHasherBlake256::new();
     hasher
         .chain(hash)
-        .chain(&bitmap.serialize())
+        .chain(bitmap.serialize())
         .finalize()
         .as_ref()
         .to_vec()

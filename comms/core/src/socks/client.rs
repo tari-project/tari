@@ -325,7 +325,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             },
             // Domain
             0x03 => {
-                let domain_bytes = (&self.buf[5..(self.len - 2)]).to_vec();
+                let domain_bytes = (self.buf[5..(self.len - 2)]).to_vec();
                 let domain = String::from_utf8(domain_bytes)
                     .map_err(|_| SocksError::InvalidTargetAddress("domain bytes are not a valid UTF-8 string"))?;
                 let mut addr: Multiaddr = Protocol::Dns4(Cow::Owned(domain)).into();

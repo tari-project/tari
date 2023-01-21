@@ -265,7 +265,7 @@ impl UnconfirmedPool {
         transactions_to_recheck: &mut Vec<(TransactionKey, Arc<Transaction>)>,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         total_weight: &mut u64,
-        unique_ids: &mut HashSet<[u8; 32]>,
+        _unique_ids: &mut HashSet<[u8; 32]>,
     ) -> Result<(), UnconfirmedPoolError> {
         for dependent_output in &transaction.dependent_output_hashes {
             match self.txs_by_output.get(dependent_output) {
@@ -278,7 +278,7 @@ impl UnconfirmedPool {
                             transactions_to_recheck,
                             selected_txs,
                             total_weight,
-                            unique_ids,
+                            _unique_ids,
                         )?;
 
                         if !transactions_to_recheck.is_empty() {
@@ -517,7 +517,7 @@ impl UnconfirmedPool {
 
     /// Returns all transaction stored in the UnconfirmedPool.
     pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
-        self.tx_by_key.iter().map(|(_, ptx)| ptx.transaction.clone()).collect()
+        self.tx_by_key.values().map(|ptx| ptx.transaction.clone()).collect()
     }
 
     /// Returns the total weight of all transactions stored in the pool.

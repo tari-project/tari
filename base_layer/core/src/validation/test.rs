@@ -471,7 +471,7 @@ impl<'a, B> HeaderIter<'a, B> {
         }
     }
 
-    fn next_chunk(&self) -> (u64, u64) {
+    fn get_next_chunk(&self) -> (u64, u64) {
         #[allow(clippy::cast_possible_truncation)]
         let upper_bound = cmp::min(self.cursor + self.chunk_size, self.height as usize);
         (self.cursor as u64, upper_bound as u64)
@@ -487,7 +487,7 @@ impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
         }
 
         if self.chunk.is_empty() {
-            let (start, end) = self.next_chunk();
+            let (start, end) = self.get_next_chunk();
             // We're done: No more block headers to fetch
             if start > end {
                 return None;

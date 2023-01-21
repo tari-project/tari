@@ -1569,7 +1569,7 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Result<HistoricalBlock, ChainStorageError> {
     let mark = Instant::now();
-    let (tip_height, is_pruned) = check_for_valid_height(&*db, height)?;
+    let (tip_height, is_pruned) = check_for_valid_height(db, height)?;
     let chain_header = db.fetch_chain_header_by_height(height)?;
     let (header, accumulated_data) = chain_header.into_parts();
     let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
@@ -3010,7 +3010,7 @@ mod test {
 
         let tip = access.fetch_last_header().unwrap();
         assert_eq!(&tip, reorg_chain.get("E2").unwrap().header());
-        check_whole_chain(&mut *access);
+        check_whole_chain(&mut access);
     }
 
     #[test]
@@ -3060,7 +3060,7 @@ mod test {
         let tip = access.fetch_last_header().unwrap();
         assert_eq!(&tip, mainchain.get("D").unwrap().header());
 
-        check_whole_chain(&mut *access);
+        check_whole_chain(&mut access);
     }
 
     #[test]

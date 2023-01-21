@@ -731,7 +731,7 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_signature_hex(
 #[no_mangle]
 pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TariTransactionKernel) {
     if !x.is_null() {
-        Box::from_raw(x);
+        drop(Box::from_raw(x))
     }
 }
 
@@ -792,7 +792,7 @@ pub unsafe extern "C" fn byte_vector_create(
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
     if !bytes.is_null() {
-        Box::from_raw(bytes);
+        drop(Box::from_raw(bytes))
     }
 }
 
@@ -904,7 +904,7 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 #[no_mangle]
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
-        Box::from_raw(pk);
+        drop(Box::from_raw(pk))
     }
 }
 
@@ -921,7 +921,7 @@ pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
 #[no_mangle]
 pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
     if !pks.is_null() {
-        Box::from_raw(pks);
+        drop(Box::from_raw(pks))
     }
 }
 
@@ -1078,7 +1078,7 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_destroy(address: *mut TariWalletAddress) {
     if !address.is_null() {
-        Box::from_raw(address);
+        drop(Box::from_raw(address))
     }
 }
 
@@ -1410,7 +1410,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mut TariComAndPubSignature) {
     if !compub_sig.is_null() {
-        Box::from_raw(compub_sig);
+        drop(Box::from_raw(compub_sig))
     }
 }
 
@@ -1585,7 +1585,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
 #[no_mangle]
 pub unsafe extern "C" fn tari_unblinded_output_destroy(output: *mut TariUnblindedOutput) {
     if !output.is_null() {
-        Box::from_raw(output);
+        drop(Box::from_raw(output))
     }
 }
 
@@ -1805,7 +1805,7 @@ pub unsafe extern "C" fn unblinded_outputs_received_tx_id_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOutputs) {
     if !outputs.is_null() {
-        Box::from_raw(outputs);
+        drop(Box::from_raw(outputs))
     }
 }
 
@@ -1990,7 +1990,7 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
 #[no_mangle]
 pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
     if !pk.is_null() {
-        Box::from_raw(pk);
+        drop(Box::from_raw(pk))
     }
 }
 
@@ -2140,7 +2140,7 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
     if !covenant.is_null() {
-        Box::from_raw(covenant);
+        drop(Box::from_raw(covenant))
     }
 }
 
@@ -2312,7 +2312,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutputFeatures) {
     if !output_features.is_null() {
-        Box::from_raw(output_features);
+        drop(Box::from_raw(output_features))
     }
 }
 
@@ -2625,7 +2625,7 @@ pub unsafe extern "C" fn seed_words_push_word(
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     if !seed_words.is_null() {
-        Box::from_raw(seed_words);
+        drop(Box::from_raw(seed_words))
     }
 }
 
@@ -2757,7 +2757,7 @@ pub unsafe extern "C" fn contact_get_tari_address(
 #[no_mangle]
 pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     if !contact.is_null() {
-        Box::from_raw(contact);
+        drop(Box::from_raw(contact))
     }
 }
 
@@ -2840,7 +2840,7 @@ pub unsafe extern "C" fn contacts_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     if !contacts.is_null() {
-        Box::from_raw(contacts);
+        drop(Box::from_raw(contacts))
     }
 }
 
@@ -3048,7 +3048,7 @@ pub unsafe extern "C" fn liveness_data_get_online_status(
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
     if !liveness_data.is_null() {
-        Box::from_raw(liveness_data);
+        drop(Box::from_raw(liveness_data))
     }
 }
 /// -------------------------------------------------------------------------------------------- ///
@@ -3135,7 +3135,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariCompletedTransactions) {
     if !transactions.is_null() {
-        Box::from_raw(transactions);
+        drop(Box::from_raw(transactions))
     }
 }
 
@@ -3224,7 +3224,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mut TariPendingOutboundTransactions) {
     if !transactions.is_null() {
-        Box::from_raw(transactions);
+        drop(Box::from_raw(transactions))
     }
 }
 
@@ -3312,7 +3312,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut TariPendingInboundTransactions) {
     if !transactions.is_null() {
-        Box::from_raw(transactions);
+        drop(Box::from_raw(transactions))
     }
 }
 
@@ -3827,7 +3827,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCompletedTransaction) {
     if !transaction.is_null() {
-        Box::from_raw(transaction);
+        drop(Box::from_raw(transaction))
     }
 }
 
@@ -4061,7 +4061,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut TariPendingOutboundTransaction) {
     if !transaction.is_null() {
-        Box::from_raw(transaction);
+        drop(Box::from_raw(transaction))
     }
 }
 
@@ -4269,7 +4269,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction) {
     if !transaction.is_null() {
-        Box::from_raw(transaction);
+        drop(Box::from_raw(transaction))
     }
 }
 
@@ -4342,7 +4342,7 @@ pub unsafe extern "C" fn transaction_send_status_decode(
 #[no_mangle]
 pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus) {
     if !status.is_null() {
-        Box::from_raw(status);
+        drop(Box::from_raw(status))
     }
 }
 
@@ -4629,7 +4629,7 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportCon
 #[no_mangle]
 pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
     if !transport.is_null() {
-        Box::from_raw(transport);
+        drop(Box::from_raw(transport))
     }
 }
 
@@ -4801,7 +4801,7 @@ pub unsafe extern "C" fn comms_config_create(
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
     if !wc.is_null() {
-        Box::from_raw(wc);
+        drop(Box::from_raw(wc))
     }
 }
 
@@ -4850,6 +4850,65 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
             ptr::null_mut()
         },
     }
+}
+
+/// Gets the length of the public keys vector
+///
+/// ## Arguments
+/// `public_keys` - Pointer to TariPublicKeys
+///
+/// ## Returns
+/// `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_keys.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*public_keys).0.len() as c_uint
+}
+
+/// Gets a ByteVector at position in a EmojiSet
+///
+/// ## Arguments
+/// `public_keys` - The pointer to a TariPublicKeys
+/// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
+/// is null or if the position is invalid
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_get_at(
+    public_keys: *const TariPublicKeys,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_keys.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let last_index = public_keys_get_length(public_keys, error_out) - 1;
+    if position > last_index {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let result = (*public_keys).0[position as usize].clone();
+    Box::into_raw(Box::new(result))
 }
 
 /// ---------------------------------------------------------------------------------------------- ///
@@ -5132,7 +5191,7 @@ pub unsafe extern "C" fn wallet_create(
             .expect("A non-null network should be able to be converted to string");
         info!(target: LOG_TARGET, "network set to {}", network);
         // eprintln!("network set to {}", network);
-        match Network::from_str(&*network) {
+        match Network::from_str(network) {
             Ok(n) => n,
             Err(_) => {
                 error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
@@ -5975,7 +6034,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         return result;
     }
 
-    if let Some(key1) = hex_keys.get(0) {
+    if let Some(key1) = hex_keys.first() {
         if let Some(key2) = hex_keys.get(1) {
             let secret = TariPrivateKey::from_hex(key1);
             match secret {
@@ -6292,7 +6351,7 @@ pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance,
 #[no_mangle]
 pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
     if !balance.is_null() {
-        Box::from_raw(balance);
+        drop(Box::from_raw(balance))
     }
 }
 
@@ -7989,7 +8048,7 @@ pub unsafe extern "C" fn emoji_set_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
     if !emoji_set.is_null() {
-        Box::from_raw(emoji_set);
+        drop(Box::from_raw(emoji_set))
     }
 }
 
@@ -8172,7 +8231,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TariFeePerGramStats) {
     if !fee_per_gram_stats.is_null() {
-        Box::from_raw(fee_per_gram_stats);
+        drop(Box::from_raw(fee_per_gram_stats))
     }
 }
 
@@ -8309,7 +8368,7 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
     if !fee_per_gram_stat.is_null() {
-        Box::from_raw(fee_per_gram_stat);
+        drop(Box::from_raw(fee_per_gram_stat))
     }
 }
 
@@ -8951,7 +9010,7 @@ mod test {
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
                 (*output_features).output_type,
-                OutputType::from_byte(output_type as u8).unwrap()
+                OutputType::from_byte(output_type).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).coinbase_extra, expected_metadata);
@@ -9218,7 +9277,7 @@ mod test {
 
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
+                run_migration_and_create_sqlite_connection(sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend =
                 WalletDatabase::new(WalletSqliteDatabase::new(connection, "holiday".to_string().into()).unwrap());
 
@@ -10481,7 +10540,7 @@ mod test {
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let source_address_ptr = Box::into_raw(Box::new(TariWalletAddress::default()));
+            let source_address_ptr = Box::into_raw(Box::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
@@ -10565,7 +10624,7 @@ mod test {
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let source_address_ptr = Box::into_raw(Box::new(TariWalletAddress::default()));
+            let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));

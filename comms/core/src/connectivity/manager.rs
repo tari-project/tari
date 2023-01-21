@@ -403,7 +403,7 @@ impl ConnectivityManagerActor {
         let mut connections = self
             .pool
             .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
-        connections.truncate(excess_connections as usize);
+        connections.truncate(excess_connections);
         for conn in connections {
             if !conn.is_connected() {
                 continue;
@@ -572,7 +572,7 @@ impl ConnectivityManagerActor {
         }
 
         let (node_id, mut new_status, connection) = match event {
-            PeerDisconnected(_, node_id) => (&*node_id, ConnectionStatus::Disconnected, None),
+            PeerDisconnected(_, node_id) => (node_id, ConnectionStatus::Disconnected, None),
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
 
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
@@ -590,7 +590,7 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Dial was cancelled before connection completed to peer '{}'", node_id
                 );
-                (&*node_id, ConnectionStatus::Failed, None)
+                (node_id, ConnectionStatus::Failed, None)
             },
             PeerConnectFailed(node_id, err) => {
                 debug!(
@@ -598,7 +598,7 @@ impl ConnectivityManagerActor {
                     "Connection to peer '{}' failed because '{:?}'", node_id, err
                 );
                 self.on_peer_connection_failure(node_id).await?;
-                (&*node_id, ConnectionStatus::Failed, None)
+                (node_id, ConnectionStatus::Failed, None)
             },
             _ => return Ok(()),
         };
