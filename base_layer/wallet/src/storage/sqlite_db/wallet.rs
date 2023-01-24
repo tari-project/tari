@@ -484,7 +484,7 @@ fn get_cipher_for_db_encryption(
 
             // These are the parameters for the passphrase hash
             let params_passphrase = argon2::Params::new(
-                37 * 1024, // m-cost: 37 MiB, converted to KiB
+                46 * 1024, // m-cost: 46 MiB, converted to KiB
                 1,         // t-cost
                 1,         // p-cost
                 None,      // output length: default is fine for this use
@@ -547,7 +547,7 @@ fn get_cipher_for_db_encryption(
     // Use the recommended OWASP parameters, which are not the default:
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
     let params_encryption = argon2::Params::new(
-        37 * 1024,              // m-cost: 37 MiB, converted to KiB
+        46 * 1024,              // m-cost: 46 MiB, converted to KiB
         1,                      // t-cost
         1,                      // p-cost
         Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
