@@ -307,29 +307,18 @@ mod test {
         let mut rng = rand::thread_rng();
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
-        let emoji_id_from_public_key = TariAddress::from_public_key(&public_key, Network::Esmeralda);
-
-        // let create byte string with bad network u8
-        let mut buf = [0u8; INTERNAL_SIZE];
-        buf[0..32].copy_from_slice(emoji_id_from_public_key.public_key.as_bytes());
-        let checksum = compute_checksum(&buf[0..32].to_vec());
-        // 0xb3 is a bad network
-        buf[32] = 0xb3 ^ checksum;
-
-        let mut bytes = emoji_id_from_public_key.to_bytes();
-        // make the network invalid
-        bytes[1] = 0xb3;
-        let emoji_string = bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>();
-
-        // This emoji string contains an invalid checksum
+        // Generate an address using a valid network and ensure it's not valid on another network
+        let address = TariAddress::from_public_key(&public_key, Network::Esmeralda);
         assert_eq!(
-            TariAddress::from_emoji_string(&emoji_string),
+            TariAddress::from_bytes_with_network(&address.to_bytes(), Network::Dibbler),
             Err(TariAddressError::InvalidNetworkOrChecksum)
         );
 
-        // This emoji string contains an invalid checksum
+        // Generate an address using a valid network, mutate it, and ensure it's not valid on the same network
+        let mut address_bytes = address.to_bytes();
+        address_bytes[32] ^= 0xFF;
         assert_eq!(
-            TariAddress::from_emoji_string_with_network(&emoji_string, Network::Esmeralda),
+            TariAddress::from_bytes_with_network(&address_bytes, Network::Esmeralda),
             Err(TariAddressError::InvalidNetworkOrChecksum)
         );
     }
