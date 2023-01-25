@@ -176,18 +176,9 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
-    // To create a new seed word sequence, uncomment below
-    // let seed = CipherSeed::new();
-    // use tari_key_manager::mnemonic::MnemonicLanguage;
-    // let mnemonic_seq = seed
-    //     .to_mnemonic(MnemonicLanguage::English, None)
-    //     .expect("Couldn't convert CipherSeed to Mnemonic");
-    // println!("{:?}", mnemonic_seq);
-
     let words = [
-        "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion", "myself",
-        "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park", "midnight", "quantum",
-        "bright", "carbon",
+        "scan", "announce", "neither", "belt", "grace", "arch", "sting", "butter", "run", "frost", "debris", "slide",
+        "glory", "nature", "asthma", "fame", "during", "silly", "panda", "picnic", "run", "small", "engage", "pride",
     ];
     let seed_words = SeedWords::new(words.iter().map(|s| Hidden::hide(s.to_string())).collect::<Vec<_>>());
 
