@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
+use tari_comms::{connectivity::ConnectivityStatus, net_address::MultiaddrWithStats, peer_manager::Peer};
 use tari_utilities::ByteArray;
 
 use crate::{conversions::naive_datetime_to_timestamp, tari_rpc as grpc};
@@ -31,12 +31,12 @@ impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {
         let public_key = peer.public_key.to_vec();
         let node_id = peer.node_id.to_vec();
-        let mut addresses = Vec::with_capacity(peer.addresses.addresses.len());
+        let mut addresses = Vec::with_capacity(peer.addresses.len());
         let last_connection = peer
             .addresses
             .last_seen()
             .map(|v| naive_datetime_to_timestamp(v.naive_utc()));
-        for address in peer.addresses.addresses {
+        for address in peer.addresses.addresses() {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
@@ -65,21 +65,19 @@ impl From<Peer> for grpc::Peer {
     }
 }
 
-impl From<MutliaddrWithStats> for grpc::Address {
-    fn from(address_with_stats: MutliaddrWithStats) -> Self {
-        let address = address_with_stats.address.to_vec();
+impl From<MultiaddrWithStats> for grpc::Address {
+    fn from(address_with_stats: MultiaddrWithStats) -> Self {
+        let address = address_with_stats.address().to_vec();
         let last_seen = match address_with_stats.last_seen {
             Some(v) => v.to_string(),
             None => String::new(),
         };
         let connection_attempts = address_with_stats.connection_attempts;
-        let rejected_message_count = address_with_stats.rejected_message_count;
         let avg_latency = address_with_stats.avg_latency.as_secs();
         Self {
             address,
             last_seen,
             connection_attempts,
-            rejected_message_count,
             avg_latency,
         }
     }

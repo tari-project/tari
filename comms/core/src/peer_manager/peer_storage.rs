@@ -103,8 +103,14 @@ where DS: KeyValueStore<PeerId, Peer>
                 trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
                 // Replace existing entry
                 peer.set_id(peer_key);
+                let mut existing_peer = self
+                    .peer_db
+                    .get(&peer_key)
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                existing_peer.merge(&peer);
                 self.peer_db
-                    .insert(peer_key, peer)
+                    .insert(peer_key, existing_peer)
                     .map_err(PeerManagerError::DatabaseError)?;
                 self.remove_index_links(peer_key);
                 self.add_index_links(peer_key, public_key, node_id);
@@ -125,69 +131,21 @@ where DS: KeyValueStore<PeerId, Peer>
         }
     }
 
-    /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
-    /// exist, the stored version will be replaced with the newly provided peer.
-
-    #[allow(clippy::option_option)]
-    pub fn update_peer(
-        &mut self,
-        public_key: &CommsPublicKey,
-        net_addresses: Option<Vec<Multiaddr>>,
-        flags: Option<PeerFlags>,
-        banned_until: Option<Option<Duration>>,
-        banned_reason: Option<String>,
-        is_offline: Option<bool>,
-        peer_features: Option<PeerFeatures>,
-        supported_protocols: Option<Vec<ProtocolId>>,
-    ) -> Result<(), PeerManagerError> {
-        match self.public_key_index.get(public_key).copied() {
-            Some(peer_key) => {
-                let mut stored_peer = self
-                    .peer_db
-                    .get(&peer_key)
-                    .map_err(PeerManagerError::DatabaseError)?
-                    .expect("Public key index and peer database are out of sync!");
-
-                trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
-
-                stored_peer.update(
-                    net_addresses,
-                    flags,
-                    banned_until,
-                    banned_reason,
-                    is_offline,
-                    peer_features,
-                    supported_protocols,
-                );
-
-                self.peer_db
-                    .insert(peer_key, stored_peer)
-                    .map_err(PeerManagerError::DatabaseError)?;
-
-                Ok(())
-            },
-            None => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Peer not found because the public key '{}' could not be found in the index",
-                    public_key
-                );
-                Err(PeerManagerError::PeerNotFoundError)
-            },
-        }
-    }
-
     /// The peer with the specified public_key will be removed from the PeerManager
     pub fn delete_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+        let mut peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        peer.deleted_at = Some(Utc::now().naive_utc());
         self.peer_db
-            .delete(&peer_key)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
-
-        self.remove_index_links(peer_key);
         Ok(())
     }
 
@@ -568,17 +526,17 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(result)
     }
 
-    pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut peer = self
-            .find_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        peer.last_seen = Some(Utc::now().naive_utc());
-        peer.set_offline(false);
-        self.peer_db
-            .insert(peer.id(), peer)
-            .map_err(PeerManagerError::DatabaseError)?;
-        Ok(())
-    }
+    // pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+    //     let mut peer = self
+    //         .find_by_node_id(node_id)?
+    //         .ok_or(PeerManagerError::PeerNotFoundError)?;
+    //     peer.last_seen = Some(Utc::now().naive_utc());
+    //     peer.set_offline(false);
+    //     self.peer_db
+    //         .insert(peer.id(), peer)
+    //         .map_err(PeerManagerError::DatabaseError)?;
+    //     Ok(())
+    // }
 }
 
 #[allow(clippy::from_over_into)]

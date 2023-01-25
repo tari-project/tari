@@ -27,6 +27,7 @@ use std::{
 };
 
 use log::*;
+use multiaddr::Multiaddr;
 use nom::lib::std::collections::hash_map::Entry;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -371,7 +372,7 @@ impl ConnectivityManagerActor {
     }
 
     async fn refresh_connection_pool(&mut self) -> Result<(), ConnectivityError> {
-        debug!(
+        warn!(
             target: LOG_TARGET,
             "Performing connection pool cleanup/refresh. (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
@@ -472,17 +473,20 @@ impl ConnectivityManagerActor {
     fn mark_peer_succeeded(&mut self, node_id: NodeId) {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_success();
+        // self.peer_manager.mark_last_seen(node_id.clone(), Some(addr_used));
     }
 
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_failed();
+        // self.peer_manager.mark_peer_failed(node_id, addr_tried);
+
         entry.failed_attempts()
     }
 
     async fn on_peer_connection_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
         if self.status.is_offline() {
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "Node is offline. Ignoring connection failure event for peer '{}'.", node_id
             );
@@ -618,17 +622,15 @@ impl ConnectivityManagerActor {
 
         use ConnectionStatus::{Connected, Disconnected, Failed};
         match (old_status, new_status) {
-            (_, Connected) => {
-                self.mark_peer_succeeded(node_id.clone());
-                match self.pool.get_connection(&node_id).cloned() {
-                    Some(conn) => {
-                        self.publish_event(ConnectivityEvent::PeerConnected(conn));
-                    },
-                    None => unreachable!(
-                        "Connection transitioning to CONNECTED state must always have a connection set i.e. \
-                         ConnectionPool::get_connection is Some"
-                    ),
-                }
+            (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
+                Some(conn) => {
+                    self.mark_peer_succeeded(node_id.clone());
+                    self.publish_event(ConnectivityEvent::PeerConnected(conn));
+                },
+                None => unreachable!(
+                    "Connection transitioning to CONNECTED state must always have a connection set i.e. \
+                     ConnectionPool::get_connection is Some"
+                ),
             },
             (Connected, Disconnected) => {
                 self.publish_event(ConnectivityEvent::PeerDisconnected(node_id));

@@ -65,9 +65,9 @@ impl CommandContext {
     pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) -> Result<(), Error> {
         let peer_manager = self.comms.peer_manager();
         let peers = peer_manager.find_all_starts_with(&partial).await?;
-        let peer = {
-            if let Some(peer) = peers.into_iter().next() {
-                peer
+        let peers = {
+            if !peers.is_empty() {
+                peers
             } else {
                 let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
                     original_str: original_str.clone(),
@@ -76,33 +76,45 @@ impl CommandContext {
                     .find_by_public_key(&pk)
                     .await?
                     .ok_or(ArgsError::NoPeerMatching { original_str })?;
-                peer
+                vec![peer]
             }
         };
 
-        let eid = EmojiId::from_public_key(&peer.public_key).to_emoji_string();
-        println!("Emoji ID: {}", eid);
-        println!("Public Key: {}", peer.public_key);
-        println!("NodeId: {}", peer.node_id);
-        println!("Addresses:");
-        peer.addresses.iter().for_each(|a| {
-            println!("- {}", a);
-        });
-        println!("User agent: {}", peer.user_agent);
-        println!("Features: {:?}", peer.features);
-        println!("Flags: {:?}", peer.flags);
-        println!("Supported protocols:");
-        peer.supported_protocols.iter().for_each(|p| {
-            println!("- {}", String::from_utf8_lossy(p));
-        });
-        if let Some(dt) = peer.banned_until() {
-            println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-        }
-        if let Some(dt) = peer.last_seen() {
-            println!("Last seen: {}", dt);
-        }
-        if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-            println!("Last updated: {} (UTC)", updated_at);
+        for peer in peers {
+            let eid = EmojiId::from_public_key(&peer.public_key).to_emoji_string();
+            println!("Emoji ID: {}", eid);
+            println!("Public Key: {}", peer.public_key);
+            println!("NodeId: {}", peer.node_id);
+            println!("Addresses:");
+            peer.addresses.addresses().iter().for_each(|a| {
+                println!(
+                    "- {} Score: {}  - Latency: {:?} - Last Seen: {} - Last Failure:{}",
+                    a.address(),
+                    a.quality_score,
+                    a.avg_latency,
+                    a.last_seen
+                        .as_ref()
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "Never".to_string()),
+                    a.last_failed_reason.as_ref().unwrap_or(&"None".to_string())
+                );
+            });
+            println!("User agent: {}", peer.user_agent);
+            println!("Features: {:?}", peer.features);
+            println!("Flags: {:?}", peer.flags);
+            println!("Supported protocols:");
+            peer.supported_protocols.iter().for_each(|p| {
+                println!("- {}", String::from_utf8_lossy(p));
+            });
+            if let Some(dt) = peer.banned_until() {
+                println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+            }
+            if let Some(dt) = peer.last_seen() {
+                println!("Last seen: {}", dt);
+            }
+            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                println!("Last updated: {} (UTC)", updated_at);
+            }
         }
         Ok(())
     }

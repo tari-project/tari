@@ -144,7 +144,7 @@ impl PeerManager {
         match self.find_by_public_key(pubkey).await {
             Ok(Some(mut peer)) => {
                 peer.connection_stats.set_connection_success();
-                peer.addresses = addresses.into();
+                peer.addresses.update_addresses(addresses);
                 peer.set_offline(false);
                 peer.features = peer_features;
                 self.add_peer(peer.clone()).await?;
@@ -216,8 +216,26 @@ impl PeerManager {
             .closest_peers(node_id, n, excluded_peers, features)
     }
 
-    pub async fn mark_last_seen(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.mark_last_seen(node_id)
+    pub async fn mark_last_seen(&self, node_id: &NodeId, addr: Option<&Multiaddr>) -> Result<(), PeerManagerError> {
+        let mut lock = self.peer_storage.write().await;
+        let peer = lock.find_by_node_id(node_id)?;
+        match peer {
+            Some(mut peer) => {
+                // if we have an address, update it
+                if let Some(addr) = addr {
+                    peer.addresses.add_address(addr);
+                    peer.addresses.mark_last_seen_now(addr);
+                    lock.add_peer(peer)?;
+                } else {
+                    // incoming connection, so we don't know which address to use
+                    todo!("Handle incoming connection");
+                }
+                Ok(())
+            },
+            None => Err(PeerManagerError::PeerNotFoundError),
+        }
+
+        // self.peer_storage.write().await.mark_last_seen(node_id)
     }
 
     /// Fetch n random peers
@@ -356,7 +374,7 @@ mod test {
         runtime,
     };
 
-    fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
+    fn test_create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
@@ -376,7 +394,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn get_broadcast_identities() {
+    async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
@@ -486,7 +504,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn calc_region_threshold() {
+    async fn test_calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -554,7 +572,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn closest_peers() {
+    async fn test_closest_peers() {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -588,7 +606,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn add_or_update_online_peer() {
+    async fn test_add_or_update_online_peer() {
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
         peer.set_offline(true);

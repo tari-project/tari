@@ -95,12 +95,7 @@ impl From<Peer> for rpc::Peer {
     fn from(peer: Peer) -> Self {
         rpc::Peer {
             public_key: peer.public_key.to_vec(),
-            addresses: peer
-                .addresses
-                .addresses
-                .iter()
-                .map(|addr| addr.address.to_string())
-                .collect(),
+            addresses: peer.addresses.into(),
             peer_features: peer.features.bits(),
             identity_signature: peer.identity_signature.as_ref().map(Into::into),
         }

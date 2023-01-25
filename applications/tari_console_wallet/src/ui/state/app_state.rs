@@ -854,7 +854,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 
@@ -869,7 +869,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -879,7 +879,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 
@@ -900,13 +900,13 @@ impl AppStateInner {
             .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
         self.wallet.db.set_client_key_value(
             CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         )?;
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -917,7 +917,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 

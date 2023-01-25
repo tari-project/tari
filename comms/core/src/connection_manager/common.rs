@@ -99,6 +99,10 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
 
     peer_identity.user_agent.truncate(MAX_USER_AGENT_LEN);
 
+    dbg!(&known_peer);
+    dbg!(&dialed_addr);
+    dbg!(addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>());
+
     // Add or update the peer
     let peer = match known_peer {
         Some(mut peer) => {
@@ -108,9 +112,10 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 peer.node_id.short_str()
             );
             peer.connection_stats.set_connection_success();
-            peer.addresses = addresses.into();
+            peer.addresses.update_addresses(addresses);
             peer.set_offline(false);
             if let Some(addr) = dialed_addr {
+                peer.addresses.add_address(&addr);
                 peer.addresses.mark_last_seen_now(addr);
             }
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
@@ -143,12 +148,14 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
             add_valid_identity_signature_to_peer(&mut new_peer, identity_sig)?;
             if let Some(addr) = dialed_addr {
+                new_peer.addresses.add_address(&addr);
                 new_peer.addresses.mark_last_seen_now(addr);
             }
             new_peer
         },
     };
 
+    dbg!(&peer);
     peer_manager.add_peer(peer).await?;
 
     Ok((peer_node_id, supported_protocols))

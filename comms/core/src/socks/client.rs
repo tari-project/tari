@@ -27,9 +27,11 @@ use std::{
     fmt,
     fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
+    time::Instant,
 };
 
 use data_encoding::BASE32;
+use log::warn;
 use multiaddr::{Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -237,7 +239,10 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn send_command(&mut self, command: Command, address: &Multiaddr) -> Result<Multiaddr> {
         self.prepare_send_request(command, address)?;
         self.write().await?;
-        self.receive_reply().await
+        let timer = Instant::now();
+        let reply = self.receive_reply().await;
+        warn!("received reply {} in {:?}", address, timer.elapsed());
+        reply
     }
 
     async fn password_authentication_protocol(&mut self) -> Result<()> {

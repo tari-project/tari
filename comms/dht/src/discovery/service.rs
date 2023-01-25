@@ -239,6 +239,7 @@ impl DhtDiscoveryService {
         validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
+        todo!("Confirm whether to replace this with just add_peer");
         let peer = self
             .peer_manager
             .add_or_update_online_peer(

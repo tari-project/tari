@@ -11,25 +11,21 @@ use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
-use crate::net_address::MutliaddrWithStats;
+use crate::net_address::MultiaddrWithStats;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
 pub struct MultiaddressesWithStats {
-    pub addresses: Vec<MutliaddrWithStats>,
-    last_attempted: Option<DateTime<Utc>>,
+    addresses: Vec<MultiaddrWithStats>,
 }
 
 impl MultiaddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a list of net addresses
-    pub fn new(addresses: Vec<MutliaddrWithStats>) -> MultiaddressesWithStats {
-        MultiaddressesWithStats {
-            addresses,
-            last_attempted: None,
-        }
+    pub fn new(addresses: Vec<MultiaddrWithStats>) -> MultiaddressesWithStats {
+        MultiaddressesWithStats { addresses }
     }
 
-    pub fn first(&self) -> Option<&MutliaddrWithStats> {
+    pub fn best(&self) -> Option<&MultiaddrWithStats> {
         self.addresses.first()
     }
 
@@ -54,16 +50,34 @@ impl MultiaddressesWithStats {
 
     /// Return the time of last attempted connection to this collection of addresses
     pub fn last_attempted(&self) -> Option<DateTime<Utc>> {
-        self.last_attempted
+        let mut latest_valid_datetime: Option<DateTime<Utc>> = None;
+        for curr_address in &self.addresses {
+            if curr_address.last_attempted.is_none() {
+                continue;
+            }
+            match latest_valid_datetime {
+                Some(latest_datetime) => {
+                    if latest_datetime < curr_address.last_attempted.unwrap() {
+                        latest_valid_datetime = curr_address.last_attempted;
+                    }
+                },
+                None => latest_valid_datetime = curr_address.last_attempted,
+            }
+        }
+        latest_valid_datetime
     }
 
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
     pub fn add_address(&mut self, net_address: &Multiaddr) {
-        if !self.addresses.iter().any(|x| x.address == *net_address) {
+        if !self.addresses.iter().any(|x| x.address() == net_address) {
             self.addresses.push(net_address.clone().into());
             self.addresses.sort();
         }
+    }
+
+    pub fn contains(&self, net_address: &Multiaddr) -> bool {
+        self.addresses.iter().any(|x| x.address() == net_address)
     }
 
     /// Compares the existing set of addresses to the provided address set and remove missing addresses and
@@ -72,12 +86,12 @@ impl MultiaddressesWithStats {
         self.addresses = self
             .addresses
             .drain(..)
-            .filter(|addr| addresses.contains(&addr.address))
+            .filter(|addr| addresses.contains(addr.address()))
             .collect();
 
         let to_add = addresses
             .into_iter()
-            .filter(|addr| !self.addresses.iter().any(|a| a.address == *addr))
+            .filter(|addr| !self.addresses.iter().any(|a| a.address() == addr))
             .collect::<Vec<_>>();
 
         for address in to_add {
@@ -90,7 +104,7 @@ impl MultiaddressesWithStats {
     /// Returns an iterator of addresses ordered from 'best' to 'worst' according to heuristics such as failed
     /// connections and latency.
     pub fn iter(&self) -> impl Iterator<Item = &Multiaddr> {
-        self.addresses.iter().map(|addr| &addr.address)
+        self.addresses.iter().map(|addr| addr.address())
     }
 
     pub fn to_lexicographically_sorted(&self) -> Vec<Multiaddr> {
@@ -103,9 +117,19 @@ impl MultiaddressesWithStats {
         addresses
     }
 
+    pub fn merge(&mut self, other: &MultiaddressesWithStats) {
+        for addr in &other.addresses {
+            if let Some(existing) = self.find_address_mut(addr.address()) {
+                existing.merge(&addr);
+            } else {
+                self.addresses.push(addr.clone());
+            }
+        }
+    }
+
     /// Finds the specified address in the set and allow updating of its variables such as its usage stats
-    fn find_address_mut(&mut self, address: &Multiaddr) -> Option<&mut MutliaddrWithStats> {
-        self.addresses.iter_mut().find(|a| &a.address == address)
+    fn find_address_mut(&mut self, address: &Multiaddr) -> Option<&mut MultiaddrWithStats> {
+        self.addresses.iter_mut().find(|a| a.address() == address)
     }
 
     /// The average connection latency of the provided net address will be updated to include the current measured
@@ -123,6 +147,14 @@ impl MultiaddressesWithStats {
         }
     }
 
+    pub fn update_address_stats<F>(&mut self, address: &Multiaddr, f: F)
+    where F: FnOnce(&mut MultiaddrWithStats) {
+        if let Some(addr) = self.find_address_mut(address) {
+            f(addr);
+            self.addresses.sort();
+        }
+    }
+
     /// Mark that a message was received from the specified net address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
@@ -137,20 +169,6 @@ impl MultiaddressesWithStats {
         }
     }
 
-    /// Mark that a rejected message was received from the specified net address
-    ///
-    /// Returns true if the address is contained in this instance, otherwise false
-    pub fn mark_message_rejected(&mut self, address: &Multiaddr) -> bool {
-        match self.find_address_mut(address) {
-            Some(addr) => {
-                addr.mark_message_rejected();
-                self.addresses.sort();
-                true
-            },
-            None => false,
-        }
-    }
-
     /// Mark that a successful interaction occurred with the specified address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
@@ -158,8 +176,9 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.mark_last_seen_now();
-                self.last_attempted = Some(Utc::now());
+                addr.last_attempted = Some(Utc::now());
                 self.addresses.sort();
+                dbg!(&self.addresses);
                 true
             },
             None => false,
@@ -169,11 +188,11 @@ impl MultiaddressesWithStats {
     /// Mark that a connection could not be established with the specified net address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
-    pub fn mark_failed_connection_attempt(&mut self, address: &Multiaddr) -> bool {
+    pub fn mark_failed_connection_attempt(&mut self, address: &Multiaddr, failed_reason: String) -> bool {
         match self.find_address_mut(address) {
             Some(addr) => {
-                addr.mark_failed_connection_attempt();
-                self.last_attempted = Some(Utc::now());
+                addr.mark_failed_connection_attempt(failed_reason);
+                addr.last_attempted = Some(Utc::now());
                 self.addresses.sort();
                 true
             },
@@ -202,7 +221,11 @@ impl MultiaddressesWithStats {
     }
 
     pub fn into_vec(self) -> Vec<Multiaddr> {
-        self.addresses.into_iter().map(|addr| addr.address).collect()
+        self.addresses.into_iter().map(|addr| addr.address().clone()).collect()
+    }
+
+    pub fn addresses(&self) -> &[MultiaddrWithStats] {
+        &self.addresses
     }
 }
 
@@ -213,7 +236,7 @@ impl PartialEq for MultiaddressesWithStats {
 }
 
 impl Index<usize> for MultiaddressesWithStats {
-    type Output = MutliaddrWithStats;
+    type Output = MultiaddrWithStats;
 
     /// Returns the NetAddressWithStats at the given index
     fn index(&self, index: usize) -> &Self::Output {
@@ -225,8 +248,7 @@ impl From<Multiaddr> for MultiaddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a single net address
     fn from(net_address: Multiaddr) -> Self {
         MultiaddressesWithStats {
-            addresses: vec![MutliaddrWithStats::from(net_address)],
-            last_attempted: None,
+            addresses: vec![MultiaddrWithStats::from(net_address)],
         }
     }
 }
@@ -237,20 +259,26 @@ impl From<Vec<Multiaddr>> for MultiaddressesWithStats {
         MultiaddressesWithStats {
             addresses: net_addresses
                 .into_iter()
-                .map(MutliaddrWithStats::from)
-                .collect::<Vec<MutliaddrWithStats>>(),
-            last_attempted: None,
+                .map(MultiaddrWithStats::from)
+                .collect::<Vec<MultiaddrWithStats>>(),
         }
     }
 }
 
-impl From<Vec<MutliaddrWithStats>> for MultiaddressesWithStats {
+impl From<Vec<MultiaddrWithStats>> for MultiaddressesWithStats {
     /// Constructs NetAddressesWithStats from a list of addresses with usage stats
-    fn from(addresses: Vec<MutliaddrWithStats>) -> Self {
-        MultiaddressesWithStats {
-            addresses,
-            last_attempted: None,
-        }
+    fn from(addresses: Vec<MultiaddrWithStats>) -> Self {
+        MultiaddressesWithStats { addresses }
+    }
+}
+
+impl From<MultiaddressesWithStats> for Vec<String> {
+    fn from(value: MultiaddressesWithStats) -> Self {
+        value
+            .addresses
+            .into_iter()
+            .map(|addr| addr.address().to_string())
+            .collect()
     }
 }
 
@@ -261,7 +289,7 @@ impl Display for MultiaddressesWithStats {
             "{}",
             self.addresses
                 .iter()
-                .map(|a| a.address.to_string())
+                .map(|a| a.address().to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -389,10 +417,10 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let addresses: Vec<MutliaddrWithStats> = vec![
-            MutliaddrWithStats::from(net_address1.clone()),
-            MutliaddrWithStats::from(net_address2.clone()),
-            MutliaddrWithStats::from(net_address3.clone()),
+        let addresses: Vec<MultiaddrWithStats> = vec![
+            MultiaddrWithStats::from(net_address1.clone()),
+            MultiaddrWithStats::from(net_address2.clone()),
+            MultiaddrWithStats::from(net_address3.clone()),
         ];
         let mut net_addresses = MultiaddressesWithStats::new(addresses);
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1));

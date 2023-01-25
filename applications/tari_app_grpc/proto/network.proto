@@ -77,7 +77,6 @@ message Address{
     bytes address =1;
     string last_seen = 2;
     uint32 connection_attempts = 3;
-    uint32 rejected_message_count = 4;
     uint64 avg_latency = 5;
 }
 

@@ -367,6 +367,7 @@ impl DhtConnectivity {
             .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
             .await?;
 
+        dbg!(&new_neighbours);
         if new_neighbours.is_empty() {
             info!(
                 target: LOG_TARGET,
@@ -496,7 +497,9 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
-        self.peer_manager.mark_last_seen(conn.peer_node_id()).await?;
+        self.peer_manager
+            .mark_last_seen(conn.peer_node_id(), Some(conn.address()))
+            .await?;
         if conn.peer_features().is_client() {
             debug!(
                 target: LOG_TARGET,
@@ -825,7 +828,9 @@ impl DhtConnectivity {
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFromLastConnected(node_id))
+            // TODO: Check if this logic is correct. At the moment I want them in the same order every time
+            // .sort_by(PeerQuerySortBy::DistanceFromLastConnected(node_id))
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             // Fetch double here so that there is a bigger closest peer set that can be ordered by last seen
             .limit(n * 2);
 

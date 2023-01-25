@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::Ordering,
     convert::TryFrom,
     fmt,
     fmt::{Display, Formatter},
@@ -44,6 +45,15 @@ impl PeerConnectionStats {
     /// New connection stats
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn merge(&mut self, other: &Self) {
+        if self.last_connected_at.as_ref().unwrap_or(&NaiveDateTime::MIN) <
+            &other.last_connected_at.as_ref().unwrap_or(&NaiveDateTime::MIN)
+        {
+            self.last_connected_at = other.last_connected_at;
+            self.last_connection_attempt = other.last_connection_attempt.clone();
+        }
     }
 
     /// Sets the last connection as a success. `has_connected()` will return true from here on.
@@ -162,7 +172,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn peer_connection_stats() {
+    fn test_peer_connection_stats() {
         let state = PeerConnectionStats::new();
         assert!(state.last_failed_at().is_none());
         assert_eq!(state.failed_attempts(), 0);

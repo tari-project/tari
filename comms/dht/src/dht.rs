@@ -481,7 +481,7 @@ mod test {
     };
 
     #[runtime::test]
-    async fn stack_unencrypted() {
+    async fn test_stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
@@ -533,7 +533,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn stack_encrypted() {
+    async fn test_stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
@@ -586,7 +586,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn stack_forward() {
+    async fn test_stack_forward() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let shutdown = Shutdown::new();
@@ -651,7 +651,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn stack_filter_saf_message() {
+    async fn test_stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();

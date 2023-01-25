@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp,
     collections::HashMap,
     convert::TryFrom,
     fmt::Display,
@@ -95,6 +96,9 @@ pub struct Peer {
     /// Signs the peer information with a timestamp to prevent malleability. This is optional for backward
     /// compatibility, but without this, the identity (addresses etc) cannot be updated.
     pub identity_signature: Option<IdentitySignature>,
+
+    /// If this peer has been deleted.
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
 impl Peer {
@@ -125,6 +129,7 @@ impl Peer {
             user_agent,
             metadata: HashMap::new(),
             identity_signature: None,
+            deleted_at: None,
         }
     }
 
@@ -133,9 +138,25 @@ impl Peer {
     /// This method panics if the peer does not have a PeerId, and therefore is not persisted.
     /// If the caller should be sure that the peer is persisted before calling this function.
     /// This can be checked by using `Peer::is_persisted`.
-    #[inline]
     pub fn id(&self) -> PeerId {
         self.id.expect("call to Peer::id() when peer is not persisted")
+    }
+
+    /// Merges the data with another peer. This is usually used to update a peer before it is saved to the
+    /// database so that data is not overwritten
+    pub fn merge(&mut self, other: &Peer) {
+        self.addresses.merge(&other.addresses);
+        self.banned_reason = other.banned_reason.clone();
+        self.added_at = cmp::min(self.added_at, other.added_at);
+        self.last_seen = cmp::max(self.last_seen, other.last_seen);
+        self.banned_until = cmp::max(self.banned_until, other.banned_until);
+        self.connection_stats.merge(&other.connection_stats);
+        self.supported_protocols = other.supported_protocols.clone();
+        self.metadata = other.metadata.clone();
+        self.features = other.features;
+        self.flags = other.flags;
+        self.offline_at = cmp::max(self.offline_at, other.offline_at);
+        self.user_agent = other.user_agent.clone();
     }
 
     pub fn is_persisted(&self) -> bool {
@@ -167,44 +188,6 @@ impl Peer {
     #[cfg(test)]
     pub(crate) fn set_id_for_test(&mut self, id: PeerId) {
         self.id = Some(id);
-    }
-
-    #[allow(clippy::option_option)]
-    pub fn update(
-        &mut self,
-        net_addresses: Option<Vec<Multiaddr>>,
-        flags: Option<PeerFlags>,
-        banned_until: Option<Option<Duration>>,
-        banned_reason: Option<String>,
-        is_offline: Option<bool>,
-        features: Option<PeerFeatures>,
-        supported_protocols: Option<Vec<ProtocolId>>,
-    ) {
-        if let Some(new_net_addresses) = net_addresses {
-            self.addresses.update_addresses(new_net_addresses);
-            self.identity_signature = None;
-        }
-        if let Some(new_flags) = flags {
-            self.flags = new_flags
-        }
-        if let Some(banned_until) = banned_until {
-            self.banned_until = banned_until
-                .map(safe_future_datetime_from_duration)
-                .map(|dt| dt.naive_utc());
-        }
-        if let Some(banned_reason) = banned_reason {
-            self.banned_reason = banned_reason;
-        }
-        if let Some(is_offline) = is_offline {
-            self.set_offline(is_offline);
-        }
-        if let Some(new_features) = features {
-            self.features = new_features;
-            self.identity_signature = None;
-        }
-        if let Some(supported_protocols) = supported_protocols {
-            self.supported_protocols = supported_protocols;
-        }
     }
 
     /// Returns `Some(true)` if the identity signature is valid, otherwise `Some(false)`. If no signature is present,
@@ -310,16 +293,7 @@ impl Peer {
     }
 
     pub fn to_short_string(&self) -> String {
-        format!(
-            "{}::{}",
-            self.public_key,
-            self.addresses
-                .addresses
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        )
+        format!("{}::{}", self.public_key, self.addresses)
     }
 }
 
@@ -359,12 +333,7 @@ impl Display for Peer {
             flags_str,
             self.node_id.short_str(),
             self.public_key,
-            self.addresses
-                .addresses
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(","),
+            self.addresses,
             status_str,
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),

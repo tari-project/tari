@@ -323,19 +323,19 @@ where
                 .await?;
         }
 
-        let addresses = vec![address].into();
         let peer_manager = self.comms.peer_manager();
         let mut connectivity = self.comms.connectivity();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
-            if current_peer.addresses != addresses {
+            if current_peer.addresses.contains(&address) {
                 info!(
                     target: LOG_TARGET,
                     "Address for base node differs from storage. Was {}, setting to {}",
                     current_peer.addresses,
-                    addresses
+                    address
                 );
-                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+
+                current_peer.addresses.add_address(&address);
                 peer_manager.add_peer(current_peer.clone()).await?;
             }
             connectivity
@@ -347,7 +347,7 @@ where
             let peer = Peer::new(
                 public_key,
                 node_id,
-                addresses,
+                vec![address].into(),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
                 Default::default(),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
+    cmp,
     cmp::{Ord, Ordering},
     fmt,
     hash::{Hash, Hasher},
@@ -10,30 +11,41 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
+use nom::CompareResult;
 use serde::{Deserialize, Serialize};
+
+use crate::net_address::MultiaddressesWithStats;
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
-pub struct MutliaddrWithStats {
-    pub address: Multiaddr,
+pub struct MultiaddrWithStats {
+    address: Multiaddr,
     pub last_seen: Option<DateTime<Utc>>,
     pub connection_attempts: u32,
-    pub rejected_message_count: u32,
+    pub avg_initial_dial_time: Duration,
+    initial_dial_time_sample_count: u32,
     pub avg_latency: Duration,
     latency_sample_count: u32,
+    pub last_attempted: Option<DateTime<Utc>>,
+    pub last_failed_reason: Option<String>,
+    pub quality_score: i32,
 }
 
-impl MutliaddrWithStats {
+impl MultiaddrWithStats {
     /// Constructs a new net address with zero stats
     pub fn new(address: Multiaddr) -> Self {
         Self {
             address,
             last_seen: None,
             connection_attempts: 0,
-            rejected_message_count: 0,
+            avg_initial_dial_time: Duration::from_secs(0),
+            initial_dial_time_sample_count: 0,
             avg_latency: Duration::from_millis(0),
             latency_sample_count: 0,
+            last_attempted: None,
+            last_failed_reason: None,
+            quality_score: 0,
         }
     }
 
@@ -42,18 +54,57 @@ impl MutliaddrWithStats {
         address: Multiaddr,
         last_seen: Option<DateTime<Utc>>,
         connection_attempts: u32,
-        rejected_message_count: u32,
+        avg_initial_dial_time: Duration,
+        initial_dial_time_sample_count: u32,
         avg_latency: Duration,
         latency_sample_count: u32,
+        last_attempted: Option<DateTime<Utc>>,
+        last_failed_reason: Option<String>,
+        quality_score: i32,
     ) -> Self {
         Self {
             address,
             last_seen,
             connection_attempts,
-            rejected_message_count,
+            avg_initial_dial_time,
+            initial_dial_time_sample_count,
             avg_latency,
             latency_sample_count,
+            last_attempted,
+            last_failed_reason,
+            quality_score,
         }
+    }
+
+    pub fn merge(&mut self, other: &Self) {
+        if self.address == other.address {
+            self.last_seen = cmp::max(other.last_seen, self.last_seen);
+            self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
+            match self.latency_sample_count.cmp(&other.latency_sample_count) {
+                Ordering::Less => {
+                    self.avg_latency = other.avg_latency;
+                    self.latency_sample_count = other.latency_sample_count;
+                },
+                Ordering::Equal | Ordering::Greater => {},
+            }
+            match self
+                .initial_dial_time_sample_count
+                .cmp(&other.initial_dial_time_sample_count)
+            {
+                Ordering::Less => {
+                    self.avg_initial_dial_time = other.avg_initial_dial_time;
+                    self.initial_dial_time_sample_count = other.initial_dial_time_sample_count;
+                },
+                Ordering::Equal | Ordering::Greater => {},
+            }
+            self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
+            self.last_failed_reason = other.last_failed_reason.clone();
+            self.calculate_quality_score();
+        }
+    }
+
+    pub fn address(&self) -> &Multiaddr {
+        &self.address
     }
 
     /// Updates the average latency by including another measured latency sample. The historical average is updated by
@@ -72,23 +123,32 @@ impl MutliaddrWithStats {
         if self.latency_sample_count < MAX_LATENCY_SAMPLE_COUNT {
             self.latency_sample_count += 1;
         }
+
+        self.calculate_quality_score();
+    }
+
+    pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
+        self.last_seen = Some(Utc::now());
+
+        self.avg_initial_dial_time = ((self.avg_initial_dial_time * self.initial_dial_time_sample_count) +
+            initial_dial_time) /
+            (self.initial_dial_time_sample_count + 1);
+        self.initial_dial_time_sample_count += 1;
+        self.calculate_quality_score();
     }
 
     /// Mark that a message was received from this net address
     pub fn mark_message_received(&mut self) {
         self.last_seen = Some(Utc::now());
-    }
-
-    /// Mark that a rejected message was received from this net address
-    pub fn mark_message_rejected(&mut self) {
-        self.last_seen = Some(Utc::now());
-        self.rejected_message_count += 1;
+        self.last_failed_reason = None;
+        self.calculate_quality_score();
     }
 
     /// Mark that a successful interaction occurred with this address
     pub fn mark_last_seen_now(&mut self) {
         self.last_seen = Some(Utc::now());
-        self.connection_attempts = 0;
+        self.last_failed_reason = None;
+        self.calculate_quality_score();
     }
 
     /// Reset the connection attempts on this net address for a later session of retries
@@ -97,26 +157,60 @@ impl MutliaddrWithStats {
     }
 
     /// Mark that a connection could not be established with this net address
-    pub fn mark_failed_connection_attempt(&mut self) {
+    pub fn mark_failed_connection_attempt(&mut self, error_string: String) {
         self.connection_attempts += 1;
+        self.last_failed_reason = Some(error_string);
+        self.calculate_quality_score();
     }
 
     /// Get as a Multiaddr
     pub fn as_net_address(&self) -> Multiaddr {
         self.clone().address
     }
+
+    fn calculate_quality_score(&mut self) {
+        // Try these first
+        if self.last_attempted.is_none() {
+            self.quality_score = 1000;
+            return;
+        }
+
+        let mut score_self = 0;
+
+        score_self += cmp::max(0, 100 - (self.avg_latency.as_millis() as i32 / 100));
+
+        let now = Utc::now();
+        score_self += cmp::max(
+            0,
+            100 - self
+                .last_seen
+                .map(|x| Utc::now() - x)
+                .map(|x| x.num_seconds())
+                .unwrap_or(0) as i32,
+        );
+
+        if self.last_failed_reason.is_some() {
+            score_self -= 100;
+        }
+
+        self.quality_score = score_self;
+    }
 }
 
-impl From<Multiaddr> for MutliaddrWithStats {
+impl From<Multiaddr> for MultiaddrWithStats {
     /// Constructs a new net address with usage stats from a net address
     fn from(net_address: Multiaddr) -> Self {
         Self {
             address: net_address,
             last_seen: None,
             connection_attempts: 0,
-            rejected_message_count: 0,
+            avg_initial_dial_time: Duration::from_secs(0),
+            initial_dial_time_sample_count: 0,
             avg_latency: Duration::new(0, 0),
             latency_sample_count: 0,
+            last_attempted: None,
+            last_failed_reason: None,
+            quality_score: 0,
         }
     }
 }
@@ -124,65 +218,31 @@ impl From<Multiaddr> for MutliaddrWithStats {
 // Reliability ordering of net addresses: prioritize net addresses according to previous successful connections,
 // connection attempts, latency and last seen A lower ordering has a higher priority and a higher ordering has a lower
 // priority, this ordering switch allows searching for, and updating of net addresses to be performed more efficiently
-impl Ord for MutliaddrWithStats {
-    fn cmp(&self, other: &MutliaddrWithStats) -> Ordering {
-        if self.last_seen.is_some() && other.last_seen.is_none() {
-            return Ordering::Less;
-        }
-
-        if self.last_seen.is_none() && other.last_seen.is_some() {
-            return Ordering::Greater;
-        }
-        if self.connection_attempts < other.connection_attempts {
-            return Ordering::Less;
-        }
-
-        if self.connection_attempts > other.connection_attempts {
-            return Ordering::Greater;
-        }
-        if self.latency_sample_count > 0 && other.latency_sample_count > 0 {
-            if self.avg_latency < other.avg_latency {
-                return Ordering::Less;
-            }
-
-            if self.avg_latency > other.avg_latency {
-                return Ordering::Greater;
-            }
-        }
-        if self.last_seen.is_some() && other.last_seen.is_some() {
-            let self_last_seen = self.last_seen.unwrap();
-            let other_last_seen = other.last_seen.unwrap();
-            if self_last_seen > other_last_seen {
-                return Ordering::Less;
-            }
-
-            if self_last_seen < other_last_seen {
-                return Ordering::Greater;
-            }
-        }
-        Ordering::Equal
+impl Ord for MultiaddrWithStats {
+    fn cmp(&self, other: &MultiaddrWithStats) -> Ordering {
+        self.quality_score.cmp(&other.quality_score).reverse()
     }
 }
 
-impl PartialOrd for MutliaddrWithStats {
-    fn partial_cmp(&self, other: &MutliaddrWithStats) -> Option<Ordering> {
+impl PartialOrd for MultiaddrWithStats {
+    fn partial_cmp(&self, other: &MultiaddrWithStats) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for MutliaddrWithStats {
-    fn eq(&self, other: &MutliaddrWithStats) -> bool {
+impl PartialEq for MultiaddrWithStats {
+    fn eq(&self, other: &MultiaddrWithStats) -> bool {
         self.address == other.address
     }
 }
 
-impl Hash for MutliaddrWithStats {
+impl Hash for MultiaddrWithStats {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.address.hash(state)
     }
 }
 
-impl fmt::Display for MutliaddrWithStats {
+impl fmt::Display for MultiaddrWithStats {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.address)
     }
@@ -197,7 +257,7 @@ mod test {
     #[test]
     fn test_update_latency() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MutliaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
         let latency_measurement1 = Duration::from_millis(100);
         let latency_measurement2 = Duration::from_millis(200);
         let latency_measurement3 = Duration::from_millis(60);
@@ -215,7 +275,7 @@ mod test {
     #[test]
     fn test_message_received_and_rejected() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MutliaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
         assert!(net_address_with_stats.last_seen.is_none());
         net_address_with_stats.mark_message_received();
         assert!(net_address_with_stats.last_seen.is_some());
@@ -229,7 +289,7 @@ mod test {
     #[test]
     fn test_successful_and_failed_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MutliaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
         net_address_with_stats.mark_failed_connection_attempt();
         net_address_with_stats.mark_failed_connection_attempt();
         assert!(net_address_with_stats.last_seen.is_none());
@@ -242,7 +302,7 @@ mod test {
     #[test]
     fn test_reseting_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MutliaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
         net_address_with_stats.mark_failed_connection_attempt();
         net_address_with_stats.mark_failed_connection_attempt();
         assert_eq!(net_address_with_stats.connection_attempts, 2);
@@ -253,8 +313,8 @@ mod test {
     #[test]
     fn test_net_address_reliability_ordering() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut na1 = MutliaddrWithStats::from(net_address.clone());
-        let mut na2 = MutliaddrWithStats::from(net_address);
+        let mut na1 = MultiaddrWithStats::from(net_address.clone());
+        let mut na2 = MultiaddrWithStats::from(net_address);
         thread::sleep(Duration::from_millis(1));
         na1.mark_last_seen_now();
         assert!(na1 < na2);

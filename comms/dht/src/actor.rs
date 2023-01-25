@@ -1107,7 +1107,7 @@ mod test {
     }
 
     #[runtime::test]
-    async fn select_peers() {
+    async fn test_select_peers() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
 
