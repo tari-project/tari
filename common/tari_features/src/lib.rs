@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::configuration::Network;
+mod feature;
+pub mod resolver;
+mod status;
 
-use super::consensus_constants::ConsensusConstants;
+pub use feature::Feature;
+pub use status::Status;
 
-/// Represents the consensus used for a given network
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct NetworkConsensus(Network);
-
-impl NetworkConsensus {
-    pub fn create_consensus_constants(&self) -> Vec<ConsensusConstants> {
-        use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, NextNet, Ridcully, StageNet, Stibbons, Weatherwax};
-        match self.as_network() {
-            MainNet => ConsensusConstants::mainnet(),
-            StageNet => ConsensusConstants::mainnet(),
-            NextNet => unimplemented!("NextNet is not yet implemented"),
-            LocalNet => ConsensusConstants::localnet(),
-            Dibbler => ConsensusConstants::dibbler(),
-            Igor => ConsensusConstants::igor(),
-            Weatherwax => ConsensusConstants::weatherwax(),
-            Esmeralda => ConsensusConstants::esmeralda(),
-            Ridcully => unimplemented!("Ridcully network is no longer supported"),
-            Stibbons => unimplemented!("Stibbons network is no longer supported"),
-        }
-    }
-
-    #[inline]
-    pub fn as_network(self) -> Network {
-        self.0
-    }
-}
-
-impl From<Network> for NetworkConsensus {
-    fn from(global_network: Network) -> Self {
-        Self(global_network)
-    }
-}
+pub const FEATURE_LIST: [Feature; 2] = [
+    Feature::new(
+        "crash_on_thread_panic",
+        "Has the Validator node crash entirely if any thread panics",
+        None,
+        Status::New,
+    ),
+    Feature::new(
+        "dan_layer",
+        "Functionality for utilizing the dan layer",
+        None,
+        Status::Testing,
+    ),
+];

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,68 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::configuration::Network;
+use std::fmt::{Display, Formatter};
 
-use super::consensus_constants::ConsensusConstants;
+use super::Status;
 
-/// Represents the consensus used for a given network
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct NetworkConsensus(Network);
+pub struct Feature {
+    name: &'static str,
+    description: &'static str,
+    tracking_issue: Option<usize>,
+    status: Status,
+}
 
-impl NetworkConsensus {
-    pub fn create_consensus_constants(&self) -> Vec<ConsensusConstants> {
-        use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, NextNet, Ridcully, StageNet, Stibbons, Weatherwax};
-        match self.as_network() {
-            MainNet => ConsensusConstants::mainnet(),
-            StageNet => ConsensusConstants::mainnet(),
-            NextNet => unimplemented!("NextNet is not yet implemented"),
-            LocalNet => ConsensusConstants::localnet(),
-            Dibbler => ConsensusConstants::dibbler(),
-            Igor => ConsensusConstants::igor(),
-            Weatherwax => ConsensusConstants::weatherwax(),
-            Esmeralda => ConsensusConstants::esmeralda(),
-            Ridcully => unimplemented!("Ridcully network is no longer supported"),
-            Stibbons => unimplemented!("Stibbons network is no longer supported"),
+impl Feature {
+    pub const fn new(
+        name: &'static str,
+        description: &'static str,
+        tracking_issue: Option<usize>,
+        status: Status,
+    ) -> Self {
+        Feature {
+            name,
+            description,
+            tracking_issue,
+            status,
         }
     }
 
-    #[inline]
-    pub fn as_network(self) -> Network {
-        self.0
+    pub fn issue_url(&self) -> String {
+        match self.tracking_issue {
+            Some(n) => format!("https://github.com/tari-project/tari/issues/{}", n),
+            None => "None".into(),
+        }
+    }
+
+    pub fn attr_name(&self) -> String {
+        format!("tari_feature_{}", self.name)
+    }
+
+    pub fn is_active_in_testnet(&self) -> bool {
+        matches!(self.status, Status::New | Status::Testing)
+    }
+
+    pub fn is_active_in_nextnet(&self) -> bool {
+        matches!(self.status, Status::Testing)
+    }
+
+    pub fn is_active(&self) -> bool {
+        matches!(self.status, Status::Active)
+    }
+
+    pub fn was_removed(&self) -> bool {
+        matches!(self.status, Status::Removed)
     }
 }
 
-impl From<Network> for NetworkConsensus {
-    fn from(global_network: Network) -> Self {
-        Self(global_network)
+impl Display for Feature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}. {}. Tracking issue: {}",
+            self.name,
+            self.description,
+            self.issue_url()
+        )
     }
 }
