@@ -12,7 +12,7 @@ tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", t
 # TODO: remove this dependency and move Network into tari_common_types
 tari_common = { version = "^0.44", path = "../../common" }
 
-base64 = "0.13.0"
+
 borsh = "0.9.3"
 digest = "0.9.0"
 lazy_static = "1.4.0"
@@ -21,4 +21,3 @@ rand = "0.7.3"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.29"
 tokio = { version = "1.23", features = ["time", "sync"] }
-zeroize = "1"

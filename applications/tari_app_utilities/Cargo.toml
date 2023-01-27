@@ -7,21 +7,17 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 
 clap = { version = "3.2.0", features = ["derive", "env"] }
-config = { version = "0.13.0" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
-dirs-next = "1.0.2"
 json5 = "0.2.2"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.7.3"
 tokio = { version = "1.23", features = ["signal"] }
 serde = "1.0.126"
-structopt = { version = "0.3.13", default_features = false }
 thiserror = "^1.0.26"
 
 [build-dependencies]
