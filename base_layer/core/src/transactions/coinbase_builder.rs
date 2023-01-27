@@ -571,6 +571,7 @@ mod test {
 
         tx.body.add_output(coinbase2);
         tx.body.add_kernel(coinbase_kernel2);
+        tx.body.sort();
 
         // lets add duplciate coinbase kernel
         let mut coinbase2 = tx2.body.outputs()[0].clone();
@@ -578,6 +579,8 @@ mod test {
         let coinbase_kernel2 = tx2.body.kernels()[0].clone();
         tx_kernel_test.body.add_output(coinbase2);
         tx_kernel_test.body.add_kernel(coinbase_kernel2);
+
+        tx_kernel_test.body.sort();
 
         // test catches that coinbase count on the utxo is wrong
         assert!(matches!(

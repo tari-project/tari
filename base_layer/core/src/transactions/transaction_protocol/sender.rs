@@ -613,8 +613,7 @@ impl SenderTransactionProtocol {
                     .validate()
                     .and_then(|_| Self::build_transaction(info, rules.clone(), factories));
                 match result {
-                    Ok(mut transaction) => {
-                        transaction.body.sort();
+                    Ok(transaction) => {
                         let validator = TransactionInternalConsistencyValidator::new(true, rules, factories.clone());
                         let result = validator
                             .validate(&transaction, None, prev_header, height)

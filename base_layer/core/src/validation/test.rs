@@ -425,7 +425,8 @@ mod transaction_validator {
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate_with_current_tip(&tx, db).unwrap_err();
+        let tip = db.get_chain_metadata().unwrap();
+        let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
     }
 
@@ -438,7 +439,8 @@ mod transaction_validator {
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate_with_current_tip(&tx, db).unwrap_err();
+        let tip = db.get_chain_metadata().unwrap();
+        let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         assert!(matches!(
             err,
             ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)

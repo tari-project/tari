@@ -20,11 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "transactions")]
 mod transaction_internal_validator;
+#[cfg(feature = "transactions")]
 pub use transaction_internal_validator::TransactionInternalConsistencyValidator;
-
+#[cfg(feature = "base_node")]
 mod transaction_chain_validator;
+#[cfg(feature = "base_node")]
 pub use transaction_chain_validator::TransactionChainLinkedValidator;
-
+#[cfg(feature = "base_node")]
 mod transaction_full_validator;
+#[cfg(feature = "base_node")]
 pub use transaction_full_validator::TransactionFullValidator;

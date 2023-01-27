@@ -40,7 +40,6 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    blocks::BlockValidationError,
     consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
@@ -1013,7 +1012,8 @@ async fn consensus_validation_large_tx() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    tx.body.sort();
 
     let height = blocks.len() as u64;
     let constants = consensus_manager.consensus_constants(height);
@@ -1022,10 +1022,7 @@ async fn consensus_validation_large_tx() {
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::BlockTooLarge { .. })
-    ));
+    assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);

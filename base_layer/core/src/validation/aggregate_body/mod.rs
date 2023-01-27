@@ -22,6 +22,7 @@
 
 mod aggregate_body_internal_validator;
 pub use aggregate_body_internal_validator::AggregateBodyInternalConsistencyValidator;
-
+#[cfg(feature = "base_node")]
 mod aggregate_body_chain_validator;
+#[cfg(feature = "base_node")]
 pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;

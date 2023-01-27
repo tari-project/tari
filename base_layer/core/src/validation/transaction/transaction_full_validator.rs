@@ -57,7 +57,11 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
 
 impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        self.internal_validator.validate_with_current_tip(tx, self.db.clone())?;
+        let tip = {
+            let db = self.db.db_read_access()?;
+            db.fetch_chain_metadata()
+        }?;
+        self.internal_validator.validate_with_current_tip(tx, tip)?;
         self.chain_validator.validate(tx)?;
 
         Ok(())

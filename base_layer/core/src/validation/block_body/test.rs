@@ -214,7 +214,7 @@ async fn it_limits_the_script_byte_size() {
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
-                .with_max_script_byte_size(0)
+                .with_max_script_byte_size(2)
                 .build(),
         )
         .build();

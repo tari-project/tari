@@ -113,7 +113,8 @@ impl TransactionBuilder {
     ) -> Result<Transaction, TransactionError> {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
-            let tx = Transaction::new(i, o, k, offset, script_offset);
+            let mut tx = Transaction::new(i, o, k, offset, script_offset);
+            tx.body.sort();
             let validator = TransactionInternalConsistencyValidator::new(true, rules, factories.clone());
             validator
                 .validate(&tx, self.reward, prev_header, height)

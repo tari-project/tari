@@ -19,25 +19,28 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+#[cfg(feature = "base_node")]
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+#[cfg(feature = "base_node")]
 use tari_utilities::epoch_time::EpochTime;
 
+#[cfg(feature = "base_node")]
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::{AchievedTargetDifficulty, Difficulty},
-    transactions::transaction_components::Transaction,
-    validation::error::ValidationError,
 };
+use crate::{transactions::transaction_components::Transaction, validation::error::ValidationError};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
+#[cfg(feature = "base_node")]
 pub trait BlockBodyValidator<B>: Send + Sync {
     fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
+#[cfg(feature = "base_node")]
 pub trait CandidateBlockValidator<B>: Send + Sync {
     fn validate_body_with_metadata(
         &self,
@@ -51,10 +54,12 @@ pub trait TransactionValidator: Send + Sync {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
 }
 
+#[cfg(feature = "base_node")]
 pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
+#[cfg(feature = "base_node")]
 pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
@@ -66,6 +71,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 
+#[cfg(feature = "base_node")]
 pub trait FinalHorizonStateValidation<B>: Send + Sync {
     fn validate(
         &self,
