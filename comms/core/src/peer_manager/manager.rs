@@ -264,10 +264,8 @@ impl PeerManager {
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .await
-            .calc_region_threshold(region_node_id, n, features)
+        let lock = self.peer_storage.read().await;
+        task::block_in_place(|| lock.calc_region_threshold(region_node_id, n, features))
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
