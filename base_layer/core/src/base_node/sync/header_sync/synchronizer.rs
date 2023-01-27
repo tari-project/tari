@@ -730,7 +730,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .accumulated_data()
                         .total_accumulated_difficulty
                 );
-                return Ok(())
+                return Ok(());
             }
         }
 
