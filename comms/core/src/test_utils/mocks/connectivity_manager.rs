@@ -38,7 +38,6 @@ use crate::{
         ConnectivityStatus,
     },
     peer_manager::NodeId,
-    runtime::task,
 };
 
 pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManagerMock) {
@@ -217,7 +216,7 @@ impl ConnectivityManagerMock {
 
     pub fn spawn(self) -> ConnectivityManagerMockState {
         let state = self.get_shared_state();
-        task::spawn(Self::run(self));
+        tokio::spawn(Self::run(self));
         state
     }
 

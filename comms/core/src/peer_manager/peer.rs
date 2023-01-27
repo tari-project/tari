@@ -77,12 +77,10 @@ pub struct Peer {
     pub flags: PeerFlags,
     pub banned_until: Option<NaiveDateTime>,
     pub banned_reason: String,
-    pub offline_at: Option<NaiveDateTime>,
-    pub last_seen: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
-    /// Connection statics for the peer
-    pub connection_stats: PeerConnectionStats,
+    // Connection statics for the peer
+    // pub connection_stats: PeerConnectionStats,
     /// Protocols supported by the peer. This should not be considered a definitive list of supported protocols and is
     /// used as information for more efficient protocol negotiation.
     pub supported_protocols: Vec<ProtocolId>,
@@ -121,9 +119,7 @@ impl Peer {
             features,
             banned_until: None,
             banned_reason: String::new(),
-            offline_at: None,
-            last_seen: None,
-            connection_stats: Default::default(),
+            // connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
             user_agent,
@@ -148,14 +144,12 @@ impl Peer {
         self.addresses.merge(&other.addresses);
         self.banned_reason = other.banned_reason.clone();
         self.added_at = cmp::min(self.added_at, other.added_at);
-        self.last_seen = cmp::max(self.last_seen, other.last_seen);
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
-        self.connection_stats.merge(&other.connection_stats);
+        // self.connection_stats.merge(&other.connection_stats);
         self.supported_protocols = other.supported_protocols.clone();
         self.metadata = other.metadata.clone();
         self.features = other.features;
         self.flags = other.flags;
-        self.offline_at = cmp::max(self.offline_at, other.offline_at);
         self.user_agent = other.user_agent.clone();
     }
 
@@ -171,12 +165,17 @@ impl Peer {
 
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
-        self.offline_at.is_some()
+        self.addresses.offline_at().is_some()
+    }
+
+    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+        self.addresses.offline_at()
     }
 
     /// The length of time since a peer was marked as offline
     pub fn offline_since(&self) -> Option<Duration> {
-        self.offline_at
+        let offline_at = self.addresses.offline_at();
+        offline_at
             .map(|offline_at| Utc::now().naive_utc() - offline_at)
             .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
     }
@@ -190,16 +189,9 @@ impl Peer {
         self.id = Some(id);
     }
 
-    /// Returns `Some(true)` if the identity signature is valid, otherwise `Some(false)`. If no signature is present,
-    /// None is returned.
-    pub fn is_valid_identity_signature(&self) -> Option<bool> {
-        let identity_signature = self.identity_signature.as_ref()?;
-        Some(identity_signature.is_valid_for_peer(self))
-    }
-
     /// Provides that date time of the last successful interaction with the peer
     pub fn last_seen(&self) -> Option<NaiveDateTime> {
-        self.last_seen
+        self.addresses.last_seen()
     }
 
     /// Provides that length of time since the last successful interaction with the peer
@@ -240,15 +232,15 @@ impl Peer {
         self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
     }
 
-    /// Marks the peer as offline if true, or not offline if false
-    pub fn set_offline(&mut self, is_offline: bool) -> &mut Self {
-        if is_offline {
-            self.offline_at = Some(Utc::now().naive_utc());
-        } else {
-            self.offline_at = None;
-        }
-        self
-    }
+    // /// Marks the peer as offline if true, or not offline if false
+    // pub fn set_offline(&mut self, is_offline: bool) -> &mut Self {
+    //     if is_offline {
+    //         self.offline_at = Some(Utc::now().naive_utc());
+    //     } else {
+    //         self.offline_at = None;
+    //     }
+    //     self
+    // }
 
     /// This will store metadata inside of the metadata field in the peer.
     /// It will return None if the value was empty and the old value if the value was updated
@@ -308,8 +300,8 @@ impl Display for Peer {
 
         let status_str = {
             let mut s = Vec::new();
-            if let Some(offline_at) = self.offline_at.as_ref() {
-                s.push(format!("Offline since: {}", format_local_datetime(offline_at)));
+            if let Some(offline_at) = self.offline_at() {
+                s.push(format!("Offline since: {}", format_local_datetime(&offline_at)));
             }
 
             if let Some(dt) = self.banned_until() {
@@ -329,7 +321,7 @@ impl Display for Peer {
         };
 
         f.write_str(&format!(
-            "{}[{}] PK={} ({}) - {}. Type: {}. User agent: {}. {}.",
+            "{}[{}] PK={} ({}) - {}. Type: {}. User agent: {}.",
             flags_str,
             self.node_id.short_str(),
             self.public_key,
@@ -341,7 +333,7 @@ impl Display for Peer {
                 f => format!("{:?}", f),
             },
             user_agent,
-            self.connection_stats,
+            // self.connection_stats,
         ))
     }
 }

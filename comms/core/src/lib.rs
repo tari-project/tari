@@ -40,7 +40,6 @@ pub mod backoff;
 pub mod bounded_executor;
 pub mod memsocket;
 pub mod protocol;
-pub mod runtime;
 #[macro_use]
 pub mod message;
 pub mod net_address;

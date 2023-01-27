@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +30,8 @@ impl MultiaddressesWithStats {
     }
 
     /// Provides the date and time of the last successful communication with this peer
-    pub fn last_seen(&self) -> Option<DateTime<Utc>> {
-        let mut latest_valid_datetime: Option<DateTime<Utc>> = None;
+    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+        let mut latest_valid_datetime: Option<NaiveDateTime> = None;
         for curr_address in &self.addresses {
             if curr_address.last_seen.is_none() {
                 continue;
@@ -48,9 +48,28 @@ impl MultiaddressesWithStats {
         latest_valid_datetime
     }
 
+    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+        let mut latest_offline_at: Option<NaiveDateTime> = None;
+        for curr_address in &self.addresses {
+            // At least one address is online
+            if curr_address.offline_at().is_none() {
+                return None;
+            }
+            match latest_offline_at {
+                Some(latest_datetime) => {
+                    if latest_datetime < curr_address.offline_at().unwrap() {
+                        latest_offline_at = curr_address.offline_at();
+                    }
+                },
+                None => latest_offline_at = curr_address.offline_at(),
+            }
+        }
+        latest_offline_at
+    }
+
     /// Return the time of last attempted connection to this collection of addresses
-    pub fn last_attempted(&self) -> Option<DateTime<Utc>> {
-        let mut latest_valid_datetime: Option<DateTime<Utc>> = None;
+    pub fn last_attempted(&self) -> Option<NaiveDateTime> {
+        let mut latest_valid_datetime: Option<NaiveDateTime> = None;
         for curr_address in &self.addresses {
             if curr_address.last_attempted.is_none() {
                 continue;
@@ -176,9 +195,8 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.mark_last_seen_now();
-                addr.last_attempted = Some(Utc::now());
+                addr.last_attempted = Some(Utc::now().naive_utc());
                 self.addresses.sort();
-                dbg!(&self.addresses);
                 true
             },
             None => false,
@@ -192,7 +210,7 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.mark_failed_connection_attempt(failed_reason);
-                addr.last_attempted = Some(Utc::now());
+                addr.last_attempted = Some(Utc::now().naive_utc());
                 self.addresses.sort();
                 true
             },

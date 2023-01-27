@@ -55,7 +55,6 @@ use crate::{
         ConnectionManagerRequester,
     },
     peer_manager::NodeId,
-    runtime::task,
     utils::datetime::format_duration,
     NodeIdentity,
     PeerConnection,
@@ -165,7 +164,7 @@ impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
-        task::spawn(async {
+        tokio::spawn(async {
             log_mdc::extend(mdc);
             Self::run(self).await
         })
@@ -317,18 +316,27 @@ impl ConnectivityManagerActor {
             },
         }
         match self.pool.get(&node_id) {
-            Some(state) if state.is_connected() => {
-                debug!(
+            Some(state) => {
+                warn!(
                     target: LOG_TARGET,
                     "Found existing connection for peer `{}`",
                     node_id.short_str()
                 );
+
+                if !state.is_connected() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Existing connection is present but is_connected is false for some reason...."
+                    );
+                }
+
                 if let Some(reply_tx) = reply_tx {
                     let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
                 }
             },
-            _ => {
-                debug!(
+            None => {
+                // TODO: Maybe this is the cause of all the redialing
+                warn!(
                     target: LOG_TARGET,
                     "No existing connection found for peer `{}`. Dialing...",
                     node_id.short_str()
@@ -502,10 +510,6 @@ impl ConnectivityManagerActor {
                 node_id.short_str(),
                 num_failed
             );
-            if !self.peer_manager.set_offline(node_id, true).await? {
-                // Only publish the `PeerOffline` event if we change from online to offline
-                self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
-            }
 
             if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
                 if !peer.is_banned() &&
@@ -548,11 +552,16 @@ impl ConnectivityManagerActor {
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
         use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
-        debug!(target: LOG_TARGET, "Received event: {}", event);
+        warn!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
                 match self.on_new_connection(new_conn).await {
                     TieBreak::KeepExisting => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Discarding new connection to peer '{}' because we already have an existing connection",
+                            new_conn.peer_node_id().short_str()
+                        );
                         // Ignore event, we discarded the new connection and keeping the current one
                         return Ok(());
                     },
@@ -670,7 +679,7 @@ impl ConnectivityManagerActor {
             },
             Some(mut existing_conn) => {
                 if self.tie_break_existing_connection(&existing_conn, new_conn) {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \
                          connection (id: {}, peer: {}, direction: {})",

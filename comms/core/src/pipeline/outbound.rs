@@ -29,7 +29,7 @@ use log::*;
 use tokio::time;
 use tower::{Service, ServiceExt};
 
-use crate::{bounded_executor::OptionallyBoundedExecutor, pipeline::builder::OutboundPipelineConfig};
+use crate::{bounded_executor::BoundedExecutor, pipeline::builder::OutboundPipelineConfig};
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
@@ -37,7 +37,7 @@ const LOG_TARGET: &str = "comms::pipeline::outbound";
 /// message as a [MessageRequest](crate::protocol::messaging::MessageRequest).
 pub struct Outbound<TPipeline, TItem> {
     /// Executor used to spawn a pipeline for each received item on the stream
-    executor: OptionallyBoundedExecutor,
+    executor: BoundedExecutor,
     /// Outbound pipeline configuration containing the pipeline and it's in and out streams
     config: OutboundPipelineConfig<TItem, TPipeline>,
 }
@@ -50,7 +50,7 @@ where
     TPipeline::Future: Send,
 {
     /// New outbound pipeline.
-    pub fn new(executor: OptionallyBoundedExecutor, config: OutboundPipelineConfig<TItem, TPipeline>) -> Self {
+    pub fn new(executor: BoundedExecutor, config: OutboundPipelineConfig<TItem, TPipeline>) -> Self {
         Self { executor, config }
     }
 
@@ -61,19 +61,19 @@ where
         while let Some(msg) = self.config.in_receiver.recv().await {
             // Pipeline IN received a message. Spawn a new task for the pipeline
             let num_available = self.executor.num_available();
-            if let Some(max_available) = self.executor.max_available() {
-                log!(
-                    target: LOG_TARGET,
-                    if num_available < max_available {
-                        Level::Debug
-                    } else {
-                        Level::Trace
-                    },
-                    "Outbound pipeline usage: {}/{}",
-                    max_available - num_available,
-                    max_available
-                );
-            }
+            let max_available = self.executor.max_available();
+            log!(
+                target: LOG_TARGET,
+                if num_available < max_available {
+                    Level::Debug
+                } else {
+                    Level::Trace
+                },
+                "Outbound pipeline usage: {}/{}",
+                max_available - num_available,
+                max_available
+            );
+
             let pipeline = self.config.pipeline.clone();
             let id = current_id;
             current_id = (current_id + 1) % u64::MAX;
@@ -89,12 +89,13 @@ where
                                 "Outbound pipeline {} returned an error: '{}'", id, err
                             );
                         },
-                        Err(_) => {
+                        Err(err) => {
                             error!(
                                 target: LOG_TARGET,
                                 "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
-                                 deadlock or excessive delay in processing this pipeline.",
-                                id
+                                 deadlock or excessive delay in processing this pipeline. {}",
+                                id,
+                                err
                             );
                         },
                     }

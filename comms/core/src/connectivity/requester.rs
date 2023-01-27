@@ -59,8 +59,7 @@ pub enum ConnectivityEvent {
     PeerConnected(PeerConnection),
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
-    PeerOffline(NodeId),
-
+    // PeerOffline(NodeId),
     ConnectivityStateInitialized,
     ConnectivityStateOnline(usize),
     ConnectivityStateDegraded(usize),
@@ -76,7 +75,7 @@ impl fmt::Display for ConnectivityEvent {
             PeerConnected(node_id) => write!(f, "PeerConnected({})", node_id),
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
-            PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
+            // PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
             ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
             ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),

@@ -267,7 +267,7 @@ where
         Self {
             executor: match config.maximum_simultaneous_sessions {
                 Some(usize::MAX) => BoundedExecutor::allow_maximum(),
-                Some(num) => BoundedExecutor::from_current(num),
+                Some(num) => BoundedExecutor::new(num),
                 None => BoundedExecutor::allow_maximum(),
             },
             config,

@@ -60,7 +60,6 @@ use crate::{
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
-    runtime,
     utils::atomic_ref_counter::AtomicRefCounter,
 };
 
@@ -106,7 +105,7 @@ pub fn create(
         our_supported_protocols,
         their_supported_protocols,
     );
-    runtime::current().spawn(peer_actor.run());
+    tokio::spawn(peer_actor.run());
 
     Ok(peer_conn)
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use tari_app_utilities::consts;
-use tari_comms::runtime::Handle;
+use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},

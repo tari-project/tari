@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use nom::CompareResult;
 use serde::{Deserialize, Serialize};
@@ -17,17 +17,18 @@ use serde::{Deserialize, Serialize};
 use crate::net_address::MultiaddressesWithStats;
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
+const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
 
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct MultiaddrWithStats {
     address: Multiaddr,
-    pub last_seen: Option<DateTime<Utc>>,
+    pub last_seen: Option<NaiveDateTime>,
     pub connection_attempts: u32,
     pub avg_initial_dial_time: Duration,
     initial_dial_time_sample_count: u32,
     pub avg_latency: Duration,
     latency_sample_count: u32,
-    pub last_attempted: Option<DateTime<Utc>>,
+    pub last_attempted: Option<NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: i32,
 }
@@ -52,13 +53,13 @@ impl MultiaddrWithStats {
     /// Constructs a new net address with usage stats
     pub fn new_with_stats(
         address: Multiaddr,
-        last_seen: Option<DateTime<Utc>>,
+        last_seen: Option<NaiveDateTime>,
         connection_attempts: u32,
         avg_initial_dial_time: Duration,
         initial_dial_time_sample_count: u32,
         avg_latency: Duration,
         latency_sample_count: u32,
-        last_attempted: Option<DateTime<Utc>>,
+        last_attempted: Option<NaiveDateTime>,
         last_failed_reason: Option<String>,
         quality_score: i32,
     ) -> Self {
@@ -107,6 +108,14 @@ impl MultiaddrWithStats {
         &self.address
     }
 
+    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+        if self.last_failed_reason.is_some() {
+            self.last_attempted
+        } else {
+            None
+        }
+    }
+
     /// Updates the average latency by including another measured latency sample. The historical average is updated by
     /// allowing the new measurement to provide a weighted contribution to the historical average. As more samples are
     /// received the historical average will have a larger weight compare to the new measurement, this will have a
@@ -116,7 +125,7 @@ impl MultiaddrWithStats {
     /// small weighted change to the avg_latency. The previous avg_latency will have a weight of
     /// MAX_LATENCY_SAMPLE_COUNT and the new latency_measurement will have a weight of 1.
     pub fn update_latency(&mut self, latency_measurement: Duration) {
-        self.last_seen = Some(Utc::now());
+        self.last_seen = Some(Utc::now().naive_utc());
 
         self.avg_latency =
             ((self.avg_latency * self.latency_sample_count) + latency_measurement) / (self.latency_sample_count + 1);
@@ -128,31 +137,34 @@ impl MultiaddrWithStats {
     }
 
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
-        self.last_seen = Some(Utc::now());
+        self.last_seen = Some(Utc::now().naive_utc());
 
         self.avg_initial_dial_time = ((self.avg_initial_dial_time * self.initial_dial_time_sample_count) +
             initial_dial_time) /
             (self.initial_dial_time_sample_count + 1);
-        self.initial_dial_time_sample_count += 1;
+        if self.initial_dial_time_sample_count < MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT {
+            self.initial_dial_time_sample_count += 1;
+        }
         self.calculate_quality_score();
     }
 
     /// Mark that a message was received from this net address
     pub fn mark_message_received(&mut self) {
-        self.last_seen = Some(Utc::now());
+        self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
         self.calculate_quality_score();
     }
 
     /// Mark that a successful interaction occurred with this address
     pub fn mark_last_seen_now(&mut self) {
-        self.last_seen = Some(Utc::now());
+        self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
         self.calculate_quality_score();
     }
 
     /// Reset the connection attempts on this net address for a later session of retries
     pub fn reset_connection_attempts(&mut self) {
+        self.last_attempted = None;
         self.connection_attempts = 0;
     }
 
@@ -184,7 +196,7 @@ impl MultiaddrWithStats {
             0,
             100 - self
                 .last_seen
-                .map(|x| Utc::now() - x)
+                .map(|x| Utc::now().naive_utc() - x)
                 .map(|x| x.num_seconds())
                 .unwrap_or(0) as i32,
         );

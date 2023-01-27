@@ -466,25 +466,6 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peer.is_banned())
     }
 
-    /// Changes the OFFLINE flag bit of the peer.
-    pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
-        let peer_key = *self
-            .node_id_index
-            .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let mut peer: Peer = self
-            .peer_db
-            .get(&peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .expect("node_id_index is out of sync with peer db");
-        let was_offline = peer.is_offline();
-        peer.set_offline(offline);
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)?;
-        Ok(was_offline)
-    }
-
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
     pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         let peer_key = *self

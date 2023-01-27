@@ -115,6 +115,9 @@ fn main_inner() -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli)?;
 
+    // Tokio console init
+    console_subscriber::init();
+
     initialize_logging(
         &cli.common.log_config_path("base_node"),
         include_str!("../log4rs_sample.yml"),

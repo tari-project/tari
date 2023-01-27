@@ -35,7 +35,6 @@ use yamux::Mode;
 
 use crate::{
     connection_manager::ConnectionDirection,
-    runtime,
     stream_id,
     stream_id::StreamId,
     utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
@@ -92,7 +91,7 @@ impl Yamux {
     {
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let incoming = IncomingWorker::new(connection, incoming_tx);
-        runtime::task::spawn(incoming.run());
+        tokio::spawn(incoming.run());
         IncomingSubstreams::new(incoming_rx, counter)
     }
 

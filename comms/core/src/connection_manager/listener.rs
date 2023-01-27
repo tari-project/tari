@@ -62,7 +62,6 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::ProtocolId,
-    runtime,
     transports::Transport,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
@@ -110,7 +109,7 @@ where
             node_identity,
             shutdown_signal,
             our_supported_protocols: Vec::new(),
-            bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
+            bounded_executor: BoundedExecutor::new(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
             on_listening: oneshot_trigger::channel(),
@@ -134,7 +133,7 @@ where
 
     pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
         let on_listening = self.on_listening();
-        runtime::current().spawn(self.run());
+        tokio::spawn(self.run());
         on_listening.await
     }
 
@@ -223,7 +222,7 @@ where
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
-        runtime::current().spawn(async move {
+        tokio::spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
             permit.fetch_add(1, Ordering::SeqCst);
         });

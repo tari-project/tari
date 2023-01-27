@@ -54,12 +54,13 @@ impl CommandContext {
                 _ => false,
             })
         }
-        let peers = self.comms.peer_manager().perform_query(query).await?;
+        let mut peers = self.comms.peer_manager().perform_query(query).await?;
         let num_peers = peers.len();
         println!();
         let mut table = Table::new();
         table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
 
+        peers.sort_by(|a, b| a.node_id.cmp(&b.node_id));
         for peer in peers {
             let info_str = {
                 let mut s = vec![];
@@ -70,17 +71,6 @@ impl CommandContext {
                     if !peer.is_banned() {
                         s.push("OFFLINE".to_string());
                     }
-                } else if let Some(dt) = peer.last_seen() {
-                    s.push(format!(
-                        "LAST_SEEN: {}",
-                        Utc::now()
-                            .naive_utc()
-                            .signed_duration_since(dt)
-                            .to_std()
-                            .map(format_duration_basic)
-                            .unwrap_or_else(|_| "?".into())
-                    ));
-                } else {
                 }
 
                 if let Some(dt) = peer.banned_until() {
@@ -101,8 +91,14 @@ impl CommandContext {
                     s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
                 }
 
-                if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-                    s.push(format!("updated_at: {} (UTC)", updated_at));
+                if let Some(last_seen) = peer.addresses.last_seen() {
+                    let duration = Utc::now()
+                        .naive_utc()
+                        .signed_duration_since(last_seen)
+                        .to_std()
+                        .map(format_duration_basic)
+                        .unwrap_or_else(|_| "?".into());
+                    s.push(format!("last seen: {}", duration));
                 }
 
                 if s.is_empty() {

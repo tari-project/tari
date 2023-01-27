@@ -67,55 +67,55 @@ impl<'a> PeerValidator<'a> {
             return Err(PeerValidatorError::InvalidPeerAddresses { peer: new_peer.node_id });
         }
 
-        let can_update = match new_peer.is_valid_identity_signature() {
-            // Update/insert peer
-            Some(true) => true,
-            Some(false) => return Err(PeerValidatorError::InvalidPeerSignature { peer: new_peer.node_id }),
-            // Insert new peer if it doesn't exist, do not update
-            None => false,
-        };
+        let can_update = true;
+        // let can_update = match new_peer.is_valid_identity_signature() {
+        //     // Update/insert peer
+        //     Some(true) => true,
+        //     Some(false) => return Err(PeerValidatorError::InvalidPeerSignature { peer: new_peer.node_id }),
+        //     // Insert new peer if it doesn't exist, do not update
+        //     None => false,
+        // };
 
         trace!(target: LOG_TARGET, "Adding peer `{}`", new_peer.node_id);
 
         match self.peer_manager.find_by_node_id(&new_peer.node_id).await? {
             Some(mut current_peer) => {
-                let can_update = can_update && {
-                    // Update/insert peer if newer
-                    // unreachable panic: can_update is true only is identity_signature is present and valid
-                    let new_dt = new_peer
-                        .identity_signature
-                        .as_ref()
-                        .map(|i| i.updated_at())
-                        .expect("unreachable panic");
+                // let can_update = can_update && {
+                //     // Update/insert peer if newer
+                //     // unreachable panic: can_update is true only is identity_signature is present and valid
+                //     // let new_dt = new_peer
+                //     //     .identity_signature
+                //     //     .as_ref()
+                //     //     .map(|i| i.updated_at())
+                //     //     .expect("unreachable panic");
+                //
+                //     // Update if new_peer has newer timestamp than current_peer, and if the newer timestamp is after
+                // the     // added date
+                //     current_peer
+                //         .identity_signature
+                //         .as_ref()
+                //         .map(|i| i.updated_at() < new_dt && (
+                //             !current_peer.is_seed() ||
+                //             current_peer.added_at < new_dt.naive_utc()))
+                //         // If None, update to peer with valid signature
+                //         .unwrap_or(true)
+                // };
 
-                    // Update if new_peer has newer timestamp than current_peer, and if the newer timestamp is after the
-                    // added date
-                    current_peer
-                        .identity_signature
-                        .as_ref()
-                        .map(|i| i.updated_at() < new_dt && (
-                            !current_peer.is_seed() ||
-                            current_peer.added_at < new_dt.naive_utc()))
-                        // If None, update to peer with valid signature
-                        .unwrap_or(true)
-                };
-
-                if !can_update {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer `{}` already exists or is up to date and will not be updated", new_peer.node_id
-                    );
-                    return Ok(false);
-                }
+                // if !can_update {
+                //     debug!(
+                //         target: LOG_TARGET,
+                //         "Peer `{}` already exists or is up to date and will not be updated", new_peer.node_id
+                //     );
+                //     return Ok(false);
+                // }
 
                 debug!(target: LOG_TARGET, "Updating peer `{}`", new_peer.node_id);
-                current_peer
-                    .update_addresses(new_peer.addresses.into_vec())
-                    .set_features(new_peer.features)
-                    .set_offline(false);
-                if let Some(sig) = new_peer.identity_signature {
-                    current_peer.set_valid_identity_signature(sig);
-                }
+                // current_peer
+                //     .update_addresses(new_peer.addresses.into_vec())
+                //     .set_features(new_peer.features);
+                // if let Some(sig) = new_peer.identity_signature {
+                //     current_peer.set_valid_identity_signature(sig);
+                // }
                 self.peer_manager.add_peer(current_peer).await?;
 
                 Ok(false)

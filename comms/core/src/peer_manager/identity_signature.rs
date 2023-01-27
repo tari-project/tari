@@ -96,14 +96,6 @@ impl IdentitySignature {
         self.version
     }
 
-    pub fn is_valid_for_peer(&self, peer: &Peer) -> bool {
-        self.is_valid(
-            &peer.public_key,
-            peer.features,
-            peer.addresses.to_lexicographically_sorted().iter(),
-        )
-    }
-
     pub fn is_valid<'a, I: IntoIterator<Item = &'a Multiaddr>>(
         &self,
         public_key: &CommsPublicKey,

@@ -32,20 +32,16 @@ impl From<Peer> for grpc::Peer {
         let public_key = peer.public_key.to_vec();
         let node_id = peer.node_id.to_vec();
         let mut addresses = Vec::with_capacity(peer.addresses.len());
-        let last_connection = peer
-            .addresses
-            .last_seen()
-            .map(|v| naive_datetime_to_timestamp(v.naive_utc()));
+        let last_connection = peer.addresses.last_seen().map(naive_datetime_to_timestamp);
         for address in peer.addresses.addresses() {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
         let banned_until = peer.banned_until.map(naive_datetime_to_timestamp);
         let banned_reason = peer.banned_reason.to_string();
-        let offline_at = peer.offline_at.map(naive_datetime_to_timestamp);
+        let offline_at = peer.offline_at().map(naive_datetime_to_timestamp);
         let features = peer.features.bits();
 
-        let last_connected_at = peer.connection_stats.last_connected_at.map(naive_datetime_to_timestamp);
         let supported_protocols = peer.supported_protocols.into_iter().map(|p| p.to_vec()).collect();
         let user_agent = peer.user_agent;
         Self {
@@ -58,7 +54,6 @@ impl From<Peer> for grpc::Peer {
             banned_reason,
             offline_at,
             features,
-            last_connected_at,
             supported_protocols,
             user_agent,
         }

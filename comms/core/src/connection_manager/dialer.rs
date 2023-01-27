@@ -60,7 +60,6 @@ use crate::{
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerId, PeerManager},
     protocol::ProtocolId,
-    runtime,
     transports::Transport,
     types::CommsPublicKey,
 };
@@ -137,7 +136,7 @@ where
     }
 
     pub fn spawn(self) -> JoinHandle<()> {
-        runtime::current().spawn(self.run())
+        tokio::spawn(self.run())
     }
 
     pub async fn run(mut self) {
@@ -333,15 +332,21 @@ where
                         match Self::check_authenticated_public_key(&socket, &dial_state.peer().public_key) {
                             Ok(pk) => pk,
                             Err(err) => {
+                                let mut dial_state = dial_state;
+                                dial_state
+                                    .peer_mut()
+                                    .addresses
+                                    .mark_failed_connection_attempt(&addr, err.to_string());
                                 return (dial_state, Err(err));
                             },
                         };
 
+                    let timer = Instant::now();
                     let result = Self::perform_socket_upgrade_procedure(
                         peer_manager,
                         node_identity,
                         socket,
-                        addr,
+                        addr.clone(),
                         authenticated_public_key,
                         conn_man_notifier,
                         supported_protocols,
@@ -349,8 +354,23 @@ where
                         cancel_signal,
                     )
                     .await;
-
-                    (dial_state, result)
+                    warn!(
+                        target: LOG_TARGET,
+                        "Socket upgrade completed to peer '{}' with result {:?} after {:?}",
+                        dial_state.peer().node_id,
+                        result,
+                        timer.elapsed()
+                    );
+                    if let Err(err) = &result {
+                        let mut dial_state = dial_state;
+                        dial_state
+                            .peer_mut()
+                            .addresses
+                            .mark_failed_connection_attempt(&addr, err.to_string());
+                        (dial_state, result)
+                    } else {
+                        (dial_state, result)
+                    }
                 },
                 Err(err) => (dial_state, Err(err)),
             }
