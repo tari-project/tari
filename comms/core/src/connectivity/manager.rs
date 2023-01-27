@@ -27,7 +27,6 @@ use std::{
 };
 
 use log::*;
-use multiaddr::Multiaddr;
 use nom::lib::std::collections::hash_map::Entry;
 use tari_shutdown::ShutdownSignal;
 use tokio::{

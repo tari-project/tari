@@ -70,8 +70,6 @@
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
 
-mod connection_stats;
-
 mod error;
 pub use error::PeerManagerError;
 

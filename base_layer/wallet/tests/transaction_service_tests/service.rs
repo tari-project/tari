@@ -468,7 +468,7 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn manage_single_transaction() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -1113,7 +1113,7 @@ async fn send_one_sided_transaction_to_self() {
     };
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn manage_multiple_transactions() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -1725,7 +1725,7 @@ async fn finalize_tx_with_missing_output() {
         .is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn discovery_async_return_test() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path();

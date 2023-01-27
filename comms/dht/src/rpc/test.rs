@@ -26,7 +26,6 @@ use futures::StreamExt;
 use tari_comms::{
     peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
-    runtime,
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,
 };
@@ -51,7 +50,7 @@ fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
 mod get_closer_peers {
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_returns_empty_peer_stream() {
         let (service, mock, _) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -69,7 +68,7 @@ mod get_closer_peers {
         assert!(next.is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_returns_closest_peers() {
         let (service, mock, peer_manager) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -104,7 +103,7 @@ mod get_closer_peers {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_returns_n_peers() {
         let (service, mock, peer_manager) = setup();
 
@@ -126,7 +125,7 @@ mod get_closer_peers {
         assert_eq!(results.len(), 5);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_skips_excluded_peers() {
         let (service, mock, peer_manager) = setup();
 
@@ -150,7 +149,7 @@ mod get_closer_peers {
         assert!(peers.all(|p| p.public_key != excluded_peer.public_key().as_bytes()));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_errors_if_maximum_n_exceeded() {
         let (service, mock, _) = setup();
         let req = GetCloserPeersRequest {
@@ -173,7 +172,7 @@ mod get_peers {
     use super::*;
     use crate::proto::rpc::GetPeersRequest;
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_returns_empty_peer_stream() {
         let (service, mock, _) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -189,7 +188,7 @@ mod get_peers {
         assert!(next.is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_returns_all_peers() {
         let (service, mock, peer_manager) = setup();
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
@@ -220,7 +219,7 @@ mod get_peers {
         assert_eq!(peers.iter().filter(|p| p.features.is_node()).count(), 3);
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_excludes_clients() {
         let (service, mock, peer_manager) = setup();
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
@@ -250,7 +249,7 @@ mod get_peers {
         assert!(peers.iter().all(|p| p.features.is_node()));
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_returns_n_peers() {
         let (service, mock, peer_manager) = setup();
 

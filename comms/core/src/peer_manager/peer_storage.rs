@@ -31,7 +31,7 @@ use tari_utilities::ByteArray;
 
 use crate::{
     peer_manager::{
-        peer::{Peer, PeerFlags},
+        peer::Peer,
         peer_id::{generate_peer_key, PeerId},
         NodeDistance,
         NodeId,
@@ -40,7 +40,6 @@ use crate::{
         PeerQuery,
         PeerQuerySortBy,
     },
-    protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
 
@@ -723,7 +722,8 @@ mod test {
         // Test delete of border case peer
         assert!(peer_storage.delete_peer(&peer3.node_id).is_ok());
 
-        assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
+        // It is a logical delete, so there should still be 3 peers in the db
+        assert_eq!(peer_storage.peer_db.len().unwrap(), 3);
 
         assert_eq!(
             peer_storage
@@ -741,7 +741,12 @@ mod test {
                 .public_key,
             peer2.public_key
         );
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
+        assert!(peer_storage
+            .find_by_public_key(&peer3.public_key)
+            .unwrap()
+            .unwrap()
+            .deleted_at
+            .is_some());
 
         assert_eq!(
             peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
@@ -752,51 +757,9 @@ mod test {
             peer2.node_id
         );
         assert!(peer_storage.find_by_node_id(&peer3.node_id).unwrap().is_none());
-
-        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
-        peer_storage.find_by_public_key(&peer2.public_key).unwrap().unwrap();
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
-
-        // Test of delete with moving behaviour
-        assert!(peer_storage.add_peer(peer3.clone()).is_ok());
-        assert!(peer_storage.delete_peer(&peer2.node_id).is_ok());
-
-        assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
-
-        assert_eq!(
-            peer_storage
-                .find_by_public_key(&peer1.public_key)
-                .unwrap()
-                .unwrap()
-                .public_key,
-            peer1.public_key
-        );
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
-        assert_eq!(
-            peer_storage
-                .find_by_public_key(&peer3.public_key)
-                .unwrap()
-                .unwrap()
-                .public_key,
-            peer3.public_key
-        );
-
-        assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
-            peer1.node_id
-        );
-        assert!(peer_storage.find_by_node_id(&peer2.node_id).unwrap().is_none());
-        assert_eq!(
-            peer_storage.find_by_node_id(&peer3.node_id).unwrap().unwrap().node_id,
-            peer3.node_id
-        );
-
-        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
-        peer_storage.find_by_public_key(&peer3.public_key).unwrap().unwrap();
     }
 
-    fn create_test_peer(features: PeerFeatures, ban: bool, offline: bool) -> Peer {
+    fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
@@ -814,7 +777,6 @@ mod test {
         if ban {
             peer.ban_for(Duration::from_secs(600), "".to_string());
         }
-        peer.set_offline(offline);
         peer
     }
 
@@ -822,16 +784,16 @@ mod test {
     fn test_in_network_region() {
         let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
 
-        let mut nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+        let mut nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
             .take(5)
-            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false)).take(4))
+            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
             .collect::<Vec<_>>();
 
         for p in &nodes {
             peer_storage.add_peer(p.clone()).unwrap();
         }
 
-        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false).node_id;
+        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false).node_id;
 
         nodes.sort_by(|a, b| {
             a.node_id

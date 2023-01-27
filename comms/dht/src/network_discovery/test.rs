@@ -25,7 +25,6 @@ use tari_comms::{
     connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    runtime,
     test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
@@ -99,7 +98,7 @@ mod state_machine {
         )
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
         const NUM_PEERS: usize = 3;
@@ -151,7 +150,8 @@ mod state_machine {
         assert_eq!(info.sync_peers, vec![peer_node_identity.node_id().clone()]);
     }
 
-    #[runtime::test]
+    #[ignore = "no longer checking invalid peer signatures"]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[allow(clippy::redundant_closure)]
     async fn dht_banning_peers() {
         const NUM_PEERS: usize = 3;
@@ -202,7 +202,7 @@ mod state_machine {
         assert_eq!(peer, peer_node_identity.node_id());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_shuts_down() {
         let (discovery, _, _, _, _, mut shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
 
@@ -254,7 +254,7 @@ mod discovery_ready {
         (node_identity, peer_manager, connectivity_mock, ready, context)
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_begins_aggressive_discovery() {
         let (_, pm, _, mut ready, _) = setup(Default::default());
         let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
@@ -266,14 +266,14 @@ mod discovery_ready {
         assert!(params.num_peers_to_request.is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_idles_if_no_sync_peers() {
         let (_, _, _, mut ready, _) = setup(Default::default());
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_idles_if_num_rounds_reached() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
@@ -294,7 +294,7 @@ mod discovery_ready {
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_transitions_to_on_connect() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,

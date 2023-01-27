@@ -504,7 +504,6 @@ mod test {
     use futures::{executor::block_on, future};
     use tari_comms::{
         message::MessageTag,
-        runtime,
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
         BytesMut,
@@ -623,7 +622,7 @@ mod test {
         unpack_enum!(DecryptionError::EncryptedMessageEmptyBody = err);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decrypt_inbound_fail_destination() {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
@@ -648,7 +647,7 @@ mod test {
         assert!(result.lock().unwrap().is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decrypt_inbound_fail_no_destination() {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
@@ -673,7 +672,7 @@ mod test {
         assert!(result.lock().unwrap().is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decrypt_inbound_fail_invalid_signature_encrypted() {
         let (connectivity, mock) = create_connectivity_mock();
         let mock_state = mock.spawn();
@@ -735,7 +734,7 @@ mod test {
         assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decrypt_inbound_fail_invalid_signature_cleartext() {
         let (connectivity, mock) = create_connectivity_mock();
         let mock_state = mock.spawn();

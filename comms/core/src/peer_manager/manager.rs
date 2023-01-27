@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fs::File, sync::Arc, time::Duration};
+use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
 use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
-use tokio::{runtime::Handle, sync::RwLock, task};
+use tokio::{sync::RwLock, task};
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -364,10 +364,9 @@ mod test {
             peer::{Peer, PeerFlags},
             PeerFeatures,
         },
-        runtime,
     };
 
-    fn test_create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
+    fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
@@ -386,7 +385,7 @@ mod test {
         peer
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -496,7 +495,7 @@ mod test {
         assert_ne!(identities1, identities2);
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
@@ -564,7 +563,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_closest_peers() {
         let n = 5;
         // Create peer manager with random peers
@@ -598,12 +597,10 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_add_or_update_online_peer() {
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
-        peer.set_offline(true);
-        peer.connection_stats.set_connection_failed();
+        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
         peer_manager.add_peer(peer.clone()).await.unwrap();
 
@@ -613,6 +610,5 @@ mod test {
             .unwrap();
 
         assert!(!peer.is_offline());
-        assert_eq!(peer.connection_stats.failed_attempts(), 0);
     }
 }

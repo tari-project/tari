@@ -92,7 +92,6 @@ pub(crate) struct DhtConnectivity {
     dht_events: broadcast::Receiver<Arc<DhtEvent>>,
     metrics_collector: MetricsCollectorHandle,
     cooldown_in_effect: Option<Instant>,
-    recent_connection_failure_count: usize,
     shutdown_signal: ShutdownSignal,
     // lol - quick concurrency hack
     is_refreshing_neighbour_pool: bool,
@@ -122,7 +121,6 @@ impl DhtConnectivity {
             random_pool_last_refresh: None,
             stats: Stats::new(),
             dht_events,
-            recent_connection_failure_count: 0,
             cooldown_in_effect: None,
             shutdown_signal,
             is_refreshing_neighbour_pool: false,

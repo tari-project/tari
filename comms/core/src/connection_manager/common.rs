@@ -28,8 +28,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
-    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    proto,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
@@ -117,11 +116,7 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols.clone();
             peer.user_agent = peer_identity.user_agent.clone();
-            let identity_sig = peer_identity
-                .identity_signature
-                .clone()
-                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
-            // add_valid_identity_signature_to_peer(&mut peer, &peer_identity, identity_sig)?;
+
             peer
         },
         None => {
@@ -139,12 +134,6 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 supported_protocols.clone(),
                 peer_identity.user_agent.clone(),
             );
-            // new_peer.connection_stats.set_connection_success();
-            let identity_sig = peer_identity
-                .identity_signature
-                .clone()
-                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
-            // add_valid_identity_signature_to_peer(&mut new_peer, &peer_identity, identity_sig)?;
             if let Some(addr) = dialed_addr {
                 new_peer.addresses.add_address(&addr);
                 new_peer.addresses.mark_last_seen_now(addr);
@@ -156,38 +145,6 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
     peer_manager.add_peer(peer).await?;
 
     Ok((peer_node_id, supported_protocols))
-}
-
-// TODO: Rather only validate the addresses sent with the signature.
-fn add_valid_identity_signature_to_peer(
-    peer: &mut Peer,
-    identity_msg: &PeerIdentityMsg,
-    identity_sig: proto::identity::IdentitySignature,
-) -> Result<(), ConnectionManagerError> {
-    let identity_sig =
-        IdentitySignature::try_from(identity_sig).map_err(|_| ConnectionManagerError::PeerIdentityInvalidSignature)?;
-
-    let addresses = identity_msg
-        .addresses
-        .iter()
-        .filter_map(|addr_bytes| Multiaddr::try_from(addr_bytes.clone()).ok())
-        .collect::<Vec<_>>();
-
-    // Note: the peer may have other addresses, so we only check the addresses sent with the signature
-    if !identity_sig.is_valid(
-        &peer.public_key,
-        PeerFeatures::from_bits_truncate(identity_msg.features),
-        &addresses,
-    ) {
-        warn!(
-            target: LOG_TARGET,
-            "Peer {} sent invalid identity signature", peer.node_id
-        );
-        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
-    }
-
-    peer.identity_signature = Some(identity_sig);
-    Ok(())
 }
 
 pub(super) async fn find_unbanned_peer(

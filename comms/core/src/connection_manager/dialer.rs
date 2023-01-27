@@ -58,7 +58,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerId, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::CommsPublicKey,

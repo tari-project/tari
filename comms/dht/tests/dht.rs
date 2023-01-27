@@ -230,7 +230,7 @@ fn dht_config() -> DhtConfig {
     config
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
@@ -300,7 +300,7 @@ async fn test_dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
@@ -374,7 +374,7 @@ async fn test_dht_discover_propagation() {
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_store_forward() {
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -904,7 +904,7 @@ async fn test_dht_repropagate() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_propagate_message_contents_not_malleable_ban() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -1009,7 +1009,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_header_not_malleable() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;

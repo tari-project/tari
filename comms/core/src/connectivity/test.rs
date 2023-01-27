@@ -38,8 +38,6 @@ use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerEvent},
     connectivity::ConnectivityEventRx,
     peer_manager::{Peer, PeerFeatures},
-    runtime,
-    runtime::task,
     test_utils::{
         build_peer_manager,
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
@@ -64,7 +62,7 @@ fn setup_connectivity_manager(
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (cm_requester, mock) = create_connection_manager_mock();
     let cm_mock_state = mock.get_shared_state();
-    task::spawn(mock.run());
+    tokio::spawn(mock.run());
     let shutdown = Shutdown::new();
 
     let (request_tx, request_rx) = mpsc::channel(1);
@@ -103,7 +101,7 @@ async fn add_test_peers(peer_manager: &PeerManager, n: usize) -> Vec<Peer> {
     peers
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn connecting_peers() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
@@ -139,7 +137,7 @@ async fn connecting_peers() {
 }
 
 #[allow(clippy::too_many_lines)]
-#[runtime::test]
+#[tokio::test]
 async fn online_then_offline_then_online() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(ConnectivityConfig {
@@ -269,7 +267,7 @@ async fn online_then_offline_then_online() {
     assert!(connectivity.get_connectivity_status().await.unwrap().is_online());
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn ban_peer() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(ConnectivityConfig {
@@ -312,7 +310,7 @@ async fn ban_peer() {
     assert!(conn.is_none());
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_selection() {
     let config = ConnectivityConfig {
         min_connectivity: 1,
@@ -372,7 +370,7 @@ async fn peer_selection() {
     }
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn pool_management() {
     let config = ConnectivityConfig {
         min_connectivity: 1,

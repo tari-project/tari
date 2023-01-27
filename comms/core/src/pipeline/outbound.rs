@@ -123,12 +123,12 @@ mod test {
 
     use bytes::Bytes;
     use tari_test_utils::collect_recv;
-    use tokio::{runtime::Handle, sync::mpsc, time};
+    use tokio::{sync::mpsc, time};
 
     use super::*;
-    use crate::{message::OutboundMessage, pipeline::SinkService, runtime, utils};
+    use crate::{message::OutboundMessage, pipeline::SinkService, utils};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn run() {
         const NUM_ITEMS: usize = 10;
         let (tx, mut in_receiver) = mpsc::channel(NUM_ITEMS);
@@ -141,15 +141,15 @@ mod test {
         in_receiver.close();
 
         let (out_tx, mut out_rx) = mpsc::unbounded_channel();
-        let executor = Handle::current();
+        let executor = BoundedExecutor::new(100);
 
-        let pipeline = Outbound::new(executor.clone().into(), OutboundPipelineConfig {
+        let pipeline = Outbound::new(executor, OutboundPipelineConfig {
             in_receiver,
             out_receiver: None,
             pipeline: SinkService::new(out_tx),
         });
 
-        let spawned_task = executor.spawn(pipeline.run());
+        let spawned_task = tokio::spawn(pipeline.run());
 
         let requests = collect_recv!(out_rx, timeout = Duration::from_millis(5));
         assert_eq!(requests.len(), NUM_ITEMS);
@@ -158,6 +158,6 @@ mod test {
         time::timeout(Duration::from_secs(5), spawned_task)
             .await
             .unwrap()
-            .unwrap();
+            .expect("Task should end")
     }
 }

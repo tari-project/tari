@@ -26,7 +26,6 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures},
-    runtime,
     test_utils::{
         count_string_occurrences,
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
@@ -92,7 +91,7 @@ async fn setup(
     )
 }
 
-#[runtime::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn initialize() {
     let config = DhtConfig {
         num_neighbouring_nodes: 4,
@@ -124,7 +123,7 @@ async fn initialize() {
     }
 }
 
-#[runtime::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn added_neighbours() {
     let node_identity = make_node_identity();
     let mut node_identities =
@@ -164,7 +163,7 @@ async fn added_neighbours() {
     assert_eq!(conn.handle_count(), 2);
 }
 
-#[runtime::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
     let node_identities =
@@ -223,7 +222,7 @@ async fn replace_peer_when_peer_goes_offline() {
     assert_eq!(dialed[0], *node_identities[5].node_id());
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn insert_neighbour() {
     let node_identity = make_node_identity();
     let node_identities =
@@ -265,14 +264,12 @@ async fn insert_neighbour() {
 }
 
 mod metrics {
-    use super::*;
     mod collector {
         use tari_comms::peer_manager::NodeId;
 
-        use super::*;
         use crate::connectivity::MetricsCollector;
 
-        #[runtime::test]
+        #[tokio::test]
         async fn it_adds_message_received() {
             let mut metric_collector = MetricsCollector::spawn();
             let node_id = NodeId::default();
@@ -287,7 +284,7 @@ mod metrics {
             assert_eq!(ts.count(), 100);
         }
 
-        #[runtime::test]
+        #[tokio::test]
         async fn it_clears_the_metrics() {
             let mut metric_collector = MetricsCollector::spawn();
             let node_id = NodeId::default();

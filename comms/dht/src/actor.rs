@@ -829,9 +829,10 @@ mod test {
     use std::{convert::TryFrom, time::Duration};
 
     use chrono::{DateTime, Utc};
-    use tari_comms::{
-        runtime,
-        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+    use tari_comms::test_utils::mocks::{
+        create_connectivity_mock,
+        create_peer_connection_mock_pair,
+        ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
@@ -855,7 +856,7 @@ mod test {
         conn
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn send_join_request() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -933,7 +934,7 @@ mod test {
             )
         }
 
-        #[runtime::test]
+        #[tokio::test]
         async fn it_discovers_a_peer() {
             let shutdown = Shutdown::new();
             let (mut dht, node_identity, connectivity_mock, discovery_mock, _) = setup(shutdown.to_signal()).await;
@@ -947,7 +948,7 @@ mod test {
             assert_eq!(discovery_mock.call_count(), 1);
         }
 
-        #[runtime::test]
+        #[tokio::test]
         async fn it_gets_active_peer_connection() {
             let shutdown = Shutdown::new();
             let (mut dht, node_identity, connectivity_mock, discovery_mock, peer_manager) =
@@ -963,7 +964,7 @@ mod test {
             assert_eq!(connectivity_mock.call_count().await, 1);
         }
 
-        #[runtime::test]
+        #[tokio::test]
         async fn it_errors_if_discovery_fails_for_unknown_peer() {
             let shutdown = Shutdown::new();
             let (mut dht, _, connectivity_mock, discovery_mock, _) = setup(shutdown.to_signal()).await;
@@ -974,7 +975,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn insert_message_signature() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -1018,7 +1019,7 @@ mod test {
         assert_eq!(num_hits, 1);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn dedup_cache_cleanup() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -1106,7 +1107,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_select_peers() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -1219,7 +1220,7 @@ mod test {
         assert_eq!(peers.len(), 1);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();

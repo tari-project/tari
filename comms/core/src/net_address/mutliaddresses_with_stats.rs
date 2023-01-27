@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -174,20 +174,6 @@ impl MultiaddressesWithStats {
         }
     }
 
-    /// Mark that a message was received from the specified net address
-    ///
-    /// Returns true if the address is contained in this instance, otherwise false
-    pub fn mark_message_received(&mut self, address: &Multiaddr) -> bool {
-        match self.find_address_mut(address) {
-            Some(addr) => {
-                addr.mark_message_received();
-                self.addresses.sort();
-                true
-            },
-            None => false,
-        }
-    }
-
     /// Mark that a successful interaction occurred with the specified address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
@@ -328,9 +314,9 @@ mod test {
         let net_addresses: MultiaddressesWithStats =
             vec![net_address1.clone(), net_address2.clone(), net_address3.clone()].into();
 
-        assert_eq!(net_addresses[0].address, net_address1);
-        assert_eq!(net_addresses[1].address, net_address2);
-        assert_eq!(net_addresses[2].address, net_address3);
+        assert_eq!(net_addresses[0].address(), &net_address1);
+        assert_eq!(net_addresses[1].address(), &net_address2);
+        assert_eq!(net_addresses[2].address(), &net_address3);
     }
 
     #[test]
@@ -345,7 +331,11 @@ mod test {
         assert!(net_addresses.mark_last_seen_now(&net_address3));
         assert!(net_addresses.mark_last_seen_now(&net_address1));
         assert!(net_addresses.mark_last_seen_now(&net_address2));
-        let desired_last_seen = net_addresses.addresses[0].last_seen;
+        let desired_last_seen = net_addresses
+            .addresses
+            .iter()
+            .max_by_key(|a| a.last_seen)
+            .map(|a| a.last_seen.unwrap());
         let last_seen = net_addresses.last_seen();
         assert_eq!(desired_last_seen.unwrap(), last_seen.unwrap());
     }
@@ -361,9 +351,9 @@ mod test {
         // Add duplicate address, test add_net_address is idempotent
         net_addresses.add_address(&net_address2);
         assert_eq!(net_addresses.addresses.len(), 3);
-        assert_eq!(net_addresses.addresses[0].address, net_address1);
-        assert_eq!(net_addresses.addresses[1].address, net_address2);
-        assert_eq!(net_addresses.addresses[2].address, net_address3);
+        assert_eq!(net_addresses.addresses[0].address(), &net_address1);
+        assert_eq!(net_addresses.addresses[1].address(), &net_address2);
+        assert_eq!(net_addresses.addresses[2].address(), &net_address3);
     }
 
     #[test]
@@ -378,13 +368,16 @@ mod test {
         let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);
 
+        net_addresses.mark_last_seen_now(&net_address1);
+        net_addresses.mark_last_seen_now(&net_address2);
+        net_addresses.mark_last_seen_now(&net_address3);
         assert!(net_addresses.update_latency(&net_address1, Duration::from_millis(250)));
         assert!(net_addresses.update_latency(&net_address2, Duration::from_millis(50)));
         assert!(net_addresses.update_latency(&net_address3, Duration::from_millis(100)));
         let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address2);
 
-        assert!(net_addresses.mark_failed_connection_attempt(&net_address2));
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address2, "error".to_string()));
         let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address3);
     }
@@ -441,10 +434,10 @@ mod test {
             MultiaddrWithStats::from(net_address3.clone()),
         ];
         let mut net_addresses = MultiaddressesWithStats::new(addresses);
-        assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
-        assert!(net_addresses.mark_failed_connection_attempt(&net_address2));
-        assert!(net_addresses.mark_failed_connection_attempt(&net_address3));
-        assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address1, "error".to_string()));
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address2, "error".to_string()));
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address3, "error".to_string()));
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address1, "error".to_string()));
 
         assert_eq!(net_addresses.addresses[0].connection_attempts, 1);
         assert_eq!(net_addresses.addresses[1].connection_attempts, 1);

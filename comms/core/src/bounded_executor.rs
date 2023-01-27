@@ -22,14 +22,10 @@
 
 use std::{future::Future, sync::Arc};
 
-use futures::future::Either;
 use tokio::{
-    runtime,
     sync::{OwnedSemaphorePermit, Semaphore},
-    task,
     task::JoinHandle,
 };
-use tracing::{span, Instrument, Level};
 
 /// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
 #[derive(Debug)]
@@ -105,13 +101,12 @@ impl BoundedExecutor {
     /// # Examples
     ///
     /// ```
-    /// use tokio::runtime::Runtime;
+    /// use tokio::runtime::Handle;
     /// use tari_comms::bounded_executor::BoundedExecutor;
     ///
     /// # fn dox() {
     /// // Create the runtime
-    /// let mut rt = Runtime::new().unwrap();
-    /// let executor = BoundedExecutor::new(rt.handle().clone(), 1);
+    /// let executor = BoundedExecutor::new(1);
     ///
     /// // Spawn a future onto the runtime
     /// // NOTE: BoundedExecutor::spawn is an async function and therefore, must be polled/awaited for the task to be spawned
@@ -123,8 +118,8 @@ impl BoundedExecutor {
     ///     println!("will always run after the first task");
     /// });
     ///
-    /// rt.block_on(task1);
-    /// rt.block_on(task2);
+    /// Handle::current().block_on(task1);
+    /// Handle::current().block_on(task2);
     /// # }
     /// ```
     ///
@@ -171,13 +166,12 @@ mod test {
     use tokio::time::sleep;
 
     use super::*;
-    use crate::runtime;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn spawn() {
         let flag = Arc::new(AtomicBool::new(false));
         let flag_cloned = flag.clone();
-        let executor = BoundedExecutor::new(runtime::current(), 1);
+        let executor = BoundedExecutor::new(1);
 
         // Spawn 1
         let task1_fut = executor

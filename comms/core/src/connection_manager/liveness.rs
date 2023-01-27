@@ -183,13 +183,13 @@ mod test {
     use tokio_stream::StreamExt;
 
     use super::*;
-    use crate::{memsocket::MemorySocket, runtime};
+    use crate::memsocket::MemorySocket;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
         let liveness = LivenessSession::new(inbound);
-        let join_handle = runtime::current().spawn(liveness.run());
+        let join_handle = tokio::spawn(liveness.run());
         let mut outbound = Framed::new(outbound, LinesCodec::new());
         for _ in 0..10usize {
             outbound.send("ECHO".to_string()).await.unwrap()

@@ -36,7 +36,6 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
 use super::{
-    connection_stats::PeerConnectionStats,
     node_id::{deserialize_node_id_from_hex, NodeId},
     peer_id::PeerId,
     PeerFeatures,
@@ -146,11 +145,17 @@ impl Peer {
         self.added_at = cmp::min(self.added_at, other.added_at);
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
         // self.connection_stats.merge(&other.connection_stats);
-        self.supported_protocols = other.supported_protocols.clone();
+        for protocol in &other.supported_protocols {
+            if !self.supported_protocols.contains(protocol) {
+                self.supported_protocols.push(protocol.clone());
+            }
+        }
         self.metadata = other.metadata.clone();
         self.features = other.features;
         self.flags = other.flags;
-        self.user_agent = other.user_agent.clone();
+        if !self.user_agent.is_empty() {
+            self.user_agent = other.user_agent.clone();
+        }
     }
 
     pub fn is_persisted(&self) -> bool {
@@ -352,7 +357,6 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
-    use bytes::Bytes;
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -361,12 +365,7 @@ mod test {
     };
 
     use super::*;
-    use crate::{
-        net_address::MultiaddressesWithStats,
-        peer_manager::NodeId,
-        test_utils::node_identity::build_node_identity,
-        types::CommsPublicKey,
-    };
+    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
 
     #[test]
     fn test_is_banned_and_ban_for() {
@@ -389,76 +388,6 @@ mod test {
         assert!(peer.is_banned());
         peer.ban_for(Duration::from_millis(0), "".to_string());
         assert!(!peer.is_banned());
-    }
-
-    #[test]
-    fn test_offline_since() {
-        let mut peer = build_node_identity(Default::default()).to_peer();
-        assert!(peer.offline_since().is_none());
-        peer.set_offline(true);
-        assert!(peer.offline_since().is_some());
-        peer.offline_at = Some(Utc::now().naive_utc() + chrono::Duration::seconds(10));
-        assert_eq!(peer.offline_since().unwrap(), Duration::from_secs(0));
-    }
-
-    #[test]
-    fn test_is_offline() {
-        let mut peer = build_node_identity(Default::default()).to_peer();
-        assert!(!peer.is_offline());
-        peer.set_offline(true);
-        assert!(peer.is_offline());
-    }
-
-    #[test]
-    fn test_update() {
-        let mut rng = rand::rngs::OsRng;
-        let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&public_key1);
-        let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut peer: Peer = Peer::new(
-            public_key1.clone(),
-            node_id.clone(),
-            MultiaddressesWithStats::from(net_address1.clone()),
-            PeerFlags::default(),
-            PeerFeatures::empty(),
-            Default::default(),
-            Default::default(),
-        );
-
-        let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
-
-        static DUMMY_PROTOCOL: Bytes = Bytes::from_static(b"dummy");
-        peer.update(
-            Some(vec![net_address2.clone(), net_address3.clone()]),
-            None,
-            Some(Some(Duration::from_secs(1000))),
-            Some("".to_string()),
-            None,
-            Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(vec![DUMMY_PROTOCOL.clone()]),
-        );
-
-        assert_eq!(peer.public_key, public_key1);
-        assert_eq!(peer.node_id, node_id);
-        assert!(!peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address1));
-        assert!(peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address2));
-        assert!(peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
-        assert!(peer.is_banned());
-        assert!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION));
-        assert_eq!(peer.supported_protocols, vec![DUMMY_PROTOCOL.clone()]);
     }
 
     #[test]

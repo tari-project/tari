@@ -239,7 +239,6 @@ impl DhtDiscoveryService {
         validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
-        todo!("Confirm whether to replace this with just add_peer");
         let peer = self
             .peer_manager
             .add_or_update_online_peer(
@@ -353,7 +352,6 @@ impl DhtDiscoveryService {
 mod test {
     use std::time::Duration;
 
-    use tari_comms::runtime;
     use tari_shutdown::Shutdown;
 
     use super::*;
@@ -363,7 +361,7 @@ mod test {
         test_utils::{build_peer_manager, make_node_identity},
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn send_discovery() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();

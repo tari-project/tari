@@ -77,7 +77,7 @@ mod lazy_pool {
     use super::*;
     use crate::protocol::rpc::client::pool::{LazyPool, RpcClientPoolError};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_connects_lazily() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -88,7 +88,7 @@ mod lazy_pool {
         assert_eq!(mock_state.num_open_substreams(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_unused_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -100,7 +100,7 @@ mod lazy_pool {
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_least_used_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -121,7 +121,7 @@ mod lazy_pool {
         assert_eq!(conn3.lease_count(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_used_connections_if_necessary() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 1, Default::default());
@@ -133,7 +133,7 @@ mod lazy_pool {
         drop(conn2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_gracefully_handles_insufficient_server_sessions() {
         let (conn, mock_state, _shutdown) = setup(1).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -145,7 +145,7 @@ mod lazy_pool {
         assert_eq!(conn2.lease_count(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_prunes_disconnected_sessions() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -162,7 +162,7 @@ mod lazy_pool {
         assert_eq!(mock_state.num_open_substreams(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_fails_when_peer_connected_disconnects() {
         let (mut peer_conn, _, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2, Default::default());

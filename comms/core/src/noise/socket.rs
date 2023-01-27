@@ -647,7 +647,7 @@ mod test {
     use snow::{params::NoiseParams, Builder, Error, Keypair};
 
     use super::*;
-    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER, runtime};
+    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER};
 
     async fn build_test_connection(
     ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
@@ -684,7 +684,7 @@ mod test {
         Ok((dialer_result?, listener_result?))
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_handshake() {
         let ((dialer_keypair, dialer), (listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -700,7 +700,7 @@ mod test {
         );
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_test() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -720,7 +720,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn interleaved_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -748,7 +748,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn u16_max_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -765,7 +765,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn larger_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -782,7 +782,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn unexpected_eof() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 

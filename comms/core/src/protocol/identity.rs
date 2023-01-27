@@ -195,12 +195,11 @@ mod test {
     use crate::{
         peer_manager::PeerFeatures,
         protocol::{IdentityProtocolError, NodeNetworkInfo},
-        runtime,
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
@@ -247,7 +246,7 @@ mod test {
         assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_vec()]);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn fail_cases() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();

@@ -564,7 +564,6 @@ mod test {
     use tari_comms::{
         multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-        runtime,
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
@@ -583,7 +582,7 @@ mod test {
         },
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_send_message_flood() {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
@@ -648,7 +647,7 @@ mod test {
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_send_message_direct_not_found() {
         // Test for issue https://github.com/tari-project/tari/issues/959
 
@@ -693,7 +692,7 @@ mod test {
         assert_eq!(spy.call_count(), 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn test_send_message_direct_dht_discovery() {
         let node_identity = NodeIdentity::random(
             &mut OsRng,

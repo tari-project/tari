@@ -198,7 +198,7 @@ async fn create_wallet(
     .await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
@@ -510,7 +510,7 @@ fn test_many_iterations_store_and_forward_send_tx() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn test_store_and_forward_send_tx() {
     let shutdown_a = Shutdown::new();

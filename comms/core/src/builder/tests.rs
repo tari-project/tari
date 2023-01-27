@@ -49,7 +49,6 @@ use crate::{
         ProtocolEvent,
         Protocols,
     },
-    runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     CommsNode,
@@ -108,7 +107,7 @@ async fn spawn_node(
     (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_custom_protocols() {
     static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
     static ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test-again");
@@ -197,7 +196,7 @@ async fn peer_to_peer_custom_protocols() {
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();
@@ -278,7 +277,7 @@ async fn peer_to_peer_messaging() {
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_messaging_simultaneous() {
     const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();

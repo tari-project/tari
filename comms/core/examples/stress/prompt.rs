@@ -135,7 +135,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
 }
 
 pub fn to_short_str(peer: &Peer) -> String {
-    format!("{}::{}", peer.public_key, peer.addresses.first().unwrap())
+    format!("{}::{}", peer.public_key, peer.addresses.best().unwrap())
 }
 
 #[allow(clippy::ptr_arg)]

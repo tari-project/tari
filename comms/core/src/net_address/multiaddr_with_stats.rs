@@ -9,12 +9,9 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
-use nom::CompareResult;
 use serde::{Deserialize, Serialize};
-
-use crate::net_address::MultiaddressesWithStats;
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
@@ -148,23 +145,16 @@ impl MultiaddrWithStats {
         self.calculate_quality_score();
     }
 
-    /// Mark that a message was received from this net address
-    pub fn mark_message_received(&mut self) {
-        self.last_seen = Some(Utc::now().naive_utc());
-        self.last_failed_reason = None;
-        self.calculate_quality_score();
-    }
-
     /// Mark that a successful interaction occurred with this address
     pub fn mark_last_seen_now(&mut self) {
         self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
+        self.reset_connection_attempts();
         self.calculate_quality_score();
     }
 
     /// Reset the connection attempts on this net address for a later session of retries
     pub fn reset_connection_attempts(&mut self) {
-        self.last_attempted = None;
         self.connection_attempts = 0;
     }
 
@@ -182,7 +172,7 @@ impl MultiaddrWithStats {
 
     fn calculate_quality_score(&mut self) {
         // Try these first
-        if self.last_attempted.is_none() {
+        if self.last_seen.is_none() && self.last_attempted.is_none() {
             self.quality_score = 1000;
             return;
         }
@@ -191,7 +181,6 @@ impl MultiaddrWithStats {
 
         score_self += cmp::max(0, 100 - (self.avg_latency.as_millis() as i32 / 100));
 
-        let now = Utc::now();
         score_self += cmp::max(
             0,
             100 - self
@@ -262,7 +251,7 @@ impl fmt::Display for MultiaddrWithStats {
 
 #[cfg(test)]
 mod test {
-    use std::{thread, time::Duration};
+    use std::time::Duration;
 
     use super::*;
 
@@ -285,25 +274,11 @@ mod test {
     }
 
     #[test]
-    fn test_message_received_and_rejected() {
-        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
-        assert!(net_address_with_stats.last_seen.is_none());
-        net_address_with_stats.mark_message_received();
-        assert!(net_address_with_stats.last_seen.is_some());
-        let last_seen = net_address_with_stats.last_seen.unwrap();
-        net_address_with_stats.mark_message_rejected();
-        net_address_with_stats.mark_message_rejected();
-        assert_eq!(net_address_with_stats.rejected_message_count, 2);
-        assert!(last_seen <= net_address_with_stats.last_seen.unwrap());
-    }
-
-    #[test]
     fn test_successful_and_failed_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
-        net_address_with_stats.mark_failed_connection_attempt();
-        net_address_with_stats.mark_failed_connection_attempt();
+        net_address_with_stats.mark_failed_connection_attempt("Error".to_string());
+        net_address_with_stats.mark_failed_connection_attempt("Error".to_string());
         assert!(net_address_with_stats.last_seen.is_none());
         assert_eq!(net_address_with_stats.connection_attempts, 2);
         net_address_with_stats.mark_last_seen_now();
@@ -315,31 +290,10 @@ mod test {
     fn test_reseting_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
-        net_address_with_stats.mark_failed_connection_attempt();
-        net_address_with_stats.mark_failed_connection_attempt();
+        net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
+        net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
         assert_eq!(net_address_with_stats.connection_attempts, 2);
         net_address_with_stats.reset_connection_attempts();
         assert_eq!(net_address_with_stats.connection_attempts, 0);
-    }
-
-    #[test]
-    fn test_net_address_reliability_ordering() {
-        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut na1 = MultiaddrWithStats::from(net_address.clone());
-        let mut na2 = MultiaddrWithStats::from(net_address);
-        thread::sleep(Duration::from_millis(1));
-        na1.mark_last_seen_now();
-        assert!(na1 < na2);
-        thread::sleep(Duration::from_millis(1));
-        na2.mark_last_seen_now();
-        assert!(na1 > na2);
-        thread::sleep(Duration::from_millis(1));
-        na1.mark_message_rejected();
-        assert!(na1 < na2);
-        na1.update_latency(Duration::from_millis(200));
-        na2.update_latency(Duration::from_millis(100));
-        assert!(na1 > na2);
-        na1.mark_failed_connection_attempt();
-        assert!(na1 > na2);
     }
 }

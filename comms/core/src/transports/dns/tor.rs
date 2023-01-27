@@ -94,7 +94,7 @@ mod test {
 
     // This only works when a tor proxy is running
     #[ignore]
-    #[crate::runtime::test]
+    #[tokio::test]
     async fn resolve() {
         let resolver = TorDnsResolver::new(SocksConfig {
             proxy_address: "/ip4/127.0.0.1/tcp/9050".parse().unwrap(),

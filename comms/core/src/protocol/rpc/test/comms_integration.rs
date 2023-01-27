@@ -31,14 +31,13 @@ use crate::{
         RpcStatus,
         RpcStatusCode,
     },
-    runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
 };
 
-#[runtime::test]
+#[tokio::test]
 async fn run_service() {
     let node_identity1 = build_node_identity(Default::default());
     let rpc_service = MockRpcService::new();

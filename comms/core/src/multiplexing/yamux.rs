@@ -350,15 +350,9 @@ mod test {
     };
     use tokio_stream::StreamExt;
 
-    use crate::{
-        connection_manager::ConnectionDirection,
-        memsocket::MemorySocket,
-        multiplexing::yamux::Yamux,
-        runtime,
-        runtime::task,
-    };
+    use crate::{connection_manager::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn open_substream() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
@@ -366,7 +360,7 @@ mod test {
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
-        task::spawn(async move {
+        tokio::spawn(async move {
             let mut substream = dialer_control.open_stream().await.unwrap();
 
             substream.write_all(msg).await.unwrap();
@@ -390,7 +384,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn substream_count() {
         const NUM_SUBSTREAMS: usize = 10;
         let (dialer, listener) = MemorySocket::new_pair();
@@ -398,7 +392,7 @@ mod test {
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
 
-        let substreams_out = task::spawn(async move {
+        let substreams_out = tokio::spawn(async move {
             let mut substreams = Vec::with_capacity(NUM_SUBSTREAMS);
             for _ in 0..NUM_SUBSTREAMS {
                 substreams.push(dialer_control.open_stream().await.unwrap());
@@ -421,7 +415,7 @@ mod test {
         assert_eq!(listener.substream_count(), 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn close() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
@@ -429,7 +423,7 @@ mod test {
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
-        task::spawn(async move {
+        tokio::spawn(async move {
             let mut substream = dialer_control.open_stream().await.unwrap();
 
             substream.write_all(msg).await.unwrap();
@@ -459,14 +453,14 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn rude_close_does_not_freeze() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
 
         let barrier = Arc::new(Barrier::new(2));
         let b = barrier.clone();
 
-        task::spawn(async move {
+        tokio::spawn(async move {
             // Drop immediately
             let incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
                 .unwrap()
@@ -487,7 +481,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn send_big_message() -> io::Result<()> {
         #[allow(non_upper_case_globals)]
         static MiB: usize = 1 << 20;
@@ -498,7 +492,7 @@ mod test {
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
-        task::spawn(async move {
+        tokio::spawn(async move {
             assert_eq!(dialer_control.substream_count(), 0);
             let mut substream = dialer_control.open_stream().await.unwrap();
             assert_eq!(dialer_control.substream_count(), 1);

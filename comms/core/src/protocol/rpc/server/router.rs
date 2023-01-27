@@ -277,7 +277,6 @@ mod test {
     use tower::util::BoxService;
 
     use super::*;
-    use crate::runtime;
 
     #[derive(Clone)]
     struct HelloService;
@@ -329,7 +328,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn find_route() {
         let server = RpcServer::new();
         let mut router = Router::new(server, HelloService).add_service(GoodbyeService);
