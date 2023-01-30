@@ -6,7 +6,7 @@ edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_wallet = { path = "../../base_layer/wallet" }
+tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
 tari_common = { path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities" }

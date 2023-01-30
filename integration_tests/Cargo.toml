@@ -25,6 +25,7 @@ tari_shutdown = { path = "../infrastructure/shutdown" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
 tari_wallet = { path = "../base_layer/wallet" }
 tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
@@ -52,6 +53,10 @@ cucumber = { version = "0.18.0", features = ["default", "libtest"] }
 tempfile = "3.3.0"
 indexmap = "1.9.1"
 
+[package.metadata.cargo-machete]
+ignored = ["tari_wallet_ffi"]
+
 [[test]]
 name = "cucumber" # this should be the same as the filename of your test target
 harness = false # allows Cucumber to print output instead of libtest
+
