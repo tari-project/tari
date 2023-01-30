@@ -28,14 +28,10 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::HashOutput,
 };
-use tari_core::{
-    transactions::{
-        transaction_components::Transaction,
-        transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
-    },
-    validation::transaction::TransactionInternalConsistencyValidator,
+use tari_core::transactions::{
+    transaction_components::Transaction,
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -73,9 +69,6 @@ pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(TariAddress, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
-    prev_header: Option<HashOutput>,
-    height: Option<u64>,
-    validator: TransactionInternalConsistencyValidator,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -91,11 +84,7 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(TariAddress, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
-        prev_header: Option<HashOutput>,
-        height: Option<u64>,
     ) -> Self {
-        let factories = resources.factories.clone();
-        let consensus_manager = resources.consensus_manager.clone();
         Self {
             id,
             source_address,
@@ -104,9 +93,6 @@ where
             resources,
             transaction_finalize_receiver: Some(transaction_finalize_receiver),
             cancellation_receiver: Some(cancellation_receiver),
-            prev_header,
-            height,
-            validator: TransactionInternalConsistencyValidator::new(true, consensus_manager, factories),
         }
     }
 
@@ -369,15 +355,6 @@ where
                 self.id,
                 self.source_address.clone()
             );
-
-            self.validator
-                .validate(
-                    &finalized_transaction,
-                    None,
-                    self.prev_header,
-                    self.height.unwrap_or(u64::MAX),
-                )
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction
             let rtp_output = match inbound_tx.receiver_protocol.state.clone() {

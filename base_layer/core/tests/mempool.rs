@@ -1123,10 +1123,10 @@ async fn consensus_validation_versions() {
     );
     let txs = vec![schema];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-
+    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, CryptoFactories::default());
     // Cases:
     // invalid input version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][0].clone()],
         to: vec![1 * T],
         to_outputs: vec![],
@@ -1139,15 +1139,11 @@ async fn consensus_validation_versions() {
         input_version: Some(TransactionInputVersion::V1),
         output_version: None,
     };
-
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][1].clone()],
         to: vec![],
         to_outputs: vec![output_v1_features_v0],
@@ -1161,14 +1157,11 @@ async fn consensus_validation_versions() {
         output_version: Some(TransactionOutputVersion::V1),
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output features version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][2].clone()],
         to: vec![],
         to_outputs: vec![output_v0_features_v1],
@@ -1182,11 +1175,8 @@ async fn consensus_validation_versions() {
         output_version: None,
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 }
 
 #[tokio::test]

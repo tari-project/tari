@@ -711,7 +711,6 @@ mod test {
 
     #[test]
     fn test_double_spend_inputs() {
-        let rules = create_consensus_rules();
         let (tx1, _, _) = tx!(MicroTari(5_000), fee: MicroTari(10), inputs: 1, outputs: 1);
         const INPUT_AMOUNT: MicroTari = MicroTari(5_000);
         let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1);
@@ -749,7 +748,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
-        stx_protocol.finalize(rules, &factories, None, u64::MAX).unwrap();
+        stx_protocol.finalize().unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
 

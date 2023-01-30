@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
-
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
+    borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
+    consensus::ConsensusConstants,
     proof_of_work::{
         monero_difficulty,
         randomx_factory::RandomXFactory,
@@ -38,10 +38,6 @@ use crate::{
         PowAlgorithm,
         PowError,
     },
-};
-use crate::{
-    borsh::SerializedSize,
-    consensus::ConsensusConstants,
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::ValidationError,
 };
