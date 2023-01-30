@@ -20,15 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
 use log::*;
-#[cfg(feature = "base_node")]
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
-#[cfg(feature = "base_node")]
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_script::TariScript;
 
-#[cfg(feature = "base_node")]
+
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
@@ -48,7 +45,7 @@ use crate::{
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::ValidationError,
 };
-#[cfg(feature = "base_node")]
+
 pub const LOG_TARGET: &str = "c::val::helpers";
 
 /// Returns the median timestamp for the provided timestamps.
@@ -56,7 +53,6 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// ## Panics
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
-#[cfg(feature = "base_node")]
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     assert!(
         !timestamps.is_empty(),
@@ -83,7 +79,6 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
     median_timestamp
 }
-#[cfg(feature = "base_node")]
 pub fn check_header_timestamp_greater_than_median(
     block_header: &BlockHeader,
     timestamps: &[EpochTime],
@@ -113,7 +108,6 @@ pub fn check_header_timestamp_greater_than_median(
 
     Ok(())
 }
-#[cfg(feature = "base_node")]
 pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,
@@ -160,7 +154,6 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
 }
 
 /// This function checks that an input is a valid spendable UTXO
-#[cfg(feature = "base_node")]
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
     let output_hash = input.output_hash();
     if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(input.commitment()?)? {
@@ -218,7 +211,6 @@ pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) 
 }
 
 /// This function checks that the outputs do not already exist in the TxO set.
-#[cfg(feature = "base_node")]
 pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
@@ -244,7 +236,6 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     Ok(())
 }
 
-#[cfg(feature = "base_node")]
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
