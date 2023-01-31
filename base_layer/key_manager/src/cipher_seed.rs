@@ -368,7 +368,7 @@ impl CipherSeed {
         // We use the recommended OWASP parameters for this:
         // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
         let params = argon2::Params::new(
-            37 * 1024, // m-cost should be 37 Mib = 37 * 1024 Kib
+            46 * 1024, // m-cost should be 46 MiB = 46 * 1024 KiB
             1,         // t-cost
             1,         // p-cost
             Some(CIPHER_SEED_ENCRYPTION_KEY_BYTES + CIPHER_SEED_MAC_KEY_BYTES),
