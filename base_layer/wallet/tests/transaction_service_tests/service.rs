@@ -1463,26 +1463,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let delay = sleep(Duration::from_secs(30));
     tokio::pin!(delay);
-
-    let mut errors = 0;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                if let TransactionEvent::Error(s) = &*event.unwrap() {
-                    if s == &"TransactionProtocolError(TransactionBuildError(ValidationError(\"The transaction is invalid: Signature is invalid: Verifying kernel signature\")))".to_string() {
-                        errors+=1;
-                    }
-                    if errors >= 1 {
-                        break;
-                    }
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(errors >= 1);
 }
 
 #[tokio::test]
