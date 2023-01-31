@@ -35,7 +35,6 @@ tari_storage = { version = "^0.44", path = "../../infrastructure/storage" }
 tari_test_utils = { version = "^0.44", path = "../../infrastructure/test_utils" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.10", features = ["borsh"] }
 
-async-trait = "0.1.50"
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
@@ -73,7 +72,6 @@ strum_macros = "0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
-tracing-attributes = "*"
 uint = { version = "0.9", default-features = false }
 zeroize = "1"
 

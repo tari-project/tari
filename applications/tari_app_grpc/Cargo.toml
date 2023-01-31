@@ -19,9 +19,7 @@ argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
 borsh = "0.9.3"
 chrono = { version = "0.4.19", default-features = false }
-digest = "0.9"
 log = "0.4"
-num-traits = "0.2.15"
 prost = "0.9"
 prost-types = "0.9"
 rand = "0.8.5"
@@ -31,4 +29,7 @@ zeroize = "1"
 
 [build-dependencies]
 tonic-build = "0.6.2"
+
+[package.metadata.cargo-machete]
+ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies
 
