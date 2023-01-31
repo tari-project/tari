@@ -98,7 +98,7 @@ root:
 loggers:
   # Route log events common to every application to all appenders
   tari::application:
-    level: info
+    level: debug
     appenders:
       - base_layer
       - network
@@ -107,17 +107,17 @@ loggers:
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: info
+    level: debug
     appenders:
       - base_layer
   tari:
-    level: info
+    level: debug
     appenders:
       - base_layer
 
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
-    level: info
+    level: debug
     appenders:
       - base_layer
   # Route log events sent to the "comms" logger to the "network" appender

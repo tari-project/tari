@@ -34,9 +34,12 @@ members = [
 # Add here until we move to edition=2021
 resolver = "2"
 
-# Shutdown when panicking so we can see the error, specifically for the wallet
 [profile.release]
-panic = 'abort'
+# Shutdown when panicking so we can see the error, specifically for the wallet
+panic = "abort"
+# By default, Rust will wrap an integer in release mode instead of throwing the overflow error
+# seen in debug mode. Panicking at this time is better than silently using the wrong value.
+overflow-checks = true
 
 [patch.crates-io]
 # Temporarily lock pgp to commit (master branch at time of writing) because the currently release crate locks zeroize to =1.3

@@ -121,7 +121,7 @@ pub struct ProtoMessageSignature {
     pub signature: Vec<u8>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 pub enum MessageSignatureError {
     #[error("Failed to validate message signature")]
     InvalidSignatureBytes,
