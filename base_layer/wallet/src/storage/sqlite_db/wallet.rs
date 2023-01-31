@@ -27,11 +27,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use argon2::{
-    password_hash::{rand_core::OsRng, Decimal, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+use argon2::password_hash::{
+    rand_core::{OsRng, RngCore},
+    SaltString,
 };
-use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -43,6 +43,7 @@ use tari_comms::{
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
+    hidden_type,
     safe_array::SafeArray,
     Hidden,
     SafePassword,
@@ -63,6 +64,13 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::storage::wallet";
+
+// The main `XChaCha20-Poly1305` key used for database encryption
+// This isn't a `SafeArray` because of how we populate it from an authenticated decryption
+hidden_type!(WalletMainEncryptionKey, Vec<u8>);
+
+// The secondary `XChaCha20-Poly1305` key used to encrypt the main key
+hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -292,8 +300,9 @@ impl WalletSqliteDatabase {
             DbKey::CommsFeatures |
             DbKey::CommsAddress |
             DbKey::BaseNodeChainMetadata |
-            DbKey::PassphraseHash |
-            DbKey::EncryptionSalt |
+            DbKey::EncryptedMainKey |
+            DbKey::SecondaryKeySalt |
+            DbKey::SecondaryKeyVersion |
             DbKey::WalletBirthday |
             DbKey::CommsIdentitySignature => {
                 return Err(WalletStorageError::OperationNotSupported);
@@ -337,8 +346,9 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::TorId => self.get_tor_id(&conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&conn)?.map(DbValue::BaseNodeChainMetadata),
-            DbKey::PassphraseHash => WalletSettingSql::get(key, &conn)?.map(DbValue::PassphraseHash),
-            DbKey::EncryptionSalt => WalletSettingSql::get(key, &conn)?.map(DbValue::EncryptionSalt),
+            DbKey::EncryptedMainKey => WalletSettingSql::get(key, &conn)?.map(DbValue::EncryptedMainKey),
+            DbKey::SecondaryKeySalt => WalletSettingSql::get(key, &conn)?.map(DbValue::SecondaryKeySalt),
+            DbKey::SecondaryKeyVersion => WalletSettingSql::get(key, &conn)?.map(DbValue::SecondaryKeyVersion),
             DbKey::WalletBirthday => WalletSettingSql::get(key, &conn)?.map(DbValue::WalletBirthday),
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &conn)?
                 .and_then(|s| from_hex(&s).ok())
@@ -402,11 +412,7 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 }
 
-/// Confirm if database is encrypted or not and if a cipher is provided confirm the cipher is correct.
-/// Unencrypted the database should contain a MasterSecretKey and associated MasterPublicKey
-/// Encrypted the data should contain a Master Public Key in the clear and an encrypted MasterSecretKey
-/// To confirm if the provided Cipher is correct we decrypt the Master PrivateSecretKey and see if it produces the same
-/// Master Public Key that is stored in the db
+/// If the database is encrypted, produce a cipher that can be used for this purpose
 #[allow(clippy::too_many_lines)]
 fn get_db_encryption(
     database_connection: &WalletDbConnection,
@@ -416,46 +422,19 @@ fn get_db_encryption(
     let conn = database_connection.get_pooled_connection()?;
     let acquire_lock = start.elapsed();
 
-    let db_passphrase_hash = WalletSettingSql::get(&DbKey::PassphraseHash, &conn)?;
-    let db_encryption_salt = WalletSettingSql::get(&DbKey::EncryptionSalt, &conn)?;
+    // We use the user's passphrase and this salt to derive the _secondary key_
+    // This key decrypts the _main key_ stored in the database, which is used for other field storage
+    let secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
+    let secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
+    let encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, &conn)?;
 
-    let secret_seed = WalletSettingSql::get(&DbKey::MasterSeed, &conn)?;
-
-    let cipher = get_cipher_for_db_encryption(passphrase, db_passphrase_hash, db_encryption_salt, &secret_seed, &conn)?;
-
-    if let Some(mut sk) = secret_seed {
-        // We need to make sure the secret key was encrypted. Try to decrypt it
-        let mut sk_bytes: Vec<u8> = from_hex(sk.as_str())?;
-
-        if sk_bytes.len() < size_of::<XNonce>() + size_of::<Tag>() {
-            // zeroize sk and sk_bytes, so no memory leak happens, as sk could have been decrypted
-            sk.zeroize();
-            sk_bytes.zeroize();
-            return Err(WalletStorageError::MissingNonce);
-        }
-
-        // We try to decrypt the secret seed data, using our computed cipher. Moreover,
-        // decrypted key contains sensitive data, we make sure we appropriately zeroize
-        // the corresponding data buffer, when leaving the current scope
-        let decrypted_key = Hidden::hide(
-            decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_master_seed".to_vec(), &sk_bytes).map_err(|e| {
-                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
-                // zeroize sk and sk_bytes, so no memory leak happens, as sk could have been decrypted
-                sk.zeroize();
-                sk_bytes.zeroize();
-                WalletStorageError::InvalidPassphrase
-            })?,
-        );
-
-        // from this point on, we are sure that sk and thus sk_bytes were encrypted, so we might safely not zeroize them
-        let _cipher_seed = CipherSeed::from_enciphered_bytes(decrypted_key.reveal(), None).map_err(|_| {
-            error!(
-                target: LOG_TARGET,
-                "Decrypted Master Secret Key cannot be parsed into a Cipher Seed"
-            );
-            WalletStorageError::InvalidEncryptionCipher
-        })?;
-    }
+    let cipher = get_cipher_for_db_encryption(
+        passphrase,
+        secondary_key_version,
+        secondary_key_salt,
+        encrypted_main_key,
+        &conn,
+    )?;
 
     if start.elapsed().as_millis() > 0 {
         trace!(
@@ -472,99 +451,108 @@ fn get_db_encryption(
 
 fn get_cipher_for_db_encryption(
     passphrase: SafePassword,
-    passphrase_hash: Option<String>,
-    encryption_salt: Option<String>,
-    secret_seed: &Option<String>,
+    secondary_key_version: Option<String>,
+    secondary_key_salt: Option<String>,
+    encrypted_main_key: Option<String>,
     conn: &SqliteConnection,
 ) -> Result<XChaCha20Poly1305, WalletStorageError> {
-    let encryption_salt = match (passphrase_hash, encryption_salt) {
-        (None, None) => {
-            // Use the recommended OWASP parameters, which are not the default:
-            // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+    // Set up the PBKDF used for secondary key derivation
+    // These parameters will likely change in the future, so we version them
+    // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+    let pbkdf_params_version = 1u8;
+    let pbkdf_algorithm = argon2::Algorithm::Argon2id;
+    let pbkdf_version = argon2::Version::V0x13;
+    let pbkdf_params = argon2::Params::new(
+        46 * 1024,
+        1,
+        1,
+        Some(size_of::<Key>()), // for `XChaCha20-Poly1305`
+    )
+    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+    let main_key_domain = b"wallet_main_key_encryption".to_vec();
 
-            // These are the parameters for the passphrase hash
-            let params_passphrase = argon2::Params::new(
-                46 * 1024, // m-cost: 46 MiB, converted to KiB
-                1,         // t-cost
-                1,         // p-cost
-                None,      // output length: default is fine for this use
-            )
-            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+    let main_key = match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
+        // Encryption is not set up yet
+        (None, None, None) => {
+            // Generate a high-entropy main key
+            let mut main_key = WalletMainEncryptionKey::from(vec![0u8; size_of::<Key>()]);
+            let mut rng = OsRng;
+            rng.fill_bytes(main_key.reveal_mut());
 
-            // Hash the passphrase to a PHC string for later verification
-            let passphrase_salt = SaltString::generate(&mut OsRng);
-            let passphrase_hash = argon2::Argon2::default()
-                .hash_password_customized(
+            // We'll be encrypting the main key shortly, so keep a clone around
+            let main_key_clone = main_key.clone();
+
+            // Derive the secondary key from the user's passphrase and a high-entropy salt
+            let secondary_key_salt = SaltString::generate(&mut rng);
+            let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
+            argon2::Argon2::new(pbkdf_algorithm, pbkdf_version, pbkdf_params)
+                .hash_password_into(
                     passphrase.reveal(),
-                    Some(argon2::Algorithm::Argon2id.ident()),
-                    Some(argon2::Version::V0x13 as Decimal), // the API requires the numerical version representation
-                    params_passphrase,
-                    &passphrase_salt,
+                    secondary_key_salt.as_bytes(),
+                    secondary_key.reveal_mut(),
                 )
-                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
-                .to_string();
+                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-            // Hash the passphrase to produce a ChaCha20-Poly1305 key
-            let encryption_salt = SaltString::generate(&mut OsRng);
+            // Use the secondary key to encrypt the main key, authenticating with the version to mitigate mismatch
+            // attacks
+            let main_key_cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
+            let mut aad = main_key_domain;
+            aad.push(pbkdf_params_version);
+            let encrypted_main_key =
+                encrypt_bytes_integral_nonce(&main_key_cipher, aad, Hidden::hide(main_key.reveal().clone()))
+                    .map_err(WalletStorageError::AeadError)?;
 
-            // insert passphrase hash and encryption salt on the wallet db
-            WalletSettingSql::new(DbKey::PassphraseHash, passphrase_hash).set(conn)?;
-            WalletSettingSql::new(DbKey::EncryptionSalt, encryption_salt.to_string()).set(conn)?;
+            // Store the secondary key version, secondary key salt, and encrypted main key
+            WalletSettingSql::new(DbKey::SecondaryKeyVersion, pbkdf_params_version.to_string()).set(conn)?;
+            WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string()).set(conn)?;
+            WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex()).set(conn)?;
 
-            encryption_salt.to_string()
+            // Return the unencrypted main key
+            main_key_clone
         },
-        (Some(ph), Some(es)) => {
-            let argon2 = Argon2::default();
-            let stored_hash = PasswordHash::new(&ph).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-            // Check the passphrase PHC string against the provided passphrase
-            if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
-                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
-                return Err(WalletStorageError::InvalidPassphrase);
+        // Encryption has already been set up
+        (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
+            // For now, only one encryption version is supported
+            let secondary_key_version_u8 =
+                u8::from_str(&secondary_key_version).map_err(|_| WalletStorageError::BadEncryptionVersion)?;
+            if secondary_key_version_u8 != pbkdf_params_version {
+                return Err(WalletStorageError::BadEncryptionVersion);
             }
 
-            if secret_seed.is_none() {
-                error!(
-                    target: LOG_TARGET,
-                    "Cipher is provided but there is no Master Secret Key in DB to decrypt"
-                );
-                return Err(WalletStorageError::InvalidEncryptionCipher);
-            }
+            // Derive the secondary key from the user's passphrase and salt
+            let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
+            argon2::Argon2::new(pbkdf_algorithm, pbkdf_version, pbkdf_params)
+                .hash_password_into(
+                    passphrase.reveal(),
+                    secondary_key_salt.as_bytes(),
+                    secondary_key.reveal_mut(),
+                )
+                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-            es
+            // Attempt to decrypt the encrypted main key
+            let main_key_cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
+            let mut aad = main_key_domain;
+            aad.push(secondary_key_version_u8);
+
+            WalletMainEncryptionKey::from(
+                decrypt_bytes_integral_nonce(
+                    &main_key_cipher,
+                    aad,
+                    &from_hex(&encrypted_main_key).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?,
+                )
+                .map_err(|_| WalletStorageError::InvalidPassphrase)?,
+            )
         },
+        // We don't have all the data required for encryption
         _ => {
-            error!(
-                target: LOG_TARGET,
-                "Only passphrase hash or encryption hash were provided, need both values for successful encryption"
-            );
+            error!(target: LOG_TARGET, "Not enough data provided to set up encryption");
             return Err(WalletStorageError::UnexpectedResult(
-                "Encryption should be possible only by providing both passphrase hash and encrypted salt".into(),
+                "Not enough data provided to set up encryption".into(),
             ));
         },
     };
 
-    // Use the recommended OWASP parameters, which are not the default:
-    // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-    let params_encryption = argon2::Params::new(
-        46 * 1024,              // m-cost: 46 MiB, converted to KiB
-        1,                      // t-cost
-        1,                      // p-cost
-        Some(size_of::<Key>()), // output length: ChaCha20-Poly1305 key size
-    )
-    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-    // Hash the passphrase to produce a ChaCha20-Poly1305 key
-    let mut derived_encryption_key = Hidden::hide(SafeArray::<u8, { size_of::<Key>() }>::default());
-    argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params_encryption)
-        .hash_password_into(
-            passphrase.reveal(),
-            encryption_salt.as_bytes(),
-            derived_encryption_key.reveal_mut(),
-        )
-        .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-
-    Ok(XChaCha20Poly1305::new(Key::from_slice(derived_encryption_key.reveal())))
+    Ok(XChaCha20Poly1305::new(Key::from_slice(main_key.reveal())))
 }
 
 /// A Sql version of the wallet setting key-value table
