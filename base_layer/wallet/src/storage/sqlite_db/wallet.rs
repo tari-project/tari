@@ -75,18 +75,22 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 
 /// A structure to hold `Argon2` parameter versions, which may change over time and must be supported
 pub struct Argon2Parameters {
+    id: u8, // version identifier
     algorithm: argon2::Algorithm, // algorithm variant
     version: argon2::Version, // algorithm version
     params: argon2::Params, // memory, iteration count, parallelism, output length
 }
 impl Argon2Parameters {
     /// Construct and return `Argon2` parameters by version identifier
-    pub fn from_version(id: u8) -> Result<Self, WalletStorageError> {
+    /// If you pass in `None`, you'll get the most recent
+    pub fn from_version(id: Option<u8>) -> Result<Self, WalletStorageError> {
         // Each subsequent version identifier _must_ increase!
         // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
         match id {
-            1 => {
+            // Be sure to update the `None` behavior when updating this!
+            None | Some(1) => {
                 Ok(Argon2Parameters {
+                    id: 1,
                     algorithm: argon2::Algorithm::Argon2id,
                     version: argon2::Version::V0x13,
                     params: argon2::Params::new(
@@ -97,7 +101,7 @@ impl Argon2Parameters {
                     ).map_err(|e| WalletStorageError::AeadError(e.to_string()))?
                 })
             },
-            _ => Err(WalletStorageError::BadEncryptionVersion(id.to_string()))
+            Some(id) => Err(WalletStorageError::BadEncryptionVersion(id.to_string()))
         }
     }
 }
@@ -501,8 +505,7 @@ fn get_cipher_for_db_encryption(
             let main_key_clone = main_key.clone();
 
             // Use the most recent `Argon2` parameters
-            let version = 1u8;
-            let argon2_params = Argon2Parameters::from_version(version)?;
+            let argon2_params = Argon2Parameters::from_version(None)?;
 
             // Derive the secondary key from the user's passphrase and a high-entropy salt
             let secondary_key_salt = SaltString::generate(&mut rng);
@@ -519,13 +522,13 @@ fn get_cipher_for_db_encryption(
             // attacks
             let main_key_cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
             let mut aad = main_key_domain;
-            aad.push(version);
+            aad.push(argon2_params.id);
             let encrypted_main_key =
                 encrypt_bytes_integral_nonce(&main_key_cipher, aad, Hidden::hide(main_key.reveal().clone()))
                     .map_err(WalletStorageError::AeadError)?;
 
             // Store the secondary key version, secondary key salt, and encrypted main key
-            WalletSettingSql::new(DbKey::SecondaryKeyVersion, version.to_string()).set(conn)?;
+            WalletSettingSql::new(DbKey::SecondaryKeyVersion, argon2_params.id.to_string()).set(conn)?;
             WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string()).set(conn)?;
             WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex()).set(conn)?;
 
@@ -537,7 +540,7 @@ fn get_cipher_for_db_encryption(
             // Use the given version if it is valid
             let version =
                 u8::from_str(&secondary_key_version).map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
-            let argon2_params = Argon2Parameters::from_version(version)?;
+            let argon2_params = Argon2Parameters::from_version(Some(version))?;
 
             // Derive the secondary key from the user's passphrase and salt
             let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
