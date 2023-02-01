@@ -356,7 +356,7 @@ fn check_cut_through() {
     assert_eq!(tx2.body.outputs().len(), 3);
     assert_eq!(tx2.body.kernels().len(), 1);
 
-    let tx3 = tx + tx2;
+    let mut tx3 = tx + tx2;
     let mut tx3_cut_through = tx3.clone();
     // check that all inputs are as we expect them to be
     assert_eq!(tx3.body.inputs().len(), 3);
@@ -376,6 +376,8 @@ fn check_cut_through() {
         tx3_cut_through.body.outputs_mut().retain(|x| !input.is_equal_to(x));
         tx3_cut_through.body.inputs_mut().retain(|x| *x != input);
     }
+    tx3.body.sort();
+    tx3_cut_through.body.sort();
 
     // Validate basis transaction where cut-through has not been applied.
     validator.validate(&tx3, None, None, u64::MAX).unwrap();

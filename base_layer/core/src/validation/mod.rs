@@ -33,6 +33,7 @@ pub use error::ValidationError;
 pub(crate) mod helpers;
 
 mod traits;
+
 pub use traits::{
     BlockBodyValidator,
     CandidateBlockValidator,
@@ -41,17 +42,13 @@ pub use traits::{
     InternalConsistencyValidator,
     TransactionValidator,
 };
-
 pub mod block_body;
 mod difficulty_calculator;
 pub use difficulty_calculator::*;
+mod chain_balance;
 pub mod mocks;
 pub mod transaction;
-// pub mod header_validator;
-
-mod chain_balance;
 pub use chain_balance::ChainBalanceValidator;
-
 pub mod aggregate_body;
 pub mod header;
 

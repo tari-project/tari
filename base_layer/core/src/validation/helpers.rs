@@ -75,7 +75,6 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
     median_timestamp
 }
-
 pub fn check_header_timestamp_greater_than_median(
     block_header: &BlockHeader,
     timestamps: &[EpochTime],
@@ -105,7 +104,6 @@ pub fn check_header_timestamp_greater_than_median(
 
     Ok(())
 }
-
 pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,

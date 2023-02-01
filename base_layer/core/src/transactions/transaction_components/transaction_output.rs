@@ -160,6 +160,11 @@ impl TransactionOutput {
         &self.proof
     }
 
+    /// Accessor method for the TariScript contained in an output
+    pub fn script(&self) -> &TariScript {
+        &self.script
+    }
+
     pub fn hash(&self) -> FixedHash {
         transaction_components::hash_output(
             self.version,

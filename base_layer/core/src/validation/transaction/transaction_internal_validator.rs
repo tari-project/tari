@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, CryptoFactories},
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
@@ -65,10 +64,10 @@ impl TransactionInternalConsistencyValidator {
             .validate(&tx.body, &tx.offset, &tx.script_offset, reward, prev_header, height)
     }
 
-    pub fn validate_with_current_tip<B: BlockchainBackend>(
+    pub fn validate_with_current_tip(
         &self,
         tx: &Transaction,
-        db: BlockchainDatabase<B>,
+        tip_metadata: ChainMetadata,
     ) -> Result<(), ValidationError> {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
             return Err(ValidationError::ErroneousCoinbaseOutput);
@@ -78,18 +77,13 @@ impl TransactionInternalConsistencyValidator {
         // only coinbases may have the extra field set (the only field that the fn argument affects).
         tx.body.check_output_features(1)?;
 
-        let tip = {
-            let db = db.db_read_access()?;
-            db.fetch_chain_metadata()
-        }?;
-
         self.aggregate_body_validator.validate(
             &tx.body,
             &tx.offset,
             &tx.script_offset,
             None,
-            Some(*tip.best_block()),
-            tip.height_of_longest_chain(),
+            Some(*tip_metadata.best_block()),
+            tip_metadata.height_of_longest_chain(),
         )
     }
 }

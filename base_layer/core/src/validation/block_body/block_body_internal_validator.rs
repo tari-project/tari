@@ -29,7 +29,6 @@ use crate::{
     transactions::{aggregated_body::AggregateBody, CryptoFactories},
     validation::{
         aggregate_body::AggregateBodyInternalConsistencyValidator,
-        helpers::is_all_unique_and_sorted,
         InternalConsistencyValidator,
         ValidationError,
     },
@@ -89,7 +88,7 @@ fn validate_block_specific_checks(
         warn!(target: LOG_TARGET, "Attempt to validate genesis block");
         return Err(ValidationError::ValidatingGenesis);
     }
-    check_sorting_and_duplicates(&block.body)?;
+
     check_coinbase_output(block, consensus_manager, factories)?;
     check_output_features(&block.body, constants)?;
 
@@ -148,21 +147,4 @@ fn check_coinbase_output(
             factories,
         )
         .map_err(ValidationError::from)
-}
-
-// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
-fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
-    if !is_all_unique_and_sorted(body.inputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateInput);
-    }
-
-    if !is_all_unique_and_sorted(body.outputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateOutput);
-    }
-
-    if !is_all_unique_and_sorted(body.kernels()) {
-        return Err(ValidationError::UnsortedOrDuplicateKernel);
-    }
-
-    Ok(())
 }

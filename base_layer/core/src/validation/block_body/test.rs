@@ -110,11 +110,7 @@ async fn it_checks_exactly_one_coinbase() {
         .with_fees(0.into())
         .with_nonce(0.into())
         .with_spend_key(42.into())
-        .build_with_reward(
-            blockchain.rules().clone(),
-            blockchain.rules().consensus_constants(1),
-            coinbase.value,
-        )
+        .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
         .unwrap();
 
     block.body.add_output(
@@ -214,7 +210,7 @@ async fn it_limits_the_script_byte_size() {
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
-                .with_max_script_byte_size(0)
+                .with_max_script_byte_size(2)
                 .build(),
         )
         .build();

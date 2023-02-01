@@ -40,7 +40,6 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    blocks::BlockValidationError,
     consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
@@ -1013,7 +1012,8 @@ async fn consensus_validation_large_tx() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    tx.body.sort();
 
     let height = blocks.len() as u64;
     let constants = consensus_manager.consensus_constants(height);
@@ -1022,10 +1022,7 @@ async fn consensus_validation_large_tx() {
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::BlockTooLarge { .. })
-    ));
+    assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
@@ -1126,10 +1123,10 @@ async fn consensus_validation_versions() {
     );
     let txs = vec![schema];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-
+    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, CryptoFactories::default());
     // Cases:
     // invalid input version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][0].clone()],
         to: vec![1 * T],
         to_outputs: vec![],
@@ -1142,15 +1139,11 @@ async fn consensus_validation_versions() {
         input_version: Some(TransactionInputVersion::V1),
         output_version: None,
     };
-
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][1].clone()],
         to: vec![],
         to_outputs: vec![output_v1_features_v0],
@@ -1164,14 +1157,11 @@ async fn consensus_validation_versions() {
         output_version: Some(TransactionOutputVersion::V1),
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output features version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][2].clone()],
         to: vec![],
         to_outputs: vec![output_v0_features_v1],
@@ -1185,11 +1175,8 @@ async fn consensus_validation_versions() {
         output_version: None,
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 }
 
 #[tokio::test]

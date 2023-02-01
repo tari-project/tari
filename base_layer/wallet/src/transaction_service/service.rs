@@ -1001,8 +1001,6 @@ where
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
-            self.last_seen_tip_height,
-            None,
         );
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
@@ -1141,13 +1139,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1279,13 +1271,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1432,13 +1418,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1878,8 +1858,6 @@ where
                     TransactionMetadata::default(),
                     None,
                     stage,
-                    None,
-                    self.last_seen_tip_height,
                     sender_protocol,
                 );
 
@@ -2011,8 +1989,6 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
-                None,
-                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -2197,8 +2173,6 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
-                None,
-                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
