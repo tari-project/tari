@@ -67,6 +67,7 @@ const LOG_TARGET: &str = "wallet::storage::wallet";
 
 // The main `XChaCha20-Poly1305` key used for database encryption
 // This isn't a `SafeArray` because of how we populate it from an authenticated decryption
+// However, it is `Hidden` and therefore should be safe to use
 hidden_type!(WalletMainEncryptionKey, Vec<u8>);
 
 // The secondary `XChaCha20-Poly1305` key used to encrypt the main key
