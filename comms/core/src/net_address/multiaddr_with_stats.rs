@@ -12,6 +12,12 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
+use tari_crypto::keys::PublicKey;
+
+use crate::{
+    peer_manager::{IdentitySignature, PeerIdentityClaim},
+    types::CommsPublicKey,
+};
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
@@ -28,11 +34,40 @@ pub struct MultiaddrWithStats {
     pub last_attempted: Option<NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: i32,
+    pub source: PeerAddressSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+pub enum PeerAddressSource {
+    Config,
+    FromPeerConnection {
+        peer_identity_claim: PeerIdentityClaim,
+    },
+    FromAnotherPeer {
+        peer_identity_claim: PeerIdentityClaim,
+        source_peer: CommsPublicKey,
+    },
+}
+
+impl PartialEq for PeerAddressSource {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            PeerAddressSource::Config => {
+                matches!(other, PeerAddressSource::Config)
+            },
+            PeerAddressSource::FromPeerConnection { .. } => {
+                matches!(other, PeerAddressSource::FromPeerConnection { .. })
+            },
+            PeerAddressSource::FromAnotherPeer { .. } => {
+                matches!(other, PeerAddressSource::FromAnotherPeer { .. })
+            },
+        }
+    }
 }
 
 impl MultiaddrWithStats {
     /// Constructs a new net address with zero stats
-    pub fn new(address: Multiaddr) -> Self {
+    pub fn new(address: Multiaddr, source: PeerAddressSource) -> Self {
         Self {
             address,
             last_seen: None,
@@ -44,37 +79,12 @@ impl MultiaddrWithStats {
             last_attempted: None,
             last_failed_reason: None,
             quality_score: 0,
-        }
-    }
-
-    /// Constructs a new net address with usage stats
-    pub fn new_with_stats(
-        address: Multiaddr,
-        last_seen: Option<NaiveDateTime>,
-        connection_attempts: u32,
-        avg_initial_dial_time: Duration,
-        initial_dial_time_sample_count: u32,
-        avg_latency: Duration,
-        latency_sample_count: u32,
-        last_attempted: Option<NaiveDateTime>,
-        last_failed_reason: Option<String>,
-        quality_score: i32,
-    ) -> Self {
-        Self {
-            address,
-            last_seen,
-            connection_attempts,
-            avg_initial_dial_time,
-            initial_dial_time_sample_count,
-            avg_latency,
-            latency_sample_count,
-            last_attempted,
-            last_failed_reason,
-            quality_score,
+            source,
         }
     }
 
     pub fn merge(&mut self, other: &Self) {
+        todo!("add source");
         if self.address == other.address {
             self.last_seen = cmp::max(other.last_seen, self.last_seen);
             self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
@@ -195,24 +205,6 @@ impl MultiaddrWithStats {
         }
 
         self.quality_score = score_self;
-    }
-}
-
-impl From<Multiaddr> for MultiaddrWithStats {
-    /// Constructs a new net address with usage stats from a net address
-    fn from(net_address: Multiaddr) -> Self {
-        Self {
-            address: net_address,
-            last_seen: None,
-            connection_attempts: 0,
-            avg_initial_dial_time: Duration::from_secs(0),
-            initial_dial_time_sample_count: 0,
-            avg_latency: Duration::new(0, 0),
-            latency_sample_count: 0,
-            last_attempted: None,
-            last_failed_reason: None,
-            quality_score: 0,
-        }
     }
 }
 

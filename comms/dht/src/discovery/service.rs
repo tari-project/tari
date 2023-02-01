@@ -26,7 +26,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     log_if_error,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerIdentityClaim, PeerManager},
     types::CommsPublicKey,
     validate_peer_addresses,
 };
@@ -239,6 +239,12 @@ impl DhtDiscoveryService {
         validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
+        let peer_identity_claim = PeerIdentityClaim::new(
+            addresses,
+            PeerFeatures::from(discovery_msg.peer_features),
+            discovery_msg.signature.try_into()?,
+        );
+
         let peer = self
             .peer_manager
             .add_or_update_online_peer(
@@ -318,7 +324,7 @@ impl DhtDiscoveryService {
     ) -> Result<(), DhtDiscoveryError> {
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.public_address().to_string()],
+            addresses: self.node_identity.public_address().to_string(),
             peer_features: self.node_identity.features().bits(),
             nonce,
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),

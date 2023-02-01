@@ -70,6 +70,9 @@
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
 
+/// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
+const MAX_USER_AGENT_LEN: usize = 100;
+
 mod error;
 pub use error::PeerManagerError;
 
@@ -104,6 +107,9 @@ pub use peer_query::{PeerQuery, PeerQuerySortBy};
 
 mod peer_storage;
 pub use peer_storage::PeerStorage;
+
+mod peer_identity_claim;
+pub use peer_identity_claim::PeerIdentityClaim;
 
 mod migrations;
 

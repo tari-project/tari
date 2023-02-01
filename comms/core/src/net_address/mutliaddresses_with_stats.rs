@@ -11,7 +11,10 @@ use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
-use crate::net_address::MultiaddrWithStats;
+use crate::{
+    net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats},
+    peer_manager::PeerIdentityClaim,
+};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
@@ -20,6 +23,19 @@ pub struct MultiaddressesWithStats {
 }
 
 impl MultiaddressesWithStats {
+    pub fn from_addresses_with_source(
+        addresses: Vec<Multiaddr>,
+        source: &PeerAddressSource,
+    ) -> MultiaddressesWithStats {
+        let mut addresses_with_stats = Vec::with_capacity(addresses.len());
+        for address in addresses {
+            addresses_with_stats.push(MultiaddrWithStats::new(address, source.clone()));
+        }
+        MultiaddressesWithStats {
+            addresses: addresses_with_stats,
+        }
+    }
+
     /// Constructs a new list of addresses with usage stats from a list of net addresses
     pub fn new(addresses: Vec<MultiaddrWithStats>) -> MultiaddressesWithStats {
         MultiaddressesWithStats { addresses }
@@ -88,9 +104,10 @@ impl MultiaddressesWithStats {
 
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
-    pub fn add_address(&mut self, net_address: &Multiaddr) {
+    pub fn add_address(&mut self, net_address: &Multiaddr, source: &PeerAddressSource) {
         if !self.addresses.iter().any(|x| x.address() == net_address) {
-            self.addresses.push(net_address.clone().into());
+            self.addresses
+                .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
             self.addresses.sort();
         }
     }
@@ -101,7 +118,7 @@ impl MultiaddressesWithStats {
 
     /// Compares the existing set of addresses to the provided address set and remove missing addresses and
     /// add new addresses without discarding the usage stats of the existing and remaining addresses.
-    pub fn update_addresses(&mut self, addresses: Vec<Multiaddr>) {
+    pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) {
         self.addresses = self
             .addresses
             .drain(..)
@@ -110,11 +127,12 @@ impl MultiaddressesWithStats {
 
         let to_add = addresses
             .into_iter()
-            .filter(|addr| !self.addresses.iter().any(|a| a.address() == addr))
+            .filter(|addr| !self.addresses.iter().any(|a| &a.address() == addr))
             .collect::<Vec<_>>();
 
         for address in to_add {
-            self.addresses.push(address.into());
+            self.addresses
+                .push(MultiaddrWithStats::new(address.clone(), source.clone()));
         }
 
         self.addresses.sort();
@@ -245,27 +263,6 @@ impl Index<usize> for MultiaddressesWithStats {
     /// Returns the NetAddressWithStats at the given index
     fn index(&self, index: usize) -> &Self::Output {
         &self.addresses[index]
-    }
-}
-
-impl From<Multiaddr> for MultiaddressesWithStats {
-    /// Constructs a new list of addresses with usage stats from a single net address
-    fn from(net_address: Multiaddr) -> Self {
-        MultiaddressesWithStats {
-            addresses: vec![MultiaddrWithStats::from(net_address)],
-        }
-    }
-}
-
-impl From<Vec<Multiaddr>> for MultiaddressesWithStats {
-    /// Constructs a new list of addresses with usage stats from a Vec<Multiaddr>
-    fn from(net_addresses: Vec<Multiaddr>) -> Self {
-        MultiaddressesWithStats {
-            addresses: net_addresses
-                .into_iter()
-                .map(MultiaddrWithStats::from)
-                .collect::<Vec<MultiaddrWithStats>>(),
-        }
     }
 }
 

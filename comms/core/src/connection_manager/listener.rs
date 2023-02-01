@@ -385,44 +385,29 @@ where
         )
         .await?;
 
-        let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        debug!(
-            target: LOG_TARGET,
-            "Peer identity exchange succeeded on Inbound connection for peer '{}' (Features = {:?})",
-            authenticated_public_key,
-            features
-        );
-        trace!(target: LOG_TARGET, "{:?}", peer_identity);
-
-        let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
-            peer_identity,
+            &peer_identity,
             None,
             config.allow_test_addresses,
         )
         .await?;
 
-        debug!(
-            target: LOG_TARGET,
-            "[ThisNode={}] Peer '{}' added to peer list.",
-            node_identity.node_id().short_str(),
-            peer_node_id.short_str()
-        );
-
         let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        peer_connection::create(
+        peer_connection::try_create(
             muxer,
             peer_addr,
             peer_node_id,
-            features,
+            peer_identity.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
-            their_supported_protocols,
+            peer_identity.supported_protocols(),
+            peer_identity,
         )
     }
 

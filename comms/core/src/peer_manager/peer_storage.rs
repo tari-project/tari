@@ -465,23 +465,6 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peer.is_banned())
     }
 
-    /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
-    pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
-        let peer_key = *self
-            .node_id_index
-            .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let mut peer: Peer = self
-            .peer_db
-            .get(&peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .expect("node_id_index is out of sync with peer db");
-        peer.addresses.add_address(net_address);
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)
-    }
-
     /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
     /// It will return None if the value was empty and the old value if the value was updated
     pub fn set_peer_metadata(

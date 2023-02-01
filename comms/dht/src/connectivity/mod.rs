@@ -39,6 +39,7 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
+    connection_manager::ConnectionDirection,
     connectivity::{
         ConnectivityError,
         ConnectivityEvent,
@@ -47,6 +48,7 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
+    net_address::PeerAddressSource,
     peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
     NodeIdentity,
     PeerConnection,
@@ -503,9 +505,17 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
-        self.peer_manager
-            .mark_last_seen(conn.peer_node_id(), Some(conn.address()))
-            .await?;
+        if conn.direction() == ConnectionDirection::Outbound {
+            self.peer_manager
+                .mark_last_seen(
+                    conn.peer_node_id(),
+                    conn.address(),
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: conn.peer_identity_claim().clone(),
+                    },
+                )
+                .await?;
+        }
         if conn.peer_features().is_client() {
             debug!(
                 target: LOG_TARGET,

@@ -65,7 +65,7 @@ where
 
     // Send this node's identity
     let msg_bytes = PeerIdentityMsg {
-        addresses: vec![node_identity.public_address().to_vec()],
+        addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
         features: node_identity.features().bits(),
         supported_protocols,
         user_agent: network_info.user_agent,

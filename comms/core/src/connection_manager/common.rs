@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, net::Ipv6Addr};
+use std::{
+    convert::{TryFrom, TryInto},
+    net::Ipv6Addr,
+};
 
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -28,7 +31,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim},
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
@@ -37,9 +41,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
-
-/// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
-const MAX_USER_AGENT_LEN: usize = 100;
 
 /// Performs the identity exchange protocol on the given socket.
 pub(super) async fn perform_identity_exchange<
@@ -51,11 +52,38 @@ pub(super) async fn perform_identity_exchange<
     node_identity: &NodeIdentity,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
-) -> Result<PeerIdentityMsg, ConnectionManagerError> {
+) -> Result<PeerIdentityClaim, ConnectionManagerError> {
     let peer_identity =
         protocol::identity_exchange(node_identity, our_supported_protocols, network_info, socket).await?;
 
-    Ok(peer_identity)
+    Ok(peer_identity.try_into()?)
+}
+
+/// Validate the peer identity info.
+///
+/// The following process is used to validate the peer:
+/// 1. Check the offered node identity is a valid base node identity (TODO: This won't work for DAN nodes)
+/// 1. Check if we know the peer, if so, is the peer banned, if so, return an error
+/// 1. Check that the offered addresses are valid
+///
+/// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
+/// for p2p comms will be accepted.
+pub(super) async fn validate_peer_identity(
+    authenticated_public_key: &CommsPublicKey,
+    peer_identity: &PeerIdentityClaim,
+    allow_test_addrs: bool,
+) -> Result<(), ConnectionManagerError> {
+    validate_peer_addresses(&peer_identity.addresses, allow_test_addrs)?;
+
+    if !peer_identity.signature.is_valid(
+        &authenticated_public_key,
+        peer_identity.features,
+        &peer_identity.addresses,
+    ) {
+        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+    }
+
+    Ok(())
 }
 
 /// Validate the peer identity info.
@@ -72,31 +100,11 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
     peer_manager: &PeerManager,
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
-    mut peer_identity: PeerIdentityMsg,
+    peer_identity: &PeerIdentityClaim,
     dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
-) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError> {
+) -> Result<NodeId, ConnectionManagerError> {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
-    let addresses = peer_identity
-        .addresses
-        .iter()
-        .filter_map(|addr_bytes| Multiaddr::try_from(addr_bytes.clone()).ok())
-        .collect::<Vec<_>>();
-
-    // TODO: #banheuristic
-    validate_peer_addresses(&addresses, allow_test_addrs)?;
-
-    if addresses.is_empty() {
-        return Err(ConnectionManagerError::PeerIdentityNoValidAddresses);
-    }
-
-    let supported_protocols = peer_identity
-        .supported_protocols
-        .iter()
-        .map(|p| bytes::Bytes::from(p.clone()))
-        .collect::<Vec<_>>();
-
-    peer_identity.user_agent.truncate(MAX_USER_AGENT_LEN);
 
     // Note: the peer will be merged in the db if it already exists
     let peer = match known_peer {
@@ -106,16 +114,19 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 "Peer '{}' already exists in peer list. Updating.",
                 peer.node_id.short_str()
             );
-            // peer.connection_stats.set_connection_success();
-            peer.addresses.update_addresses(addresses);
+            peer.addresses
+                .update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.clone(),
+                });
             // peer.set_offline(false);
-            if let Some(addr) = dialed_addr {
-                peer.addresses.add_address(&addr);
-                peer.addresses.mark_last_seen_now(addr);
-            }
-            peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
-            peer.supported_protocols = supported_protocols.clone();
-            peer.user_agent = peer_identity.user_agent.clone();
+            // Don't add an unsigned address
+            // if let Some(addr) = dialed_addr {
+            //     peer.addresses.add_address(&addr);
+            //     peer.addresses.mark_last_seen_now(addr);
+            // }
+            peer.features = peer_identity.features;
+            peer.supported_protocols = peer_identity.supported_protocols();
+            peer.user_agent = peer_identity.user_agent().unwrap_or_default();
 
             peer
         },
@@ -128,14 +139,18 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
             let mut new_peer = Peer::new(
                 authenticated_public_key.clone(),
                 peer_node_id.clone(),
-                addresses.into(),
+                MultiaddressesWithStats::from_addresses_with_source(
+                    peer_identity.addresses.clone(),
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: peer_identity.clone(),
+                    },
+                ),
                 PeerFlags::empty(),
-                PeerFeatures::from_bits_truncate(peer_identity.features),
-                supported_protocols.clone(),
-                peer_identity.user_agent.clone(),
+                peer_identity.features,
+                peer_identity.supported_protocols(),
+                peer_identity.user_agent().unwrap_or_default(),
             );
             if let Some(addr) = dialed_addr {
-                new_peer.addresses.add_address(&addr);
                 new_peer.addresses.mark_last_seen_now(addr);
             }
             new_peer
@@ -144,7 +159,7 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
 
     peer_manager.add_peer(peer).await?;
 
-    Ok((peer_node_id, supported_protocols))
+    Ok(peer_node_id)
 }
 
 pub(super) async fn find_unbanned_peer(

@@ -57,8 +57,9 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
+    net_address::PeerAddressSource,
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerId, PeerIdentityClaim, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::CommsPublicKey,
@@ -220,6 +221,16 @@ where
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
         // try save the peer back to the peer manager
+        let mut peer = dial_state.peer_mut();
+        if let Ok(peer_connection) = &dial_result {
+            peer.update_addresses(
+                &peer_connection.peer_identity_claim().addresses,
+                &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_connection.peer_identity_claim().clone(),
+                },
+            );
+        }
+
         match self.peer_manager.add_peer(dial_state.peer().clone()).await {
             Ok(_) => {
                 warn!("Peer updated correctly");
@@ -285,7 +296,6 @@ where
             });
     }
 
-    #[tracing::instrument(level = "trace", skip(self, pending_dials, reply_tx))]
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
@@ -354,13 +364,7 @@ where
                         cancel_signal,
                     )
                     .await;
-                    warn!(
-                        target: LOG_TARGET,
-                        "Socket upgrade completed to peer '{}' with result {:?} after {:?}",
-                        dial_state.peer().node_id,
-                        result,
-                        timer.elapsed()
-                    );
+
                     if let Err(err) = &result {
                         let mut dial_state = dial_state;
                         dial_state
@@ -398,10 +402,6 @@ where
         Ok(authenticated_public_key)
     }
 
-    #[tracing::instrument(
-        level = "trace",
-        skip(peer_manager, socket, conn_man_notifier, config, cancel_signal)
-    )]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -419,9 +419,6 @@ where
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
 
-        // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
-
         let peer_identity = common::perform_identity_exchange(
             &mut socket,
             &node_identity,
@@ -434,35 +431,11 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        debug!(
-            target: LOG_TARGET,
-            "Peer identity exchange succeeded on Outbound connection for peer '{}' (Features = {:?})",
-            authenticated_public_key,
-            features
-        );
-        trace!(target: LOG_TARGET, "{:?}", peer_identity);
-
-        let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
-            &peer_manager,
-            known_peer,
-            authenticated_public_key,
-            peer_identity,
-            Some(&dialed_addr),
-            config.allow_test_addresses,
-        )
-        .await?;
+        common::validate_peer_identity(&authenticated_public_key, &peer_identity, config.allow_test_addresses).await?;
 
         if cancel_signal.is_terminated() {
             return Err(ConnectionManagerError::DialCancelled);
         }
-
-        debug!(
-            target: LOG_TARGET,
-            "[ThisNode={}] Peer '{}' added to peer list.",
-            node_identity.node_id().short_str(),
-            peer_node_id.short_str()
-        );
 
         let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
@@ -472,19 +445,19 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        peer_connection::create(
+        Ok(peer_connection::try_create(
             muxer,
             dialed_addr,
-            peer_node_id,
-            features,
+            NodeId::from_public_key(&authenticated_public_key),
+            peer_identity.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
-            their_supported_protocols,
-        )
+            peer_identity.supported_protocols(),
+            peer_identity,
+        )?)
     }
 
-    #[tracing::instrument(level = "trace", skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,

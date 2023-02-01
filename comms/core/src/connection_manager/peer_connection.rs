@@ -58,7 +58,7 @@ use crate::{
     framing,
     framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, PeerFeatures},
+    peer_manager::{NodeId, PeerFeatures, PeerIdentityClaim},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
@@ -67,7 +67,7 @@ const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-pub fn create(
+pub fn try_create(
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
@@ -76,6 +76,7 @@ pub fn create(
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
     their_supported_protocols: Vec<ProtocolId>,
+    peer_identity_claim: PeerIdentityClaim,
 ) -> Result<PeerConnection, ConnectionManagerError> {
     trace!(
         target: LOG_TARGET,
@@ -94,6 +95,7 @@ pub fn create(
         peer_addr,
         direction,
         substream_counter,
+        peer_identity_claim,
     );
     let peer_actor = PeerConnectionActor::new(
         id,
@@ -137,6 +139,7 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
+    peer_identity_claim: PeerIdentityClaim,
 }
 
 impl PeerConnection {
@@ -148,6 +151,7 @@ impl PeerConnection {
         address: Multiaddr,
         direction: ConnectionDirection,
         substream_counter: AtomicRefCounter,
+        peer_identity_claim: PeerIdentityClaim,
     ) -> Self {
         Self {
             id,
@@ -159,6 +163,7 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
+            peer_identity_claim,
         }
     }
 
@@ -202,6 +207,10 @@ impl PeerConnection {
 
     pub fn handle_count(&self) -> usize {
         Arc::strong_count(&self.handle_counter)
+    }
+
+    pub fn peer_identity_claim(&self) -> &PeerIdentityClaim {
+        &self.peer_identity_claim
     }
 
     #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]

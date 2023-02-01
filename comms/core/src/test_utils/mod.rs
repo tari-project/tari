@@ -24,12 +24,12 @@ cfg_test! {
     #[allow(dead_code)]
     pub mod factories;
     pub(crate) mod test_node;
-}
+
 
 pub mod mocks;
 pub mod node_id;
 pub mod node_identity;
-
+}
 pub mod peer_manager;
 pub use peer_manager::build_peer_manager;
 

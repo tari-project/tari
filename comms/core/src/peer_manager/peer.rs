@@ -41,7 +41,7 @@ use super::{
     PeerFeatures,
 };
 use crate::{
-    net_address::MultiaddressesWithStats,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
@@ -90,10 +90,6 @@ pub struct Peer {
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
     /// We use a hashmap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
-    /// Signs the peer information with a timestamp to prevent malleability. This is optional for backward
-    /// compatibility, but without this, the identity (addresses etc) cannot be updated.
-    pub identity_signature: Option<IdentitySignature>,
-
     /// If this peer has been deleted.
     pub deleted_at: Option<NaiveDateTime>,
 }
@@ -123,7 +119,6 @@ impl Peer {
             supported_protocols,
             user_agent,
             metadata: HashMap::new(),
-            identity_signature: None,
             deleted_at: None,
         }
     }
@@ -258,16 +253,9 @@ impl Peer {
         self.metadata.get(&key)
     }
 
-    /// Set the identity signature of the peer. WARNING: It is up to the caller to ensure that the signature is valid.
-    pub fn set_valid_identity_signature(&mut self, signature: IdentitySignature) -> &mut Self {
-        self.identity_signature = Some(signature);
-        self
-    }
-
     /// Update the peer's addresses. This call will invalidate the identity signature.
-    pub fn update_addresses(&mut self, addresses: Vec<Multiaddr>) -> &mut Self {
-        self.addresses.update_addresses(addresses);
-        self.identity_signature = None;
+    pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) -> &mut Self {
+        self.addresses.update_addresses(addresses, source);
         self
     }
 
@@ -275,7 +263,6 @@ impl Peer {
     pub fn set_features(&mut self, features: PeerFeatures) -> &mut Self {
         if self.features != features {
             self.features = features;
-            self.identity_signature = None;
         }
         self
     }

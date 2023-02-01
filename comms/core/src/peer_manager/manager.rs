@@ -29,6 +29,7 @@ use tokio::{sync::RwLock, task};
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
 use crate::{
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         migrations,
         peer::{Peer, PeerFlags},
@@ -141,11 +142,12 @@ impl PeerManager {
         node_id: NodeId,
         addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
+        source: &PeerAddressSource,
     ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(pubkey).await {
             Ok(Some(mut peer)) => {
                 // peer.connection_stats.set_connection_success();
-                peer.addresses.update_addresses(addresses);
+                peer.addresses.update_addresses(&addresses, source);
                 peer.features = peer_features;
                 self.add_peer(peer.clone()).await?;
                 Ok(peer)
@@ -154,7 +156,7 @@ impl PeerManager {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
-                    addresses.into(),
+                    MultiaddressesWithStats::from_addresses_with_source(addresses, &source),
                     PeerFlags::default(),
                     peer_features,
                     Default::default(),
@@ -216,20 +218,20 @@ impl PeerManager {
             .closest_peers(node_id, n, excluded_peers, features)
     }
 
-    pub async fn mark_last_seen(&self, node_id: &NodeId, addr: Option<&Multiaddr>) -> Result<(), PeerManagerError> {
+    pub async fn mark_last_seen(
+        &self,
+        node_id: &NodeId,
+        addr: &Multiaddr,
+        source: &PeerAddressSource,
+    ) -> Result<(), PeerManagerError> {
         let mut lock = self.peer_storage.write().await;
         let peer = lock.find_by_node_id(node_id)?;
         match peer {
             Some(mut peer) => {
                 // if we have an address, update it
-                if let Some(addr) = addr {
-                    peer.addresses.add_address(addr);
-                    peer.addresses.mark_last_seen_now(addr);
-                    lock.add_peer(peer)?;
-                } else {
-                    // incoming connection, so we don't know which address to use
-                    todo!("Handle incoming connection");
-                }
+                peer.addresses.add_address(addr, source);
+                peer.addresses.mark_last_seen_now(addr);
+                lock.add_peer(peer)?;
                 Ok(())
             },
             None => Err(PeerManagerError::PeerNotFoundError),
@@ -298,11 +300,6 @@ impl PeerManager {
 
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         self.peer_storage.read().await.is_peer_banned(node_id)
-    }
-
-    /// Adds a new net address to the peer if it doesn't yet exist
-    pub async fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.add_net_address(node_id, net_address)
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>

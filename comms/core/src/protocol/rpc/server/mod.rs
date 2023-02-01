@@ -32,6 +32,7 @@ use handle::RpcServerRequest;
 
 mod metrics;
 
+#[cfg(test)]
 pub mod mock;
 
 mod early_close;

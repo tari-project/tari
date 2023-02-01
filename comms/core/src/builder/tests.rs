@@ -41,6 +41,7 @@ use crate::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Substream,
+    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
@@ -67,7 +68,7 @@ async fn spawn_node(
         .parse::<Multiaddr>()
         .unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    node_identity.set_public_address(addr.clone());
+    node_identity.add_public_address(addr.clone());
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -139,7 +140,7 @@ async fn peer_to_peer_custom_protocols() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::new(node_identity2.public_addresses().clone(), PeerAddressSource::Config),
             Default::default(),
             Default::default(),
             vec![TEST_PROTOCOL.clone(), ANOTHER_TEST_PROTOCOL.clone()],
