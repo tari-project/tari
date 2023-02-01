@@ -1286,10 +1286,8 @@ async fn block_event_and_reorg_event_handling() {
     // Add one empty block, so the coinbase UTXO is no longer time-locked.
     assert!(bob.local_nci.submit_block(empty_block.clone(),).await.is_ok());
     assert!(alice.local_nci.submit_block(empty_block.clone(),).await.is_ok());
-    let pie = alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    dbg!(pie);
-    let pie2 = bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    dbg!(pie2);
+    alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
+    bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
     let mut block1 = bob
         .blockchain_db
         .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager))
