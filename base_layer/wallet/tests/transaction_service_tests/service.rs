@@ -1393,8 +1393,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
 
-    let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment).await;
 
     alice_ts_interface
@@ -1460,9 +1458,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         ))
         .await
         .unwrap();
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
 }
 
 #[tokio::test]

@@ -31,7 +31,6 @@ pub mod covenants;
 #[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
-#[cfg(feature = "base_node")]
 pub mod validation;
 
 #[cfg(any(test, feature = "base_node"))]
