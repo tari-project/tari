@@ -72,6 +72,35 @@ hidden_type!(WalletMainEncryptionKey, Vec<u8>);
 // The secondary `XChaCha20-Poly1305` key used to encrypt the main key
 hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 
+/// A structure to hold `Argon2` parameter versions, which may change over time and must be supported
+pub struct Argon2Parameters {
+    algorithm: argon2::Algorithm, // algorithm variant
+    version: argon2::Version, // algorithm version
+    params: argon2::Params, // memory, iteration count, parallelism, output length
+}
+impl Argon2Parameters {
+    /// Construct and return `Argon2` parameters by version identifier
+    pub fn from_version(id: u8) -> Result<Self, WalletStorageError> {
+        // Each subsequent version identifier _must_ increase!
+        // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+        match id {
+            1 => {
+                Ok(Argon2Parameters {
+                    algorithm: argon2::Algorithm::Argon2id,
+                    version: argon2::Version::V0x13,
+                    params: argon2::Params::new(
+                        46 * 1024,
+                        1,
+                        1,
+                        Some(size_of::<Key>()),
+                    ).map_err(|e| WalletStorageError::AeadError(e.to_string()))?
+                })
+            },
+            _ => Err(WalletStorageError::BadEncryptionVersion(id.to_string()))
+        }
+    }
+}
+
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct WalletSqliteDatabase {
@@ -456,20 +485,8 @@ fn get_cipher_for_db_encryption(
     encrypted_main_key: Option<String>,
     conn: &SqliteConnection,
 ) -> Result<XChaCha20Poly1305, WalletStorageError> {
-    // Set up the PBKDF used for secondary key derivation
-    // These parameters will likely change in the future, so we version them
-    // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-    let pbkdf_params_version = 1u8;
-    let pbkdf_algorithm = argon2::Algorithm::Argon2id;
-    let pbkdf_version = argon2::Version::V0x13;
-    let pbkdf_params = argon2::Params::new(
-        46 * 1024,
-        1,
-        1,
-        Some(size_of::<Key>()), // for `XChaCha20-Poly1305`
-    )
-    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-    let main_key_domain = b"wallet_main_key_encryption".to_vec();
+    // We'll bind the version identifier to this domain before it's used
+    let main_key_domain = b"wallet_main_key_encryption_v".to_vec();
 
     let main_key = match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
         // Encryption is not set up yet
@@ -482,10 +499,14 @@ fn get_cipher_for_db_encryption(
             // We'll be encrypting the main key shortly, so keep a clone around
             let main_key_clone = main_key.clone();
 
+            // Use the most recent `Argon2` parameters
+            let version = 1u8;
+            let argon2_params = Argon2Parameters::from_version(version)?;
+
             // Derive the secondary key from the user's passphrase and a high-entropy salt
             let secondary_key_salt = SaltString::generate(&mut rng);
             let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
-            argon2::Argon2::new(pbkdf_algorithm, pbkdf_version, pbkdf_params)
+            argon2::Argon2::new(argon2_params.algorithm, argon2_params.version, argon2_params.params)
                 .hash_password_into(
                     passphrase.reveal(),
                     secondary_key_salt.as_bytes(),
@@ -497,13 +518,13 @@ fn get_cipher_for_db_encryption(
             // attacks
             let main_key_cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
             let mut aad = main_key_domain;
-            aad.push(pbkdf_params_version);
+            aad.push(version);
             let encrypted_main_key =
                 encrypt_bytes_integral_nonce(&main_key_cipher, aad, Hidden::hide(main_key.reveal().clone()))
                     .map_err(WalletStorageError::AeadError)?;
 
             // Store the secondary key version, secondary key salt, and encrypted main key
-            WalletSettingSql::new(DbKey::SecondaryKeyVersion, pbkdf_params_version.to_string()).set(conn)?;
+            WalletSettingSql::new(DbKey::SecondaryKeyVersion, version.to_string()).set(conn)?;
             WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string()).set(conn)?;
             WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex()).set(conn)?;
 
@@ -512,16 +533,14 @@ fn get_cipher_for_db_encryption(
         },
         // Encryption has already been set up
         (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
-            // For now, only one encryption version is supported
-            let secondary_key_version_u8 =
-                u8::from_str(&secondary_key_version).map_err(|_| WalletStorageError::BadEncryptionVersion)?;
-            if secondary_key_version_u8 != pbkdf_params_version {
-                return Err(WalletStorageError::BadEncryptionVersion);
-            }
+            // Use the given version if it is valid
+            let version =
+                u8::from_str(&secondary_key_version).map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
+            let argon2_params = Argon2Parameters::from_version(version)?;
 
             // Derive the secondary key from the user's passphrase and salt
             let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
-            argon2::Argon2::new(pbkdf_algorithm, pbkdf_version, pbkdf_params)
+            argon2::Argon2::new(argon2_params.algorithm, argon2_params.version, argon2_params.params)
                 .hash_password_into(
                     passphrase.reveal(),
                     secondary_key_salt.as_bytes(),
@@ -532,7 +551,7 @@ fn get_cipher_for_db_encryption(
             // Attempt to decrypt the encrypted main key
             let main_key_cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
             let mut aad = main_key_domain;
-            aad.push(secondary_key_version_u8);
+            aad.push(version);
 
             WalletMainEncryptionKey::from(
                 decrypt_bytes_integral_nonce(

@@ -173,8 +173,8 @@ pub enum WalletStorageError {
     KeyManagerError(#[from] KeyManagerError),
     #[error("Recovery Seed Error: {0}")]
     RecoverySeedError(String),
-    #[error("Bad encryption version")]
-    BadEncryptionVersion,
+    #[error("Bad encryption version: `{0}`")]
+    BadEncryptionVersion(String),
 }
 
 impl From<WalletStorageError> for ExitError {
