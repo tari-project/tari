@@ -32,7 +32,7 @@
     "runs-on": "macos-11",
     "rust": "stable",
     "target": "aarch64-apple-darwin",
-    "cross": true,
+    "cross": false,
     "target_cpu": "generic",
     "features": "safe"
   },
