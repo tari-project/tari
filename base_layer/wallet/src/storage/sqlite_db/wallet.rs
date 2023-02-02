@@ -31,7 +31,7 @@ use argon2::password_hash::{
     rand_core::{OsRng, RngCore},
     SaltString,
 };
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -75,10 +75,10 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 
 /// A structure to hold `Argon2` parameter versions, which may change over time and must be supported
 pub struct Argon2Parameters {
-    id: u8, // version identifier
+    id: u8,                       // version identifier
     algorithm: argon2::Algorithm, // algorithm variant
-    version: argon2::Version, // algorithm version
-    params: argon2::Params, // memory, iteration count, parallelism, output length
+    version: argon2::Version,     // algorithm version
+    params: argon2::Params,       // memory, iteration count, parallelism, output length
 }
 impl Argon2Parameters {
     /// Construct and return `Argon2` parameters by version identifier
@@ -88,20 +88,14 @@ impl Argon2Parameters {
         // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
         match id {
             // Be sure to update the `None` behavior when updating this!
-            None | Some(1) => {
-                Ok(Argon2Parameters {
-                    id: 1,
-                    algorithm: argon2::Algorithm::Argon2id,
-                    version: argon2::Version::V0x13,
-                    params: argon2::Params::new(
-                        46 * 1024,
-                        1,
-                        1,
-                        Some(size_of::<Key>()),
-                    ).map_err(|e| WalletStorageError::AeadError(e.to_string()))?
-                })
-            },
-            Some(id) => Err(WalletStorageError::BadEncryptionVersion(id.to_string()))
+            None | Some(1) => Ok(Argon2Parameters {
+                id: 1,
+                algorithm: argon2::Algorithm::Argon2id,
+                version: argon2::Version::V0x13,
+                params: argon2::Params::new(46 * 1024, 1, 1, Some(size_of::<Key>()))
+                    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?,
+            }),
+            Some(id) => Err(WalletStorageError::BadEncryptionVersion(id.to_string())),
         }
     }
 }
@@ -458,17 +452,54 @@ fn get_db_encryption(
 
     // We use the user's passphrase and this salt to derive the _secondary key_
     // This key decrypts the _main key_ stored in the database, which is used for other field storage
-    let secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
+    let secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &conn)?;
     let secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
     let encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, &conn)?;
+
+    // Fetch the encrypted seed if available
+    // This is a legacy check, and it's unclear if it's actually necessary or useful
+    let secret_seed = WalletSettingSql::get(&DbKey::MasterSeed, &conn)?.map(Hidden::hide);
 
     let cipher = get_cipher_for_db_encryption(
         passphrase,
         secondary_key_version,
         secondary_key_salt,
         encrypted_main_key,
+        &secret_seed,
         &conn,
     )?;
+
+    // Test that the encrypted secret key represents a valid cipher seed
+    // This is a legacy check, and it's unclear if it's actually necessary or useful
+    if let Some(secret_seed) = secret_seed {
+        let secret_seed_bytes = Hidden::hide(from_hex(secret_seed.reveal().as_str())?);
+
+        // If an invalid size, the seed must not be encrypted
+        if secret_seed_bytes.reveal().len() < size_of::<XNonce>() + size_of::<Tag>() {
+            return Err(WalletStorageError::MissingNonce);
+        }
+
+        // Authenticate and decrypt the encrypted seed
+        let seed_bytes = Hidden::hide(
+            decrypt_bytes_integral_nonce(
+                &cipher,
+                b"wallet_setting_master_seed".to_vec(),
+                secret_seed_bytes.reveal(),
+            )
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Unable to decrypt encrypted seed: {}", e);
+
+                WalletStorageError::InvalidPassphrase
+            })?,
+        );
+
+        // Test for a valid cipher seed
+        let _cipher_seed = CipherSeed::from_enciphered_bytes(seed_bytes.reveal(), None).map_err(|_| {
+            error!(target: LOG_TARGET, "Unable to parse seed");
+
+            WalletStorageError::InvalidEncryptionCipher
+        })?;
+    }
 
     if start.elapsed().as_millis() > 0 {
         trace!(
@@ -488,6 +519,7 @@ fn get_cipher_for_db_encryption(
     secondary_key_version: Option<String>,
     secondary_key_salt: Option<String>,
     encrypted_main_key: Option<String>,
+    secret_seed: &Option<Hidden<String>>,
     conn: &SqliteConnection,
 ) -> Result<XChaCha20Poly1305, WalletStorageError> {
     // We'll bind the version identifier to this domain before it's used
@@ -538,9 +570,19 @@ fn get_cipher_for_db_encryption(
         // Encryption has already been set up
         (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
             // Use the given version if it is valid
-            let version =
-                u8::from_str(&secondary_key_version).map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
+            let version = u8::from_str(&secondary_key_version)
+                .map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
             let argon2_params = Argon2Parameters::from_version(Some(version))?;
+
+            // Ensure there is encrypted seed data present (we test it later for validity)
+            // This is a legacy check, and it's unclear if it's actually necessary or useful
+            if secret_seed.is_none() {
+                error!(
+                    target: LOG_TARGET,
+                    "Encryption is set up, but there is no encrypted seed present"
+                );
+                return Err(WalletStorageError::InvalidEncryptionCipher);
+            }
 
             // Derive the secondary key from the user's passphrase and salt
             let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
