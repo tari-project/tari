@@ -26,9 +26,6 @@ jobs:
           x86_64-linux-android,
           aarch64-linux-android,
         ]
-        # armv7-linux-androideabi,
-          # todo: once determined if this 32bit arm build is still required
-          # then make necessary changes to tari comms (metrics fully optional)
 
     runs-on: ubuntu-latest
 
@@ -56,7 +53,9 @@ jobs:
           use-cross: true
           command: build
           args: >
-            --release -p tari_wallet_ffi
+            --lib
+            --release
+            --package tari_wallet_ffi
             --target=${{ matrix.build }}
 
       - name: Prepare libwallet libraries
@@ -87,6 +86,14 @@ jobs:
   ios_build:
     name: Build iOS
     if: ${{ inputs.build_ios == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [
+          x86_64-apple-ios,
+          aarch64-apple-ios,
+          aarch64-apple-ios-sim,
+        ]
 
     runs-on: macos-latest
 
@@ -94,63 +101,106 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
 
-      - name: Setup Rust toolchain (x86_64)
+      - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ inputs.toolchain }}
-          target: x86_64-apple-ios
-          override: true
-
-      - name: Setup Rust toolchain (aarch64)
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          components: rustfmt, clippy
-          toolchain: ${{ inputs.toolchain }}
-          target: aarch64-apple-ios
+          target: ${{ matrix.build }}
           override: true
 
       - name: Install macOS dependencies
-        run: brew install cmake
+        run: brew install cmake coreutils
 
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v2
 
       - name: Build libwallet libraries
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: >
+            --lib
+            --release
+            --package tari_wallet_ffi
+            --target=${{ matrix.build }}
+
+      - name: Prepare libwallet libraries
+        shell: bash
         run: |
-          mkdir -p MobileWallet/TariLib/
-          cd base_layer/wallet_ffi
-          mv ios.config build.config
-          export TARGET_CLEAN=0
-          ./mobile_build.sh || exit 1
-          find "$GITHUB_WORKSPACE" -iname libtari_wallet_ffi.a
-          mkdir -p "${{ runner.temp }}/libwallet-ios"
-          cd "${{ runner.temp }}/libwallet-ios"
-          cp -v "$GITHUB_WORKSPACE/target/x86_64-apple-ios/release/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_x86_64.a
-          cp -v "$GITHUB_WORKSPACE/target/aarch64-apple-ios/release/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_aarch64.a
+          target_temp=${{ matrix.build }}
+          # Strip '-apple-ios'
+          target_platform=$(echo "${target_temp/-apple-ios/}")
+          echo "target_platform=${target_platform}" >> $GITHUB_ENV
+          mkdir -p "${{ runner.temp }}/libwallet-ios-${target_platform}"
+          cd "${{ runner.temp }}/libwallet-ios-${target_platform}"
+          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.iso_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          cp -v "$GITHUB_WORKSPACE/MobileWallet/TariLib/libtari_wallet_ffi.a" libtari_wallet_ffi.ios_universal.a
           cp -v "$GITHUB_WORKSPACE/changelog.md" .
           cd ..
           shasum -a 256 \
-            "libwallet-ios/libtari_wallet_ffi.ios_x86_64.a" \
-            "libwallet-ios/libtari_wallet_ffi.ios_aarch64.a" \
-            "libwallet-ios/libtari_wallet_ffi.ios_universal.a" \
-            "libwallet-ios/libtari_wallet_ffi.h" \
-              > "libwallet-ios/libtari_wallet_ffi.ios.sha256sums"
-          ls -alht "${{ runner.temp }}/libwallet-ios"
-
-      - name: Debugging - Upload logs if build failures
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: libwallet-ios-buildlogs
-          path: ${{ github.workspace }}/base_layer/wallet_ffi/logs/ios
+            "libwallet-ios-${target_platform}/libtari_wallet_ffi.iso_${target_platform}.a" \
+            "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" \
+              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256sums"
+          ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: libwallet-ios
-          path: ${{ runner.temp }}/libwallet-ios
+          name: libwallet-ios-${{ env.target_platform }}
+          path: ${{ runner.temp }}/libwallet-ios-${{ env.target_platform }}
+
+  ios_assemble_universal:
+    name: Assemble iOS universal
+    if: ${{ inputs.build_ios == 'true' }}
+    needs: ios_build
+    strategy:
+      fail-fast: false
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Install macOS dependencies
+        run: brew install coreutils
+
+      - name: Download iOS libwallets
+        uses: actions/download-artifact@v3
+        with:
+          path: libwallets
+
+      - name: Verify checksums
+        shell: bash
+        working-directory: libwallets
+        run: |
+          ls -alhtR
+          find . -name "*.sha256sums" -type f -print | xargs cat >> libwallets.txt.sha256sums-verify
+          cat libwallets.txt.sha256sums-verify
+          sha256sum -c libwallets.txt.sha256sums-verify
+
+      - name: Assemble iOS universal libwallet
+        shell: bash
+        working-directory: libwallets
+        run: |
+          ls -alht
+          mkdir libwallet-ios-universal
+          cp -v "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
+            libwallet-ios-universal/
+          cp -v "libwallet-ios-x86_64/changelog.md" \
+            libwallet-ios-universal/
+          lipo -create \
+            "libwallet-ios-x86_64/libtari_wallet_ffi.iso_x86_64.a" \
+            "libwallet-ios-aarch64/libtari_wallet_ffi.iso_aarch64.a" \
+              -output "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a"
+          shasum -a 256 \
+            "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a" \
+            "libwallet-ios-universal/libtari_wallet_ffi.h" \
+              > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256sums"
+          ls -alht
+
+      - name: Upload iOS universal libwallet artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libwallet-ios-universal
+          path: libwallets/libwallet-ios-universal
