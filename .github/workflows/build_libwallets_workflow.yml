@@ -13,7 +13,7 @@ name: Build libwallet - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: 'nightly-2022-11-03'
+        default: 'stable'
 
 jobs:
   android_build:

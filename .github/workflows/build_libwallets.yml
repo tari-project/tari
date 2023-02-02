@@ -22,7 +22,7 @@ name: Build libwallets
         description: 'Rust toolchain'
 
 env:
-  toolchain_default: nightly-2022-11-03
+  toolchain_default: 'stable'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
