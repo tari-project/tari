@@ -39,6 +39,7 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
 use tari_core::transactions::{
@@ -498,7 +499,7 @@ impl AppState {
         let peer = Peer::new(
             pub_key,
             node_id,
-            addr.into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![addr], &PeerAddressSource::Config),
             PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
@@ -1096,7 +1097,13 @@ impl AppStateData {
 
         let identity = MyIdentity {
             tari_address: wallet_identity.address.to_hex(),
-            network_address: wallet_identity.node_identity.public_address().to_string(),
+            network_address: wallet_identity
+                .node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
             emoji_id: eid,
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),

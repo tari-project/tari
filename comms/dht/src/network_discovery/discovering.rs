@@ -39,6 +39,7 @@ use crate::{
     peer_validator::{PeerValidator, PeerValidatorError},
     proto::rpc::GetPeersRequest,
     rpc,
+    rpc::PeerInfo,
     DhtConfig,
 };
 
@@ -190,50 +191,56 @@ impl Discovering {
         Ok(())
     }
 
-    async fn validate_and_add_peer(&mut self, sync_peer: &NodeId, new_peer: Peer) -> Result<(), NetworkDiscoveryError> {
-        if self.context.node_identity.node_id() == &new_peer.node_id {
+    async fn validate_and_add_peer(
+        &mut self,
+        sync_peer: &NodeId,
+        new_peer: PeerInfo,
+    ) -> Result<(), NetworkDiscoveryError> {
+        let node_id = NodeId::from_public_key(&new_peer.public_key);
+        if self.context.node_identity.node_id() == &node_id {
             debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
             return Ok(());
         }
 
-        let new_peer_node_id = new_peer.node_id.clone();
-        let peer_validator = PeerValidator::new(self.peer_manager(), self.config());
-
-        let peer_dist = new_peer.node_id.distance(self.context.node_identity.node_id());
-        let is_neighbour = peer_dist <= self.neighbourhood_threshold;
-
-        match peer_validator.validate_and_add_peer(new_peer).await {
-            Ok(true) => {
-                if is_neighbour {
-                    self.stats.num_new_neighbours += 1;
-                }
-                self.stats.num_new_peers += 1;
-                Ok(())
-            },
-            Ok(false) => {
-                self.stats.num_duplicate_peers += 1;
-                Ok(())
-            },
-            Err(err @ PeerValidatorError::PeerManagerError(_)) => Err(err.into()),
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
-                );
-                self.context
-                    .connectivity
-                    .ban_peer_until(
-                        sync_peer.clone(),
-                        self.context.config.ban_duration,
-                        format!(
-                            "Network discovery peer sent invalid peer '{}'. {}",
-                            new_peer_node_id, err
-                        ),
-                    )
-                    .await?;
-                Err(err.into())
-            },
-        }
+        todo!("Need to implement peer validation")
+        // let new_peer_node_id = new_peer.node_id.clone();
+        // let peer_validator = PeerValidator::new(self.peer_manager(), self.config());
+        //
+        // let peer_dist = new_peer.node_id.distance(self.context.node_identity.node_id());
+        // let is_neighbour = peer_dist <= self.neighbourhood_threshold;
+        //
+        // match peer_validator.validate_and_add_peer(new_peer).await {
+        //     Ok(true) => {
+        //         if is_neighbour {
+        //             self.stats.num_new_neighbours += 1;
+        //         }
+        //         self.stats.num_new_peers += 1;
+        //         Ok(())
+        //     },
+        //     Ok(false) => {
+        //         self.stats.num_duplicate_peers += 1;
+        //         Ok(())
+        //     },
+        //     Err(err @ PeerValidatorError::PeerManagerError(_)) => Err(err.into()),
+        //     Err(err) => {
+        //         warn!(
+        //             target: LOG_TARGET,
+        //             "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
+        //         );
+        //         self.context
+        //             .connectivity
+        //             .ban_peer_until(
+        //                 sync_peer.clone(),
+        //                 self.context.config.ban_duration,
+        //                 format!(
+        //                     "Network discovery peer sent invalid peer '{}'. {}",
+        //                     new_peer_node_id, err
+        //                 ),
+        //             )
+        //             .await?;
+        //         Err(err.into())
+        //     },
+        // }
     }
 
     fn config(&self) -> &DhtConfig {

@@ -34,7 +34,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::DhtRpcService,
+    rpc::{DhtRpcService, PeerInfo, PeerInfoAddress},
 };
 
 const LOG_TARGET: &str = "comms::dht::rpc";
@@ -62,10 +62,37 @@ impl DhtRpcServiceImpl {
         task::spawn(async move {
             let iter = peers
                 .into_iter()
-                .map(|peer| GetPeersResponse {
-                    peer: Some(peer.into()),
+                .filter_map(|peer| {
+                    let peer_info = PeerInfo {
+                        public_key: peer.public_key,
+                        addresses: peer
+                            .addresses
+                            .addresses()
+                            .iter()
+                            .filter_map(|addr| {
+                                if let Some(claim) = addr.source.peer_identity_claim() {
+                                    Some(PeerInfoAddress {
+                                        address: addr.address().clone(),
+                                        peer_identity_claim: claim.clone(),
+                                    })
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                        peer_features: peer.features,
+                    };
+
+                    if !peer_info.addresses.is_empty() {
+                        Some(GetPeersResponse {
+                            peer: Some(peer_info.into()),
+                        })
+                    } else {
+                        None
+                    }
                 })
-                .map(Ok);
+                .map(|i| Ok(i));
+
             let _result = utils::mpsc::send_all(&tx, iter).await;
         });
 
@@ -147,7 +174,8 @@ impl DhtRpcService for DhtRpcServiceImpl {
         let mut query = PeerQuery::new().select_where(|peer| {
             &peer.node_id != requester_node_id &&
                 (message.include_clients || !peer.features.is_client()) &&
-                !peer.is_banned()
+                !peer.is_banned() &&
+                peer.deleted_at.is_none()
         });
 
         if message.n > 0 {

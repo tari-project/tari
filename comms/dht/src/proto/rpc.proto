@@ -31,14 +31,14 @@ message GetPeersResponse {
 // Minimal peer information
 message PeerInfo {
   bytes public_key = 1;
-  repeated bytes addresses = 2;
+  repeated PeerInfoAddress addresses = 2;
   uint64 peer_features = 3;
 
 }
 
-message PeerAddress {
+message PeerInfoAddress {
   bytes address = 1;
-  PeerIdentityClaim identity_claim = 2;
+  PeerIdentityClaim peer_identity_claim = 2;
 }
 
 message PeerIdentityClaim {

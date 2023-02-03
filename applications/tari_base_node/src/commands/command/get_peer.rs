@@ -88,9 +88,10 @@ impl CommandContext {
             println!("Addresses:");
             peer.addresses.addresses().iter().for_each(|a| {
                 println!(
-                    "- {} Score: {}  - Latency: {:?} - Last Seen: {} - Last Failure:{}",
+                    "- {} Score: {}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
                     a.address(),
                     a.quality_score,
+                    a.source,
                     a.avg_latency,
                     a.last_seen
                         .as_ref()
@@ -111,9 +112,6 @@ impl CommandContext {
             }
             if let Some(dt) = peer.last_seen() {
                 println!("Last seen: {}", dt);
-            }
-            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-                println!("Last updated: {} (UTC)", updated_at);
             }
         }
         Ok(())

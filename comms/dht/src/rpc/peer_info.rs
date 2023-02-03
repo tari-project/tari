@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,34 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! DHT RPC interface defining RPC methods for peer sharing.
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{PeerFeatures, PeerIdentityClaim},
+    types::CommsPublicKey,
+};
 
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-pub(crate) use mock::DhtRpcServiceMock;
-#[cfg(test)]
-mod test;
+pub struct PeerInfo {
+    pub public_key: CommsPublicKey,
+    pub addresses: Vec<PeerInfoAddress>,
+    pub peer_features: PeerFeatures,
+}
 
-mod service;
-pub use service::DhtRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
-use crate::proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse};
-
-mod peer_info;
-pub use peer_info::{PeerInfo, PeerInfoAddress};
-
-#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
-pub trait DhtRpcService: Send + Sync + 'static {
-    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetCloserPeersRequest`
-    #[rpc(method = 1)]
-    async fn get_closer_peers(
-        &self,
-        request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
-
-    #[rpc(method = 10)]
-    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
+pub struct PeerInfoAddress {
+    pub address: Multiaddr,
+    pub peer_identity_claim: PeerIdentityClaim,
 }

@@ -37,9 +37,9 @@ use crate::{
     peer_validator::PeerValidator,
     proto::rpc::GetPeersRequest,
     rpc,
+    rpc::PeerInfo,
     DhtConfig,
 };
-
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 const NUM_FETCH_PEERS: u32 = 1000;
 
@@ -140,9 +140,13 @@ impl OnConnect {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
                     Some(peer) => {
-                        if peer_validator.validate_and_add_peer(peer).await? {
-                            num_added += 1;
-                        }
+                        self.validate_and_add_peer(peer).await?;
+
+                        todo!("implement peer info instead");
+
+                        // if peer_validator.validate_and_add_peer(peer).await? {
+                        //     num_added += 1;
+                        // }
                     },
                     None => {
                         debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
@@ -171,6 +175,10 @@ impl OnConnect {
         }
 
         Ok(())
+    }
+
+    async fn validate_and_add_peer(&self, peer: PeerInfo) -> Result<(), NetworkDiscoveryError> {
+        todo!()
     }
 
     #[inline]

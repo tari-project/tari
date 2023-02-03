@@ -314,12 +314,13 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    let node_address = match config.wallet.p2p.public_address.clone() {
-        Some(addr) => addr,
-        None => match wallet_db.get_node_address()? {
+    let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
+        vec![match wallet_db.get_node_address()? {
             Some(addr) => addr,
             None => Multiaddr::empty(),
-        },
+        }]
+    } else {
+        config.wallet.p2p.public_addresses.clone()
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
@@ -331,14 +332,9 @@ pub async fn init_wallet(
                 "Node identity overridden by file {}",
                 identity_file.to_string_lossy()
             );
-            setup_node_identity(
-                identity_file,
-                Some(&node_address),
-                true,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )?
+            setup_node_identity(identity_file, node_addresses, true, PeerFeatures::COMMUNICATION_CLIENT)?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_address.clone())?,
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses)?,
     };
 
     let mut wallet_config = config.wallet.clone();
@@ -408,7 +404,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
     let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
-    let address = Multiaddr::from_str(&identity.public_address).ok()?;
+    let address = Multiaddr::from_str(&identity.public_addresses.iter().next()?).ok()?;
     debug!(
         target: LOG_TARGET,
         "Local base node found with pk={} and addr={}",
@@ -421,7 +417,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
 fn setup_identity_from_db<D: WalletBackend + 'static>(
     wallet_db: &WalletDatabase<D>,
     master_seed: &CipherSeed,
-    node_address: Multiaddr,
+    node_addresses: Vec<Multiaddr>,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     let node_features = wallet_db
         .get_node_features()?
@@ -435,13 +431,13 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        sig.is_valid(&comms_public_key, node_features, [&node_address])
+        sig.is_valid(&comms_public_key, node_features, &node_addresses)
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
     let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
         comms_secret_key,
-        node_address,
+        node_addresses,
         node_features,
         identity_sig,
     ));

@@ -116,7 +116,7 @@ fn main_inner() -> Result<(), ExitError> {
     let cfg = load_configuration(config_path, true, &cli)?;
 
     // Tokio console init
-    console_subscriber::init();
+    // console_subscriber::init();
 
     initialize_logging(
         &cli.common.log_config_path("base_node"),
@@ -137,7 +137,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
-        config.base_node.p2p.public_address.as_ref(),
+        config.base_node.p2p.public_addresses.clone(),
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
     )?;

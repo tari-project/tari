@@ -25,17 +25,21 @@ use std::{
     fmt,
 };
 
+use anyhow::anyhow;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim},
     types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::proto::dht::JoinMessage;
+use crate::{
+    proto::dht::JoinMessage,
+    rpc::{PeerInfo, PeerInfoAddress},
+};
 
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");
@@ -91,30 +95,93 @@ impl fmt::Display for dht::JoinMessage {
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
 
-impl TryInto<Peer> for rpc::Peer {
+impl From<PeerInfo> for rpc::PeerInfo {
+    fn from(value: PeerInfo) -> Self {
+        Self {
+            public_key: value.public_key.to_vec(),
+            addresses: value.addresses.into_iter().map(Into::into).collect(),
+            peer_features: value.peer_features.bits(),
+        }
+    }
+}
+
+impl From<PeerInfoAddress> for rpc::PeerInfoAddress {
+    fn from(value: PeerInfoAddress) -> Self {
+        Self {
+            address: value.address.to_vec(),
+            peer_identity_claim: Some(value.peer_identity_claim.into()),
+        }
+    }
+}
+
+impl From<PeerIdentityClaim> for rpc::PeerIdentityClaim {
+    fn from(value: PeerIdentityClaim) -> Self {
+        Self {
+            addresses: value.addresses.iter().map(|a| a.to_vec()).collect(),
+            peer_features: value.features.bits(),
+            identity_signature: Some((&value.signature).into()),
+        }
+    }
+}
+
+impl TryInto<PeerInfo> for rpc::PeerInfo {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<Peer, Self::Error> {
-        let pk = CommsPublicKey::from_bytes(&self.public_key)?;
-        let node_id = NodeId::from_public_key(&pk);
+    fn try_into(self) -> Result<PeerInfo, Self::Error> {
+        let public_key = CommsPublicKey::from_bytes(&self.public_key)?;
         let addresses = self
             .addresses
-            .iter()
-            .filter_map(|addr| addr.parse::<Multiaddr>().ok())
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
+        let peer_features = PeerFeatures::from_bits_truncate(self.peer_features);
+
+        Ok(PeerInfo {
+            public_key,
+            addresses,
+            peer_features,
+        })
+    }
+}
+
+impl TryInto<PeerInfoAddress> for rpc::PeerInfoAddress {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<PeerInfoAddress, Self::Error> {
+        let address = Multiaddr::try_from(self.address)?;
+        let peer_identity_claim = self
+            .peer_identity_claim
+            .ok_or_else(|| anyhow::anyhow!("Missing peer identity claim"))?
+            .try_into()?;
+
+        Ok(PeerInfoAddress {
+            address,
+            peer_identity_claim,
+        })
+    }
+}
+
+impl TryInto<PeerIdentityClaim> for rpc::PeerIdentityClaim {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<PeerIdentityClaim, Self::Error> {
+        let addresses = self
+            .addresses
+            .into_iter()
+            .filter_map(|addr| Multiaddr::try_from(addr).ok())
             .collect::<Vec<_>>();
-        let mut peer = Peer::new(
-            pk,
-            node_id,
-            addresses.into(),
-            PeerFlags::NONE,
-            PeerFeatures::from_bits_truncate(self.peer_features),
-            Default::default(),
-            String::new(),
-        );
 
-        peer.identity_signature = self.identity_signature.map(TryInto::try_into).transpose()?;
-
-        Ok(peer)
+        let features = PeerFeatures::from_bits_truncate(self.peer_features);
+        let signature = self
+            .identity_signature
+            .map(TryInto::try_into)
+            .ok_or_else(|| anyhow::anyhow!("No signature"))??;
+        Ok(PeerIdentityClaim {
+            addresses,
+            features,
+            signature,
+            unverified_data: None,
+        })
     }
 }
 

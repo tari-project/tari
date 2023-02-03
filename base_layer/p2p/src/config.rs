@@ -132,7 +132,7 @@ impl Default for P2pConfig {
     fn default() -> Self {
         Self {
             override_from: None,
-            public_address: None,
+            public_addresses: vec![],
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),

@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
@@ -148,7 +149,7 @@ impl From<SeedPeer> for Peer {
         Peer::new(
             seed.public_key,
             node_id,
-            seed.addresses.into(),
+            MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
             Default::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

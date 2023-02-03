@@ -5,6 +5,7 @@ use std::{
     cmp,
     cmp::{Ord, Ordering},
     fmt,
+    fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     time::Duration,
 };
@@ -56,6 +57,10 @@ pub enum PeerAddressSource {
 }
 
 impl PeerAddressSource {
+    pub fn is_config(&self) -> bool {
+        matches!(self, PeerAddressSource::Config)
+    }
+
     pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
         match self {
             PeerAddressSource::Config => None,
@@ -65,6 +70,18 @@ impl PeerAddressSource {
                 peer_identity_claim, ..
             } => Some(peer_identity_claim),
             PeerAddressSource::FromJoinMessage { peer_identity_claim } => Some(peer_identity_claim),
+        }
+    }
+}
+
+impl Display for PeerAddressSource {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            PeerAddressSource::Config => write!(f, "Config"),
+            PeerAddressSource::FromPeerConnection { .. } => write!(f, "FromPeerConnection"),
+            PeerAddressSource::FromDiscovery { .. } => write!(f, "FromDiscovery"),
+            PeerAddressSource::FromAnotherPeer { .. } => write!(f, "FromAnotherPeer"),
+            PeerAddressSource::FromJoinMessage { .. } => write!(f, "FromJoinMessage"),
         }
     }
 }
@@ -110,7 +127,6 @@ impl MultiaddrWithStats {
     }
 
     pub fn merge(&mut self, other: &Self) {
-        todo!("add source");
         if self.address == other.address {
             self.last_seen = cmp::max(other.last_seen, self.last_seen);
             self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
@@ -133,6 +149,18 @@ impl MultiaddrWithStats {
             }
             self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
             self.last_failed_reason = other.last_failed_reason.clone();
+            match (self.source.peer_identity_claim(), other.source.peer_identity_claim()) {
+                (None, None) => (),
+                (None, Some(_)) => {
+                    self.source = other.source.clone();
+                },
+                (Some(_), None) => (),
+                (Some(self_source), Some(other_source)) => {
+                    if other_source.signature.updated_at() > self_source.signature.updated_at() {
+                        self.source = other.source.clone();
+                    }
+                },
+            }
             self.calculate_quality_score();
         }
     }

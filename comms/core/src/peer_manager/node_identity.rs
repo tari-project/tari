@@ -102,10 +102,10 @@ impl NodeIdentity {
     }
 
     /// Generates a new random NodeIdentity for CommsPublicKey
-    pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
+    pub fn random<R>(rng: &mut R, public_addresses: Vec<Multiaddr>, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
-        Self::new(secret_key, vec![public_address], features)
+        Self::new(secret_key, public_addresses, features)
     }
 
     /// Retrieve the publicly accessible address that peers must connect to establish a connection
