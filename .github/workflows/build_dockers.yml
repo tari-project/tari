@@ -49,6 +49,10 @@ name: Build docker images
 env:
   toolchain_default: nightly-2022-11-03
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   builds_envs_setup:
     runs-on: ubuntu-latest

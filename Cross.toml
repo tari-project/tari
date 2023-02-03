@@ -4,9 +4,6 @@ passthrough = ["CFLAGS"]
 [target.aarch64-linux-android.env]
 passthrough = ["CFLAGS"]
 
-[target.arm-linux-androideabi.env]
-passthrough = ["CFLAGS"]
-
 [target.aarch64-unknown-linux-gnu]
 image = "ubuntu:18.04"
 # Mergered all scripts/install_ubuntu_dependencies*.sh scripts

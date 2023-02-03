@@ -30,12 +30,9 @@ use tari_common_types::{
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::{
-    transactions::{
-        transaction_components::{EncryptionError, TransactionError},
-        transaction_protocol::TransactionProtocolError,
-    },
-    validation::ValidationError,
+use tari_core::transactions::{
+    transaction_components::{EncryptionError, TransactionError},
+    transaction_protocol::TransactionProtocolError,
 };
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -128,8 +125,6 @@ pub enum TransactionServiceError {
     InvalidMessageError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("Transaction validation error: `{0}`")]
-    TransactionValidationError(#[from] ValidationError),
     #[error("Conversion error: `{0}`")]
     ConversionError(#[from] TransactionConversionError),
     #[error("duration::NegativeDurationError: {0}")]

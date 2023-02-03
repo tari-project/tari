@@ -40,8 +40,7 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    blocks::BlockValidationError,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
+    consensus::{ConsensusConstantsBuilder, ConsensusManager},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
@@ -299,9 +298,7 @@ async fn test_time_locked() {
     assert_eq!(mempool.insert(tx2).await.unwrap(), TxStorageResponse::UnconfirmedPool);
 }
 
-// TODO: this test fails after the validation refactors, as the test was probably not written correctly due to
 // maturities not being checked before
-#[ignore]
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn test_retrieve() {
@@ -320,6 +317,11 @@ async fn test_retrieve() {
     // "Mine" Block 1
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
+
+    let stats = mempool.stats().await.unwrap();
+    assert_eq!(stats.unconfirmed_txs, 0);
+    assert_eq!(stats.reorg_txs, 0);
+
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
@@ -327,6 +329,7 @@ async fn test_retrieve() {
         txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
+        // will get rejected as its time-locked
         txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
@@ -337,7 +340,7 @@ async fn test_retrieve() {
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
             features: OutputFeatures{
-            maturity: 3,
+            maturity: 2,
             ..Default::default()
         }),
     ];
@@ -345,7 +348,7 @@ async fn test_retrieve() {
     for t in &tx {
         mempool.insert(t.clone()).await.unwrap();
     }
-    // 1-block, 8 UTXOs, 8 txs in mempool
+    // 1-block, 8 UTXOs, 7 txs in mempool
     let weighting = consensus_manager.consensus_constants(0).transaction_weight();
     let weight =
         tx[6].calculate_weight(weighting) + tx[2].calculate_weight(weighting) + tx[3].calculate_weight(weighting);
@@ -356,7 +359,6 @@ async fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx[3]));
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 7);
-    // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
 
     let block2_txns = vec![
@@ -371,11 +373,12 @@ async fn test_retrieve() {
     outputs.push(utxos);
     mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool
+    // We mined 5 tx's so 2 should be left in the mempool with the 5 mined ones being in the reorg pool
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
-    // assert_eq!(stats.timelocked_txs, 0);
     assert_eq!(stats.reorg_txs, 5);
     // Create transactions wih time-locked inputs
+    // Only one will be allowed into the mempool as the one still as a maturity lock on the input.
     let txs = vec![
         txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
         // account for change output
@@ -385,7 +388,6 @@ async fn test_retrieve() {
     for t in &tx2 {
         mempool.insert(t.clone()).await.unwrap();
     }
-    // 2 blocks, 3 unconfirmed txs in mempool, 2 time locked
 
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
     let weight = tx[3].calculate_weight(weighting) + tx2[1].calculate_weight(weighting);
@@ -393,7 +395,6 @@ async fn test_retrieve() {
     let stats = mempool.stats().await.unwrap();
 
     assert_eq!(stats.unconfirmed_txs, 3);
-    // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 5);
     assert_eq!(retrieved_txs.len(), 2);
     assert!(retrieved_txs.contains(&tx[3]));
@@ -1013,7 +1014,8 @@ async fn consensus_validation_large_tx() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+    tx.body.sort();
 
     let height = blocks.len() as u64;
     let constants = consensus_manager.consensus_constants(height);
@@ -1022,10 +1024,7 @@ async fn consensus_validation_large_tx() {
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::BlockTooLarge { .. })
-    ));
+    assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
@@ -1126,10 +1125,10 @@ async fn consensus_validation_versions() {
     );
     let txs = vec![schema];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-
+    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, CryptoFactories::default());
     // Cases:
     // invalid input version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][0].clone()],
         to: vec![1 * T],
         to_outputs: vec![],
@@ -1142,15 +1141,11 @@ async fn consensus_validation_versions() {
         input_version: Some(TransactionInputVersion::V1),
         output_version: None,
     };
-
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][1].clone()],
         to: vec![],
         to_outputs: vec![output_v1_features_v0],
@@ -1164,14 +1159,11 @@ async fn consensus_validation_versions() {
         output_version: Some(TransactionOutputVersion::V1),
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 
     // invalid output features version
-    let tx = TransactionSchema {
+    let tx_schema = TransactionSchema {
         from: vec![outputs[1][2].clone()],
         to: vec![],
         to_outputs: vec![output_v0_features_v1],
@@ -1185,11 +1177,8 @@ async fn consensus_validation_versions() {
         output_version: None,
     };
 
-    // TODO: find a way to construct and invalid transaction in tests to pass it to the mempool
-    panic::catch_unwind(|| {
-        spend_utxos(tx);
-    })
-    .unwrap_err();
+    let (tx, _) = spend_utxos(tx_schema);
+    validator.validate(&tx, Some(25.into()), None, u64::MAX).unwrap_err();
 }
 
 #[tokio::test]
@@ -1227,7 +1216,6 @@ async fn consensus_validation_unique_excess_sig() {
     assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
 }
 
-#[ignore]
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
@@ -1242,13 +1230,15 @@ async fn block_event_and_reorg_event_handling() {
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
+    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_coinbase_lockheight(1)
+        .build();
 
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(

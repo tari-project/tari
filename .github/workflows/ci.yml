@@ -21,6 +21,10 @@ env:
   PROTOC: protoc
   TERM: unkown
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   clippy:
     name: clippy

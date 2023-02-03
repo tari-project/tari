@@ -61,8 +61,6 @@ pub enum BlockValidationError {
     TransactionError(#[from] TransactionError),
     #[error("Invalid input in block")]
     InvalidInput,
-    #[error("Contains kernels or inputs that are not yet spendable")]
-    MaturityError,
     #[error("Mismatched {kind} MMR roots")]
     MismatchedMmrRoots { kind: &'static str },
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
@@ -71,8 +69,6 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
-    BlockTooLarge { actual_weight: u64, max_weight: u64 },
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -128,15 +124,6 @@ impl Block {
         self.body
             .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
 
-        Ok(())
-    }
-
-    /// Checks that all STXO rules (maturity etc) and kernel heights are followed
-    pub fn check_spend_rules(&self) -> Result<(), BlockValidationError> {
-        self.body.check_utxo_rules(self.header.height)?;
-        if self.body.max_kernel_timelock() > self.header.height {
-            return Err(BlockValidationError::MaturityError);
-        }
         Ok(())
     }
 
