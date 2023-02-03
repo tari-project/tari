@@ -254,7 +254,13 @@ mod test {
     fn peak_map_heights() {
         assert_eq!(peak_map_height(0), (0, 0));
         assert_eq!(peak_map_height(4), (0b11, 0));
+        //      6
+        //   2      5
+        // 0   1  3  4  7  8
         assert_eq!(peak_map_height(9), (0b101, 1));
+        //      6
+        //   2      5     9
+        // 0   1  3  4  7   8  *
         assert_eq!(peak_map_height(10), (0b110, 0));
         assert_eq!(peak_map_height(12), (0b111, 1));
         assert_eq!(peak_map_height(33), (0b10001, 1));
@@ -337,5 +343,15 @@ mod test {
             (524_286, 524_285),
             (1_048_574, 1_048_573),
         ]);
+    }
+
+    #[test]
+    fn find_peaks_when_num_left_gt_zero() {
+        assert!(find_peaks(0).is_empty());
+        assert_eq!(find_peaks(1), vec![0]);
+        assert!(find_peaks(2).is_empty());
+        assert_eq!(find_peaks(3), vec![2]);
+        assert_eq!(find_peaks(usize::MAX), [18446744073709551614].to_vec());
+        assert_eq!(find_peaks(usize::MAX - 1).len(), 0);
     }
 }
