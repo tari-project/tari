@@ -127,20 +127,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_empty() {
+    fn is_empty() {
         let vec = Vec::<u32>::new();
         assert!(<Vec<u32> as ArrayLike>::is_empty(&vec).unwrap());
     }
 
     #[test]
-    fn test_truncate() {
+    fn truncate() {
         let mut vec = vec![1, 2, 3, 4, 5];
         <Vec<u32> as ArrayLikeExt>::truncate(&mut vec, 3).unwrap();
         assert_eq!(vec, vec![1, 2, 3]);
     }
 
     #[test]
-    fn test_for_each() {
+    fn for_each() {
         let vec = vec![1, 2, 3, 4, 5];
         let mut count = 0;
         <Vec<u32> as ArrayLikeExt>::for_each(&vec, |item| {

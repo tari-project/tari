@@ -213,7 +213,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_leaf_to_node_indices() {
+    fn leaf_to_node_indices() {
         assert_eq!(node_index(0), 0);
         assert_eq!(node_index(1), 1);
         assert_eq!(node_index(2), 3);
@@ -225,7 +225,7 @@ mod test {
     }
 
     #[test]
-    fn test_n_leaf_nodes() {
+    fn n_leaf_nodes() {
         assert_eq!(checked_n_leaves(0), Some(0));
         assert_eq!(checked_n_leaves(1), Some(1));
         assert_eq!(checked_n_leaves(3), Some(2));
@@ -241,7 +241,7 @@ mod test {
     }
 
     #[test]
-    fn test_peak_vectors() {
+    fn peak_vectors() {
         assert_eq!(find_peaks(0), Vec::<usize>::new());
         assert_eq!(find_peaks(1), vec![0]);
         assert_eq!(find_peaks(3), vec![2]);
@@ -251,7 +251,7 @@ mod test {
     }
 
     #[test]
-    fn test_peak_map_heights() {
+    fn peak_map_heights() {
         assert_eq!(peak_map_height(0), (0, 0));
         assert_eq!(peak_map_height(4), (0b11, 0));
         //      6
@@ -267,7 +267,7 @@ mod test {
         assert_eq!(peak_map_height(34), (0b10010, 0));
     }
     #[test]
-    fn test_is_sibling_left() {
+    fn is_sibling_left() {
         assert!(is_left_sibling(0));
         assert!(!is_left_sibling(1));
         assert!(is_left_sibling(2));
@@ -287,7 +287,7 @@ mod test {
     }
 
     #[test]
-    fn test_families() {
+    fn families() {
         assert_eq!(family(1).unwrap(), (2, 0));
         assert_eq!(family(0).unwrap(), (2, 1));
         assert_eq!(family(3).unwrap(), (5, 4));
@@ -298,7 +298,7 @@ mod test {
     }
 
     #[test]
-    fn test_family_branches() {
+    fn family_branches() {
         // A 3 node tree (height 1)
         assert_eq!(family_branch(0, 2), [(2, 1)]);
         assert_eq!(family_branch(1, 2), [(2, 0)]);
@@ -346,7 +346,7 @@ mod test {
     }
 
     #[test]
-    fn test_find_peaks_when_num_left_gt_zero() {
+    fn find_peaks_when_num_left_gt_zero() {
         assert!(find_peaks(0).is_empty());
         assert_eq!(find_peaks(1), vec![0]);
         assert!(find_peaks(2).is_empty());
