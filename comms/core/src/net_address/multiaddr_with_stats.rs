@@ -43,10 +43,30 @@ pub enum PeerAddressSource {
     FromPeerConnection {
         peer_identity_claim: PeerIdentityClaim,
     },
+    FromDiscovery {
+        peer_identity_claim: PeerIdentityClaim,
+    },
     FromAnotherPeer {
         peer_identity_claim: PeerIdentityClaim,
         source_peer: CommsPublicKey,
     },
+    FromJoinMessage {
+        peer_identity_claim: PeerIdentityClaim,
+    },
+}
+
+impl PeerAddressSource {
+    pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
+        match self {
+            PeerAddressSource::Config => None,
+            PeerAddressSource::FromPeerConnection { peer_identity_claim } => Some(peer_identity_claim),
+            PeerAddressSource::FromDiscovery { peer_identity_claim } => Some(peer_identity_claim),
+            PeerAddressSource::FromAnotherPeer {
+                peer_identity_claim, ..
+            } => Some(peer_identity_claim),
+            PeerAddressSource::FromJoinMessage { peer_identity_claim } => Some(peer_identity_claim),
+        }
+    }
 }
 
 impl PartialEq for PeerAddressSource {
@@ -60,6 +80,12 @@ impl PartialEq for PeerAddressSource {
             },
             PeerAddressSource::FromAnotherPeer { .. } => {
                 matches!(other, PeerAddressSource::FromAnotherPeer { .. })
+            },
+            PeerAddressSource::FromDiscovery { .. } => {
+                matches!(other, PeerAddressSource::FromDiscovery { .. })
+            },
+            PeerAddressSource::FromJoinMessage { .. } => {
+                matches!(other, PeerAddressSource::FromJoinMessage { .. })
             },
         }
     }

@@ -69,7 +69,7 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
         let node_identity = identity.as_ref();
         Self {
             node_id: node_identity.node_id().to_vec(),
-            addresses: vec![node_identity.public_address().to_string()],
+            addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
             peer_features: node_identity.features().bits(),
             nonce: OsRng.next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
@@ -90,17 +90,6 @@ impl fmt::Display for dht::JoinMessage {
 }
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
-
-impl From<Peer> for rpc::Peer {
-    fn from(peer: Peer) -> Self {
-        rpc::Peer {
-            public_key: peer.public_key.to_vec(),
-            addresses: peer.addresses.into(),
-            peer_features: peer.features.bits(),
-            identity_signature: peer.identity_signature.as_ref().map(Into::into),
-        }
-    }
-}
 
 impl TryInto<Peer> for rpc::Peer {
     type Error = anyhow::Error;

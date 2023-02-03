@@ -73,7 +73,10 @@ pub(super) async fn validate_peer_identity(
     peer_identity: &PeerIdentityClaim,
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError> {
-    validate_peer_addresses(&peer_identity.addresses, allow_test_addrs)?;
+    validate_addresses(&peer_identity.addresses, allow_test_addrs)?;
+    if peer_identity.addresses.is_empty() {
+        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
+    }
 
     if !peer_identity.signature.is_valid(
         &authenticated_public_key,
@@ -174,19 +177,50 @@ pub(super) async fn find_unbanned_peer(
 }
 
 /// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
-/// memory addresses will be rejected.
-pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
-    addresses: A,
+/// memory addresses will be rejected. Also checks that the source (signature of the address) is correct
+pub fn validate_addresses_and_source(
+    addresses: &MultiaddressesWithStats,
+    public_key: &CommsPublicKey,
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError> {
-    let mut has_address = false;
+    for addr in addresses.addresses() {
+        validate_address_and_source(public_key, addr, allow_test_addrs)?;
+    }
+
+    Ok(())
+}
+
+/// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
+/// memory addresses will be rejected.
+pub fn validate_addresses(addresses: &[Multiaddr], allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
     for addr in addresses {
-        has_address = true;
         validate_address(addr, allow_test_addrs)?;
     }
-    if !has_address {
-        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
+
+    Ok(())
+}
+
+fn validate_address_and_source(
+    public_key: &CommsPublicKey,
+    addr: &MultiaddrWithStats,
+    allow_test_addrs: bool,
+) -> Result<(), ConnectionManagerError> {
+    match addr.source {
+        PeerAddressSource::Config => (),
+        _ => {
+            let claim = addr
+                .source
+                .peer_identity_claim()
+                .ok_or(ConnectionManagerError::PeerIdentityInvalidSignature)?;
+            if !claim.signature.is_valid(public_key, claim.features, &claim.addresses) {
+                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+            }
+            if !claim.addresses.contains(addr.address()) {
+                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+            }
+        },
     }
+    validate_address(addr.address(), allow_test_addrs)?;
     Ok(())
 }
 

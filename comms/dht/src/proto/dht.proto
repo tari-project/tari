@@ -15,7 +15,7 @@ import "common.proto";
 // is propagated to the network.
 message JoinMessage {
     bytes node_id = 1;
-    repeated string addresses = 2;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
@@ -28,7 +28,7 @@ message JoinMessage {
 // Discovery request so that the source node knows about this node.
 message DiscoveryMessage {
     bytes node_id = 1;
-    repeated string addresses = 2;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
@@ -36,7 +36,7 @@ message DiscoveryMessage {
 
 message DiscoveryResponseMessage {
     bytes node_id = 1;
-    repeated string addresses = 2;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;

@@ -20,15 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Instant,
+};
 
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     log_if_error,
+    multiaddr::Multiaddr,
+    net_address::PeerAddressSource,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerIdentityClaim, PeerManager},
     types::CommsPublicKey,
-    validate_peer_addresses,
+    validate_addresses,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -230,19 +237,25 @@ impl DhtDiscoveryService {
     ) -> Result<Peer, DhtDiscoveryError> {
         let node_id = self.validate_raw_node_id(public_key, &discovery_msg.node_id)?;
 
-        let addresses = discovery_msg
+        let addresses: Vec<Multiaddr> = discovery_msg
             .addresses
             .into_iter()
-            .filter_map(|addr| addr.parse().ok())
-            .collect::<Vec<_>>();
+            .map(|addr| Multiaddr::try_from(addr))
+            .collect::<Result<_, _>>()
+            .map_err(|e| DhtDiscoveryError::InvalidPeerMultiaddr(e.to_string()))?;
 
-        validate_peer_addresses(&addresses, self.config.allow_test_addresses)
+        validate_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer_identity_claim = PeerIdentityClaim::new(
-            addresses,
-            PeerFeatures::from(discovery_msg.peer_features),
-            discovery_msg.signature.try_into()?,
+            addresses.clone(),
+            PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+            discovery_msg
+                .identity_signature
+                .ok_or_else(|| DhtDiscoveryError::NoSignatureProvided)?
+                .try_into()
+                .map_err(|e: anyhow::Error| DhtDiscoveryError::InvalidSignature(e.to_string()))?,
+            None,
         );
 
         let peer = self
@@ -252,6 +265,7 @@ impl DhtDiscoveryService {
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+                &PeerAddressSource::FromDiscovery { peer_identity_claim },
             )
             .await?;
 
@@ -324,7 +338,12 @@ impl DhtDiscoveryService {
     ) -> Result<(), DhtDiscoveryError> {
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: self.node_identity.public_address().to_string(),
+            addresses: self
+                .node_identity
+                .public_addresses()
+                .into_iter()
+                .map(|a| a.to_vec())
+                .collect(),
             peer_features: self.node_identity.features().bits(),
             nonce,
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),

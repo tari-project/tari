@@ -26,9 +26,20 @@ use log::*;
 use tari_comms::{
     message::MessageExt,
     multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        IdentitySignature,
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerIdentityClaim,
+        PeerManager,
+    },
     pipeline::PipelineError,
     types::CommsPublicKey,
+    validate_addresses,
     OrNotFound,
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -170,31 +181,38 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let addresses = join_msg
             .addresses
             .iter()
-            .filter_map(|addr| Multiaddr::from_str(addr).ok())
+            .filter_map(|addr| Multiaddr::try_from(addr.clone()).ok())
             .collect::<Vec<_>>();
 
         if addresses.is_empty() {
             return Err(DhtInboundError::InvalidAddresses);
         }
         let node_id = NodeId::from_public_key(&authenticated_pk);
+
         let features = PeerFeatures::from_bits_truncate(join_msg.peer_features);
+
+        let identity_signature: IdentitySignature = join_msg
+            .identity_signature
+            .map(IdentitySignature::try_from)
+            .transpose()
+            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?
+            .ok_or(DhtInboundError::NoPeerIdentitySignature)?;
+
+        let peer_identity_claim = PeerIdentityClaim::new(addresses.clone(), features, identity_signature, None);
+
         let mut new_peer = Peer::new(
             authenticated_pk,
             node_id.clone(),
-            addresses.into(),
+            MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::FromJoinMessage {
+                peer_identity_claim,
+            }),
             PeerFlags::empty(),
             features,
             vec![],
             String::new(),
         );
-        new_peer.identity_signature = join_msg
-            .identity_signature
-            .map(IdentitySignature::try_from)
-            .transpose()
-            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
 
-        let peer_validator = PeerValidator::new(&self.peer_manager, &self.config);
-        peer_validator.validate_and_add_peer(new_peer).await?;
+        self.peer_manager.add_peer(new_peer.clone()).await?;
         let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
 
         // DO NOT propagate this peer if this node has banned them
@@ -289,7 +307,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let addresses = discover_msg
             .addresses
             .iter()
-            .filter_map(|addr| Multiaddr::from_str(addr).ok())
+            .filter_map(|addr| Multiaddr::try_from(addr.clone()).ok())
             .collect::<Vec<_>>();
 
         if addresses.is_empty() {
@@ -298,20 +316,25 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let node_id = NodeId::from_public_key(&authenticated_pk);
         let features = PeerFeatures::from_bits_truncate(discover_msg.peer_features);
+        let identity_signature = discover_msg
+            .identity_signature
+            .map(IdentitySignature::try_from)
+            .transpose()
+            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?
+            .ok_or(DhtInboundError::NoPeerIdentitySignature)?;
+        let peer_identity_claim = PeerIdentityClaim::new(addresses.clone(), features, identity_signature, None);
+
         let mut new_peer = Peer::new(
             authenticated_pk,
             node_id.clone(),
-            addresses.into(),
+            MultiaddressesWithStats::from_addresses_with_source(addresses.into(), &PeerAddressSource::FromDiscovery {
+                peer_identity_claim,
+            }),
             PeerFlags::empty(),
             features,
             vec![],
             String::new(),
         );
-        new_peer.identity_signature = discover_msg
-            .identity_signature
-            .map(IdentitySignature::try_from)
-            .transpose()
-            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
 
         let peer_validator = PeerValidator::new(&self.peer_manager, &self.config);
         peer_validator.validate_and_add_peer(new_peer).await?;
@@ -342,7 +365,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<(), DhtInboundError> {
         let response = DiscoveryResponseMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.public_address().to_string()],
+            addresses: self
+                .node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_vec())
+                .collect(),
             peer_features: self.node_identity.features().bits(),
             nonce,
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
