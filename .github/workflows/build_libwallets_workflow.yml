@@ -219,7 +219,7 @@ jobs:
           cp -v "libwallet-ios-x86_64/changelog.md" \
             libwallet-ios-xcframework/
           xcodebuild -create-xcframework \
-            -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a"
+            -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a" \
               -headers "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
             -library "libwallet-ios-aarch64/libtari_wallet_ffi.iso_aarch64.a" \
               -headers "libwallet-ios-aarch64/libtari_wallet_ffi.h" \
