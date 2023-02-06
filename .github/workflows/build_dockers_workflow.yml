@@ -173,7 +173,7 @@ jobs:
 
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           context: ./tari/
           file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
