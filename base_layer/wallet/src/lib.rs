@@ -54,6 +54,9 @@ pub type WalletSqlite = Wallet<
     KeyManagerSqliteDatabase,
 >;
 
+hash_domain!(BurntOutputDomain, "burnt_output", 1);
+type BurntOutputDomainHasher = DomainSeparatedHasher<Blake256, BurntOutputDomain>;
+
 hash_domain!(
     WalletOutputRewindKeysDomain,
     "com.tari.tari_project.base_layer.wallet.output_rewind_keys",

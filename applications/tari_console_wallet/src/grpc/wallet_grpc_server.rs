@@ -598,20 +598,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
             )
             .await
         {
-            Ok(tx_id) => {
+            Ok((tx_id, commitment, ownership_proof, rangeproof)) => {
                 debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
                     failure_message: Default::default(),
+                    commitment: commitment.to_vec(),
+                    ownership_proof: ownership_proof.to_vec(),
+                    rangeproof: rangeproof.to_vec(),
                 }
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
                 CreateBurnTransactionResponse {
-                    transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),
+                    ..Default::default()
                 }
             },
         };

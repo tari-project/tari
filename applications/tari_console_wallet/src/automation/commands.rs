@@ -139,6 +139,7 @@ pub async fn burn_tari(
         .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
+        .map(|res| res.0)
 }
 
 /// publishes a tari-SHA atomic swap HTLC transaction

@@ -31,7 +31,7 @@ use chrono::NaiveDateTime;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{PublicKey, Signature},
+    types::{BulletRangeProof, Commitment, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -42,6 +42,7 @@ use tari_core::{
         transaction_components::{OutputFeatures, Transaction, TransactionOutput},
     },
 };
+use tari_crypto::ristretto::RistrettoComSig;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -235,6 +236,12 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    BurntTransactionSent {
+        tx_id: TxId,
+        commitment: Commitment,
+        ownership_proof: RistrettoComSig,
+        rangeproof: BulletRangeProof,
+    },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -519,7 +526,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, Commitment, RistrettoComSig, BulletRangeProof), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -530,7 +537,12 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::BurntTransactionSent {
+                tx_id,
+                commitment,
+                ownership_proof,
+                rangeproof,
+            } => Ok((tx_id, commitment, ownership_proof, rangeproof)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

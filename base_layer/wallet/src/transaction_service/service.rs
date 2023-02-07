@@ -36,7 +36,7 @@ use sha2::Sha256;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, RangeProof, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -69,6 +69,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PKtrait, SecretKey},
+    ristretto::RistrettoComSig,
     tari_utilities::{ByteArray, ByteArrayError},
 };
 use tari_p2p::domain_message::DomainMessage;
@@ -120,6 +121,7 @@ use crate::{
     types::WalletHasher,
     util::{wallet_identity::WalletIdentity, watch::Watch},
     utxo_scanner_service::RECOVERY_KEY,
+    BurntOutputDomainHasher,
     OperationId,
     WalletOutputEncryptionKeysDomainHasher,
     WalletOutputRewindKeysDomainHasher,
@@ -651,7 +653,14 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(TransactionServiceResponse::TransactionSent),
+                .map(|(tx_id, commitment, ownership_proof, rangeproof)| {
+                    TransactionServiceResponse::BurntTransactionSent {
+                        tx_id,
+                        commitment,
+                        ownership_proof,
+                        rangeproof,
+                    }
+                }),
             TransactionServiceRequest::RegisterValidatorNode {
                 amount,
                 validator_node_public_key,
@@ -1369,7 +1378,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, Commitment, RistrettoComSig, RangeProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
         let output_features = OutputFeatures::create_burn_output();
         // Prepare sender part of the transaction
@@ -1405,12 +1414,30 @@ where
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spend_key,
+            spend_key.clone(),
             &self.resources.factories,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
+        let commitment = recipient_reply.output.commitment.clone();
+        let range_proof = recipient_reply.output.proof.clone();
+        let (nonce_a, pub_nonce_a) = PublicKey::random_keypair(&mut OsRng);
+        let (nonce_x, pub_nonce_x) = PublicKey::random_keypair(&mut OsRng);
+        // No actual pure challenge, but the nonces make it unique and the commitment ties it to this output.
+        let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
+            .chain(pub_nonce_a.as_bytes())
+            .chain(pub_nonce_x.as_bytes())
+            .chain(commitment.as_bytes());
 
+        let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+        let ownership_proof = RistrettoComSig::sign(
+            &PrivateKey::from(amount),
+            &spend_key,
+            &nonce_a,
+            &nonce_x,
+            challenge.as_bytes(),
+            &*self.resources.factories.commitment,
+        )?;
         // Start finalizing
 
         stp.add_single_recipient_info(recipient_reply)
@@ -1460,7 +1487,7 @@ where
             ),
         )?;
 
-        Ok(tx_id)
+        Ok((tx_id, commitment, ownership_proof, range_proof))
     }
 
     pub async fn register_validator_node(
