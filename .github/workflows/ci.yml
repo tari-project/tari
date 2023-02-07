@@ -84,8 +84,14 @@ jobs:
           command: check
           args: --release --package tari_wallet_ffi
   build-stable:
-    name: cargo check stable
+    name: cargo check stable ${{ matrix.networks.type }}
     runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    strategy:
+      matrix:
+        networks: [
+          { name: mainnet, type: mainnet },
+          { name: esme, type: testnet },
+        ]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -108,6 +114,8 @@ jobs:
         with:
           command: check
           args: --release --all-targets --workspace --exclude tari_integration_tests --locked
+        env:
+          TARI_NETWORK: ${{ matrix.networks.name }}
       - name: cargo check ffi separately
         uses: actions-rs/cargo@v1
         with:
