@@ -16,7 +16,11 @@
     "cross": true,
     "target_bins": "--bin tari_base_node --bin tari_console_wallet --bin tari_merge_mining_proxy --bin tari_miner",
     "target_cpu": "generic",
-    "features": "safe"
+    "features": "safe",
+    "networks": [
+      {"name": "mainnet", "type": "mainnet"},
+      {"name": "esme", "type": "testnet"}
+    ]
   },
   {
     "name": "macos-x86_64",
