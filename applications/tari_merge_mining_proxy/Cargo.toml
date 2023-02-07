@@ -41,4 +41,5 @@ tonic = "0.6.2"
 tracing = "0.1"
 url = "2.1.1"
 
-[dev-dependencies]
+[build-dependencies]
+tari_features = { version = "0.0.1", path = "../../common/tari_features"}
