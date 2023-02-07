@@ -5049,6 +5049,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_libtor",
  "tari_metrics",
  "tari_p2p",
@@ -5299,6 +5300,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
@@ -5408,6 +5410,13 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "zeroize",
+]
+
+[[package]]
+name = "tari_features"
+version = "0.0.1"
+dependencies = [
+ "tari_common",
 ]
 
 [[package]]
@@ -5522,6 +5531,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
+ "tari_features",
  "tari_utilities",
  "tari_wallet_grpc_client",
  "thiserror",

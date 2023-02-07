@@ -50,9 +50,11 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
+    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, NextNet, Ridcully, StageNet, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
+        StageNet => get_mainnet_genesis_block(),
+        NextNet => unimplemented!("NextNet is not yet implemented"),
         Igor => get_igor_genesis_block(),
         Esmeralda => get_esmeralda_genesis_block(),
         LocalNet => get_esmeralda_genesis_block(),

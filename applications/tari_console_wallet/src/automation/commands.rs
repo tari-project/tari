@@ -437,6 +437,7 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
+                        #[cfg(tari_feature_dan_layer)]
                         MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone()).await,
                     };
                     let submit_time = Instant::now();
@@ -646,6 +647,7 @@ pub async fn command_runner(
                     eprintln!("DiscoverPeer error! {}", e);
                 }
             },
+            #[cfg(tari_feature_dan_layer)]
             BurnTari(args) => {
                 match burn_tari(
                     transaction_service.clone(),
@@ -974,6 +976,7 @@ pub async fn command_runner(
                     Err(e) => eprintln!("HashGrpcPassword error! {}", e),
                 }
             },
+            #[cfg(tari_feature_dan_layer)]
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
                     args.amount,

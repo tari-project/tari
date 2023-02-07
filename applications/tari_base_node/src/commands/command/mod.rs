@@ -41,6 +41,7 @@ mod list_connections;
 mod list_headers;
 mod list_peers;
 mod list_reorgs;
+#[cfg(tari_feature_dan_layer)]
 mod list_validator_nodes;
 mod period_stats;
 mod ping_peer;
@@ -132,6 +133,7 @@ pub enum Command {
     Whoami(whoami::Args),
     GetStateInfo(get_state_info::Args),
     GetNetworkStats(get_network_stats::Args),
+    #[cfg(tari_feature_dan_layer)]
     ListValidatorNodes(list_validator_nodes::Args),
     Quit(quit::Args),
     Exit(quit::Args),
@@ -227,9 +229,10 @@ impl CommandContext {
                 Command::GetMempoolTx(_) |
                 Command::Status(_) |
                 Command::Watch(_) |
-                Command::ListValidatorNodes(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
+                #[cfg(tari_feature_dan_layer)]
+                Command::ListValidatorNodes(_) => 30,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
                 Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
             };
@@ -292,6 +295,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ListBannedPeers(args) => self.handle_command(args).await,
             Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
             Command::Watch(args) => self.handle_command(args).await,
+            #[cfg(tari_feature_dan_layer)]
             Command::ListValidatorNodes(args) => self.handle_command(args).await,
         }
     }

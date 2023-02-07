@@ -115,6 +115,7 @@ impl ConfigOverrideProvider for Cli {
 pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
+    #[cfg(tari_feature_dan_layer)]
     BurnTari(BurnTariArgs),
     SendOneSided(SendTariArgs),
     SendOneSidedToStealthAddress(SendTariArgs),
@@ -133,6 +134,7 @@ pub enum CliCommands {
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
+    #[cfg(tari_feature_dan_layer)]
     RegisterValidatorNode(RegisterValidatorNodeArgs),
 }
 
@@ -198,6 +200,7 @@ pub enum MakeItRainTransactionType {
     Interactive,
     OneSided,
     StealthOneSided,
+    #[cfg(tari_feature_dan_layer)]
     BurnTari,
 }
 

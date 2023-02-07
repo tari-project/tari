@@ -38,6 +38,8 @@ use crate::ConfigurationError;
 #[serde(try_from = "String", into = "String")]
 pub enum Network {
     MainNet = 0x00,
+    StageNet = 0x02,
+    NextNet = 0x03,
     LocalNet = 0x10,
     Ridcully = 0x21,
     Stibbons = 0x22,
@@ -57,6 +59,8 @@ impl Network {
         use Network::*;
         match self {
             MainNet => "mainnet",
+            StageNet => "stagenet",
+            NextNet => "nextnet",
             Ridcully => "ridcully",
             Stibbons => "stibbons",
             Weatherwax => "weatherwax",
