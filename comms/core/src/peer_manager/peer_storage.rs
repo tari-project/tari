@@ -50,7 +50,7 @@ const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
 pub struct PeerStorage<DS> {
-    pub(crate) peer_db: DS,
+    peer_db: DS,
     public_key_index: HashMap<CommsPublicKey, PeerId>,
     node_id_index: HashMap<NodeId, PeerId>,
 }

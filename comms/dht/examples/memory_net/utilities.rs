@@ -825,7 +825,7 @@ fn create_peer_storage() -> CommsDatabase {
         .unwrap();
 
     let peer_database = datastore.get_handle(&database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+    let peer_database = CachedStore::new(LMDBWrapper::new(Arc::new(peer_database)));
     PeerStorage::new_indexed(peer_database).unwrap().into()
 }
 
