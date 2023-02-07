@@ -51,7 +51,7 @@ jobs:
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
           #
           # Setup the json build matrix
-          matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
+          matrix=$(echo ${matrix_selection} | jq -s -c '{"networks": [{"type": "mainnet", "name": "mainnet"}, {"type": "testnet", "name": "esme"}], "builds": .}')
           echo $matrix
           echo $matrix | jq .
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
@@ -72,7 +72,7 @@ jobs:
           echo $matrix | json2yaml
 
   builds:
-    name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
+    name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }} for ${{ matrix.networks.type }}
     needs: matrix-prep
     strategy:
       fail-fast: false
@@ -185,6 +185,7 @@ jobs:
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
           ROARING_ARCH: "${{ matrix.builds.target_cpu }}"
+          TARI_NETWORK: "${{ matrix.networks.name }}"
         with:
           use-cross: ${{ matrix.builds.cross }}
           command: build
@@ -200,7 +201,7 @@ jobs:
           echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
-          BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
+          BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}-${{ matrix.networks.type }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
