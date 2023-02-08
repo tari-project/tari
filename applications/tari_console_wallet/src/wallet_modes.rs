@@ -458,6 +458,7 @@ mod test {
             match command {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendTari(_) => send_tari = true,
+                #[cfg(tari_feature_dan_layer)]
                 CliCommands::BurnTari(_) => burn_tari = true,
                 CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
@@ -476,6 +477,7 @@ mod test {
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::HashGrpcPassword(_) => {},
+                #[cfg(tari_feature_dan_layer)]
                 CliCommands::RegisterValidatorNode(_) => {},
             }
         }

@@ -176,6 +176,7 @@ pub struct MakeItRainArgs {
     #[clap(long, alias = "stealth-one-sided")]
     pub stealth: bool,
     #[clap(short, long)]
+    #[cfg(tari_feature_dan_layer)]
     pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
@@ -183,12 +184,17 @@ pub struct MakeItRainArgs {
 
 impl MakeItRainArgs {
     pub fn transaction_type(&self) -> MakeItRainTransactionType {
+        #[cfg(tari_feature_dan_layer)]
+        {
+            if self.burn_tari {
+                return MakeItRainTransactionType::BurnTari;
+            }
+        }
+
         if self.stealth {
             MakeItRainTransactionType::StealthOneSided
         } else if self.one_sided {
             MakeItRainTransactionType::OneSided
-        } else if self.burn_tari {
-            MakeItRainTransactionType::BurnTari
         } else {
             MakeItRainTransactionType::Interactive
         }

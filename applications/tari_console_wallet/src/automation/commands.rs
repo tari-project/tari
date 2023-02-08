@@ -129,6 +129,7 @@ pub async fn send_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
+#[cfg(tari_feature_dan_layer)]
 pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -192,6 +193,7 @@ pub async fn claim_htlc_refund(
     Ok(tx_id)
 }
 
+#[cfg(tari_feature_dan_layer)]
 pub async fn register_validator_node(
     amount: MicroTari,
     mut wallet_transaction_service: TransactionServiceHandle,
