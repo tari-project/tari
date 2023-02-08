@@ -23,7 +23,7 @@
 use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
-use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
+use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
 use tokio::{sync::RwLock, task};
 
 #[cfg(feature = "metrics")]
@@ -48,14 +48,15 @@ use crate::{
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers.
 pub struct PeerManager {
-    peer_storage: RwLock<PeerStorage<KeyValueWrapper<CommsDatabase>>>,
+    // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
+    peer_storage: RwLock<PeerStorage<CachedStore<PeerId, Peer, KeyValueWrapper<CommsDatabase>>>>,
     _file_lock: Option<File>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
     pub fn new(database: CommsDatabase, file_lock: Option<File>) -> Result<PeerManager, PeerManagerError> {
-        let storage = PeerStorage::new_indexed(KeyValueWrapper::new(database))?;
+        let storage = PeerStorage::new_indexed(CachedStore::new(KeyValueWrapper::new(database)))?;
         Ok(Self {
             peer_storage: RwLock::new(storage),
             _file_lock: file_lock,
@@ -101,7 +102,8 @@ impl PeerManager {
     /// [PeerQuery]: crate::peer_manager::PeerQuery
     pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
         let lock = self.peer_storage.read().await;
-        task::block_in_place(|| lock.perform_query(peer_query))
+        // task::block_in_place(|| lock.perform_query(peer_query))
+        lock.perform_query(peer_query)
     }
 
     /// Find the peer with the provided NodeID
@@ -267,7 +269,8 @@ impl PeerManager {
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
         let lock = self.peer_storage.read().await;
-        task::block_in_place(|| lock.calc_region_threshold(region_node_id, n, features))
+        // task::block_in_place(|| lock.calc_region_threshold(region_node_id, n, features))
+        lock.calc_region_threshold(region_node_id, n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.

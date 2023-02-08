@@ -33,6 +33,9 @@ message PeerInfo {
   bytes public_key = 1;
   repeated PeerInfoAddress addresses = 2;
   uint64 peer_features = 3;
+  repeated bytes supported_protocols = 4;
+  // Note: not part of the signature
+  string user_agent = 5;
 
 }
 

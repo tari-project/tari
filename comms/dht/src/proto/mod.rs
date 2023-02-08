@@ -101,6 +101,12 @@ impl From<PeerInfo> for rpc::PeerInfo {
             public_key: value.public_key.to_vec(),
             addresses: value.addresses.into_iter().map(Into::into).collect(),
             peer_features: value.peer_features.bits(),
+            supported_protocols: value
+                .supported_protocols
+                .into_iter()
+                .map(|b| b.as_ref().to_vec())
+                .collect(),
+            user_agent: value.user_agent,
         }
     }
 }
@@ -135,11 +141,17 @@ impl TryInto<PeerInfo> for rpc::PeerInfo {
             .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()?;
         let peer_features = PeerFeatures::from_bits_truncate(self.peer_features);
-
+        let supported_protocols = self
+            .supported_protocols
+            .into_iter()
+            .map(|b| b.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(PeerInfo {
             public_key,
             addresses,
             peer_features,
+            user_agent: self.user_agent,
+            supported_protocols,
         })
     }
 }

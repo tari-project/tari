@@ -81,6 +81,8 @@ impl DhtRpcServiceImpl {
                             })
                             .collect(),
                         peer_features: peer.features,
+                        user_agent: peer.user_agent,
+                        supported_protocols: peer.supported_protocols,
                     };
 
                     if !peer_info.addresses.is_empty() {

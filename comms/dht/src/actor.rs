@@ -667,6 +667,7 @@ impl DhtActor {
         let mut banned_count = 0;
         let mut excluded_count = 0;
         let mut filtered_out_node_count = 0;
+
         let query = PeerQuery::new()
             .select_where(|peer| {
                 if peer.is_banned() {

@@ -81,6 +81,7 @@ pub async fn run_base_node(
         non_interactive_mode: true,
         watch: None,
         network: None,
+        profile_with_tokio_console: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await

@@ -23,6 +23,7 @@
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{PeerFeatures, PeerIdentityClaim},
+    protocol::ProtocolId,
     types::CommsPublicKey,
 };
 
@@ -30,6 +31,8 @@ pub struct PeerInfo {
     pub public_key: CommsPublicKey,
     pub addresses: Vec<PeerInfoAddress>,
     pub peer_features: PeerFeatures,
+    pub user_agent: String,
+    pub supported_protocols: Vec<ProtocolId>,
 }
 
 pub struct PeerInfoAddress {

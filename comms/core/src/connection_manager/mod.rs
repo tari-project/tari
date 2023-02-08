@@ -33,7 +33,7 @@ mod listener;
 mod metrics;
 
 mod common;
-pub use common::{validate_addresses, validate_addresses_and_source};
+pub use common::{validate_address_and_source, validate_addresses, validate_addresses_and_source};
 
 mod direction;
 pub use direction::ConnectionDirection;

@@ -200,7 +200,7 @@ pub fn validate_addresses(addresses: &[Multiaddr], allow_test_addrs: bool) -> Re
     Ok(())
 }
 
-fn validate_address_and_source(
+pub fn validate_address_and_source(
     public_key: &CommsPublicKey,
     addr: &MultiaddrWithStats,
     allow_test_addrs: bool,

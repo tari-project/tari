@@ -260,6 +260,10 @@ impl MultiaddrWithStats {
 
         self.quality_score = score_self;
     }
+
+    pub fn source(&self) -> &PeerAddressSource {
+        &self.source
+    }
 }
 
 // Reliability ordering of net addresses: prioritize net addresses according to previous successful connections,
