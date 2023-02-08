@@ -68,12 +68,13 @@ use tari_crypto::{
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::Mutex;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
+    diffie_hellman_stealth_address_wallet_domain_hasher,
     key_manager_service::KeyManagerInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -97,9 +98,9 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::WalletHasher,
-    WalletOutputEncryptionKeysDomainHasher,
-    WalletOutputRewindKeysDomainHasher,
+    shared_secret_to_output_encryption_key,
+    shared_secret_to_output_rewind_key,
+    stealth_address_script_spending_key,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -2594,16 +2595,14 @@ where
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_bytes(
-                        WalletHasher::new_with_label("stealth_address")
-                            .chain(CommsDHKE::new(&wallet_sk, nonce.as_ref()).as_bytes())
-                            .finalize()
-                            .as_ref(),
-                    )
-                    .unwrap();
+                    let stealth_address_hasher =
+                        diffie_hellman_stealth_address_wallet_domain_hasher(&wallet_sk, nonce.as_ref());
+                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
 
                     // matching spending (public) keys
-                    if &(PublicKey::from_secret_key(&stealth_address_offset) + wallet_pk) != scanned_pk.as_ref() {
+                    let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, wallet_pk);
+                    if &script_spending_key != scanned_pk.as_ref() {
                         continue;
                     }
 
@@ -2749,26 +2748,6 @@ impl fmt::Display for Balance {
         writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
-}
-
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
 }
 
 #[derive(Debug, Clone)]

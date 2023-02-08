@@ -67,7 +67,7 @@ use tari_p2p::{
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
 };
-use tari_script::{script, ExecutionStack, TariScript};
+use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
@@ -701,7 +701,7 @@ async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
-    let script = script!(PushPubKey(Box::new(node_identity.public_key().clone())));
+    let script = one_sided_payment_script(node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake256>()

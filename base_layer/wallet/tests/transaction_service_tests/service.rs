@@ -98,7 +98,7 @@ use tari_crypto::{
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -861,7 +861,7 @@ async fn recover_one_sided_transaction() {
         shutdown.to_signal(),
     )
     .await;
-    let script = script!(PushPubKey(Box::new(bob_node_identity.public_key().clone())));
+    let script = one_sided_payment_script(bob_node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake256>().unwrap().to_vec(),
         private_key: bob_node_identity.secret_key().clone(),
