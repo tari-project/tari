@@ -83,25 +83,26 @@ fn get_stagenet_genesis_block_raw() -> Block {
     // Note: Use print_new_genesis_block_stagenet in core/tests/helpers/block_builders.rs to generate the required
     // fields below
     let excess_sig = Signature::new(
-        PublicKey::from_hex("fcd46ec2a4ad022319b903972c4a30e9ec08ed353e9245f67b474a3028aaf917").unwrap(),
-        PrivateKey::from_hex("74744c8ecaa03c18ab767090590bac45830c47f4cd2b0b40c358d9e6de73080e").unwrap(),
+        PublicKey::from_hex("e487276e01039473094f492f20b707d3805399f799fc9d4ad77c648f2a5c0d18").unwrap(),
+        PrivateKey::from_hex("544bea13bfa55f26f3cbdf986b0f7fff4a056316b252531896577d201f362704").unwrap(),
     );
     let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("7e236c28aeac44c79a65d855dc678ccc19f960bc0a9c50a2d5bc19ee1df20d23").unwrap(),
-        PublicKey::from_hex("241f5034fd1dda26b223d2b12e816a1f729da86e0faa5609f2258ee6dd2c8e6e").unwrap(),
-        PrivateKey::from_hex("5271e5e4d4c8c4f791a6268aa3b21823a1e56c1c557304853192a876764aa902").unwrap(),
-        PrivateKey::from_hex("75b8fba7ecb555785bca632d142d33d464669c6c6288fb17122a220ca8cceb01").unwrap(),
-        PrivateKey::from_hex("b3000fb10de4c100cc271b3cb5065a916904dc265b37c4c0b45f9cb9a0f7cc00").unwrap(),
+        Commitment::from_hex("b60caad21427512b85ccc38a455419481ff4f45253b611374c68d8e82533ee66").unwrap(),
+        PublicKey::from_hex("76dfffcfa2c67c1b140ee04cf04fc271df193bdb4914e0b163b2507504f28b0f").unwrap(),
+        PrivateKey::from_hex("81631e30518430fd864a010fdba2f08f63c63f974972de179e0c9d7bdfb0d000").unwrap(),
+        PrivateKey::from_hex("be45ce74a588437453c4dc27ed5cc368c422cd6d86f4f180d66a6fd20a458d07").unwrap(),
+        PrivateKey::from_hex("43227a2310450b9adcc9d3d0ebdfa8eb6f260e6d7a8e7e5ad9b8230916333104").unwrap(),
     );
+    let extra = "Tokenized and connected";
     let coinbase = TransactionOutput::new(
         TransactionOutputVersion::get_current_version(),
-        OutputFeatures::create_coinbase(6, None),
-        Commitment::from_hex("f47a5c3e60f5048829411fa20597827b97466d75a08944f269459008db85f678").unwrap(),
-        BulletRangeProof::from_hex("01321cc9e1c5bcdd29caf074acbed7de56557c4a03a74db0d9cc652ea38bd06f347e269a30088356eb8fb4299ea47fc867b823ba61241e59b508db9880d2cc961360ba8a3d47377b53bc552d904306baa1086375d2b60140c1619c15e9a718dc366014f3cd0d0fc248a21d62b093eaebfedb8acafef836d31d8151a33752ac4023ba57069033b3e21d125c1fadd07142f12d463527675b78d88780158bb18c9f68a25857c12c9322a60601012591747e8c98766de4e4200218dd9b417c3b537c0f169b61fcf63692ccc722cebbcc88e3d4066eab6c4a7af01fae79efc97bf8ca17cac86747c7696537d82dbc623c422361d98d7eae4d7d86d0a0f3f1a6a8bae55598170094ee06532a55ad83af980ea43a197785eaefaa028c4b6489364e191943d6cfdda824ec10e3bfb7c3639e8821248bdbc193a56a9a1d2366041af782aa5146a6b8b4387b40ed94a4f27c0f6ba6f1849c0ca5ecdcaf268e6102a7ce6e6b39ae79a574ea8cd88e339cdafa8e5cf8d13bb32c939f2c1ff62344be8a233ae318fc858d1c24cab167c0a0590bffafea86288d84fbe57e069b5cbaf86823bafe243818506d80c7a33c504b6d1989ca0b2c60315dbb6e85f0b2ebd0e616c0b9010952fd2c3f32c7bce24bcb9866a1320780e80fbfed4d144f0b4ae310b84a077109ee71a6c7c0e7658f33c86745064ab64fd1d910d098f9055e2cbd591ced3e6e05750ea2898530f078c06c7e17a3e9aedf5e569b1ac8fe7ca623ed48eddffae209f361269af40e7b06ff8740661fefae75f4aa85d39de298f0c816be8bf0254004").unwrap(),
+        OutputFeatures::create_coinbase(360, Some(extra.as_bytes().to_vec())),
+        Commitment::from_hex("002354d7fb5a0e173a7351ebd2ea169998b891542c2995c36621ab30c7e89004").unwrap(),
+        BulletRangeProof::from_hex("01c24948f13b2dd0ebfb0a3e0697d882d05eef5744f7da5703d6525ffb9e34f556803ea04a2cbe040161ac805a0c3f598f3ad5744e313a175ac6fa2b52a80464499aa29a326ffbee4e3ce54d2f16528be30be1179ae6b8711e2602201d3193bc33ca5fd6812b94c16c50137c42935d856300313facdcc77493783522a7d945546a98f6a76a47c1546260e5b42d5a37be51f5d796568bc725e5aedc190bcbedc8506ed3a1b5e79490d62d10cf79e1440682988acc22d26a81ee5c591831652f967a4026f82b935ffed77e7f53636a9c91df6ccf292e97930da2e149d8c38e5c39301cff35fe5f81a1ee8ccd2f1897726a5530f47b8fc09f7ea63452d546a9fa1130d002041a6a8ac64f4239d8bcda752679df132b4c60a7ed14042ad5a8430eb4075e7d9eefcddb7155d1a8cd077ec567f49679567cdacdda7d6ccd63ca7c3f69232095ad1ff86338cf02a388a5614f563fac0d1cf5916663b2e5a1e1cf5d7bdb70a60231e9582ac23432bfc527daaba93806973fe0cf6261556fa75bc25e2bd653b4cf47727b54b163716be622b8e9e59e931425b154f98360c9d152c50856e34c0a1146ca2ba7f79720e4303b6e4f4f0b87f268b8c9ef36f0c8499fbd58f79129de3b5bb0c3e40fb5e21e1f01c03b3b2c01c973a142fe3385c7bc07c846c2a8002f50e43d544635ce42f031d046a0030b3209d42e4975988a54625eac0ecf6e009064acaeeba32ba641fa8b026891f518e7c5c2c9971e988064033841bbffb200fc6aecb9c24fb6f0ea6f382fa30fb01e55ca552ec38150218e0336ed6ce65407").unwrap(),
         // A default script can never be spent, intentionally
         script!(Nop),
         // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("f4b9a7b76491b096be5e0b40d995151b18dcde09e34eecc9a91385d9b16a3634").unwrap(),
+        PublicKey::from_hex("bc94d6502fa7c1dde829ca5a8d2672784454dc6c42e4f62f5ce83eccbe63b038").unwrap(),
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
@@ -114,7 +115,7 @@ fn get_stagenet_genesis_block_raw() -> Block {
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("a23aa2ebc878f201f1958fabd1467bac60526b18231b8a2e1a52587678be0f31").unwrap(),
+        Commitment::from_hex("02c0544ac33b2baba6da92a13a7b54b454edaacaa5b76eaf561aacf078142471").unwrap(),
         excess_sig,
         None,
     );
@@ -130,11 +131,11 @@ fn get_stagenet_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("f52f31e506f3873eef04737aaaaa119e385338dda58b16affa414dc277c20577").unwrap(),
-            witness_mr: FixedHash::from_hex("75e7f57c00bd536ad157543d117034e8ce7f12a39ed43f65e304fb77d5a360b3")
+            output_mr: FixedHash::from_hex("a00d1c95378f383cb53f2fda0658b680d15b530ffb251b72d5fdf0af386ae775").unwrap(),
+            witness_mr: FixedHash::from_hex("945bad8a49c1c74501002ae227a9282a2148c793355c1c2517c07e5c15972d50")
                 .unwrap(),
             output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("cf5faaed9a852f62758f3d005fac7dacdc6234f2d0dfad3281d625aeca50e0a8").unwrap(),
+            kernel_mr: FixedHash::from_hex("ad201fe393372af2313f5c55f491c9d4e864a7a796401453ef52eaf2cd042132").unwrap(),
             kernel_mmr_size: 1,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -468,6 +469,14 @@ mod test {
         MutableOutputMmr,
         WitnessMmr,
     };
+
+    #[test]
+    fn stagenet_genesis_sanity_check() {
+        // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
+        // if consensus values change, e.g. new faucet or other
+        let block = get_stagenet_genesis_block();
+        check_block(Network::StageNet, &block, 1, 1);
+    }
 
     #[test]
     fn esmeralda_genesis_sanity_check() {

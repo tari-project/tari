@@ -615,38 +615,43 @@ impl ConsensusConstants {
         vec![consensus_constants_1]
     }
 
+    /// *
+    /// Stagenet has the following characteristics:
+    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
+    /// * 21 billion tXTR with a 3-year half-life
+    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
+    /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn stagenet() -> Vec<Self> {
         // Note these values are all placeholders for final values
-        let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 40_000.into(),
+            min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 800,
-            min_difficulty: 70_000_000.into(),
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 1,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 0..=1,
+            coinbase_lock_height: 360,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
-            difficulty_block_window,
-            max_block_transaction_weight: 19500,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 10_000_000.into(),
+            emission_initial: 18_462_816_327 * uT,
             emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
-            max_randomx_seed_height: u64::MAX,
+            emission_tail: 800 * T,
+            max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: MicroTari::from(0),
+            faucet_value: 0.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -714,7 +719,7 @@ impl ConsensusConstants {
     }
 }
 
-static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
+static EMISSION_DECAY: [u64; 6] = [21u64, 22, 23, 25, 26, 37];
 const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 const ESMERALDA_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 

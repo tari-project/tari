@@ -119,6 +119,17 @@ fn genesis_template(
     (block, output)
 }
 
+// #[ignore = "used to generate a new stagenet genesis block"]
+/// This is a helper function to generate and print out a block that can be used as the genesis block.
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_stagenet
+/// --exact --nocapture`
+/// 1. The block and range proof will be printed
+/// 1. Profit!
+#[test]
+fn print_new_genesis_block_stagenet() {
+    print_new_genesis_block(Network::StageNet, "Tokenized and connected");
+}
+
 // #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
