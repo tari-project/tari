@@ -87,6 +87,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+        claim_public_key: Option<PublicKey>,
     },
     RegisterValidatorNode {
         amount: MicroTari,
@@ -239,7 +240,7 @@ pub enum TransactionServiceResponse {
     BurntTransactionSent {
         tx_id: TxId,
         commitment: Commitment,
-        ownership_proof: RistrettoComSig,
+        ownership_proof: Option<RistrettoComSig>,
         rangeproof: BulletRangeProof,
     },
     TransactionCancelled,
@@ -526,7 +527,8 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<(TxId, Commitment, RistrettoComSig, BulletRangeProof), TransactionServiceError> {
+        claim_public_key: Option<PublicKey>,
+    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, BulletRangeProof), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -534,6 +536,7 @@ impl TransactionServiceHandle {
                 selection_criteria,
                 fee_per_gram,
                 message,
+                claim_public_key,
             })
             .await??
         {

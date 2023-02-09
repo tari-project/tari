@@ -644,12 +644,14 @@ where
                 selection_criteria,
                 fee_per_gram,
                 message,
+                claim_public_key,
             } => self
                 .burn_tari(
                     amount,
                     selection_criteria,
                     fee_per_gram,
                     message,
+                    claim_public_key,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -1366,19 +1368,17 @@ where
     }
 
     /// Creates a transaction to burn some Tari
-    /// # Arguments
-    /// 'amount': The amount of Tari to send to the recipient
-    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+        claim_public_key: Option<PublicKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, Commitment, RistrettoComSig, RangeProof), TransactionServiceError> {
+    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, RangeProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
         let output_features = OutputFeatures::create_burn_output();
         // Prepare sender part of the transaction
@@ -1410,6 +1410,7 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        // TODO: Save spending key in key manager
         let spend_key = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
@@ -1423,21 +1424,25 @@ where
         let range_proof = recipient_reply.output.proof.clone();
         let (nonce_a, pub_nonce_a) = PublicKey::random_keypair(&mut OsRng);
         let (nonce_x, pub_nonce_x) = PublicKey::random_keypair(&mut OsRng);
-        // No actual pure challenge, but the nonces make it unique and the commitment ties it to this output.
-        let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
-            .chain(pub_nonce_a.as_bytes())
-            .chain(pub_nonce_x.as_bytes())
-            .chain(commitment.as_bytes());
+        let mut ownership_proof = None;
 
-        let challenge: FixedHash = digest::Digest::finalize(hasher).into();
-        let ownership_proof = RistrettoComSig::sign(
-            &PrivateKey::from(amount),
-            &spend_key,
-            &nonce_a,
-            &nonce_x,
-            challenge.as_bytes(),
-            &*self.resources.factories.commitment,
-        )?;
+        if let Some(claim_public_key) = claim_public_key {
+            let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
+                .chain(pub_nonce_a.as_bytes())
+                .chain(pub_nonce_x.as_bytes())
+                .chain(commitment.as_bytes())
+                .chain(claim_public_key.as_bytes());
+
+            let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+            ownership_proof = Some(RistrettoComSig::sign(
+                &PrivateKey::from(amount),
+                &spend_key,
+                &nonce_a,
+                &nonce_x,
+                challenge.as_bytes(),
+                &*self.resources.factories.commitment,
+            )?);
+        }
         // Start finalizing
 
         stp.add_single_recipient_info(recipient_reply)

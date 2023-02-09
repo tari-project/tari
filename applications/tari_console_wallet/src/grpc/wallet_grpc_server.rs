@@ -595,6 +595,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 message.message,
+                if message.claim_public_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PublicKey::from_bytes(&message.claim_public_key)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
             )
             .await
         {
@@ -605,7 +613,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: true,
                     failure_message: Default::default(),
                     commitment: commitment.to_vec(),
-                    ownership_proof: ownership_proof.to_vec(),
+                    ownership_proof: ownership_proof.map(|o| o.to_vec()).unwrap_or(vec![]),
                     rangeproof: rangeproof.to_vec(),
                 }
             },

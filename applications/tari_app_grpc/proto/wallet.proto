@@ -105,6 +105,7 @@ message CreateBurnTransactionRequest{
     uint64 amount = 1;
     uint64 fee_per_gram = 2;
     string message = 3;
+    bytes claim_public_key = 4;
 }
 
 
