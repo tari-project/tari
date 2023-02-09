@@ -83,16 +83,11 @@ use tokio::{
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    diffie_hellman_stealth_address_wallet_domain_hasher,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         storage::models::SpendingPriority,
         UtxoSelectionCriteria,
     },
-    shared_secret_to_output_encryption_key,
-    shared_secret_to_output_rewind_key,
-    shared_secret_to_output_spending_key,
-    stealth_address_script_spending_key,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -122,7 +117,17 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::{
+        one_sided::{
+            diffie_hellman_stealth_address_wallet_domain_hasher,
+            shared_secret_to_output_encryption_key,
+            shared_secret_to_output_rewind_key,
+            shared_secret_to_output_spending_key,
+            stealth_address_script_spending_key,
+        },
+        wallet_identity::WalletIdentity,
+        watch::Watch,
+    },
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
 };
@@ -2715,7 +2720,10 @@ mod tests {
     use tari_script::{stealth_payment_script, Opcode};
 
     use super::*;
-    use crate::stealth_address_script_spending_key;
+    use crate::util::one_sided::{
+        diffie_hellman_stealth_address_wallet_domain_hasher,
+        stealth_address_script_spending_key,
+    };
 
     #[test]
     fn test_stealth_addresses() {

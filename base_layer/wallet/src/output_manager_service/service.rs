@@ -74,7 +74,6 @@ use tokio::sync::Mutex;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    diffie_hellman_stealth_address_wallet_domain_hasher,
     key_manager_service::KeyManagerInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -98,9 +97,12 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    shared_secret_to_output_encryption_key,
-    shared_secret_to_output_rewind_key,
-    stealth_address_script_spending_key,
+    util::one_sided::{
+        diffie_hellman_stealth_address_wallet_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_rewind_key,
+        stealth_address_script_spending_key,
+    },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
