@@ -170,7 +170,8 @@ jobs:
         with:
           images: |
             #name/${{ matrix.builds.image_name }}
-            ghcr.io/${{ github.repository }}
+            #ghcr.io/${{ github.repository }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
