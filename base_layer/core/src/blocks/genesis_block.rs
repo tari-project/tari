@@ -50,9 +50,10 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
+    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, StageNet, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
+        StageNet => get_stagenet_genesis_block(),
         Igor => get_igor_genesis_block(),
         Esmeralda => get_esmeralda_genesis_block(),
         LocalNet => get_esmeralda_genesis_block(),
@@ -60,6 +61,99 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
         Ridcully => unimplemented!("Ridcully is longer supported"),
         Stibbons => unimplemented!("Stibbons is longer supported"),
         Weatherwax => unimplemented!("Weatherwax longer supported"),
+    }
+}
+
+pub fn get_stagenet_genesis_block() -> ChainBlock {
+    let block = get_stagenet_genesis_block_raw();
+
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: 1.into(),
+        total_accumulated_difficulty: 1,
+        accumulated_monero_difficulty: 1.into(),
+        accumulated_sha_difficulty: 1.into(),
+        target_difficulty: 1.into(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
+}
+
+fn get_stagenet_genesis_block_raw() -> Block {
+    // Note: Use print_new_genesis_block_stagenet in core/tests/helpers/block_builders.rs to generate the required
+    // fields below
+    let excess_sig = Signature::new(
+        PublicKey::from_hex("fcd46ec2a4ad022319b903972c4a30e9ec08ed353e9245f67b474a3028aaf917").unwrap(),
+        PrivateKey::from_hex("74744c8ecaa03c18ab767090590bac45830c47f4cd2b0b40c358d9e6de73080e").unwrap(),
+    );
+    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
+        Commitment::from_hex("7e236c28aeac44c79a65d855dc678ccc19f960bc0a9c50a2d5bc19ee1df20d23").unwrap(),
+        PublicKey::from_hex("241f5034fd1dda26b223d2b12e816a1f729da86e0faa5609f2258ee6dd2c8e6e").unwrap(),
+        PrivateKey::from_hex("5271e5e4d4c8c4f791a6268aa3b21823a1e56c1c557304853192a876764aa902").unwrap(),
+        PrivateKey::from_hex("75b8fba7ecb555785bca632d142d33d464669c6c6288fb17122a220ca8cceb01").unwrap(),
+        PrivateKey::from_hex("b3000fb10de4c100cc271b3cb5065a916904dc265b37c4c0b45f9cb9a0f7cc00").unwrap(),
+    );
+    let coinbase = TransactionOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        OutputFeatures::create_coinbase(6, None),
+        Commitment::from_hex("f47a5c3e60f5048829411fa20597827b97466d75a08944f269459008db85f678").unwrap(),
+        BulletRangeProof::from_hex("01321cc9e1c5bcdd29caf074acbed7de56557c4a03a74db0d9cc652ea38bd06f347e269a30088356eb8fb4299ea47fc867b823ba61241e59b508db9880d2cc961360ba8a3d47377b53bc552d904306baa1086375d2b60140c1619c15e9a718dc366014f3cd0d0fc248a21d62b093eaebfedb8acafef836d31d8151a33752ac4023ba57069033b3e21d125c1fadd07142f12d463527675b78d88780158bb18c9f68a25857c12c9322a60601012591747e8c98766de4e4200218dd9b417c3b537c0f169b61fcf63692ccc722cebbcc88e3d4066eab6c4a7af01fae79efc97bf8ca17cac86747c7696537d82dbc623c422361d98d7eae4d7d86d0a0f3f1a6a8bae55598170094ee06532a55ad83af980ea43a197785eaefaa028c4b6489364e191943d6cfdda824ec10e3bfb7c3639e8821248bdbc193a56a9a1d2366041af782aa5146a6b8b4387b40ed94a4f27c0f6ba6f1849c0ca5ecdcaf268e6102a7ce6e6b39ae79a574ea8cd88e339cdafa8e5cf8d13bb32c939f2c1ff62344be8a233ae318fc858d1c24cab167c0a0590bffafea86288d84fbe57e069b5cbaf86823bafe243818506d80c7a33c504b6d1989ca0b2c60315dbb6e85f0b2ebd0e616c0b9010952fd2c3f32c7bce24bcb9866a1320780e80fbfed4d144f0b4ae310b84a077109ee71a6c7c0e7658f33c86745064ab64fd1d910d098f9055e2cbd591ced3e6e05750ea2898530f078c06c7e17a3e9aedf5e569b1ac8fe7ca623ed48eddffae209f361269af40e7b06ff8740661fefae75f4aa85d39de298f0c816be8bf0254004").unwrap(),
+        // A default script can never be spent, intentionally
+        script!(Nop),
+        // The Sender offset public key is not checked for coinbase outputs
+        PublicKey::from_hex("f4b9a7b76491b096be5e0b40d995151b18dcde09e34eecc9a91385d9b16a3634").unwrap(),
+        coinbase_meta_sig,
+        // Covenant
+        Covenant::default(),
+        EncryptedValue::default(),
+        // Genesis blocks don't need to prove a minimum value
+        MicroTari::zero(),
+    );
+    let kernel = TransactionKernel::new(
+        TransactionKernelVersion::V0,
+        KernelFeatures::COINBASE_KERNEL,
+        MicroTari(0),
+        0,
+        Commitment::from_hex("a23aa2ebc878f201f1958fabd1467bac60526b18231b8a2e1a52587678be0f31").unwrap(),
+        excess_sig,
+        None,
+    );
+    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
+    body.sort();
+    // set genesis timestamp
+    let genesis = DateTime::parse_from_rfc2822("8 Feb 2023 13:00:00 -0800").unwrap();
+    #[allow(clippy::cast_sign_loss)]
+    let timestamp = genesis.timestamp() as u64;
+    Block {
+        header: BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: FixedHash::zero(),
+            timestamp: timestamp.into(),
+            output_mr: FixedHash::from_hex("f52f31e506f3873eef04737aaaaa119e385338dda58b16affa414dc277c20577").unwrap(),
+            witness_mr: FixedHash::from_hex("75e7f57c00bd536ad157543d117034e8ce7f12a39ed43f65e304fb77d5a360b3")
+                .unwrap(),
+            output_mmr_size: 1,
+            kernel_mr: FixedHash::from_hex("cf5faaed9a852f62758f3d005fac7dacdc6234f2d0dfad3281d625aeca50e0a8").unwrap(),
+            kernel_mmr_size: 1,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: PrivateKey::from_hex(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            total_script_offset: PrivateKey::from_hex(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            nonce: 0,
+            pow: ProofOfWork {
+                pow_algo: PowAlgorithm::Sha3,
+                pow_data: vec![],
+            },
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
+        },
+        body,
     }
 }
 

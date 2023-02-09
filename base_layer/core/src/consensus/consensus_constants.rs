@@ -615,6 +615,53 @@ impl ConsensusConstants {
         vec![consensus_constants_1]
     }
 
+    pub fn stagenet() -> Vec<Self> {
+        // Note these values are all placeholders for final values
+        let difficulty_block_window = 90;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 40_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 800,
+            min_difficulty: 70_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            valid_blockchain_version_range: 0..=1,
+            future_time_limit: 540,
+            difficulty_block_window,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 10_000_000.into(),
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: u64::MAX,
+            proof_of_work: algos,
+            faucet_value: MicroTari::from(0),
+            transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
+            permitted_output_types: Self::current_permitted_output_types(),
+            vn_epoch_length: 60,
+            vn_validity_period_epochs: VnEpoch(100),
+            vn_registration_min_deposit_amount: MicroTari(0),
+            vn_registration_lock_height: 0,
+            vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
+        }]
+    }
+
     pub fn mainnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
         let difficulty_block_window = 90;
