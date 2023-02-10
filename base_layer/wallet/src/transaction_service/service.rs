@@ -76,6 +76,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -1434,6 +1435,7 @@ where
                 .chain(claim_public_key.as_bytes());
 
             let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+            warn!(target: LOG_TARGET, "Challenge: {}", challenge.to_vec().to_hex());
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
                 &spend_key,
@@ -1442,6 +1444,11 @@ where
                 challenge.as_bytes(),
                 &*self.resources.factories.commitment,
             )?);
+            warn!(
+                target: LOG_TARGET,
+                "Ownership proof: {}",
+                ownership_proof.clone().unwrap().to_vec().to_hex()
+            );
         }
         // Start finalizing
 
