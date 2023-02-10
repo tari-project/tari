@@ -37,7 +37,7 @@ use tari_comms::{
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
-    proto::dht::JoinMessage,
+    proto::dht::{DiscoveryMessage, JoinMessage},
     rpc::{PeerInfo, PeerInfoAddress},
 };
 
@@ -94,6 +94,36 @@ impl fmt::Display for dht::JoinMessage {
 }
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
+
+impl TryFrom<DiscoveryMessage> for PeerInfo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
+        let identity_claim = value
+            .identity_signature
+            .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
+            .try_into()?;
+
+        Ok(Self {
+            public_key: value.public_key,
+            addresses: value
+                .addresses
+                .iter()
+                .map(|a| PeerInfoAddress {
+                    address: a.clone(),
+                    peer_identity_claim: identity_claim.clone(),
+                })
+                .collect(),
+            peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
+            supported_protocols: value
+                .supported_protocols
+                .into_iter()
+                .map(|b| b.try_into())
+                .collect::<Result<_, _>>()?,
+            user_agent: value.user_agent,
+        })
+    }
+}
 
 impl From<PeerInfo> for rpc::PeerInfo {
     fn from(value: PeerInfo) -> Self {

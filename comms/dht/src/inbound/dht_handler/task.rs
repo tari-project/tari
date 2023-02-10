@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, str::FromStr, sync::Arc};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+    sync::Arc,
+};
 
 use log::*;
 use tari_comms::{
@@ -55,6 +59,7 @@ use crate::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
+    rpc::PeerInfo,
     DhtConfig,
 };
 
@@ -287,6 +292,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+
+        xxxx understand the process of discovering
+
+
         let msg = message
             .success()
             .expect("already checked that this message decrypted successfully");
@@ -295,6 +304,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<DiscoveryMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
 
+        let nonce = discover_msg.nonce;
         let authenticated_pk = message.authenticated_origin.ok_or_else(|| {
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
@@ -304,37 +314,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Received discovery message from '{}', forwarded by {}", authenticated_pk, message.source_peer
         );
 
-        let addresses = discover_msg
-            .addresses
-            .iter()
-            .filter_map(|addr| Multiaddr::try_from(addr.clone()).ok())
-            .collect::<Vec<_>>();
-
-        if addresses.is_empty() {
-            return Err(DhtInboundError::InvalidAddresses);
-        }
-
-        let node_id = NodeId::from_public_key(&authenticated_pk);
-        let features = PeerFeatures::from_bits_truncate(discover_msg.peer_features);
-        let identity_signature = discover_msg
-            .identity_signature
-            .map(IdentitySignature::try_from)
-            .transpose()
-            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?
-            .ok_or(DhtInboundError::NoPeerIdentitySignature)?;
-        let peer_identity_claim = PeerIdentityClaim::new(addresses.clone(), features, identity_signature, None);
-
-        let mut new_peer = Peer::new(
-            authenticated_pk,
-            node_id.clone(),
-            MultiaddressesWithStats::from_addresses_with_source(addresses.into(), &PeerAddressSource::FromDiscovery {
-                peer_identity_claim,
-            }),
-            PeerFlags::empty(),
-            features,
-            vec![],
-            String::new(),
-        );
+        let new_peer: PeerInfo = discover_msg
+            .try_into()
+            .map_err(DhtInboundError::InvalidDiscoveryMessage)?;
+        let node_id = NodeId::from_public_key(&new_peer.public_key);
 
         let peer_validator = PeerValidator::new(&self.peer_manager, &self.config);
         peer_validator.validate_and_add_peer(new_peer).await?;
@@ -350,8 +333,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         // Send the origin the current nodes latest contact info
-        self.send_discovery_response(origin_peer.public_key, discover_msg.nonce)
-            .await?;
+        self.send_discovery_response(origin_peer.public_key, nonce).await?;
 
         Ok(())
     }

@@ -59,4 +59,6 @@ pub enum DhtInboundError {
     NoPeerIdentitySignature,
     #[error("Invalid peer: {0}")]
     PeerValidatorError(#[from] PeerValidatorError),
+    #[error("Invalid discovery message {0}")]
+    InvalidDiscoveryMessage(#[from] anyhow::Error),
 }

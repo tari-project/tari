@@ -141,12 +141,6 @@ impl OnConnect {
                 Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
                     Some(peer) => {
                         self.validate_and_add_peer(peer).await?;
-
-                        todo!("implement peer info instead");
-
-                        // if peer_validator.validate_and_add_peer(peer).await? {
-                        //     num_added += 1;
-                        // }
                     },
                     None => {
                         debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
@@ -178,7 +172,10 @@ impl OnConnect {
     }
 
     async fn validate_and_add_peer(&self, peer: PeerInfo) -> Result<(), NetworkDiscoveryError> {
-        todo!()
+        let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
+
+        peer_validator.validate_and_add_peer(peer).await?;
+        Ok(())
     }
 
     #[inline]

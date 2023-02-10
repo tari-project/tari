@@ -70,6 +70,10 @@ impl DhtRpcServiceImpl {
                             .addresses()
                             .iter()
                             .filter_map(|addr| {
+                                // TODO: find the source of the empty addresses
+                                if addr.address().is_empty() {
+                                    return None;
+                                }
                                 if let Some(claim) = addr.source.peer_identity_claim() {
                                     Some(PeerInfoAddress {
                                         address: addr.address().clone(),

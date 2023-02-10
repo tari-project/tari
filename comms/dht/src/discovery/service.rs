@@ -171,7 +171,7 @@ impl DhtDiscoveryService {
         trace!(
             target: LOG_TARGET,
             "Received discovery response message from {}",
-            discovery_msg.node_id.to_hex()
+            discovery_msg.public_key.to_hex()
         );
 
         match self.inflight_discoveries.remove(&discovery_msg.nonce) {
@@ -224,7 +224,7 @@ impl DhtDiscoveryService {
                     target: LOG_TARGET,
                     "Received a discovery response from peer '{}' that this node did not expect. It may have been \
                      cancelled earlier.",
-                    discovery_msg.node_id.to_hex()
+                    discovery_msg.public_key.to_hex()
                 );
             },
         }
@@ -337,7 +337,7 @@ impl DhtDiscoveryService {
         dest_public_key: Box<CommsPublicKey>,
     ) -> Result<(), DhtDiscoveryError> {
         let discover_msg = DiscoveryMessage {
-            node_id: self.node_identity.node_id().to_vec(),
+            public_key: self.node_identity.public_key().to_vec(),
             addresses: self
                 .node_identity
                 .public_addresses()

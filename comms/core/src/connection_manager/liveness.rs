@@ -118,7 +118,7 @@ where
             let _ = self.tx_watch.send(LivenessStatus::Checking);
             match self.transport.dial(&self.address).await {
                 Ok(mut socket) => {
-                    warn!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
+                    debug!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
                     if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
                         warn!(target: LOG_TARGET, "🔌️ liveness failed to write byte: {}", err);
                         self.tx_watch.send_replace(LivenessStatus::Unreachable);
@@ -128,7 +128,7 @@ where
                     loop {
                         match self.ping_pong(&mut framed).await {
                             Ok(Some(latency)) => {
-                                info!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
+                                debug!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
                                 self.tx_watch.send_replace(LivenessStatus::Live(latency));
                             },
                             Ok(None) => {

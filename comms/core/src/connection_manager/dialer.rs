@@ -231,14 +231,16 @@ where
             );
         }
 
-        match self.peer_manager.add_peer(dial_state.peer().clone()).await {
-            Ok(_) => {
-                warn!("Peer updated correctly");
-            },
-            Err(_) => {
-                error!("Could not update peer data");
-            },
-        }
+        let _ = self
+            .peer_manager
+            .add_peer(dial_state.peer().clone())
+            .await
+            .map_err(|e| {
+                error!("Could not update peer data:{}", e);
+                let _ = dial_state
+                    .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
+                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+            });
         match &dial_result {
             Ok(conn) => {
                 debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
@@ -485,7 +487,7 @@ where
             let cancel_signal = current_state.get_cancel_signal();
             tokio::select! {
                 _ = delay => {
-                    warn!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
                     match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_byte).await {
                         (state, Ok((socket, addr))) => {
                             debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
@@ -539,12 +541,6 @@ where
             let moved_address = address.clone();
             let node_id = dial_state.peer().node_id.clone();
             let dial_fut = async move {
-                warn!(
-                    target: LOG_TARGET,
-                    "Poll - Attempting to dial peer '{}' at address '{}'",
-                    node_id.short_str(),
-                    moved_address
-                );
                 let mut timer = Instant::now();
                 let mut socket =
                     transport
@@ -560,7 +556,7 @@ where
                 );
                 let initial_dial_time = timer.elapsed();
 
-                warn!(
+                debug!(
                     "Dialed peer: {} on address: {} on tcp after: {}",
                     node_id.short_str(),
                     moved_address,
@@ -582,7 +578,7 @@ where
                 .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
 
                 let noise_upgrade_time = timer.elapsed();
-                warn!(
+                debug!(
                     "Dial - upgraded noise: {} on address: {} on tcp after: {}",
                     node_id.short_str(),
                     moved_address,
@@ -605,7 +601,7 @@ where
                     return (dial_state, Ok((noise_socket, address.clone())));
                 },
                 Either::Left((Err(err), _)) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "(Attempt {}) Dial failed on address '{}' for peer '{}' because '{}'",
                         dial_state.num_attempts(),

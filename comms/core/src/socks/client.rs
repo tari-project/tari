@@ -239,9 +239,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn send_command(&mut self, command: Command, address: &Multiaddr) -> Result<Multiaddr> {
         self.prepare_send_request(command, address)?;
         self.write().await?;
-        let timer = Instant::now();
         let reply = self.receive_reply().await;
-        warn!("received reply {} in {:?}", address, timer.elapsed());
         reply
     }
 

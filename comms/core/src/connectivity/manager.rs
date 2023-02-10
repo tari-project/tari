@@ -316,12 +316,6 @@ impl ConnectivityManagerActor {
         }
         match self.pool.get(&node_id) {
             Some(state) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Found existing connection for peer `{}`",
-                    node_id.short_str()
-                );
-
                 if !state.is_connected() {
                     warn!(
                         target: LOG_TARGET,
@@ -334,8 +328,7 @@ impl ConnectivityManagerActor {
                 }
             },
             None => {
-                // TODO: Maybe this is the cause of all the redialing
-                warn!(
+                info!(
                     target: LOG_TARGET,
                     "No existing connection found for peer `{}`. Dialing...",
                     node_id.short_str()
@@ -379,7 +372,7 @@ impl ConnectivityManagerActor {
     }
 
     async fn refresh_connection_pool(&mut self) -> Result<(), ConnectivityError> {
-        warn!(
+        debug!(
             target: LOG_TARGET,
             "Performing connection pool cleanup/refresh. (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
@@ -551,12 +544,11 @@ impl ConnectivityManagerActor {
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
         use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
-        warn!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
                 match self.on_new_connection(new_conn).await {
                     TieBreak::KeepExisting => {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "Discarding new connection to peer '{}' because we already have an existing connection",
                             new_conn.peer_node_id().short_str()

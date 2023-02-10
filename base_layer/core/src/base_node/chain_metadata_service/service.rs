@@ -131,7 +131,7 @@ impl ChainMetadataService {
         match event {
             // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Received ping from neighbouring node '{}'.", event.node_id
                 );

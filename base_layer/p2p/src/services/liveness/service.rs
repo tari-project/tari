@@ -164,7 +164,7 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await?;
                 self.state.inc_pongs_sent();
 
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Received ping from peer '{}' with useragent '{}' (Trace: {})",
                     node_id.short_str(),
@@ -304,9 +304,6 @@ where
         }
 
         let len_peers = selected_peers.len();
-        warn!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
-
-        dbg!(&selected_peers);
 
         for peer in selected_peers {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
