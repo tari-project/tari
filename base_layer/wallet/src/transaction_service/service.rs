@@ -119,7 +119,7 @@ use crate::{
     },
     util::{
         one_sided::{
-            diffie_hellman_stealth_address_wallet_domain_hasher,
+            diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_rewind_key,
             shared_secret_to_output_spending_key,
@@ -1532,7 +1532,7 @@ where
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
         let dest_pubkey = destination.public_key().clone();
-        let c = diffie_hellman_stealth_address_wallet_domain_hasher(&nonce_private_key, &dest_pubkey);
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, &dest_pubkey);
 
         let script_spending_key = stealth_address_script_spending_key(&c, &dest_pubkey);
 
@@ -2720,10 +2720,7 @@ mod tests {
     use tari_script::{stealth_payment_script, Opcode};
 
     use super::*;
-    use crate::util::one_sided::{
-        diffie_hellman_stealth_address_wallet_domain_hasher,
-        stealth_address_script_spending_key,
-    };
+    use crate::util::one_sided::{diffie_hellman_stealth_domain_hasher, stealth_address_script_spending_key};
 
     #[test]
     fn test_stealth_addresses() {
@@ -2736,7 +2733,7 @@ mod tests {
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = diffie_hellman_stealth_address_wallet_domain_hasher(&r, &big_a);
+        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
         let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
@@ -2750,7 +2747,7 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = diffie_hellman_stealth_address_wallet_domain_hasher(&a, big_r);
+            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
 
             // computing a spending key `Ks=(c+b)G` for comparison
             let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);

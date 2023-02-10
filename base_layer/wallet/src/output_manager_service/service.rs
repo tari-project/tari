@@ -98,7 +98,7 @@ use crate::{
         tasks::TxoValidationTask,
     },
     util::one_sided::{
-        diffie_hellman_stealth_address_wallet_domain_hasher,
+        diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_rewind_key,
         stealth_address_script_spending_key,
@@ -2597,8 +2597,7 @@ where
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // Compute the stealth address offset
-                    let stealth_address_hasher =
-                        diffie_hellman_stealth_address_wallet_domain_hasher(&wallet_sk, nonce.as_ref());
+                    let stealth_address_hasher = diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref());
                     let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
                         .expect("'DomainSeparatedHash<Blake256>' has correct size");
 
