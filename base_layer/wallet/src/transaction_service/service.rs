@@ -1424,12 +1424,12 @@ where
         let range_proof = recipient_reply.output.proof.clone();
         let (nonce_a, pub_nonce_a) = PublicKey::random_keypair(&mut OsRng);
         let (nonce_x, pub_nonce_x) = PublicKey::random_keypair(&mut OsRng);
+        let pub_nonce = pub_nonce_a + pub_nonce_x;
         let mut ownership_proof = None;
 
         if let Some(claim_public_key) = claim_public_key {
             let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
-                .chain(pub_nonce_a.as_bytes())
-                .chain(pub_nonce_x.as_bytes())
+                .chain(pub_nonce.as_bytes())
                 .chain(commitment.as_bytes())
                 .chain(claim_public_key.as_bytes());
 
