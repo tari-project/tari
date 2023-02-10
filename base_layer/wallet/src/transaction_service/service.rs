@@ -1425,7 +1425,7 @@ where
         let range_proof = recipient_reply.output.proof.clone();
         let (nonce_a, pub_nonce_a) = PublicKey::random_keypair(&mut OsRng);
         let (nonce_x, pub_nonce_x) = PublicKey::random_keypair(&mut OsRng);
-        let pub_nonce = pub_nonce_a + pub_nonce_x;
+        let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
         let mut ownership_proof = None;
 
         if let Some(claim_public_key) = claim_public_key {
@@ -1435,6 +1435,13 @@ where
                 .chain(claim_public_key.as_bytes());
 
             let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+
+            warn!(target: LOG_TARGET, "Pub nonce: {}", pub_nonce.to_vec().to_hex());
+            warn!(
+                target: LOG_TARGET,
+                "claim_public_key: {}",
+                claim_public_key.to_vec().to_hex()
+            );
             warn!(target: LOG_TARGET, "Challenge: {}", challenge.to_vec().to_hex());
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
