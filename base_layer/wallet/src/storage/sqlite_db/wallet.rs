@@ -593,9 +593,21 @@ fn get_db_cipher(
             let encrypted_main_key = encrypt_main_key(&secondary_key, &main_key, argon2_params.id)?;
 
             // Store the secondary key version, secondary key salt, and encrypted main key
-            WalletSettingSql::new(DbKey::SecondaryKeyVersion, argon2_params.id.to_string()).set(&conn)?;
-            WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string()).set(&conn)?;
-            WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex()).set(&conn)?;
+            conn.transaction::<_, Error, _>(|| {
+                // If any operation fails, trigger a rollback
+                WalletSettingSql::new(DbKey::SecondaryKeyVersion, argon2_params.id.to_string())
+                    .set(&conn)
+                    .map_err(|_| Error::RollbackTransaction)?;
+                WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string())
+                    .set(&conn)
+                    .map_err(|_| Error::RollbackTransaction)?;
+                WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex())
+                    .set(&conn)
+                    .map_err(|_| Error::RollbackTransaction)?;
+
+                Ok(())
+            })
+            .map_err(|_| WalletStorageError::UnexpectedResult("Unable to update database for new password".into()))?;
 
             // Return the unencrypted main key
             main_key
