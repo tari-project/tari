@@ -204,3 +204,37 @@ jobs:
         with:
           name: libwallet-ios-universal
           path: libwallets/libwallet-ios-universal
+
+      - name: Assemble iOS libwallet xcframework
+        shell: bash
+        working-directory: libwallets
+        run: |
+          ls -alht
+          mkdir libwallet-ios-universal-sim
+          lipo -create \
+            "libwallet-ios-x86_64/libtari_wallet_ffi.iso_x86_64.a" \
+            "libwallet-ios-aarch64-sim/libtari_wallet_ffi.iso_aarch64-sim.a" \
+              -output "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a"
+          mkdir libwallet-ios-xcframework
+          cp -v "libwallet-ios-x86_64/changelog.md" \
+            libwallet-ios-xcframework/
+          xcodebuild -create-xcframework \
+            -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a" \
+              -headers "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
+            -library "libwallet-ios-aarch64/libtari_wallet_ffi.iso_aarch64.a" \
+              -headers "libwallet-ios-aarch64/libtari_wallet_ffi.h" \
+            -output libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework
+          shasum -a 256 \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/Info.plist" \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/Headers" \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/libtari_wallet_ffi.iso_aarch64.a" \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/libtari_wallet_ffi.ios_universal-sim.a" \
+              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256sums"
+          ls -alht
+
+      - name: Upload iOS xcframework libwallet artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libwallet-ios-xcframework
+          path: libwallets/libwallet-ios-xcframework
