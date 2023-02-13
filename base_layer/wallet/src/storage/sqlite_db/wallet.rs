@@ -104,6 +104,80 @@ impl Argon2Parameters {
     }
 }
 
+/// A structure to hold key-related database field data, to make atomic operations cleaner
+pub struct DatabaseKeyFields {
+    secondary_key_version: u8, // the encryption parameter version
+    secondary_key_salt: String, // the high-entropy salt used to derive the secondary key
+    encrypted_main_key: Vec<u8>, // the main key, encrypted with the secondary key
+}
+impl DatabaseKeyFields {
+    /// Read and parse field data from the database atomically
+    pub fn read(connection: &SqliteConnection) -> Result<Option<Self>, WalletStorageError> {
+        let mut secondary_key_version: Option<String> = None;
+        let mut secondary_key_salt: Option<String> = None;
+        let mut encrypted_main_key: Option<String> = None;
+
+        // Read all fields atomically
+        connection.transaction::<_, Error, _>(|| {
+            secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+            secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+            encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, &connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+
+            Ok(())
+        }).map_err(|_| WalletStorageError::UnexpectedResult("Unable to read key fields from database".into()))?;
+
+        // Parse the fields
+        match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
+            // It's fine if none of the fields are set
+            (None, None, None) => Ok(None),
+
+            // If all of the fields are set, they must be parsed as valid
+            (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
+                let secondary_key_version = u8::from_str(&secondary_key_version)
+                    .map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
+                let encrypted_main_key = from_hex(&encrypted_main_key)
+                    .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
+
+                Ok(Some(DatabaseKeyFields {
+                    secondary_key_version,
+                    secondary_key_salt,
+                    encrypted_main_key
+                }))
+            },
+
+            // If only some fields are present, there is an invalid state
+            _ => {
+                Err(WalletStorageError::UnexpectedResult(
+                    "Not all key data is present in the database".into(),
+                ))
+            }
+        }
+    }
+
+    /// Encode and write field data to the database atomically
+    pub fn write(&self, connection: &SqliteConnection) -> Result<(), WalletStorageError> {
+        // Because the encoding can't fail, just do it inside the write transaction
+        connection.transaction::<_, Error, _>(|| {
+            WalletSettingSql::new(DbKey::SecondaryKeyVersion, self.secondary_key_version.to_string())
+                .set(&connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+            WalletSettingSql::new(DbKey::SecondaryKeySalt, self.secondary_key_salt.to_string())
+                .set(&connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+            WalletSettingSql::new(DbKey::EncryptedMainKey, self.encrypted_main_key.to_hex())
+                .set(&connection)
+                .map_err(|_| Error::RollbackTransaction)?;
+
+            Ok(())
+        }).map_err(|_| WalletStorageError::UnexpectedResult("Unable to write key fields into database".into()))?;
+
+        Ok(())
+    }
+}
+
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct WalletSqliteDatabase {
@@ -446,60 +520,45 @@ impl WalletBackend for WalletSqliteDatabase {
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
 
-        let secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &conn)?;
-        let secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
-        let encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, &conn)?;
-
-        // If any of these aren't present, something went wrong internally, so abort
-        match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
-            (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
+        // Get the existing key-related data so we can decrypt the main key
+        match DatabaseKeyFields::read(&conn) {
+            // Key-related data was present and valid
+            Ok(Some(data)) => {
                 // Use the given version if it is valid
-                let version = u8::from_str(&secondary_key_version)
-                    .map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
-                let argon2_params = Argon2Parameters::from_version(Some(version))?;
+                let argon2_params = Argon2Parameters::from_version(Some(data.secondary_key_version))?;
 
                 // Derive a secondary key from the existing passphrase and salt
-                let secondary_key = derive_secondary_key(existing, argon2_params.clone(), &secondary_key_salt)?;
+                let secondary_key = derive_secondary_key(existing, argon2_params.clone(), &data.secondary_key_salt)?;
 
                 // Attempt to decrypt the encrypted main key
-                let main_key = decrypt_main_key(&secondary_key, &encrypted_main_key, argon2_params.id)?;
+                let main_key = decrypt_main_key(&secondary_key, &data.encrypted_main_key, argon2_params.id)?;
 
                 // Now use the most recent version
                 let new_argon2_params = Argon2Parameters::from_version(None)?;
 
                 // Derive a new secondary key from the new passphrase and a fresh salt
-                let new_secondary_key_salt = SaltString::generate(&mut OsRng);
+                let new_secondary_key_salt = SaltString::generate(&mut OsRng).to_string();
                 let new_secondary_key =
-                    derive_secondary_key(new, new_argon2_params.clone(), &new_secondary_key_salt.to_string())?;
+                    derive_secondary_key(new, new_argon2_params.clone(), &new_secondary_key_salt)?;
 
                 // Encrypt the main key with the new secondary key
                 let new_encrypted_main_key = encrypt_main_key(&new_secondary_key, &main_key, new_argon2_params.id)?;
 
-                // Store the new secondary key version, secondary key salt, and encrypted main key
-                conn.transaction::<_, Error, _>(|| {
-                    // If any operation fails, trigger a rollback
-                    WalletSettingSql::new(DbKey::SecondaryKeyVersion, new_argon2_params.id.to_string())
-                        .set(&conn)
-                        .map_err(|_| Error::RollbackTransaction)?;
-                    WalletSettingSql::new(DbKey::SecondaryKeySalt, new_secondary_key_salt.to_string())
-                        .set(&conn)
-                        .map_err(|_| Error::RollbackTransaction)?;
-                    WalletSettingSql::new(DbKey::EncryptedMainKey, new_encrypted_main_key.to_hex())
-                        .set(&conn)
-                        .map_err(|_| Error::RollbackTransaction)?;
-
-                    Ok(())
-                })
-                .map_err(|_| {
-                    WalletStorageError::UnexpectedResult("Unable to update database for password change".into())
-                })?;
+                // Store the new key-related fields
+                DatabaseKeyFields {
+                    secondary_key_version: new_argon2_params.id,
+                    secondary_key_salt: new_secondary_key_salt,
+                    encrypted_main_key: new_encrypted_main_key,
+                }.write(&conn)?;
             },
+
+            // If any key-related is not present, this is an invalid state
             _ => {
                 return Err(WalletStorageError::UnexpectedResult(
-                    "Not enough data provided to decrypt encrypted main key".into(),
-                ));
-            },
-        }
+                    "Unable to get valid key-related data from database".into(),
+                ))
+            }
+        };
 
         Ok(())
     }
@@ -541,7 +600,7 @@ fn encrypt_main_key(
 /// Decrypt the main database key using the secondary key
 fn decrypt_main_key(
     secondary_key: &WalletSecondaryEncryptionKey,
-    encrypted_main_key: &str,
+    encrypted_main_key: &Vec<u8>,
     version: u8,
 ) -> Result<WalletMainEncryptionKey, WalletStorageError> {
     // Set up the authenticated data
@@ -555,7 +614,7 @@ fn decrypt_main_key(
         decrypt_bytes_integral_nonce(
             &cipher,
             aad,
-            &from_hex(encrypted_main_key).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?,
+            &encrypted_main_key,
         )
         .map_err(|_| WalletStorageError::InvalidPassphrase)?,
     ))
@@ -568,14 +627,10 @@ fn get_db_cipher(
 ) -> Result<XChaCha20Poly1305, WalletStorageError> {
     let conn = database_connection.get_pooled_connection()?;
 
-    // Fetch the database fields used for encryption, if they exist
-    let secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &conn)?;
-    let secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &conn)?;
-    let encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, &conn)?;
-
-    let main_key = match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
+    // Either set up a new main key, or decrypt it using existing data
+    let main_key = match DatabaseKeyFields::read(&conn) {
         // Encryption is not set up yet
-        (None, None, None) => {
+        Ok(None) => {
             // Generate a high-entropy main key
             let mut main_key = WalletMainEncryptionKey::from(vec![0u8; size_of::<Key>()]);
             let mut rng = OsRng;
@@ -585,52 +640,39 @@ fn get_db_cipher(
             let argon2_params = Argon2Parameters::from_version(None)?;
 
             // Derive the secondary key from the user's passphrase and a high-entropy salt
-            let secondary_key_salt = SaltString::generate(&mut rng);
+            let secondary_key_salt = SaltString::generate(&mut rng).to_string();
             let secondary_key =
-                derive_secondary_key(passphrase, argon2_params.clone(), &secondary_key_salt.to_string())?;
+                derive_secondary_key(passphrase, argon2_params.clone(), &secondary_key_salt)?;
 
             // Use the secondary key to encrypt the main key
             let encrypted_main_key = encrypt_main_key(&secondary_key, &main_key, argon2_params.id)?;
 
-            // Store the secondary key version, secondary key salt, and encrypted main key
-            conn.transaction::<_, Error, _>(|| {
-                // If any operation fails, trigger a rollback
-                WalletSettingSql::new(DbKey::SecondaryKeyVersion, argon2_params.id.to_string())
-                    .set(&conn)
-                    .map_err(|_| Error::RollbackTransaction)?;
-                WalletSettingSql::new(DbKey::SecondaryKeySalt, secondary_key_salt.to_string())
-                    .set(&conn)
-                    .map_err(|_| Error::RollbackTransaction)?;
-                WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex())
-                    .set(&conn)
-                    .map_err(|_| Error::RollbackTransaction)?;
-
-                Ok(())
-            })
-            .map_err(|_| WalletStorageError::UnexpectedResult("Unable to update database for new password".into()))?;
+            // Store the key-related fields
+            DatabaseKeyFields {
+                secondary_key_version: argon2_params.id,
+                secondary_key_salt,
+                encrypted_main_key,
+            }.write(&conn)?;
 
             // Return the unencrypted main key
             main_key
         },
+
         // Encryption has already been set up
-        (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
+        Ok(Some(data)) => {
             // Use the given version if it is valid
-            let version = u8::from_str(&secondary_key_version)
-                .map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
-            let argon2_params = Argon2Parameters::from_version(Some(version))?;
+            let argon2_params = Argon2Parameters::from_version(Some(data.secondary_key_version))?;
 
             // Derive the secondary key from the user's passphrase and salt
-            let secondary_key = derive_secondary_key(passphrase, argon2_params, &secondary_key_salt)?;
+            let secondary_key = derive_secondary_key(passphrase, argon2_params, &data.secondary_key_salt)?;
 
             // Attempt to decrypt and return the encrypted main key
-            decrypt_main_key(&secondary_key, &encrypted_main_key, version)?
+            decrypt_main_key(&secondary_key, &data.encrypted_main_key, data.secondary_key_version)?
         },
-        // We don't have all the data required for encryption
-        _ => {
-            error!(target: LOG_TARGET, "Not enough data provided to set up encryption");
-            return Err(WalletStorageError::UnexpectedResult(
-                "Not enough data provided to set up encryption".into(),
-            ));
+
+        // We couldn't get valid key-related data
+        Err(_) => {
+            return Err(WalletStorageError::UnexpectedResult("Unable to parse key fields from database".into()));
         },
     };
 
