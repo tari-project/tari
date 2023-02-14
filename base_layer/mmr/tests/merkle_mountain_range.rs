@@ -24,6 +24,7 @@
 mod support;
 
 use support::{combine_hashes, create_mmr, int_to_hash};
+use tari_mmr::common::LeafIndex;
 
 use crate::support::{MmrTestHasherBlake256, TestMmr};
 
@@ -148,11 +149,11 @@ fn restore_from_leaf_hashes() {
 
     assert!(mmr.assign(leaf_hashes).is_ok());
     assert_eq!(mmr.len(), Ok(7));
-    assert_eq!(mmr.get_leaf_hash(0), Ok(Some(h0)));
-    assert_eq!(mmr.get_leaf_hash(1), Ok(Some(h1)));
-    assert_eq!(mmr.get_leaf_hash(2), Ok(Some(h2)));
-    assert_eq!(mmr.get_leaf_hash(3), Ok(Some(h3)));
-    assert_eq!(mmr.get_leaf_hash(4), Ok(None));
+    assert_eq!(mmr.get_leaf_hash(LeafIndex(0)), Ok(Some(h0)));
+    assert_eq!(mmr.get_leaf_hash(LeafIndex(1)), Ok(Some(h1)));
+    assert_eq!(mmr.get_leaf_hash(LeafIndex(2)), Ok(Some(h2)));
+    assert_eq!(mmr.get_leaf_hash(LeafIndex(3)), Ok(Some(h3)));
+    assert_eq!(mmr.get_leaf_hash(LeafIndex(4)), Ok(None));
 }
 
 #[test]

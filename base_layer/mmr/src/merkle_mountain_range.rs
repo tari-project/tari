@@ -41,6 +41,7 @@ use crate::{
         leaf_index,
         node_index,
         peak_map_height,
+        LeafIndex,
     },
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
@@ -111,7 +112,7 @@ where
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
-    pub fn get_leaf_hash(&self, leaf_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
+    pub fn get_leaf_hash(&self, leaf_index: LeafIndex) -> Result<Option<Hash>, MerkleMountainRangeError> {
         self.get_node_hash(node_index(leaf_index))
     }
 
@@ -125,7 +126,7 @@ where
         let last_leaf_index = min(leaf_index + count - 1, leaf_count);
         let mut leaf_hashes = Vec::with_capacity(last_leaf_index - leaf_index + 1);
         for leaf_index in leaf_index..=last_leaf_index {
-            if let Some(hash) = self.get_leaf_hash(leaf_index)? {
+            if let Some(hash) = self.get_leaf_hash(LeafIndex(leaf_index))? {
                 leaf_hashes.push(hash);
             }
         }
