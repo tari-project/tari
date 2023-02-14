@@ -248,17 +248,34 @@ mod test {
     fn peak_vectors() {
         assert_eq!(find_peaks(0), Vec::<usize>::new());
         assert_eq!(find_peaks(1), vec![0]);
+        assert_eq!(find_peaks(2), vec![0, 1]);
         assert_eq!(find_peaks(3), vec![2]);
         assert_eq!(find_peaks(4), vec![2, 3]);
-        assert_eq!(find_peaks(15), vec![14]);
-        assert_eq!(find_peaks(23), vec![14, 21, 22]);
-        assert_eq!(find_peaks(123), vec![62, 93, 108, 115, 122]);
-        assert_eq!(find_peaks(130), vec![126, 129]);
-        assert_eq!(find_peaks(56), vec![30, 45, 52, 55]);
-        assert_eq!(find_peaks(60), vec![30, 45, 52, 59]);
-        assert_eq!(find_peaks(28), vec![14, 21, 24, 27]);
         assert_eq!(find_peaks(5), vec![2, 3, 4]);
         assert_eq!(find_peaks(6), vec![2, 5]);
+        assert_eq!(find_peaks(7), vec![6]);
+        assert_eq!(find_peaks(8), vec![6, 7]);
+        assert_eq!(find_peaks(9), vec![6, 7, 8]);
+        assert_eq!(find_peaks(10), vec![6, 9]);
+        assert_eq!(find_peaks(11), vec![6, 9, 10]);
+        assert_eq!(find_peaks(12), vec![6, 9, 10, 11]);
+        assert_eq!(find_peaks(13), vec![6, 9, 12]);
+        assert_eq!(find_peaks(14), vec![6, 13]);
+        assert_eq!(find_peaks(15), vec![14]);
+        assert_eq!(find_peaks(16), vec![14, 15]);
+        assert_eq!(find_peaks(17), vec![14, 15, 16]);
+        assert_eq!(find_peaks(18), vec![14, 17]);
+        assert_eq!(find_peaks(19), vec![14, 17, 18]);
+        assert_eq!(find_peaks(20), vec![14, 17, 18, 19]);
+        assert_eq!(find_peaks(21), vec![14, 17, 20]);
+        assert_eq!(find_peaks(22), vec![14, 21]);
+        assert_eq!(find_peaks(23), vec![14, 21, 22]);
+        assert_eq!(find_peaks(24), vec![14, 21, 22, 23]);
+        assert_eq!(find_peaks(28), vec![14, 21, 24, 27]);
+        assert_eq!(find_peaks(56), vec![30, 45, 52, 55]);
+        assert_eq!(find_peaks(60), vec![30, 45, 52, 59]);
+        assert_eq!(find_peaks(123), vec![62, 93, 108, 115, 122]);
+        assert_eq!(find_peaks(130), vec![126, 129]);
     }
 
     #[test]
