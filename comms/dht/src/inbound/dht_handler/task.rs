@@ -292,10 +292,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
-
-        xxxx understand the process of discovering
-
-
         let msg = message
             .success()
             .expect("already checked that this message decrypted successfully");
@@ -346,7 +342,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         nonce: u64,
     ) -> Result<(), DhtInboundError> {
         let response = DiscoveryResponseMessage {
-            node_id: self.node_identity.node_id().to_vec(),
+            public_key: self.node_identity.public_key().to_vec(),
             addresses: self
                 .node_identity
                 .public_addresses()

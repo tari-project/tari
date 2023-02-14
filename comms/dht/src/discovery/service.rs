@@ -235,7 +235,7 @@ impl DhtDiscoveryService {
         public_key: &CommsPublicKey,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<Peer, DhtDiscoveryError> {
-        let node_id = self.validate_raw_node_id(public_key, &discovery_msg.node_id)?;
+        let node_id = NodeId::from_public_key(public_key);
 
         let addresses: Vec<Multiaddr> = discovery_msg
             .addresses

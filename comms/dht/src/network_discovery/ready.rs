@@ -75,6 +75,11 @@ impl DiscoveryReady {
                 return Ok(StateEvent::Idle);
             }
 
+            warn!(
+                target: LOG_TARGET,
+                "DHT - Not enough current peers, choosing random peers to sync with"
+            );
+
             let peers = self
                 .context
                 .peer_manager
@@ -134,7 +139,7 @@ impl DiscoveryReady {
                     cmp::min(stats.num_new_neighbours, self.config().network_discovery.max_sync_peers);
 
                 if stats.has_new_neighbours() {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Last peer sync round found {} new neighbour(s). Attempting to sync from those neighbours",
                         stats.num_new_neighbours
@@ -152,7 +157,7 @@ impl DiscoveryReady {
                         .map(|p| p.node_id)
                         .collect::<Vec<_>>()
                 } else {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Last peer sync round found no new neighbours. Transitioning to OnConnectMode",
                     );
@@ -160,7 +165,7 @@ impl DiscoveryReady {
                 }
             },
             None => {
-                debug!(
+                warn!(
                     target: LOG_TARGET,
                     "No previous round, selecting {} random peers for peer sync",
                     self.config().network_discovery.max_sync_peers,
@@ -179,7 +184,7 @@ impl DiscoveryReady {
         };
 
         if peers.is_empty() {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "No more sync peers after round #{}. Idling...",
                 self.context.num_rounds()

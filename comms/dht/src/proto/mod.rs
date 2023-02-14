@@ -34,6 +34,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -72,7 +73,7 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
     fn from(identity: T) -> Self {
         let node_identity = identity.as_ref();
         Self {
-            node_id: node_identity.node_id().to_vec(),
+            public_key: node_identity.public_key().to_vec(),
             addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
             peer_features: node_identity.features().bits(),
             nonce: OsRng.next_u64(),
@@ -85,8 +86,8 @@ impl fmt::Display for dht::JoinMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "JoinMessage(NodeId = {}, Addresses = {:?}, Features = {:?})",
-            self.node_id.to_hex(),
+            "JoinMessage(PK = {}, Addresses = {:?}, Features = {:?})",
+            self.public_key.to_hex(),
             self.addresses,
             PeerFeatures::from_bits_truncate(self.peer_features),
         )
@@ -99,28 +100,43 @@ impl TryFrom<DiscoveryMessage> for PeerInfo {
     type Error = anyhow::Error;
 
     fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
-        let identity_claim = value
+        let identity_signature = value
             .identity_signature
             .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
             .try_into()?;
 
-        Ok(Self {
-            public_key: value.public_key,
+        let identity_claim = PeerIdentityClaim {
             addresses: value
                 .addresses
                 .iter()
-                .map(|a| PeerInfoAddress {
-                    address: a.clone(),
-                    peer_identity_claim: identity_claim.clone(),
-                })
-                .collect(),
-            peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
-            supported_protocols: value
-                .supported_protocols
-                .into_iter()
-                .map(|b| b.try_into())
+                .map(|a| Multiaddr::try_from(a.clone()))
                 .collect::<Result<_, _>>()?,
-            user_agent: value.user_agent,
+            features: PeerFeatures::from_bits_truncate(value.peer_features),
+            signature: identity_signature,
+            unverified_data: None,
+        };
+
+        Ok(Self {
+            public_key: RistrettoPublicKey::from_bytes(&value.public_key)?,
+            addresses: value
+                .addresses
+                .iter()
+                .map(|a| {
+                    Ok(PeerInfoAddress {
+                        address: Multiaddr::try_from(a.clone())?,
+                        peer_identity_claim: identity_claim.clone(),
+                    })
+                })
+                .collect::<Result<_, Self::Error>>()?,
+            peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
+            // supported_protocols: value
+            //     .supported_protocols
+            //     .into_iter()
+            //     .map(|b| b.try_into())
+            //     .collect::<Result<_, _>>()?
+            supported_protocols: vec![],
+            user_agent: "".to_string(),
+            // user_agent: value.user_agent,
         })
     }
 }

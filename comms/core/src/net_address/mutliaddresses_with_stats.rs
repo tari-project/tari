@@ -65,22 +65,22 @@ impl MultiaddressesWithStats {
     }
 
     pub fn offline_at(&self) -> Option<NaiveDateTime> {
-        let mut latest_offline_at: Option<NaiveDateTime> = None;
+        let mut earliest_offline_at: Option<NaiveDateTime> = None;
         for curr_address in &self.addresses {
             // At least one address is online
             if curr_address.offline_at().is_none() {
                 return None;
             }
-            match latest_offline_at {
-                Some(latest_datetime) => {
-                    if latest_datetime < curr_address.offline_at().unwrap() {
-                        latest_offline_at = curr_address.offline_at();
+            match earliest_offline_at {
+                Some(earliest_datetime) => {
+                    if earliest_datetime > curr_address.offline_at().unwrap() {
+                        earliest_offline_at = curr_address.offline_at();
                     }
                 },
-                None => latest_offline_at = curr_address.offline_at(),
+                None => earliest_offline_at = curr_address.offline_at(),
             }
         }
-        latest_offline_at
+        earliest_offline_at
     }
 
     /// Return the time of last attempted connection to this collection of addresses
