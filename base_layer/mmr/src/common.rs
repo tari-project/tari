@@ -75,8 +75,12 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
             sum_prev_peaks += peak_size;
             num_left -= peak_size;
         }
-        // need to verify that peaks can exist on the same height, in which case
-        // the size doesn't give rise to a complete mmr
+        // need to verify if other peaks exist on the same height, in which case
+        // the size doesn't generate a complete mmr, e.g.
+        //    2
+        //   / \
+        //  0   1   3   4
+        // where we have two peaks at height 0.
         if num_left < peak_size {
             peak_size >>= 1;
         }
