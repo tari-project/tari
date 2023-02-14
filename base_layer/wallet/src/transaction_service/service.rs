@@ -1368,7 +1368,11 @@ where
         .await
     }
 
-    /// Creates a transaction to burn some Tari
+    /// Creates a transaction to burn some Tari. The optional _claim public key_ parameter is used in the challenge of the 
+    corresponding optional _ownership proof_ return value. Burn commitments and ownership proofs will exclusively be 
+    used in the 2nd layer (DAN layer). When such an _ownership proof_ is presented later on as part of some transaction 
+    metadata, the _claim public key_ can be revealed to enable verification of the _ownership proof_ and the transaction 
+    can be signed with the private key corresponding to the claim public key.
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
