@@ -31,6 +31,7 @@ use rand::{
 };
 use support::{create_mmr, create_mutable_mmr, int_to_hash};
 use tari_mmr::{
+    common::LeafIndex,
     functions::{calculate_mmr_root, calculate_pruned_mmr_root, prune_mmr},
     Hash,
 };
@@ -60,8 +61,8 @@ fn pruned_mmrs() {
         assert!(pruned.push(int_to_hash(*size + 1)).is_ok());
         assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
         // But you can only get recent hashes
-        assert_eq!(pruned.get_leaf_hash(*size / 2), Ok(None));
-        assert_eq!(pruned.get_leaf_hash(*size), Ok(Some(new_hash)))
+        assert_eq!(pruned.get_leaf_hash(LeafIndex(*size / 2)), Ok(None));
+        assert_eq!(pruned.get_leaf_hash(LeafIndex(*size)), Ok(Some(new_hash)))
     }
 }
 

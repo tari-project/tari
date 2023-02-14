@@ -32,12 +32,15 @@ use crate::{error::MerkleMountainRangeError, Hash};
 
 const ALL_ONES: usize = std::usize::MAX;
 
+#[derive(Copy, Clone)]
+pub struct LeafIndex(pub usize);
+
 /// Returns the MMR node index derived from the leaf index.
-pub fn node_index(leaf_index: usize) -> usize {
-    if leaf_index == 0 {
+pub fn node_index(leaf_index: LeafIndex) -> usize {
+    if leaf_index.0 == 0 {
         return 0;
     }
-    2 * leaf_index - leaf_index.count_ones() as usize
+    2 * leaf_index.0 - leaf_index.0.count_ones() as usize
 }
 
 /// Returns the leaf index derived from the MMR node index.
@@ -218,14 +221,14 @@ mod test {
 
     #[test]
     fn leaf_to_node_indices() {
-        assert_eq!(node_index(0), 0);
-        assert_eq!(node_index(1), 1);
-        assert_eq!(node_index(2), 3);
-        assert_eq!(node_index(3), 4);
-        assert_eq!(node_index(5), 8);
-        assert_eq!(node_index(6), 10);
-        assert_eq!(node_index(7), 11);
-        assert_eq!(node_index(8), 15);
+        assert_eq!(node_index(LeafIndex(0)), 0);
+        assert_eq!(node_index(LeafIndex(1)), 1);
+        assert_eq!(node_index(LeafIndex(2)), 3);
+        assert_eq!(node_index(LeafIndex(3)), 4);
+        assert_eq!(node_index(LeafIndex(5)), 8);
+        assert_eq!(node_index(LeafIndex(6)), 10);
+        assert_eq!(node_index(LeafIndex(7)), 11);
+        assert_eq!(node_index(LeafIndex(8)), 15);
     }
 
     #[test]
