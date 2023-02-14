@@ -158,6 +158,35 @@ jobs:
             fi
           fi
 
+      - name: Set up QEMU for Docker
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            #name/${{ matrix.builds.image_name }}
+            #ghcr.io/${{ github.repository }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          #username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Login to Docker Image Provider
         uses: docker/login-action@v2
         with:
@@ -165,15 +194,9 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Set up QEMU for Docker
-        uses: docker/setup-qemu-action@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           context: ./tari/
           file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
@@ -189,8 +212,10 @@ jobs:
             APP_EXEC=${{ matrix.builds.app_exec }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
+            ${{ steps.meta.outputs.tags }}
             ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ env.VERSION }}
             ${{ env.TAG_ALIAS }}
+          labels: ${{ steps.meta.outputs.labels }}
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}

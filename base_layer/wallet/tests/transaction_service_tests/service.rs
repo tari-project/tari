@@ -98,7 +98,7 @@ use tari_crypto::{
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -348,7 +348,6 @@ async fn setup_transaction_service_no_comms(
         oms_db,
         output_manager_service_event_publisher.clone(),
         factories.clone(),
-        consensus_manager.clone(),
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
@@ -862,7 +861,7 @@ async fn recover_one_sided_transaction() {
         shutdown.to_signal(),
     )
     .await;
-    let script = script!(PushPubKey(Box::new(bob_node_identity.public_key().clone())));
+    let script = one_sided_payment_script(bob_node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake256>().unwrap().to_vec(),
         private_key: bob_node_identity.secret_key().clone(),
@@ -1394,8 +1393,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
 
-    let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment).await;
 
     alice_ts_interface
@@ -1461,35 +1458,10 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         ))
         .await
         .unwrap();
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-
-    let mut errors = 0;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                if let TransactionEvent::Error(s) = &*event.unwrap() {
-                    if s == &"TransactionProtocolError(TransactionBuildError(ValidationError(\"The transaction is invalid: Signature is invalid: Verifying kernel signature\")))".to_string() {
-                        errors+=1;
-                    }
-                    if errors >= 1 {
-                        break;
-                    }
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(errors >= 1);
 }
 
 #[tokio::test]
 async fn finalize_tx_with_incorrect_pubkey() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
@@ -1559,7 +1531,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .unwrap();
 
     stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
-    stp.finalize(consensus_manager, &factories, None, u64::MAX).unwrap();
+    stp.finalize().unwrap();
     let tx = stp.get_transaction().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -1602,8 +1574,6 @@ async fn finalize_tx_with_incorrect_pubkey() {
 
 #[tokio::test]
 async fn finalize_tx_with_missing_output() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
@@ -1675,7 +1645,7 @@ async fn finalize_tx_with_missing_output() {
         .unwrap();
 
     stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
-    stp.finalize(consensus_manager, &factories, None, u64::MAX).unwrap();
+    stp.finalize().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id.as_u64(),
@@ -2954,7 +2924,6 @@ async fn test_tx_direct_send_behaviour() {
 #[tokio::test]
 async fn test_restarting_transaction_protocols() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     let (alice_connection, _temp_dir) = make_wallet_database_connection(None);
 
@@ -3029,7 +2998,7 @@ async fn test_restarting_transaction_protocols() {
 
     bob_stp.add_single_recipient_info(alice_reply.clone()).unwrap();
 
-    match bob_stp.finalize(consensus_manager, &factories, None, u64::MAX) {
+    match bob_stp.finalize() {
         Ok(_) => (),
         Err(e) => panic!("Should be able to finalize tx: {}", e),
     };

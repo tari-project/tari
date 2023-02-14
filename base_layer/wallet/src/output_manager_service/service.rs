@@ -35,7 +35,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusConstants,
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -68,7 +68,7 @@ use tari_crypto::{
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -97,9 +97,12 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::WalletHasher,
-    WalletOutputEncryptionKeysDomainHasher,
-    WalletOutputRewindKeysDomainHasher,
+    util::one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_rewind_key,
+        stealth_address_script_spending_key,
+    },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -134,7 +137,6 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
-        consensus_manager: ConsensusManager,
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
@@ -161,7 +163,6 @@ where
             connectivity,
             event_publisher,
             master_key_manager: key_manager,
-            consensus_manager,
             consensus_constants,
             shutdown_signal,
             rewind_data,
@@ -1113,11 +1114,7 @@ where
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
             .with_extra(extra)
-            .build_with_reward(
-                self.resources.consensus_manager.clone(),
-                &self.resources.consensus_constants,
-                reward,
-            )?;
+            .build_with_reward(&self.resources.consensus_constants, reward)?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
@@ -1246,12 +1243,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            u64::MAX,
-        )?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1371,7 +1363,6 @@ where
             );
         }
 
-        let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
                 &self.resources.factories,
@@ -1410,12 +1401,7 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1897,12 +1883,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
@@ -2155,12 +2136,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         let value = if has_leftover_change {
             total_split_amount
@@ -2328,12 +2304,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
@@ -2431,7 +2402,6 @@ where
                     script_private_key,
                 );
 
-                let factories = CryptoFactories::default();
                 let mut stp = builder
                     .build(
                         &self.resources.factories,
@@ -2464,12 +2434,7 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize(
-                    self.resources.consensus_manager.clone(),
-                    &factories,
-                    None,
-                    self.last_seen_tip_height.unwrap_or(u64::MAX),
-                )?;
+                stp.finalize()?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2526,7 +2491,6 @@ where
             script_private_key,
         );
 
-        let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
                 &self.resources.factories,
@@ -2557,12 +2521,7 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(
-            self.resources.consensus_manager.clone(),
-            &factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         let tx = stp.take_transaction()?;
 
@@ -2638,16 +2597,13 @@ where
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_bytes(
-                        WalletHasher::new_with_label("stealth_address")
-                            .chain(CommsDHKE::new(&wallet_sk, nonce.as_ref()).as_bytes())
-                            .finalize()
-                            .as_ref(),
-                    )
-                    .unwrap();
+                    let stealth_address_hasher = diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref());
+                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
 
                     // matching spending (public) keys
-                    if &(PublicKey::from_secret_key(&stealth_address_offset) + wallet_pk) != scanned_pk.as_ref() {
+                    let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, wallet_pk);
+                    if &script_spending_key != scanned_pk.as_ref() {
                         continue;
                     }
 
@@ -2793,26 +2749,6 @@ impl fmt::Display for Balance {
         writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
-}
-
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
 }
 
 #[derive(Debug, Clone)]

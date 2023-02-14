@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_consensus_manager, create_unblinded_output, TestParams as TestParamsHelpers},
+        test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
@@ -131,7 +131,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     with_connection: bool,
 ) -> TestOmsService<U> {
     let shutdown = Shutdown::new();
-    let consensus_manager = create_consensus_manager();
     let factories = CryptoFactories::default();
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -176,18 +175,9 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
-    // To create a new seed word sequence, uncomment below
-    // let seed = CipherSeed::new();
-    // use tari_key_manager::mnemonic::MnemonicLanguage;
-    // let mnemonic_seq = seed
-    //     .to_mnemonic(MnemonicLanguage::English, None)
-    //     .expect("Couldn't convert CipherSeed to Mnemonic");
-    // println!("{:?}", mnemonic_seq);
-
     let words = [
-        "scan", "train", "success", "hover", "prepare", "donor", "upgrade", "attitude", "debate", "emotion", "myself",
-        "ladder", "display", "athlete", "welcome", "artist", "home", "punch", "sense", "park", "midnight", "quantum",
-        "bright", "carbon",
+        "scan", "announce", "neither", "belt", "grace", "arch", "sting", "butter", "run", "frost", "debris", "slide",
+        "glory", "nature", "asthma", "fame", "during", "silly", "panda", "picnic", "run", "small", "engage", "pride",
     ];
     let seed_words = SeedWords::new(words.iter().map(|s| Hidden::hide(s.to_string())).collect::<Vec<_>>());
 
@@ -200,7 +190,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
         factories,
-        consensus_manager,
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
@@ -253,7 +242,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     broadcast::Sender<Arc<BaseNodeEvent>>,
 ) {
     let shutdown = Shutdown::new();
-    let consensus_manager = create_consensus_manager();
     let factories = CryptoFactories::default();
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -281,7 +269,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
         factories,
-        consensus_manager,
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),

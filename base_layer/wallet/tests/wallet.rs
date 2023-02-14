@@ -798,18 +798,9 @@ async fn test_recovery_birthday() {
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
 
-    // To create a new seed word sequence, uncomment below
-    // let seed = CipherSeed::new();
-    // use tari_key_manager::mnemonic::MnemonicLanguage;
-    // let mnemonic_seq = seed
-    //     .to_mnemonic(MnemonicLanguage::Spanish, None)
-    //     .expect("Couldn't convert CipherSeed to Mnemonic");
-    // println!("{:?}", mnemonic_seq);
-
     let vec_words: Vec<Hidden<String>> = [
-        "octubre", "rinon", "ameno", "rigido", "verbo", "dosis", "ocaso", "fallo", "tez", "ladron", "entrar", "pedal",
-        "fortuna", "ahogo", "llanto", "mascara", "intuir", "buey", "cubrir", "anillo", "cajon", "entrar", "clase",
-        "latir",
+        "scan", "announce", "neither", "belt", "grace", "arch", "sting", "butter", "run", "frost", "debris", "slide",
+        "glory", "nature", "asthma", "fame", "during", "silly", "panda", "picnic", "run", "small", "engage", "pride",
     ]
     .iter()
     .map(|w| Hidden::hide(w.to_string()))

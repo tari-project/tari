@@ -22,9 +22,7 @@
 
 mod transaction_internal_validator;
 pub use transaction_internal_validator::TransactionInternalConsistencyValidator;
-
 mod transaction_chain_validator;
 pub use transaction_chain_validator::TransactionChainLinkedValidator;
-
 mod transaction_full_validator;
 pub use transaction_full_validator::TransactionFullValidator;

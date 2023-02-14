@@ -624,7 +624,7 @@ pub fn create_sender_transaction_protocol_with(
     });
 
     let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
-    stx_protocol.finalize(rules, &factories, None, u64::MAX)?;
+    stx_protocol.finalize()?;
 
     Ok(stx_protocol)
 }
@@ -634,11 +634,8 @@ pub fn create_sender_transaction_protocol_with(
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let (mut stx_protocol, outputs) = create_stx_protocol(schema);
-    stx_protocol
-        .finalize(rules, &CryptoFactories::default(), None, u64::MAX)
-        .unwrap();
+    stx_protocol.finalize().unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs)
 }

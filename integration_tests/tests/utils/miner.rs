@@ -320,7 +320,7 @@ pub fn generate_coinbase(coinbase_req: GetCoinbaseRequest) -> (TransactionOutput
         .with_script_key(script_private_key)
         .with_nonce(nonce)
         .with_extra(extra)
-        .build_with_reward(consensus_manager.clone(), consensus_constants, reward.into())
+        .build_with_reward(consensus_constants, reward.into())
         .unwrap();
 
     let tx_out = tx.body().outputs().first().unwrap().clone();

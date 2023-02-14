@@ -22,26 +22,22 @@
 
 use std::default::Default;
 
-use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, Signature};
-use tari_core::{
-    consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroTari,
-        test_helpers::TestParams,
-        transaction_components::{
-            KernelBuilder,
-            Transaction,
-            TransactionBuilder,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            UnblindedOutput,
-            UnblindedOutputBuilder,
-        },
-        transaction_protocol::TransactionMetadata,
-        CryptoFactories,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    test_helpers::TestParams,
+    transaction_components::{
+        KernelBuilder,
+        Transaction,
+        TransactionBuilder,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        UnblindedOutput,
+        UnblindedOutputBuilder,
     },
+    transaction_protocol::TransactionMetadata,
+    CryptoFactories,
 };
 use tari_crypto::{
     keys::PublicKey,
@@ -124,10 +120,7 @@ impl TestTransactionBuilder {
             .add_script_offset(script_offset_pvt.clone())
             .with_kernel(kernel.clone());
 
-        let rules = ConsensusManager::builder(Network::LocalNet).build();
-        let tx = tx_builder
-            .build(rules, &self.factories, None, self.inputs_max_height)
-            .unwrap();
+        let tx = tx_builder.build().unwrap();
         (tx, output.1)
     }
 

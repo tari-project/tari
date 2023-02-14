@@ -82,14 +82,14 @@ appenders:
 
 # root (to base_layer)
 root:
-  level: info
+  level: debug
   appenders:
     - other
 
 loggers:
   # base_layer
   wallet:
-    level: info
+    level: debug
     appenders:
       - base_layer
       - stdout

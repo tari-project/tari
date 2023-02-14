@@ -44,6 +44,8 @@ pub enum ValidationError {
     BlockError(#[from] BlockValidationError),
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
+    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
+    BlockTooLarge { actual_weight: u64, max_weight: u64 },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
     #[error("Contains an unknown input")]

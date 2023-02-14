@@ -41,7 +41,6 @@ use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::BlockValidationError,
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
@@ -59,6 +58,8 @@ use crate::{
     validation::{
         helpers::{
             check_permitted_output_types,
+            check_tari_script_byte_size,
+            is_all_unique_and_sorted,
             validate_input_version,
             validate_kernel_version,
             validate_output_version,
@@ -108,8 +109,17 @@ impl AggregateBodyInternalConsistencyValidator {
     ) -> Result<(), ValidationError> {
         let total_reward = total_reward.unwrap_or(MicroTari::zero());
 
-        // old internal validatior
+        // old internal validator
         verify_kernel_signatures(body)?;
+
+        check_script_size(
+            body,
+            self.consensus_manager
+                .consensus_constants(height)
+                .get_max_script_byte_size(),
+        )?;
+
+        check_sorting_and_duplicates(body)?;
 
         let total_offset = self.factories.commitment.commit_value(tx_offset, total_reward.0);
         validate_kernel_sum(body, total_offset, &self.factories.commitment)?;
@@ -154,6 +164,38 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
             e
         })?;
     }
+    Ok(())
+}
+
+/// Verify that the TariScript is not larger than the max size
+fn check_script_size(body: &AggregateBody, max_script_size: usize) -> Result<(), ValidationError> {
+    for output in body.outputs() {
+        check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "output ({}) script size exceeded max size {:?}.", output, e
+            );
+            e
+        })?;
+    }
+    Ok(())
+}
+
+// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a aggregated
+// body
+fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
+    if !is_all_unique_and_sorted(body.inputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateInput);
+    }
+
+    if !is_all_unique_and_sorted(body.outputs()) {
+        return Err(ValidationError::UnsortedOrDuplicateOutput);
+    }
+
+    if !is_all_unique_and_sorted(body.kernels()) {
+        return Err(ValidationError::UnsortedOrDuplicateKernel);
+    }
+
     Ok(())
 }
 
@@ -289,18 +331,17 @@ fn check_weight(
 
         Ok(())
     } else {
-        Err(BlockValidationError::BlockTooLarge {
+        Err(ValidationError::BlockTooLarge {
             actual_weight: block_weight,
             max_weight,
-        }
-        .into())
+        })
     }
 }
 
 /// Checks that all transactions (given by their kernels) are spendable at the given height
-fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), BlockValidationError> {
+fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), ValidationError> {
     if kernels.iter().any(|k| k.lock_height > height) {
-        return Err(BlockValidationError::MaturityError);
+        return Err(ValidationError::MaturityError);
     }
     Ok(())
 }
@@ -424,7 +465,7 @@ mod test {
             kernel.lock_height = 2;
             assert!(matches!(
                 check_kernel_lock_height(1, &[kernel.clone()]),
-                Err(BlockValidationError::MaturityError)
+                Err(ValidationError::MaturityError)
             ));
 
             check_kernel_lock_height(2, &[kernel.clone()]).unwrap();

@@ -148,39 +148,39 @@ fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &ApplicationConfig,
-    arg_password: SafePassword,
+    existing: SafePassword,
     shutdown_signal: ShutdownSignal,
     non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
-    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal, non_interactive_mode).await?;
+    let mut wallet = init_wallet(
+        config,
+        existing.clone(),
+        None,
+        None,
+        shutdown_signal,
+        non_interactive_mode,
+    )
+    .await?;
 
-    let passphrase = prompt_password("New wallet password: ")?;
+    let new = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
 
-    if passphrase.reveal() != confirmed.reveal() {
+    if new.reveal() != confirmed.reveal() {
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
-
-    // wallet
-    //     .remove_encryption()
-    //     .await
-    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
-
-    // wallet
-    //     .apply_encryption(passphrase)
-    //     .await
-    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
     println!("Passwords match.");
 
     // If the passphrase is weak, let the user know
-    display_password_feedback(&passphrase);
+    display_password_feedback(&new);
 
-    // TODO: remove this warning when this functionality is added
-    println!();
-    println!("WARNING: Password change functionality is not yet completed, so continue to use your existing password!");
-
-    Ok(())
+    // Use the existing and new passphrases to attempt to change the wallet passphrase
+    wallet.db.change_passphrase(&existing, &new).map_err(|e| match e {
+        WalletStorageError::InvalidPassphrase => {
+            ExitError::new(ExitCode::IncorrectOrEmptyPassword, "Your password was not changed.")
+        },
+        _ => ExitError::new(ExitCode::DatabaseError, "Your password was not changed."),
+    })
 }
 
 /// Populates the PeerConfig struct from:
@@ -663,7 +663,7 @@ pub(crate) fn boot_with_password(
         },
         WalletBoot::Existing | WalletBoot::Recovery => {
             debug!(target: LOG_TARGET, "Prompting for password.");
-            prompt_password("Prompt wallet password: ")?
+            prompt_password("Enter wallet password: ")?
         },
     };
 
