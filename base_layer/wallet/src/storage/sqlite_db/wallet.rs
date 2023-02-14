@@ -104,13 +104,13 @@ impl Argon2Parameters {
     }
 }
 
-/// A structure to hold key-related database field data, to make atomic operations cleaner
-pub struct DatabaseKeyFields {
+/// A structure to hold encryption-related database field data, to make atomic operations cleaner
+pub struct DatabaseEncryptionFields {
     secondary_key_version: u8,   // the encryption parameter version
     secondary_key_salt: String,  // the high-entropy salt used to derive the secondary key
     encrypted_main_key: Vec<u8>, // the main key, encrypted with the secondary key
 }
-impl DatabaseKeyFields {
+impl DatabaseEncryptionFields {
     /// Read and parse field data from the database atomically
     pub fn read(connection: &SqliteConnection) -> Result<Option<Self>, WalletStorageError> {
         let mut secondary_key_version: Option<String> = None;
@@ -143,7 +143,7 @@ impl DatabaseKeyFields {
                 let encrypted_main_key =
                     from_hex(&encrypted_main_key).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
 
-                Ok(Some(DatabaseKeyFields {
+                Ok(Some(DatabaseEncryptionFields {
                     secondary_key_version,
                     secondary_key_salt,
                     encrypted_main_key,
@@ -523,7 +523,7 @@ impl WalletBackend for WalletSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
 
         // Get the existing key-related data so we can decrypt the main key
-        match DatabaseKeyFields::read(&conn) {
+        match DatabaseEncryptionFields::read(&conn) {
             // Key-related data was present and valid
             Ok(Some(data)) => {
                 // Use the given version if it is valid
@@ -546,7 +546,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 let new_encrypted_main_key = encrypt_main_key(&new_secondary_key, &main_key, new_argon2_params.id)?;
 
                 // Store the new key-related fields
-                DatabaseKeyFields {
+                DatabaseEncryptionFields {
                     secondary_key_version: new_argon2_params.id,
                     secondary_key_salt: new_secondary_key_salt,
                     encrypted_main_key: new_encrypted_main_key,
@@ -626,7 +626,7 @@ fn get_db_cipher(
     let conn = database_connection.get_pooled_connection()?;
 
     // Either set up a new main key, or decrypt it using existing data
-    let main_key = match DatabaseKeyFields::read(&conn) {
+    let main_key = match DatabaseEncryptionFields::read(&conn) {
         // Encryption is not set up yet
         Ok(None) => {
             // Generate a high-entropy main key
@@ -645,7 +645,7 @@ fn get_db_cipher(
             let encrypted_main_key = encrypt_main_key(&secondary_key, &main_key, argon2_params.id)?;
 
             // Store the key-related fields
-            DatabaseKeyFields {
+            DatabaseEncryptionFields {
                 secondary_key_version: argon2_params.id,
                 secondary_key_salt,
                 encrypted_main_key,
