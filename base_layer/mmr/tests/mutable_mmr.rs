@@ -24,7 +24,7 @@
 mod support;
 
 use croaring::Bitmap;
-use tari_mmr::{Hash, HashSlice};
+use tari_mmr::{common::LeafIndex, Hash, HashSlice};
 use tari_utilities::hex::Hex;
 
 use crate::support::{create_mmr, int_to_hash, MmrTestHasherBlake256, MutableTestMmr};
@@ -165,12 +165,12 @@ fn restore_from_leaf_nodes() {
 
     // Request state of MMR with single call
     let leaf_count = mmr.get_leaf_count();
-    let mmr_state1 = mmr.to_leaf_nodes(0, leaf_count).unwrap();
+    let mmr_state1 = mmr.to_leaf_nodes(LeafIndex(0), leaf_count).unwrap();
 
     // Request state of MMR with multiple calls
-    let mut mmr_state2 = mmr.to_leaf_nodes(0, 3).unwrap();
-    mmr_state2.combine(mmr.to_leaf_nodes(3, 3).unwrap());
-    mmr_state2.combine(mmr.to_leaf_nodes(6, leaf_count - 6).unwrap());
+    let mut mmr_state2 = mmr.to_leaf_nodes(LeafIndex(0), 3).unwrap();
+    mmr_state2.combine(mmr.to_leaf_nodes(LeafIndex(3), 3).unwrap());
+    mmr_state2.combine(mmr.to_leaf_nodes(LeafIndex(6), leaf_count - 6).unwrap());
     assert_eq!(mmr_state1, mmr_state2);
 
     // Change the state more before the restore
@@ -182,6 +182,6 @@ fn restore_from_leaf_nodes() {
     // Restore from compact state
     assert!(mmr.assign(mmr_state1).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr_root);
-    let restored_mmr_state = mmr.to_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    let restored_mmr_state = mmr.to_leaf_nodes(LeafIndex(0), mmr.get_leaf_count()).unwrap();
     assert_eq!(restored_mmr_state, mmr_state2);
 }

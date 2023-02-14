@@ -120,7 +120,7 @@ fn validate() {
 #[test]
 fn restore_from_leaf_hashes() {
     let mut mmr = TestMmr::new(Vec::default());
-    let leaf_hashes = mmr.get_leaf_hashes(0, 1).unwrap();
+    let leaf_hashes = mmr.get_leaf_hashes(LeafIndex(0), 1).unwrap();
     assert_eq!(leaf_hashes.len(), 0);
 
     let h0 = int_to_hash(0);
@@ -135,8 +135,8 @@ fn restore_from_leaf_hashes() {
 
     // Construct MMR state from multiple leaf hash queries.
     let leaf_count = mmr.get_leaf_count().unwrap();
-    let mut leaf_hashes = mmr.get_leaf_hashes(0, 2).unwrap();
-    leaf_hashes.append(&mut mmr.get_leaf_hashes(2, leaf_count - 2).unwrap());
+    let mut leaf_hashes = mmr.get_leaf_hashes(LeafIndex(0), 2).unwrap();
+    leaf_hashes.append(&mut mmr.get_leaf_hashes(LeafIndex(2), leaf_count - 2).unwrap());
     assert_eq!(leaf_hashes.len(), 4);
     assert_eq!(leaf_hashes[0], h0);
     assert_eq!(leaf_hashes[1], h1);
