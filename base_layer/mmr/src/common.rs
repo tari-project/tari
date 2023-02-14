@@ -72,7 +72,11 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
             sum_prev_peaks += peak_size;
             num_left -= peak_size;
         }
-        peak_size >>= 1;
+        // need to verify that peaks can exist on the same height, in which case
+        // the size doesn't give rise to a complete mmr
+        if num_left < peak_size {
+            peak_size >>= 1;
+        }
     }
     if num_left > 0 {
         return vec![];
@@ -248,6 +252,13 @@ mod test {
         assert_eq!(find_peaks(4), vec![2, 3]);
         assert_eq!(find_peaks(15), vec![14]);
         assert_eq!(find_peaks(23), vec![14, 21, 22]);
+        assert_eq!(find_peaks(123), vec![62, 93, 108, 115, 122]);
+        assert_eq!(find_peaks(130), vec![126, 129]);
+        assert_eq!(find_peaks(56), vec![30, 45, 52, 55]);
+        assert_eq!(find_peaks(60), vec![30, 45, 52, 59]);
+        assert_eq!(find_peaks(28), vec![14, 21, 24, 27]);
+        assert_eq!(find_peaks(5), vec![2, 3, 4]);
+        assert_eq!(find_peaks(6), vec![2, 5]);
     }
 
     #[test]
@@ -349,9 +360,9 @@ mod test {
     fn find_peaks_when_num_left_gt_zero() {
         assert!(find_peaks(0).is_empty());
         assert_eq!(find_peaks(1), vec![0]);
-        assert!(find_peaks(2).is_empty());
+        assert_eq!(find_peaks(2), vec![0, 1]);
         assert_eq!(find_peaks(3), vec![2]);
         assert_eq!(find_peaks(usize::MAX), [18446744073709551614].to_vec());
-        assert_eq!(find_peaks(usize::MAX - 1).len(), 0);
+        assert_eq!(find_peaks(usize::MAX - 1).len(), 2);
     }
 }
