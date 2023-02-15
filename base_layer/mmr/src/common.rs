@@ -84,10 +84,12 @@ pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
         //   / \
         //  0   1   3   4
         // is invalid, as it can be completed to form
+        //       6
+        //     /    \
         //    2      5
         //  /  \    /  \
         // 0    1  3    4
-        // which is of size 6 (with peaks [2, 5])
+        // which is of size 7 (with single peak [6])
         return None;
     }
     Some(peaks)
