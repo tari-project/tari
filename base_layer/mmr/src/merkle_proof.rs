@@ -137,7 +137,7 @@ impl MerkleProof {
 
         // Get the peaks of the merkle trees, which are bagged together to form the root
         // For the proof, we must leave out the local root for the candidate node
-        let peaks = find_peaks(mmr_size);
+        let peaks = find_peaks(mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         let mut peak_hashes = Vec::with_capacity(peaks.len() - 1);
         for peak_index in peaks {
             if peak_index != peak_pos {
@@ -174,7 +174,7 @@ impl MerkleProof {
     ) -> Result<(), MerkleProofError> {
         let mut proof = self.clone();
         // calculate the peaks once as these are based on overall MMR size (and will not change)
-        let peaks = find_peaks(self.mmr_size);
+        let peaks = find_peaks(self.mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         proof.verify_consume::<D>(root, hash, pos, &peaks)
     }
 

@@ -149,7 +149,8 @@ where
             self.hashes
                 .len()
                 .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?,
-        );
+        )
+        .ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         Ok(peaks
             .into_iter()
             .map(|i| {

@@ -61,9 +61,9 @@ pub fn is_leaf(pos: usize) -> bool {
 /// Gets the postorder traversal index of all peaks in a MMR given its size.
 /// Starts with the top peak, which is always on the left side of the range, and navigates toward lower siblings
 /// toward the right  of the range.
-pub fn find_peaks(size: usize) -> Vec<usize> {
+pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
     if size == 0 {
-        return vec![];
+        return Some(vec![]);
     }
     let mut peak_size = ALL_ONES >> size.leading_zeros();
     let mut num_left = size;
@@ -75,20 +75,22 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
             sum_prev_peaks += peak_size;
             num_left -= peak_size;
         }
-        // need to verify if other peaks exist on the same height, in which case
-        // the size doesn't generate a complete mmr, e.g.
+        peak_size >>= 1;
+    }
+    if num_left > 0 {
+        // This happens, whenever the MMR is not valid, that is, all nodes are not
+        // fully spawned. For example, in this case
         //    2
         //   / \
         //  0   1   3   4
-        // where we have two peaks at height 0.
-        if num_left < peak_size {
-            peak_size >>= 1;
-        }
+        // is invalid, as it can be completed to form
+        //    2      5
+        //  /  \    /  \
+        // 0    1  3    4
+        // which is of size 6 (with peaks [2, 5])
+        return None;
     }
-    if num_left > 0 {
-        return vec![];
-    }
-    peaks
+    Some(peaks)
 }
 
 /// Calculates the positions of the (parent, sibling) of the node at the provided position.
@@ -253,36 +255,39 @@ mod test {
 
     #[test]
     fn peak_vectors() {
-        assert_eq!(find_peaks(0), Vec::<usize>::new());
-        assert_eq!(find_peaks(1), vec![0]);
-        assert_eq!(find_peaks(2), vec![0, 1]);
-        assert_eq!(find_peaks(3), vec![2]);
-        assert_eq!(find_peaks(4), vec![2, 3]);
-        assert_eq!(find_peaks(5), vec![2, 3, 4]);
-        assert_eq!(find_peaks(6), vec![2, 5]);
-        assert_eq!(find_peaks(7), vec![6]);
-        assert_eq!(find_peaks(8), vec![6, 7]);
-        assert_eq!(find_peaks(9), vec![6, 7, 8]);
-        assert_eq!(find_peaks(10), vec![6, 9]);
-        assert_eq!(find_peaks(11), vec![6, 9, 10]);
-        assert_eq!(find_peaks(12), vec![6, 9, 10, 11]);
-        assert_eq!(find_peaks(13), vec![6, 9, 12]);
-        assert_eq!(find_peaks(14), vec![6, 13]);
-        assert_eq!(find_peaks(15), vec![14]);
-        assert_eq!(find_peaks(16), vec![14, 15]);
-        assert_eq!(find_peaks(17), vec![14, 15, 16]);
-        assert_eq!(find_peaks(18), vec![14, 17]);
-        assert_eq!(find_peaks(19), vec![14, 17, 18]);
-        assert_eq!(find_peaks(20), vec![14, 17, 18, 19]);
-        assert_eq!(find_peaks(21), vec![14, 17, 20]);
-        assert_eq!(find_peaks(22), vec![14, 21]);
-        assert_eq!(find_peaks(23), vec![14, 21, 22]);
-        assert_eq!(find_peaks(24), vec![14, 21, 22, 23]);
-        assert_eq!(find_peaks(28), vec![14, 21, 24, 27]);
-        assert_eq!(find_peaks(56), vec![30, 45, 52, 55]);
-        assert_eq!(find_peaks(60), vec![30, 45, 52, 59]);
-        assert_eq!(find_peaks(123), vec![62, 93, 108, 115, 122]);
-        assert_eq!(find_peaks(130), vec![126, 129]);
+        assert_eq!(find_peaks(0), Some(Vec::<usize>::new()));
+        assert_eq!(find_peaks(1), Some(vec![0]));
+        assert_eq!(find_peaks(2), None);
+        assert_eq!(find_peaks(3), Some(vec![2]));
+        assert_eq!(find_peaks(4), Some(vec![2, 3]));
+        assert_eq!(find_peaks(5), None);
+        assert_eq!(find_peaks(6), None);
+        assert_eq!(find_peaks(7), Some(vec![6]));
+        assert_eq!(find_peaks(8), Some(vec![6, 7]));
+        assert_eq!(find_peaks(9), None);
+        assert_eq!(find_peaks(10), Some(vec![6, 9]));
+        assert_eq!(find_peaks(11), Some(vec![6, 9, 10]));
+        assert_eq!(find_peaks(12), None);
+        assert_eq!(find_peaks(13), None);
+        assert_eq!(find_peaks(14), None);
+        assert_eq!(find_peaks(15), Some(vec![14]));
+        assert_eq!(find_peaks(16), Some(vec![14, 15]));
+        assert_eq!(find_peaks(17), None);
+        assert_eq!(find_peaks(18), Some(vec![14, 17]));
+        assert_eq!(find_peaks(19), Some(vec![14, 17, 18]));
+        assert_eq!(find_peaks(20), None);
+        assert_eq!(find_peaks(21), None);
+        assert_eq!(find_peaks(22), Some(vec![14, 21]));
+        assert_eq!(find_peaks(23), Some(vec![14, 21, 22]));
+        assert_eq!(find_peaks(24), None);
+        assert_eq!(find_peaks(25), Some(vec![14, 21, 24]));
+        assert_eq!(find_peaks(26), Some(vec![14, 21, 24, 25]));
+        assert_eq!(find_peaks(27), None);
+        assert_eq!(find_peaks(28), None);
+        assert_eq!(find_peaks(56), Some(vec![30, 45, 52, 55]));
+        assert_eq!(find_peaks(60), None);
+        assert_eq!(find_peaks(123), None);
+        assert_eq!(find_peaks(130), Some(vec![126, 129]));
     }
 
     #[test]
@@ -382,11 +387,11 @@ mod test {
 
     #[test]
     fn find_peaks_when_num_left_gt_zero() {
-        assert!(find_peaks(0).is_empty());
-        assert_eq!(find_peaks(1), vec![0]);
-        assert_eq!(find_peaks(2), vec![0, 1]);
-        assert_eq!(find_peaks(3), vec![2]);
-        assert_eq!(find_peaks(usize::MAX), [18446744073709551614].to_vec());
-        assert_eq!(find_peaks(usize::MAX - 1).len(), 2);
+        assert!(find_peaks(0).unwrap().is_empty());
+        assert_eq!(find_peaks(1).unwrap(), vec![0]);
+        assert_eq!(find_peaks(2), None);
+        assert_eq!(find_peaks(3).unwrap(), vec![2]);
+        assert_eq!(find_peaks(usize::MAX).unwrap(), [18446744073709551614].to_vec());
+        assert_eq!(find_peaks(usize::MAX - 1), None);
     }
 }
