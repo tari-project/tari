@@ -42,7 +42,6 @@ use super::{
 };
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
     utils::datetime::{format_local_datetime, is_max_datetime, safe_future_datetime_from_duration},

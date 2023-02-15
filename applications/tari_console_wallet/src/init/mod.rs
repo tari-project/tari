@@ -404,7 +404,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
     let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
-    let address = Multiaddr::from_str(&identity.public_addresses.iter().next()?).ok()?;
+    let address = Multiaddr::from_str(identity.public_addresses.first()?).ok()?;
     debug!(
         target: LOG_TARGET,
         "Local base node found with pk={} and addr={}",

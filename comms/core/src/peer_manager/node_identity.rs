@@ -197,7 +197,7 @@ impl NodeIdentity {
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {
-        let mut peer = Peer::new(
+        let peer = Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(self.public_addresses(), &PeerAddressSource::Config),

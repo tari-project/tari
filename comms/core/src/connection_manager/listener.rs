@@ -60,7 +60,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
-    peer_manager::{NodeIdentity, PeerFeatures},
+    peer_manager::NodeIdentity,
     protocol::ProtocolId,
     transports::Transport,
     utils::multiaddr::multiaddr_to_socketaddr,
@@ -261,7 +261,7 @@ where
                             log_if_error!(
                                 target: LOG_TARGET,
                                 conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn))
+                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn.into()))
                                     .await,
                                 "Failed to publish event because '{error}'",
                             );
@@ -390,7 +390,6 @@ where
             known_peer,
             authenticated_public_key,
             &peer_identity,
-            None,
             config.allow_test_addresses,
         )
         .await?;

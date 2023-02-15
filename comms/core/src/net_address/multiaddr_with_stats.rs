@@ -13,12 +13,8 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::PublicKey;
 
-use crate::{
-    peer_manager::{IdentitySignature, PeerIdentityClaim},
-    types::CommsPublicKey,
-};
+use crate::{peer_manager::PeerIdentityClaim, types::CommsPublicKey};
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;

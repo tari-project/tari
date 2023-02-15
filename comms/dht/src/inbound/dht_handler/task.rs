@@ -22,7 +22,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    str::FromStr,
     sync::Arc,
 };
 
@@ -43,7 +42,6 @@ use tari_comms::{
     },
     pipeline::PipelineError,
     types::CommsPublicKey,
-    validate_addresses,
     OrNotFound,
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -205,7 +203,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let peer_identity_claim = PeerIdentityClaim::new(addresses.clone(), features, identity_signature, None);
 
-        let mut new_peer = Peer::new(
+        let new_peer = Peer::new(
             authenticated_pk,
             node_id.clone(),
             MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::FromJoinMessage {

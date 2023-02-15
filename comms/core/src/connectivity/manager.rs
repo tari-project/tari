@@ -609,7 +609,7 @@ impl ConnectivityManagerActor {
 
         let old_status = self.pool.set_status(node_id, new_status);
         if let Some(conn) = connection {
-            new_status = self.pool.insert_connection(conn);
+            new_status = self.pool.insert_connection(*conn);
         }
         if old_status != new_status {
             debug!(
@@ -625,7 +625,7 @@ impl ConnectivityManagerActor {
             (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
                 Some(conn) => {
                     self.mark_peer_succeeded(node_id.clone());
-                    self.publish_event(ConnectivityEvent::PeerConnected(conn));
+                    self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
                 },
                 None => unreachable!(
                     "Connection transitioning to CONNECTED state must always have a connection set i.e. \

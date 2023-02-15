@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    net::Ipv6Addr,
-};
+use std::{convert::TryInto, net::Ipv6Addr};
 
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -32,8 +29,7 @@ use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
     net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim},
-    proto::identity::PeerIdentityMsg,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerIdentityClaim},
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
     types::CommsPublicKey,
@@ -79,7 +75,7 @@ pub(super) async fn validate_peer_identity(
     }
 
     if !peer_identity.signature.is_valid(
-        &authenticated_public_key,
+        authenticated_public_key,
         peer_identity.features,
         &peer_identity.addresses,
     ) {
@@ -104,10 +100,17 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
     peer_identity: &PeerIdentityClaim,
-    dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
 ) -> Result<NodeId, ConnectionManagerError> {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
+
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        peer_identity.addresses.clone(),
+        &PeerAddressSource::FromPeerConnection {
+            peer_identity_claim: peer_identity.clone(),
+        },
+    );
+    validate_addresses_and_source(&addresses, &authenticated_public_key, allow_test_addrs)?;
 
     // Note: the peer will be merged in the db if it already exists
     let peer = match known_peer {
@@ -121,12 +124,7 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 .update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.clone(),
                 });
-            // peer.set_offline(false);
-            // Don't add an unsigned address
-            // if let Some(addr) = dialed_addr {
-            //     peer.addresses.add_address(&addr);
-            //     peer.addresses.mark_last_seen_now(addr);
-            // }
+
             peer.features = peer_identity.features;
             peer.supported_protocols = peer_identity.supported_protocols();
             peer.user_agent = peer_identity.user_agent().unwrap_or_default();
@@ -139,7 +137,7 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 "Peer '{}' does not exist in peer list. Adding.",
                 peer_node_id.short_str()
             );
-            let mut new_peer = Peer::new(
+            Peer::new(
                 authenticated_public_key.clone(),
                 peer_node_id.clone(),
                 MultiaddressesWithStats::from_addresses_with_source(
@@ -152,11 +150,7 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 peer_identity.features,
                 peer_identity.supported_protocols(),
                 peer_identity.user_agent().unwrap_or_default(),
-            );
-            if let Some(addr) = dialed_addr {
-                new_peer.addresses.mark_last_seen_now(addr);
-            }
-            new_peer
+            )
         },
     };
 

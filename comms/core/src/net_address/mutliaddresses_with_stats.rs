@@ -11,10 +11,7 @@ use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats},
-    peer_manager::PeerIdentityClaim,
-};
+use crate::net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
@@ -68,6 +65,7 @@ impl MultiaddressesWithStats {
         let mut earliest_offline_at: Option<NaiveDateTime> = None;
         for curr_address in &self.addresses {
             // At least one address is online
+            #[allow(clippy::question_mark)]
             if curr_address.offline_at().is_none() {
                 return None;
             }
@@ -126,7 +124,7 @@ impl MultiaddressesWithStats {
             .collect();
 
         let to_add = addresses
-            .into_iter()
+            .iter()
             .filter(|addr| !self.addresses.iter().any(|a| &a.address() == addr))
             .collect::<Vec<_>>();
 
@@ -157,7 +155,7 @@ impl MultiaddressesWithStats {
     pub fn merge(&mut self, other: &MultiaddressesWithStats) {
         for addr in &other.addresses {
             if let Some(existing) = self.find_address_mut(addr.address()) {
-                existing.merge(&addr);
+                existing.merge(addr);
             } else {
                 self.addresses.push(addr.clone());
             }

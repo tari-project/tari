@@ -67,10 +67,8 @@ impl CommandContext {
                 if peer.is_seed() {
                     s.push("SEED".to_string());
                 }
-                if peer.is_offline() {
-                    if !peer.is_banned() {
-                        s.push("OFFLINE".to_string());
-                    }
+                if peer.is_offline() && !peer.is_banned() {
+                    s.push("OFFLINE".to_string());
                 }
 
                 if let Some(dt) = peer.banned_until() {

@@ -25,12 +25,8 @@ use std::convert::{TryFrom, TryInto};
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use tari_comms::{
-    connection_manager::{validate_address_and_source, validate_addresses_and_source},
     connectivity::ConnectivityError,
-    multiaddr::Multiaddr,
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerFlags},
-    utils::multiaddr::multiaddr_to_socketaddr,
+    peer_manager::{NodeDistance, NodeId, PeerFeatures},
     PeerConnection,
     PeerManager,
 };
@@ -41,7 +37,7 @@ use super::{
 };
 use crate::{
     peer_validator::{PeerValidator, PeerValidatorError},
-    proto::{common, rpc::GetPeersRequest},
+    proto::rpc::GetPeersRequest,
     rpc,
     rpc::PeerInfo,
     DhtConfig,
@@ -223,16 +219,6 @@ impl Discovering {
                     target: LOG_TARGET,
                     "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
                 );
-                // If we ban the peer, then they should actually verify the signature everytime they send it
-                // I think it's safer to rather ignore the bad address and carry on.
-                // self.context
-                //     .connectivity
-                //     .ban_peer_until(
-                //         sync_peer.clone(),
-                //         self.context.config.ban_duration,
-                //         format!("Network discovery peer sent invalid peer '{}'. {}", node_id, err),
-                //     )
-                //     .await?;
                 Err(err.into())
             },
         }

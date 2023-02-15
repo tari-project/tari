@@ -24,7 +24,7 @@ use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
 use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
-use tokio::{sync::RwLock, task};
+use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -158,7 +158,7 @@ impl PeerManager {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
-                    MultiaddressesWithStats::from_addresses_with_source(addresses, &source),
+                    MultiaddressesWithStats::from_addresses_with_source(addresses, source),
                     PeerFlags::default(),
                     peer_features,
                     Default::default(),

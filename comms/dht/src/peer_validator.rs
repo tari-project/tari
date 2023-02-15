@@ -22,11 +22,10 @@
 
 use log::*;
 use tari_comms::{
-    connection_manager::{validate_address_and_source, validate_addresses_and_source},
+    connection_manager::validate_address_and_source,
     net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
-    validate_addresses,
     PeerManager,
 };
 

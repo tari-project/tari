@@ -39,18 +39,18 @@ impl<K: Eq + Hash, V, DS: KeyValueStore<K, V>> CachedStore<K, V, DS> {
     }
 
     fn ensure_cache_is_filled(&self) -> Result<(), KeyValStoreError> {
-        let empty_check_guard = self.cache.read().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let empty_check_guard = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         if empty_check_guard.is_empty() {
             // Drop here or we can't get a read lock
             drop(empty_check_guard);
-            let mut guard = self.cache.write().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+            let mut guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
             // fill cache
             self.actual_store.for_each(|item| match item {
                 Ok((k, v)) => {
                     guard.insert(k, v);
                     IterationResult::Continue
                 },
-                Err(e) => IterationResult::Break,
+                Err(_) => IterationResult::Break,
             })?;
         }
         Ok(())
@@ -62,7 +62,7 @@ where DS: KeyValueStore<K, V>
 {
     fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.ensure_cache_is_filled()?;
-        let mut guard = self.cache.write().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let mut guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         guard.insert(key.clone(), value.clone());
         drop(guard);
         self.actual_store.insert(key, value)?;
@@ -71,7 +71,7 @@ where DS: KeyValueStore<K, V>
 
     fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError> {
         self.ensure_cache_is_filled()?;
-        let read_lock = self.cache.read().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let read_lock = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         Ok(read_lock.get(key).cloned())
     }
 
@@ -87,7 +87,7 @@ where DS: KeyValueStore<K, V>
 
     fn size(&self) -> Result<usize, KeyValStoreError> {
         self.ensure_cache_is_filled()?;
-        let read_guard = self.cache.read().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let read_guard = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         Ok(read_guard.len())
     }
 
@@ -97,7 +97,7 @@ where DS: KeyValueStore<K, V>
         F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult,
     {
         self.ensure_cache_is_filled()?;
-        let read_guard = self.cache.read().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let read_guard = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         let vec = read_guard
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -111,13 +111,13 @@ where DS: KeyValueStore<K, V>
 
     fn exists(&self, key: &K) -> Result<bool, KeyValStoreError> {
         self.ensure_cache_is_filled()?;
-        let read_guard = self.cache.read().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let read_guard = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         Ok(read_guard.contains_key(key))
     }
 
     fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
         self.ensure_cache_is_filled()?;
-        let mut write_guard = self.cache.write().map_err(|e| KeyValStoreError::PoisonedAccess)?;
+        let mut write_guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         write_guard.remove(key);
         drop(write_guard);
         self.actual_store.delete(key)

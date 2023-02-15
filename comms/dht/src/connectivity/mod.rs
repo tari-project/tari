@@ -584,7 +584,7 @@ impl DhtConnectivity {
         debug!(target: LOG_TARGET, "Connectivity event: {}", event);
         match event {
             PeerConnected(conn) => {
-                self.handle_new_peer_connected(conn).await?;
+                self.handle_new_peer_connected(*conn).await?;
             },
             PeerConnectFailed(node_id) => {
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);

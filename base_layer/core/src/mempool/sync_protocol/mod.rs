@@ -176,7 +176,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 }
 
                 if !self.is_synched() {
-                    self.spawn_initiator_protocol(conn.clone()).await;
+                    self.spawn_initiator_protocol(*conn.clone()).await;
                 }
             },
             _ => {},

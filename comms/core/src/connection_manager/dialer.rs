@@ -59,7 +59,7 @@ use crate::{
     multiplexing::Yamux,
     net_address::PeerAddressSource,
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerId, PeerIdentityClaim, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::CommsPublicKey,
@@ -78,7 +78,7 @@ pub(crate) enum DialerRequest {
         Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ),
     CancelPendingDial(NodeId),
-    NotifyNewInboundConnection(PeerConnection),
+    NotifyNewInboundConnection(Box<PeerConnection>),
 }
 
 /// Responsible for dialing peers on the given transport.
@@ -179,7 +179,7 @@ where
 
             NotifyNewInboundConnection(conn) => {
                 if conn.is_connected() {
-                    self.resolve_pending_dials(conn);
+                    self.resolve_pending_dials(*conn);
                 }
             },
         }
@@ -221,7 +221,7 @@ where
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
         // try save the peer back to the peer manager
-        let mut peer = dial_state.peer_mut();
+        let peer = dial_state.peer_mut();
         if let Ok(peer_connection) = &dial_result {
             peer.update_addresses(
                 &peer_connection.peer_identity_claim().addresses,
@@ -244,7 +244,7 @@ where
         match &dial_result {
             Ok(conn) => {
                 debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone()))
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone().into()))
                     .await
             },
             Err(err) => {
@@ -325,7 +325,6 @@ where
 
         let dial_state = DialState::new(peer, reply_tx, cancel_signal);
         let node_identity = Arc::clone(&self.node_identity);
-        let peer_manager = self.peer_manager.clone();
         let conn_man_notifier = self.conn_man_notifier.clone();
         let supported_protocols = self.our_supported_protocols.clone();
         let noise_config = self.noise_config.clone();
@@ -353,9 +352,7 @@ where
                             },
                         };
 
-                    let timer = Instant::now();
                     let result = Self::perform_socket_upgrade_procedure(
-                        peer_manager,
                         node_identity,
                         socket,
                         addr.clone(),
@@ -405,7 +402,6 @@ where
     }
 
     async fn perform_socket_upgrade_procedure(
-        peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         mut socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
@@ -447,7 +443,7 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        Ok(peer_connection::try_create(
+        peer_connection::try_create(
             muxer,
             dialed_addr,
             NodeId::from_public_key(&authenticated_public_key),
@@ -457,7 +453,7 @@ where
             our_supported_protocols,
             peer_identity.supported_protocols(),
             peer_identity,
-        )?)
+        )
     }
 
     async fn dial_peer_with_retry(

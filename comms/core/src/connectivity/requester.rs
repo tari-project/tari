@@ -56,7 +56,7 @@ pub type ConnectivityEventTx = broadcast::Sender<ConnectivityEvent>;
 #[derive(Debug, Clone)]
 pub enum ConnectivityEvent {
     PeerDisconnected(NodeId),
-    PeerConnected(PeerConnection),
+    PeerConnected(Box<PeerConnection>),
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     // PeerOffline(NodeId),

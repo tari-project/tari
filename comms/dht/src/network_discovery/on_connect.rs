@@ -81,7 +81,7 @@ impl OnConnect {
                         conn.peer_node_id()
                     );
 
-                    match self.sync_peers(conn.clone()).await {
+                    match self.sync_peers(*conn.clone()).await {
                         Ok(_) => continue,
                         Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
                             warn!(target: LOG_TARGET, "{}. Banning peer.", err);
@@ -135,12 +135,13 @@ impl OnConnect {
 
         let sync_peer = conn.peer_node_id();
         let mut num_added = 0;
-        let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
         while let Some(resp) = peer_stream.next().await {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
                     Some(peer) => {
-                        self.validate_and_add_peer(peer).await?;
+                        if self.validate_and_add_peer(peer).await? {
+                            num_added += 1;
+                        }
                     },
                     None => {
                         debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
@@ -171,11 +172,11 @@ impl OnConnect {
         Ok(())
     }
 
-    async fn validate_and_add_peer(&self, peer: PeerInfo) -> Result<(), NetworkDiscoveryError> {
+    // Returns true if the peer was added
+    async fn validate_and_add_peer(&self, peer: PeerInfo) -> Result<bool, NetworkDiscoveryError> {
         let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
 
-        peer_validator.validate_and_add_peer(peer).await?;
-        Ok(())
+        Ok(peer_validator.validate_and_add_peer(peer).await?)
     }
 
     #[inline]

@@ -30,7 +30,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim},
+    peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
     types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };

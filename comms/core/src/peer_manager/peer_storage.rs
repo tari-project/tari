@@ -24,7 +24,6 @@ use std::{collections::HashMap, time::Duration};
 
 use chrono::Utc;
 use log::*;
-use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_storage::{IterationResult, KeyValueStore};
 use tari_utilities::ByteArray;
@@ -106,7 +105,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     .peer_db
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
-                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                    .ok_or(PeerManagerError::PeerNotFoundError)?;
                 existing_peer.merge(&peer);
                 self.peer_db
                     .insert(peer_key, existing_peer)
@@ -140,7 +139,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.deleted_at = Some(Utc::now().naive_utc());
         self.peer_db
             .insert(peer_key, peer)

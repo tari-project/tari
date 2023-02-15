@@ -27,7 +27,6 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     peer_manager::{IdentitySignature, PeerFeatures, PeerManagerError, MAX_USER_AGENT_LEN},
-    proto,
     proto::identity::PeerIdentityMsg,
     protocol::ProtocolId,
 };
@@ -109,7 +108,7 @@ impl TryFrom<PeerIdentityMsg> for PeerIdentityClaim {
                 }),
             })
         } else {
-            return Err(PeerManagerError::MissingIdentitySignature);
+            Err(PeerManagerError::MissingIdentitySignature)
         }
     }
 }

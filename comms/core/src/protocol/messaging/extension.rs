@@ -102,7 +102,7 @@ where
         let executor = BoundedExecutor::new(
             self.pipeline
                 .max_concurrent_outbound_tasks
-                .unwrap_or_else(|| BoundedExecutor::max_theoretical_tasks()),
+                .unwrap_or_else(BoundedExecutor::max_theoretical_tasks),
         );
         // Spawn outbound pipeline
         let outbound = pipeline::Outbound::new(executor, self.pipeline.outbound);
