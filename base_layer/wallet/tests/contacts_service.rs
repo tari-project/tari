@@ -66,16 +66,16 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        get_next_memory_address(),
+        vec![get_next_memory_address()],
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {
-                listener_address: node_identity.public_address(),
+                listener_address: node_identity.first_public_address(),
             },
             ..Default::default()
         },

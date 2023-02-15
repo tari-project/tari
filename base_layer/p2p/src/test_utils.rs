@@ -26,6 +26,7 @@ use rand::rngs::OsRng;
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::{
@@ -54,7 +55,7 @@ macro_rules! unwrap_oms_send_msg {
 pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+        vec!["/ip4/127.0.0.1/tcp/9000".parse().unwrap()],
         PeerFeatures::COMMUNICATION_NODE,
     ))
 }
@@ -80,7 +81,7 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

@@ -346,7 +346,7 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", next_port).parse().unwrap(),
+        vec![format!("/memory/{}", next_port).parse().unwrap()],
         PeerFeatures::COMMUNICATION_NODE,
     ))
 }

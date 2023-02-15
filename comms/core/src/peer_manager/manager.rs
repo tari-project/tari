@@ -369,7 +369,10 @@ mod test {
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
-        let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
+        let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap()],
+            &PeerAddressSource::Config,
+        );
         let mut peer = Peer::new(
             pk,
             node_id,
@@ -605,7 +608,13 @@ mod test {
         peer_manager.add_peer(peer.clone()).await.unwrap();
 
         let peer = peer_manager
-            .add_or_update_online_peer(&peer.public_key, peer.node_id, vec![], peer.features)
+            .add_or_update_online_peer(
+                &peer.public_key,
+                peer.node_id,
+                vec![],
+                peer.features,
+                &PeerAddressSource::Config,
+            )
             .await
             .unwrap();
 

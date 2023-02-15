@@ -151,7 +151,7 @@ async fn added_neighbours() {
     assert_eq!(count_string_occurrences(&calls, &["DialPeer"]), 5);
 
     let (conn, _) = create_dummy_peer_connection(closer_peer.node_id().clone());
-    connectivity.publish_event(ConnectivityEvent::PeerConnected(conn.clone()));
+    connectivity.publish_event(ConnectivityEvent::PeerConnected(conn.clone().into()));
 
     async_assert!(
         connectivity.get_dialed_peers().await.len() >= 5,

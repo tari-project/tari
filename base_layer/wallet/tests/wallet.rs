@@ -34,6 +34,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
@@ -100,7 +101,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
         NodeId::from_key(&public_key),
-        net_address.into(),
+        MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         Default::default(),
@@ -118,12 +119,16 @@ async fn create_wallet(
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::LocalNet;
-    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let node_identity = NodeIdentity::random(
+        &mut OsRng,
+        vec![get_next_memory_address()],
+        PeerFeatures::COMMUNICATION_NODE,
+    );
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig::new_memory(MemoryTransportConfig {
-            listener_address: node_identity.public_address(),
+            listener_address: node_identity.first_public_address(),
         }),
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
@@ -209,8 +214,11 @@ async fn test_wallet() {
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
 
-    let base_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let base_node_identity = NodeIdentity::random(
+        &mut OsRng,
+        vec![get_next_memory_address()],
+        PeerFeatures::COMMUNICATION_NODE,
+    );
 
     // create wallet creates a local wallet
     let network = Network::LocalNet;
@@ -248,7 +256,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             bob_identity.public_key().clone(),
-            bob_identity.public_address(),
+            bob_identity.first_public_address(),
         ))
         .await
         .unwrap();
@@ -258,7 +266,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             alice_identity.public_key().clone(),
-            alice_identity.public_address(),
+            alice_identity.first_public_address(),
         ))
         .await
         .unwrap();
@@ -266,7 +274,7 @@ async fn test_wallet() {
     alice_wallet
         .set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            base_node_identity.public_address().clone(),
+            base_node_identity.first_public_address().clone(),
         )
         .await
         .unwrap();
@@ -537,7 +545,7 @@ async fn test_store_and_forward_send_tx() {
 
     let base_node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        "/memory/0".parse().unwrap(),
+        vec!["/memory/0".parse().unwrap()],
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let (tx, _rx) = mpsc::channel(100);
@@ -655,19 +663,19 @@ async fn test_import_utxo() {
     let shutdown = Shutdown::new();
     let alice_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
+        vec!["/ip4/127.0.0.1/tcp/24521".parse().unwrap()],
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
+        vec!["/ip4/127.0.0.1/tcp/24522".parse().unwrap()],
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let temp_dir = tempdir().unwrap();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig::new_tcp(TcpTransportConfig {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_address: None,
@@ -732,7 +740,7 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
-        .set_base_node_peer(node_identity.public_key().clone(), node_identity.public_address())
+        .set_base_node_peer(node_identity.public_key().clone(), node_identity.first_public_address())
         .await
         .unwrap();
     let tx_id = alice_wallet

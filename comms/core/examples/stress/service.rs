@@ -63,9 +63,9 @@ pub fn start_service(
     let (request_tx, request_rx) = mpsc::channel(1);
 
     println!(
-        "Node credentials are {}::{} (local_listening_addr='{}')",
+        "Node credentials are {}::{:?} (local_listening_addr='{}')",
         node_identity.public_key().to_hex(),
-        node_identity.public_address(),
+        node_identity.public_addresses(),
         comms_node.listening_address(),
     );
 

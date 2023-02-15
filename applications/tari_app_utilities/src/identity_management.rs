@@ -155,7 +155,7 @@ fn create_new_node_identity<P: AsRef<Path>>(
     public_addresses: Vec<Multiaddr>,
     features: PeerFeatures,
 ) -> Result<NodeIdentity, IdentityError> {
-    let node_identity = NodeIdentity::random(&mut OsRng, public_addresses, features);
+    let node_identity = NodeIdentity::random_multiple_addresses(&mut OsRng, public_addresses, features);
     save_as_json(&path, &node_identity)?;
     Ok(node_identity)
 }

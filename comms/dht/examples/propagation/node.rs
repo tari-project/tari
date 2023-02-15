@@ -26,6 +26,7 @@ use rand::rngs::OsRng;
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::PeerFeatures,
     pipeline,
     pipeline::SinkService,
@@ -67,8 +68,8 @@ pub async fn create<P: AsRef<Path>>(
     let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let node_identity = node_identity
-        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, Multiaddr::empty(), Default::default())));
+    let node_identity =
+        node_identity.unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, vec![], Default::default())));
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()

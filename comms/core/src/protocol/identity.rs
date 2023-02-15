@@ -240,10 +240,24 @@ mod test {
         let identity1 = result2.unwrap();
 
         assert_eq!(identity1.features, node_identity1.features().bits());
-        assert_eq!(identity1.addresses, vec![node_identity1.public_address().to_vec()]);
+        assert_eq!(
+            identity1.addresses,
+            node_identity1
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_vec())
+                .collect::<Vec<_>>()
+        );
 
         assert_eq!(identity2.features, node_identity2.features().bits());
-        assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_vec()]);
+        assert_eq!(
+            identity2.addresses,
+            node_identity2
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_vec())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[tokio::test]

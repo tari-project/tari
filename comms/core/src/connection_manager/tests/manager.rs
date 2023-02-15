@@ -40,6 +40,7 @@ use crate::{
         ConnectionManagerRequester,
         PeerConnectionError,
     },
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
@@ -144,7 +145,7 @@ async fn dial_success() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            vec![public_address2].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -247,7 +248,7 @@ async fn dial_success_aux_tcp_listener() {
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
-            vec![tcp_listener_addr].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![tcp_listener_addr], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -335,7 +336,7 @@ async fn simultaneous_dial_events() {
         .add_peer(Peer::new(
             node_identities[1].public_key().clone(),
             node_identities[1].node_id().clone(),
-            vec![public_address2].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -348,7 +349,7 @@ async fn simultaneous_dial_events() {
         .add_peer(Peer::new(
             node_identities[0].public_key().clone(),
             node_identities[0].node_id().clone(),
-            vec![public_address1].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address1], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),

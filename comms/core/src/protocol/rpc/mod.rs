@@ -63,9 +63,7 @@ pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 mod context;
 
 mod server;
-#[cfg(test)]
-pub use server::mock;
-pub use server::{NamedProtocolService, RpcServer, RpcServerBuilder, RpcServerError, RpcServerHandle};
+pub use server::{mock, NamedProtocolService, RpcServer, RpcServerBuilder, RpcServerError, RpcServerHandle};
 
 mod client;
 pub use client::{

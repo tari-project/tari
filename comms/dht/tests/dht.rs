@@ -101,7 +101,7 @@ fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", port).parse().unwrap(),
+        vec![format!("/memory/{}", port).parse().unwrap()],
         features,
     ))
 }
@@ -172,7 +172,7 @@ async fn setup_comms_dht(
     let comms = CommsBuilder::new()
         .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
-        .with_listener_address(node_identity.public_address())
+        .with_listener_address(node_identity.first_public_address())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_peer_storage(storage,None)

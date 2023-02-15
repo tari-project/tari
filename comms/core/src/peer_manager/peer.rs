@@ -358,7 +358,10 @@ mod test {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
-        let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
+        let addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+            &PeerAddressSource::Config,
+        );
         let mut peer: Peer = Peer::new(
             pk,
             node_id,
@@ -385,7 +388,10 @@ mod test {
         let peer = Peer::new(
             pk,
             node_id,
-            "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                vec!["/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap()],
+                &PeerAddressSource::Config,
+            ),
             PeerFlags::empty(),
             PeerFeatures::empty(),
             Default::default(),

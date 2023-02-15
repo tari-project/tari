@@ -48,6 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
+    use crate::rpc::PeerInfo;
 
     async fn setup(
         mut config: DhtConfig,
@@ -111,7 +112,15 @@ mod state_machine {
             ..DhtConfig::default_local_test()
         };
         let peers = iter::repeat_with(|| make_node_identity().to_peer())
-            .map(|p| GetPeersResponse { peer: Some(p.into()) })
+            .map(|p| GetPeersResponse {
+                peer: Some(PeerInfo {
+                    public_key: p.public_key.clone().into(),
+                    addresses: p.addresses.iter().collect(),
+                    peer_features: p.features.into(),
+                    user_agent: "".to_string(),
+                    supported_protocols: vec![],
+                }),
+            })
             .take(NUM_PEERS)
             .collect();
         let (discovery_actor, connectivity_mock, peer_manager, node_identity, mut event_rx, _shutdown) =

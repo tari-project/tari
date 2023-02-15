@@ -512,12 +512,13 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 mod test {
     use std::iter::repeat_with;
 
+    use multiaddr::Multiaddr;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
     use crate::{
-        net_address::MultiaddressesWithStats,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
@@ -530,9 +531,10 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -546,7 +548,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address4);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address4], &PeerAddressSource::Config);
         let peer2: Peer = Peer::new(
             pk,
             node_id,
@@ -561,8 +564,9 @@ mod test {
         let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_address(&net_address6);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address5], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address6, &PeerAddressSource::Config);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -610,9 +614,10 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -626,7 +631,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address4);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address4], &PeerAddressSource::Config);
         let peer2: Peer = Peer::new(
             pk,
             node_id,
@@ -641,8 +647,9 @@ mod test {
         let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_address(&net_address6);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address5], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address6, &PeerAddressSource::Config);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -746,7 +753,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config);
         let mut peer = Peer::new(
             pk,
             node_id,

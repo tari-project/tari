@@ -10522,11 +10522,15 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            let node_identity =
-                NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+            let node_identity = NodeIdentity::random(
+                &mut OsRng,
+                vec![get_next_memory_address()],
+                PeerFeatures::COMMUNICATION_NODE,
+            );
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
             let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.public_address().to_string()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(node_identity.first_public_address().to_string()).unwrap())
+                    as *const c_char;
             wallet_add_base_node_peer(
                 wallet_ptr,
                 base_node_peer_public_key_ptr,

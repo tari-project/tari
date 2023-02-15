@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     let shutdown = Shutdown::new();
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        Multiaddr::empty(),
+        vec![Multiaddr::empty()],
         PeerFeatures::COMMUNICATION_CLIENT,
     ));
     let port = OsRng.gen_range(9000u16, 55000);

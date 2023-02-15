@@ -28,10 +28,10 @@ use tari_crypto::keys::PublicKey;
 
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
 use crate::{
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
-
 pub fn create_many(n: usize) -> PeersFactory {
     PeersFactory::default().with_count(n)
 }
@@ -93,7 +93,7 @@ impl TestFactory for PeerFactory {
         Ok(Peer::new(
             public_key,
             node_id,
-            addresses.into(),
+            MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::Config),
             flags,
             self.peer_features,
             Default::default(),

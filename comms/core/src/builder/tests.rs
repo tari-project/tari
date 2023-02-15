@@ -140,7 +140,10 @@ async fn peer_to_peer_custom_protocols() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            MultiaddressesWithStats::new(node_identity2.public_addresses().clone(), PeerAddressSource::Config),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses().clone(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             vec![TEST_PROTOCOL.clone(), ANOTHER_TEST_PROTOCOL.clone()],
@@ -215,7 +218,10 @@ async fn peer_to_peer_messaging() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -302,7 +308,10 @@ async fn peer_to_peer_messaging_simultaneous() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -315,7 +324,10 @@ async fn peer_to_peer_messaging_simultaneous() {
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
-            node_identity1.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity1.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),

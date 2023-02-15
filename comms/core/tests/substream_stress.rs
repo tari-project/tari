@@ -49,7 +49,7 @@ pub async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, ProtocolNotificat
 
     comms
         .node_identity()
-        .set_public_address(comms.listening_address().clone());
+        .add_public_address(comms.listening_address().clone());
     (comms, notif_rx)
 }
 

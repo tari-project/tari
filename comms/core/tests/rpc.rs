@@ -53,7 +53,8 @@ async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, RpcServerHandle) {
 
     comms
         .node_identity()
-        .set_public_address(comms.listening_address().clone());
+        .add_public_address(comms.listening_address().clone());
+
     (comms, rpc_server_hnd)
 }
 

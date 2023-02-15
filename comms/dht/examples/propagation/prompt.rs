@@ -25,6 +25,7 @@ use std::{io::stdin, str::FromStr, sync::Arc};
 use anyhow::anyhow;
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures},
     types::CommsPublicKey,
     NodeIdentity,
@@ -68,7 +69,7 @@ pub fn user_prompt(node_identity: &Arc<NodeIdentity>) -> anyhow::Result<Propagat
     }
 
     loop {
-        println!("{}::{}", node_identity.public_key(), node_identity.public_address());
+        println!("{}::{:?}", node_identity.public_key(), node_identity.public_addresses());
         println!("{}", node_identity);
         prompt!("Enter the peer:");
         let peer = or_continue!(read_line(String::new()));
@@ -133,7 +134,7 @@ pub fn parse_from_short_str(s: &str, features: PeerFeatures) -> Option<Peer> {
     Some(Peer::new(
         pk,
         node_id,
-        vec![address].into(),
+        MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
         Default::default(),
         features,
         Default::default(),

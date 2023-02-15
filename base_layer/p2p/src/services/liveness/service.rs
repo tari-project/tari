@@ -369,6 +369,7 @@ mod test {
     use tari_comms::{
         message::MessageTag,
         multiaddr::Multiaddr,
+        net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,
     };
@@ -487,7 +488,7 @@ mod test {
         let source_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

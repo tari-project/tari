@@ -33,6 +33,10 @@ impl MultiaddressesWithStats {
         }
     }
 
+    pub fn empty() -> Self {
+        MultiaddressesWithStats { addresses: Vec::new() }
+    }
+
     /// Constructs a new list of addresses with usage stats from a list of net addresses
     pub fn new(addresses: Vec<MultiaddrWithStats>) -> MultiaddressesWithStats {
         MultiaddressesWithStats { addresses }
@@ -306,8 +310,10 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses: MultiaddressesWithStats =
-            vec![net_address1.clone(), net_address2.clone(), net_address3.clone()].into();
+        let net_addresses: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
+            vec![net_address1.clone(), net_address2.clone(), net_address3.clone()],
+            &PeerAddressSource::Config,
+        );
 
         assert_eq!(net_addresses[0].address(), &net_address1);
         assert_eq!(net_addresses[1].address(), &net_address2);
@@ -319,9 +325,10 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
 
         assert!(net_addresses.mark_last_seen_now(&net_address3));
         assert!(net_addresses.mark_last_seen_now(&net_address1));
@@ -340,11 +347,12 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
         // Add duplicate address, test add_net_address is idempotent
-        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].address(), &net_address1);
         assert_eq!(net_addresses.addresses[1].address(), &net_address2);
@@ -356,9 +364,10 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
 
         let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);
@@ -377,56 +386,15 @@ mod test {
         assert_eq!(priority_address, &net_address3);
     }
 
-    // TODO: Broken in release mode - investigate and fix
-    //    #[test]
-    //    fn test_stats_updates_on_addresses() {
-    //        let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-    //        let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
-    //        let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-    //        let mut addresses: Vec<NetAddressWithStats> = Vec::new();
-    //        addresses.push(NetAddressWithStats::from(net_address1.clone()));
-    //        addresses.push(NetAddressWithStats::from(net_address2.clone()));
-    //        addresses.push(NetAddressWithStats::from(net_address3.clone()));
-    //        let mut net_addresses = NetAddressesWithStats::new(addresses);
-    //
-    //        assert!(net_addresses.update_latency(&net_address2, Duration::from_millis(200)));
-    //        assert_eq!(net_addresses.addresses[0].avg_latency, Duration::from_millis(200));
-    //        assert_eq!(net_addresses.addresses[1].avg_latency, Duration::from_millis(0));
-    //        assert_eq!(net_addresses.addresses[2].avg_latency, Duration::from_millis(0));
-    //
-    //        thread::sleep(Duration::from_millis(1));
-    //        assert!(net_addresses.mark_message_received(&net_address1));
-    //        assert!(net_addresses.addresses[0].last_seen.is_some());
-    //        assert!(net_addresses.addresses[1].last_seen.is_some());
-    //        assert!(net_addresses.addresses[2].last_seen.is_none());
-    //        assert!(net_addresses.addresses[0].last_seen.unwrap() > net_addresses.addresses[1].last_seen.unwrap());
-    //
-    //        assert!(net_addresses.mark_message_rejected(&net_address2));
-    //        assert!(net_addresses.mark_message_rejected(&net_address3));
-    //        assert!(net_addresses.mark_message_rejected(&net_address3));
-    //        assert_eq!(net_addresses.addresses[0].rejected_message_count, 2);
-    //        assert_eq!(net_addresses.addresses[1].rejected_message_count, 1);
-    //        assert_eq!(net_addresses.addresses[2].rejected_message_count, 0);
-    //
-    //        assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
-    //        assert!(net_addresses.mark_failed_connection_attempt(&net_address2));
-    //        assert!(net_addresses.mark_failed_connection_attempt(&net_address3));
-    //        assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
-    //        assert!(net_addresses.mark_last_seen_now(&net_address2));
-    //        assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
-    //        assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
-    //        assert_eq!(net_addresses.addresses[2].connection_attempts, 2);
-    //    }
-
     #[test]
     fn test_resetting_all_connection_attempts() {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let addresses: Vec<MultiaddrWithStats> = vec![
-            MultiaddrWithStats::from(net_address1.clone()),
-            MultiaddrWithStats::from(net_address2.clone()),
-            MultiaddrWithStats::from(net_address3.clone()),
+            MultiaddrWithStats::new(net_address1.clone(), PeerAddressSource::Config),
+            MultiaddrWithStats::new(net_address2.clone(), PeerAddressSource::Config),
+            MultiaddrWithStats::new(net_address3.clone(), PeerAddressSource::Config),
         ];
         let mut net_addresses = MultiaddressesWithStats::new(addresses);
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1, "error".to_string()));

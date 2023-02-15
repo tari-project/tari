@@ -335,7 +335,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(&valid, false).unwrap();
+        validate_addresses(&valid, false).unwrap();
         for addr in invalid {
             validate_address(addr, false).unwrap_err();
         }
@@ -363,7 +363,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(&valid, true).unwrap();
+        validate_addresses(&valid, true).unwrap();
         for addr in invalid {
             validate_address(addr, true).unwrap_err();
         }

@@ -300,11 +300,12 @@ mod test {
     use std::time::Duration;
 
     use super::*;
+    use crate::net_address::MultiaddressesWithStats;
 
     #[test]
     fn test_update_latency() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::new(net_address, PeerAddressSource::Config);
         let latency_measurement1 = Duration::from_millis(100);
         let latency_measurement2 = Duration::from_millis(200);
         let latency_measurement3 = Duration::from_millis(60);
@@ -322,7 +323,7 @@ mod test {
     #[test]
     fn test_successful_and_failed_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::new(net_address, PeerAddressSource::Config);
         net_address_with_stats.mark_failed_connection_attempt("Error".to_string());
         net_address_with_stats.mark_failed_connection_attempt("Error".to_string());
         assert!(net_address_with_stats.last_seen.is_none());
@@ -335,7 +336,7 @@ mod test {
     #[test]
     fn test_reseting_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_address_with_stats = MultiaddrWithStats::from(net_address);
+        let mut net_address_with_stats = MultiaddrWithStats::new(net_address, PeerAddressSource::Config);
         net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
         net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
         assert_eq!(net_address_with_stats.connection_attempts, 2);

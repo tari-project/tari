@@ -40,6 +40,7 @@ use crate::{
         ConnectionManagerConfig,
         ConnectionManagerError,
     },
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
     peer_manager::PeerFeatures,
     protocol::ProtocolId,
@@ -123,7 +124,7 @@ async fn smoke() {
     let dialer_fut = tokio::spawn(dialer.run());
 
     let mut peer = node_identity1.to_peer();
-    peer.addresses = vec![address].into();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();
@@ -231,7 +232,7 @@ async fn banned() {
     let dialer_fut = tokio::spawn(dialer.run());
 
     let mut peer = node_identity1.to_peer();
-    peer.addresses = vec![address].into();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();
