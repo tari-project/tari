@@ -126,7 +126,7 @@ impl TransactionServiceSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
         match key {
             DbKey::PendingOutboundTransaction(k) => {
-                conn.transaction::<_, _, _>(|| match OutboundTransactionSql::find_by_cancelled(k, false, conn) {
+                conn.transaction::<_, _, _>(|conn| match OutboundTransactionSql::find_by_cancelled(k, false, conn) {
                     Ok(v) => {
                         v.delete(conn)?;
                         Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
@@ -140,7 +140,7 @@ impl TransactionServiceSqliteDatabase {
                 })
             },
             DbKey::PendingInboundTransaction(k) => {
-                conn.transaction::<_, _, _>(|| match InboundTransactionSql::find_by_cancelled(k, false, conn) {
+                conn.transaction::<_, _, _>(|conn| match InboundTransactionSql::find_by_cancelled(k, false, conn) {
                     Ok(v) => {
                         v.delete(conn)?;
                         Ok(Some(DbValue::PendingInboundTransaction(Box::new(
@@ -154,18 +154,20 @@ impl TransactionServiceSqliteDatabase {
                 })
             },
             DbKey::CompletedTransaction(k) => {
-                conn.transaction::<_, _, _>(|| match CompletedTransactionSql::find_by_cancelled(k, false, conn) {
-                    Ok(v) => {
-                        v.delete(conn)?;
-                        Ok(Some(DbValue::CompletedTransaction(Box::new(
-                            CompletedTransaction::try_from(v, &cipher)?,
-                        ))))
+                conn.transaction::<_, _, _>(
+                    |conn| match CompletedTransactionSql::find_by_cancelled(k, false, conn) {
+                        Ok(v) => {
+                            v.delete(conn)?;
+                            Ok(Some(DbValue::CompletedTransaction(Box::new(
+                                CompletedTransaction::try_from(v, &cipher)?,
+                            ))))
+                        },
+                        Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                            Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(k)))
+                        },
+                        Err(e) => Err(e),
                     },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                        Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(k)))
-                    },
-                    Err(e) => Err(e),
-                })
+                )
             },
             DbKey::PendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::PendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
@@ -174,7 +176,7 @@ impl TransactionServiceSqliteDatabase {
             DbKey::CancelledPendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransaction(k) => {
-                conn.transaction::<_, _, _>(|| match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
+                conn.transaction::<_, _, _>(|conn| match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(v) => {
                         v.delete(conn)?;
                         Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
@@ -188,7 +190,7 @@ impl TransactionServiceSqliteDatabase {
                 })
             },
             DbKey::CancelledPendingInboundTransaction(k) => {
-                conn.transaction::<_, _, _>(|| match InboundTransactionSql::find_by_cancelled(k, true, conn) {
+                conn.transaction::<_, _, _>(|conn| match InboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(v) => {
                         v.delete(conn)?;
                         Ok(Some(DbValue::PendingInboundTransaction(Box::new(
@@ -548,19 +550,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
-        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
+        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction, &cipher)?;
 
-        conn.transaction::<_, _, _>(|| {
-            match OutboundTransactionSql::complete_outbound_transaction(tx_id, &conn) {
-                Ok(_) => completed_tx_sql.commit(&conn)?,
+        conn.transaction::<_, _, _>(|conn| {
+            match OutboundTransactionSql::complete_outbound_transaction(tx_id, conn) {
+                Ok(_) => completed_tx_sql.commit(conn)?,
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                     return Err(TransactionStorageError::ValueNotFound(
                         DbKey::PendingOutboundTransaction(tx_id),
@@ -589,19 +591,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
-        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
+        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction, &cipher)?;
 
-        conn.transaction::<_, _, _>(|| {
-            match InboundTransactionSql::complete_inbound_transaction(tx_id, &conn) {
-                Ok(_) => completed_tx_sql.commit(&conn)?,
+        conn.transaction::<_, _, _>(|conn| {
+            match InboundTransactionSql::complete_inbound_transaction(tx_id, conn) {
+                Ok(_) => completed_tx_sql.commit(conn)?,
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                     return Err(TransactionStorageError::ValueNotFound(
                         DbKey::PendingInboundTransaction(tx_id),
@@ -629,8 +631,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|| {
-            match CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn) {
+        conn.transaction::<_, _, _>(|conn| {
+            match CompletedTransactionSql::find_by_cancelled(tx_id, false, conn) {
                 Ok(v) => {
                     // Note: This status test that does not error if the status do not match makes it inefficient
                     //       to combine the 'find' and 'update' queries.
@@ -640,7 +642,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                                 status: Some(TransactionStatus::Broadcast as i32),
                                 ..Default::default()
                             },
-                            &conn,
+                            conn,
                         )?;
                     }
                 },

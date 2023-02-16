@@ -374,12 +374,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::AnyOutputByCommitment(commitment) => {
-                    conn.transaction::<_, _, _>(|| {
+                    conn.transaction::<_, _, _>(|conn| {
                         msg.push_str("Remove");
                         // Used by coinbase when mining.
-                        match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {
+                        match OutputSql::find_by_commitment(&commitment.to_vec(), conn) {
                             Ok(o) => {
-                                o.delete(&conn)?;
+                                o.delete(conn)?;
                                 Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_unblinded_output(&cipher)?))))
                             },
                             Err(e) => match e {
@@ -661,9 +661,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for output in outputs_to_send {
             commitments.push(output.commitment.as_bytes());
         }
-        conn.transaction::<_, _, _>(|| {
+        conn.transaction::<_, _, _>(|conn| {
             // Any output in the list without the `Unspent` status will invalidate the encumberance
-            if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, &conn)?
+            if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, conn)?
                 .is_empty()
             {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
@@ -676,7 +676,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     spent_in_tx_id: Some(Some(tx_id)),
                     ..Default::default()
                 },
-                &conn,
+                conn,
             )?;
             if count != outputs_to_send.len() {
                 let msg = format!(
@@ -720,16 +720,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|| {
+        conn.transaction::<_, _, _>(|conn| {
             update_outputs_with_tx_id_and_status_to_new_status(
-                &conn,
+                conn,
                 tx_id,
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 OutputStatus::EncumberedToBeReceived,
             )?;
 
             update_outputs_with_tx_id_and_status_to_new_status(
-                &conn,
+                conn,
                 tx_id,
                 OutputStatus::ShortTermEncumberedToBeSpent,
                 OutputStatus::EncumberedToBeSpent,
@@ -755,7 +755,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|| {
+        conn.transaction::<_, _, _>(|conn| {
             diesel::update(
                 outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeReceived as i32)),
             )
@@ -764,11 +764,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::last_validation_timestamp
                     .eq(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0).unwrap()),
             ))
-            .execute(&conn)?;
+            .execute(conn)?;
 
             diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::ShortTermEncumberedToBeSpent as i32)))
                 .set((outputs::status.eq(OutputStatus::Unspent as i32),))
-                .execute(&conn)
+                .execute(conn)
         })?;
 
         if start.elapsed().as_millis() > 0 {
@@ -854,8 +854,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|| {
-            let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
+        conn.transaction::<_, _, _>(|conn| {
+            let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, conn)?;
 
             if outputs.is_empty() {
                 return Err(OutputManagerStorageError::ValueNotFound);
@@ -878,7 +878,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             )),
                             ..Default::default()
                         },
-                        &conn,
+                        conn,
                     )?;
                 } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                     info!(
@@ -897,7 +897,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             mined_in_block: Some(None),
                             ..Default::default()
                         },
-                        &conn,
+                        conn,
                     )?;
                 } else {
                 }
@@ -926,8 +926,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, OutputManagerStorageError, _>(|| {
-            let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
+        conn.transaction::<_, OutputManagerStorageError, _>(|conn| {
+            let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, conn)?;
             db_output.update(
                 // Note: Only the `ephemeral_pubkey` and `u_y` portion needs to be updated at this time as the rest was
                 // already correct
@@ -936,7 +936,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     metadata_signature_u_y: Some(output.metadata_signature.u_y().to_vec()),
                     ..Default::default()
                 },
-                &conn,
+                conn,
             )?;
 
             Ok(())
@@ -959,8 +959,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|| {
-            let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
+        conn.transaction::<_, _, _>(|conn| {
+            let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, conn)?;
 
             if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
                 return Err(OutputManagerStorageError::ValuesNotFound);
@@ -970,7 +970,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     status: Some(OutputStatus::Unspent),
                     ..Default::default()
                 },
-                &conn,
+                conn,
             )?;
 
             Ok(())

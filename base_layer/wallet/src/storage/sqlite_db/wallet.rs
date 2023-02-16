@@ -119,7 +119,7 @@ impl DatabaseEncryptionFields {
 
         // Read all fields atomically
         connection
-            .transaction::<_, Error, _>(|| {
+            .transaction::<_, Error, _>(|connection| {
                 secondary_key_version = WalletSettingSql::get(&DbKey::SecondaryKeyVersion, connection)
                     .map_err(|_| Error::RollbackTransaction)?;
                 secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, connection)
@@ -161,7 +161,7 @@ impl DatabaseEncryptionFields {
     pub fn write(&self, connection: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         // Because the encoding can't fail, just do it inside the write transaction
         connection
-            .transaction::<_, Error, _>(|| {
+            .transaction::<_, Error, _>(|connection| {
                 WalletSettingSql::new(DbKey::SecondaryKeyVersion, self.secondary_key_version.to_string())
                     .set(connection)
                     .map_err(|_| Error::RollbackTransaction)?;
