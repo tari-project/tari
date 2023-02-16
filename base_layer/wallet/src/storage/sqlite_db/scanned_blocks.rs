@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "scanned_blocks"]
+#[diesel(table_name = scanned_blocks)]
 pub struct ScannedBlockSql {
     header_hash: Vec<u8>,
     height: i64,

@@ -133,7 +133,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 
 /// A Sql version of the Contact struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
-#[table_name = "contacts"]
+#[diesel(table_name = contacts)]
 struct ContactSql {
     address: Vec<u8>,
     node_id: Vec<u8>,
@@ -265,7 +265,7 @@ impl From<Contact> for ContactSql {
 }
 
 #[derive(AsChangeset)]
-#[table_name = "contacts"]
+#[diesel(table_name = contacts)]
 pub struct UpdateContact {
     alias: Option<String>,
     last_seen: Option<Option<NaiveDateTime>>,

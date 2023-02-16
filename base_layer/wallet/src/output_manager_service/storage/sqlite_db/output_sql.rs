@@ -68,7 +68,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Derivative, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[derivative(Debug)]
-#[table_name = "outputs"]
+#[diesel(table_name = outputs)]
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
     pub commitment: Option<Vec<u8>>,
@@ -398,9 +398,9 @@ impl OutputSql {
     ) -> Result<Balance, OutputManagerStorageError> {
         #[derive(QueryableByName, Clone)]
         struct BalanceQueryResult {
-            #[sql_type = "diesel::sql_types::BigInt"]
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
             amount: i64,
-            #[sql_type = "diesel::sql_types::Text"]
+            #[diesel(sql_type = diesel::sql_types::Text)]
             category: String,
         }
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {

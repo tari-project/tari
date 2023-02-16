@@ -1162,7 +1162,7 @@ impl InboundTransactionSenderInfoSql {
 }
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "inbound_transactions"]
+#[diesel(table_name = inbound_transactions)]
 struct InboundTransactionSql {
     tx_id: i64,
     source_address: Vec<u8>,
@@ -1422,7 +1422,7 @@ impl InboundTransaction {
 }
 
 #[derive(AsChangeset)]
-#[table_name = "inbound_transactions"]
+#[diesel(table_name = inbound_transactions)]
 pub struct UpdateInboundTransactionSql {
     cancelled: Option<i32>,
     direct_send_success: Option<i32>,
@@ -1433,7 +1433,7 @@ pub struct UpdateInboundTransactionSql {
 
 /// A structure to represent a Sql compatible version of the OutboundTransaction struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "outbound_transactions"]
+#[diesel(table_name = outbound_transactions)]
 struct OutboundTransactionSql {
     tx_id: i64,
     destination_address: Vec<u8>,
@@ -1688,7 +1688,7 @@ impl OutboundTransaction {
 }
 
 #[derive(AsChangeset)]
-#[table_name = "outbound_transactions"]
+#[diesel(table_name = outbound_transactions)]
 pub struct UpdateOutboundTransactionSql {
     cancelled: Option<i32>,
     direct_send_success: Option<i32>,
@@ -1699,7 +1699,7 @@ pub struct UpdateOutboundTransactionSql {
 
 /// A structure to represent a Sql compatible version of the CompletedTransaction struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "completed_transactions"]
+#[diesel(table_name = completed_transactions)]
 pub struct CompletedTransactionSql {
     tx_id: i64,
     source_address: Vec<u8>,
@@ -2153,7 +2153,7 @@ impl CompletedTransaction {
 }
 
 #[derive(AsChangeset, Default)]
-#[table_name = "completed_transactions"]
+#[diesel(table_name = completed_transactions)]
 pub struct UpdateCompletedTransactionSql {
     status: Option<i32>,
     timestamp: Option<NaiveDateTime>,

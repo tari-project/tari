@@ -40,7 +40,7 @@ use crate::{
 /// equivalent datatypes for the members.
 #[derive(Clone, Derivative, Insertable, PartialEq)]
 #[derivative(Debug)]
-#[table_name = "outputs"]
+#[diesel(table_name = outputs)]
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
     #[derivative(Debug = "ignore")]

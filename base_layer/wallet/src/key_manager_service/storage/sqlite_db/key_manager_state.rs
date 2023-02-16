@@ -41,8 +41,8 @@ use crate::{
 
 /// Represents a row in the key_manager_states table.
 #[derive(Clone, Debug, Queryable, Identifiable)]
-#[table_name = "key_manager_states"]
-#[primary_key(id)]
+#[diesel(table_name = key_manager_states)]
+#[diesel(primary_key(id))]
 pub struct KeyManagerStateSql {
     pub id: i32,
     pub branch_seed: String,
@@ -52,7 +52,7 @@ pub struct KeyManagerStateSql {
 
 /// Struct used to create a new Key manager in the database
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "key_manager_states"]
+#[diesel(table_name = key_manager_states)]
 pub struct NewKeyManagerStateSql {
     branch_seed: String,
     primary_key_index: Vec<u8>,
@@ -195,7 +195,7 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
 }
 
 #[derive(AsChangeset)]
-#[table_name = "key_manager_states"]
+#[diesel(table_name = key_manager_states)]
 pub struct KeyManagerStateUpdateSql {
     branch_seed: Option<String>,
     primary_key_index: Option<Vec<u8>>,

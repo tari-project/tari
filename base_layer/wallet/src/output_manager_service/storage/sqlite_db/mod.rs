@@ -1171,7 +1171,7 @@ pub struct UpdateOutput {
 }
 
 #[derive(AsChangeset)]
-#[table_name = "outputs"]
+#[diesel(table_name = outputs)]
 pub struct UpdateOutputSql {
     status: Option<i32>,
     received_in_tx_id: Option<Option<i64>>,
@@ -1207,8 +1207,8 @@ impl From<UpdateOutput> for UpdateOutputSql {
 
 #[derive(Clone, Derivative, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
 #[derivative(Debug)]
-#[table_name = "known_one_sided_payment_scripts"]
-#[primary_key(script_hash)]
+#[diesel(table_name = known_one_sided_payment_scripts)]
+#[diesel(primary_key(script_hash))]
 // #[identifiable_options(primary_key(hash))]
 pub struct KnownOneSidedPaymentScriptSql {
     pub script_hash: Vec<u8>,
@@ -1221,7 +1221,7 @@ pub struct KnownOneSidedPaymentScriptSql {
 
 /// These are the fields that can be updated for an Output
 #[derive(AsChangeset)]
-#[table_name = "known_one_sided_payment_scripts"]
+#[diesel(table_name = known_one_sided_payment_scripts)]
 pub struct UpdateKnownOneSidedPaymentScript {
     script: Option<Vec<u8>>,
     input: Option<Vec<u8>>,

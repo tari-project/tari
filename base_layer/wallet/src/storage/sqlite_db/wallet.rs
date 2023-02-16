@@ -682,7 +682,7 @@ fn get_db_cipher(
 
 /// A Sql version of the wallet setting key-value table
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "wallet_settings"]
+#[diesel(table_name = wallet_settings)]
 pub(crate) struct WalletSettingSql {
     key: String,
     value: String,
@@ -724,7 +724,7 @@ impl WalletSettingSql {
 
 /// A Sql version of the wallet setting key-value table
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "client_key_values"]
+#[diesel(table_name = client_key_values)]
 struct ClientKeyValueSql {
     key: String,
     value: String,
