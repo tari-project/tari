@@ -66,6 +66,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
+
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
@@ -1380,10 +1381,11 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::mem::size_of;
+    use std::{io::Write, mem::size_of};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-    use diesel::{Connection, SqliteConnection};
+    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_common_types::types::CommitmentFactory;
     use tari_core::transactions::{
@@ -1424,12 +1426,26 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        let mut conn =
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
+
+        sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let mut outputs = Vec::new();
         let mut outputs_spent = Vec::new();
@@ -1551,12 +1567,25 @@ mod test {
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+        let mut conn =
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
 
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
         let factories = CryptoFactories::default();
 
         let mut key = [0u8; size_of::<Key>()];

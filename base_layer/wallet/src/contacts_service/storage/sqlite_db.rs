@@ -274,9 +274,10 @@ pub struct UpdateContact {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, io::Write};
 
-    use diesel::{Connection, SqliteConnection};
+    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_types::{
@@ -297,13 +298,25 @@ mod test {
             let db_name = format!("{}.sqlite3", string(8).as_str());
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
 
-            embed_migrations!("./migrations");
-            let conn =
+            const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+            let mut conn =
                 SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-            embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+            conn.run_pending_migrations(MIGRATIONS)
+                .map(|v| {
+                    v.into_iter()
+                        .map(|b| {
+                            let m = format!("Running migration {}", b);
+                            std::io::stdout()
+                                .write_all(m.as_ref())
+                                .expect("Couldn't write migration number to stdout");
+                            m
+                        })
+                        .collect::<Vec<String>>()
+                })
+                .expect("Migrations failed");
 
-            conn.execute("PRAGMA foreign_keys = ON").unwrap();
+            sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
             let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
 

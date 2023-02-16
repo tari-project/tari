@@ -2249,11 +2249,12 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{mem::size_of, time::Duration};
+    use std::{io::Write, mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
-    use diesel::{Connection, SqliteConnection};
+    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
@@ -2306,17 +2307,31 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+
+        let mut conn =
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
 
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(1, constants);
@@ -2788,12 +2803,26 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        let mut conn =
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
+
+        sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -2908,7 +2937,8 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
@@ -2921,11 +2951,23 @@ mod test {
         // Note: For this test the connection pool is setup with a pool size of one; the pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
         {
-            let conn = pool
+            let mut conn = pool
                 .get_pooled_connection()
                 .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-            embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+            conn.run_pending_migrations(MIGRATIONS)
+                .map(|v| {
+                    v.into_iter()
+                        .map(|b| {
+                            let m = format!("Running migration {}", b);
+                            std::io::stdout()
+                                .write_all(m.as_ref())
+                                .expect("Couldn't write migration number to stdout");
+                            m
+                        })
+                        .collect::<Vec<String>>()
+                })
+                .expect("Migrations failed");
 
             let source_address = TariAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -3039,17 +3081,29 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, Duration::from_secs(60));
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-        let conn = pool
+        let mut conn = pool
             .get_pooled_connection()
             .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
