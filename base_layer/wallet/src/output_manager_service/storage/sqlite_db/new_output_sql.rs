@@ -125,7 +125,7 @@ impl NewOutputSql {
     }
 
     /// Write this struct to the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }

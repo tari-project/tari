@@ -111,14 +111,14 @@ pub struct OutputSql {
 
 impl OutputSql {
     /// Return all outputs
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.load::<OutputSql>(conn)?)
     }
 
     /// Return all outputs with a given status
     pub fn index_status(
         statuses: Vec<OutputStatus>,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq_any::<Vec<i32>>(statuses.into_iter().map(|s| s as i32).collect()))
@@ -130,7 +130,7 @@ impl OutputSql {
     #[allow(clippy::cast_sign_loss)]
     pub fn fetch_outputs_by(
         q: OutputBackendQuery,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let mut query = outputs::table
             .into_boxed()
@@ -200,7 +200,7 @@ impl OutputSql {
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         tip_height: Option<u64>,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
 
@@ -280,14 +280,17 @@ impl OutputSql {
 
     /// Return all unspent outputs that have a maturity above the provided chain tip
     #[allow(clippy::cast_possible_wrap)]
-    pub fn index_time_locked(tip: u64, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn index_time_locked(
+        tip: u64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .filter(outputs::maturity.gt(tip as i64))
             .load(conn)?)
     }
 
-    pub fn index_unconfirmed(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn index_unconfirmed(conn: &mut SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(
                 outputs::status
@@ -301,7 +304,7 @@ impl OutputSql {
 
     pub fn index_by_output_type(
         output_type: OutputType,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let res = diesel::sql_query("SELECT * FROM outputs where output_type & $1 = $1 ORDER BY id;")
             .bind::<diesel::sql_types::Integer, _>(i32::from(output_type.as_byte()))
@@ -309,7 +312,7 @@ impl OutputSql {
         Ok(res)
     }
 
-    pub fn index_unspent(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn index_unspent(conn: &mut SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .order(outputs::id.asc())
@@ -317,7 +320,7 @@ impl OutputSql {
     }
 
     pub fn index_marked_deleted_in_block_is_null(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             // Return outputs not marked as deleted or confirmed
@@ -330,7 +333,7 @@ impl OutputSql {
 
     pub fn index_invalid(
         timestamp: &NaiveDateTime,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(
@@ -347,7 +350,9 @@ impl OutputSql {
             .load(conn)?)
     }
 
-    pub fn first_by_mined_height_desc(conn: &SqliteConnection) -> Result<Option<OutputSql>, OutputManagerStorageError> {
+    pub fn first_by_mined_height_desc(
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::mined_height.is_not_null())
             .order(outputs::mined_height.desc())
@@ -356,7 +361,7 @@ impl OutputSql {
     }
 
     pub fn first_by_marked_deleted_height_desc(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Option<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::marked_deleted_at_height.is_not_null())
@@ -366,13 +371,16 @@ impl OutputSql {
     }
 
     /// Find a particular Output, if it exists
-    pub fn find(spending_key: &[u8], conn: &SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
+    pub fn find(spending_key: &[u8], conn: &mut SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::spending_key.eq(spending_key))
             .first::<OutputSql>(conn)?)
     }
 
-    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn find_by_tx_id(
+        tx_id: TxId,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
@@ -386,7 +394,7 @@ impl OutputSql {
     #[allow(clippy::cast_possible_wrap)]
     pub fn get_balance(
         current_tip_for_time_lock_calculation: Option<u64>,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Balance, OutputManagerStorageError> {
         #[derive(QueryableByName, Clone)]
         struct BalanceQueryResult {
@@ -489,7 +497,7 @@ impl OutputSql {
 
     pub fn find_by_commitment(
         commitment: &[u8],
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::commitment.eq(commitment))
@@ -499,7 +507,7 @@ impl OutputSql {
     pub fn find_by_commitments_excluding_status(
         commitments: Vec<&[u8]>,
         status: OutputStatus,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::commitment.eq_any(commitments))
@@ -510,7 +518,7 @@ impl OutputSql {
     pub fn update_by_commitments(
         commitments: Vec<&[u8]>,
         updated_output: UpdateOutput,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<usize, OutputManagerStorageError> {
         Ok(
             diesel::update(outputs::table.filter(outputs::commitment.eq_any(commitments)))
@@ -522,7 +530,7 @@ impl OutputSql {
     pub fn find_by_commitment_and_cancelled(
         commitment: &[u8],
         cancelled: bool,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         let cancelled_flag = OutputStatus::CancelledInbound as i32;
 
@@ -539,7 +547,7 @@ impl OutputSql {
     pub fn find_by_tx_id_and_status(
         tx_id: TxId,
         status: OutputStatus,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(
@@ -554,7 +562,7 @@ impl OutputSql {
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
     pub fn find_by_tx_id_and_encumbered(
         tx_id: TxId,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(
@@ -576,7 +584,7 @@ impl OutputSql {
     pub fn find_status(
         spending_key: &[u8],
         status: OutputStatus,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(status as i32))
@@ -588,7 +596,7 @@ impl OutputSql {
     pub fn find_by_hash(
         hash: &[u8],
         status: OutputStatus,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(status as i32))
@@ -599,7 +607,7 @@ impl OutputSql {
     /// Find a particular Output, if it exists and is in the specified Spent state
     pub fn find_pending_coinbase_at_block_height(
         block_height: u64,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.ne(OutputStatus::Unspent as i32))
@@ -607,7 +615,7 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+    pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;
 
@@ -621,7 +629,7 @@ impl OutputSql {
     pub fn update(
         &self,
         updated_output: UpdateOutput,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
         diesel::update(outputs::table.filter(outputs::id.eq(&self.id)))
             .set(UpdateOutputSql::from(updated_output))

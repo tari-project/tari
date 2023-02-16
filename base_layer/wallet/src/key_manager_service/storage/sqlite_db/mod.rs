@@ -69,10 +69,10 @@ impl KeyManagerSqliteDatabase {
 impl KeyManagerBackend for KeyManagerSqliteDatabase {
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
+        let result = match KeyManagerStateSql::get_state(&branch, &mut conn).ok() {
             None => None,
             Some(km) => {
                 let cipher = acquire_read_lock!(self.cipher);
@@ -97,7 +97,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
@@ -105,7 +105,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let km_sql = km_sql
             .encrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
-        km_sql.commit(&conn)?;
+        km_sql.commit(&mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -121,10 +121,10 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
@@ -135,7 +135,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let km = km
             .encrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -151,10 +151,10 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
@@ -162,7 +162,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let km = km
             .encrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -201,23 +201,23 @@ mod test {
 
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let branch = random::string(8);
-        assert!(KeyManagerStateSql::get_state(&branch, &conn).is_err());
+        assert!(KeyManagerStateSql::get_state(&branch, &mut conn).is_err());
 
         let state1 = KeyManagerState {
             branch_seed: branch.clone(),
             primary_key_index: 0,
         };
 
-        NewKeyManagerStateSql::from(state1.clone()).commit(&conn).unwrap();
-        let state1_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
+        NewKeyManagerStateSql::from(state1.clone()).commit(&mut conn).unwrap();
+        let state1_read = KeyManagerStateSql::get_state(&branch, &mut conn).unwrap();
         let id = state1_read.id;
 
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
 
         let index: u64 = 2;
-        KeyManagerStateSql::set_index(id, index.to_le_bytes().to_vec(), &conn).unwrap();
+        KeyManagerStateSql::set_index(id, index.to_le_bytes().to_vec(), &mut conn).unwrap();
 
-        let state3_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
+        let state3_read = KeyManagerStateSql::get_state(&branch, &mut conn).unwrap();
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&state3_read.primary_key_index[..8]);
         assert_eq!(u64::from_le_bytes(bytes), 2);

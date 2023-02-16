@@ -72,11 +72,11 @@ impl DedupCacheDatabase {
     }
 
     pub fn get_hit_count(&self, body_hash: &[u8]) -> Result<u32, StorageError> {
-        let conn = self.connection.get_pooled_connection()?;
+        let mut conn = self.connection.get_pooled_connection()?;
         let hit_count = dedup_cache::table
             .select(dedup_cache::number_of_hits)
             .filter(dedup_cache::body_hash.eq(&to_hex(body_hash)))
-            .get_result::<i32>(&conn)
+            .get_result::<i32>(&mut conn)
             .optional()?;
 
         #[allow(clippy::cast_sign_loss)]
@@ -87,10 +87,10 @@ impl DedupCacheDatabase {
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
         let capacity = self.capacity as i64;
         let mut num_removed = 0;
-        let conn = self.connection.get_pooled_connection()?;
+        let mut conn = self.connection.get_pooled_connection()?;
         let msg_count = dedup_cache::table
             .select(dsl::count(dedup_cache::id))
-            .first::<i64>(&conn)?;
+            .first::<i64>(&mut conn)?;
         // Hysteresis added to minimize database impact
         if msg_count > capacity {
             let remove_count = msg_count - capacity;
@@ -98,7 +98,7 @@ impl DedupCacheDatabase {
                 "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT $1)",
             )
             .bind::<sql_types::BigInt, _>(remove_count)
-            .execute(&conn)?;
+            .execute(&mut conn)?;
         }
         debug!(
             target: LOG_TARGET,
@@ -109,7 +109,7 @@ impl DedupCacheDatabase {
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
     fn insert_body_hash_or_update_stats(&self, body_hash: &str, public_key: &str) -> Result<u32, StorageError> {
-        let conn = self.connection.get_pooled_connection()?;
+        let mut conn = self.connection.get_pooled_connection()?;
         let insert_result = diesel::insert_into(dedup_cache::table)
             .values((
                 dedup_cache::body_hash.eq(&body_hash),
@@ -117,7 +117,7 @@ impl DedupCacheDatabase {
                 dedup_cache::number_of_hits.eq(1),
                 dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
             ))
-            .execute(&conn);
+            .execute(&mut conn);
         match insert_result {
             Ok(1) => Ok(1),
             Ok(n) => Err(StorageError::UnexpectedResult(format!(
@@ -133,12 +133,12 @@ impl DedupCacheDatabase {
                             dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
                             dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
                         ))
-                        .execute(&conn)?;
+                        .execute(&mut conn)?;
 
                     let hits = dedup_cache::table
                         .select(dedup_cache::number_of_hits)
                         .filter(dedup_cache::body_hash.eq(&body_hash))
-                        .get_result::<i32>(&conn)?;
+                        .get_result::<i32>(&mut conn)?;
                     #[allow(clippy::cast_sign_loss)]
                     Ok(hits as u32)
                 },

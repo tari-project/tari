@@ -83,7 +83,7 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 
 impl NewKeyManagerStateSql {
     /// Commits a new key manager into the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         diesel::insert_into(key_manager_states::table)
             .values(self.clone())
             .execute(conn)?;
@@ -94,13 +94,13 @@ impl NewKeyManagerStateSql {
 impl KeyManagerStateSql {
     /// Retrieve every key manager branch currently in the database.
     /// Returns a `Vec` of [KeyManagerStateSql], if none are found, it will return an empty `Vec`.
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
         Ok(key_manager_states::table.load::<KeyManagerStateSql>(conn)?)
     }
 
     /// Retrieve the key manager for the provided branch
     /// Will return Err if the branch does not exist in the database
-    pub fn get_state(branch: &str, conn: &SqliteConnection) -> Result<KeyManagerStateSql, KeyManagerStorageError> {
+    pub fn get_state(branch: &str, conn: &mut SqliteConnection) -> Result<KeyManagerStateSql, KeyManagerStorageError> {
         key_manager_states::table
             .filter(key_manager_states::branch_seed.eq(branch.to_string()))
             .first::<KeyManagerStateSql>(conn)
@@ -108,7 +108,7 @@ impl KeyManagerStateSql {
     }
 
     /// Creates or updates the database with the key manager state in this instance.
-    pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn set_state(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         match KeyManagerStateSql::get_state(&self.branch_seed, conn) {
             Ok(km) => {
                 let update = KeyManagerStateUpdateSql {
@@ -134,7 +134,7 @@ impl KeyManagerStateSql {
     }
 
     /// Updates the key index of the of the provided key manager indicated by the id.
-    pub fn set_index(id: i32, index: Vec<u8>, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn set_index(id: i32, index: Vec<u8>, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         let update = KeyManagerStateUpdateSql {
             branch_seed: None,
             primary_key_index: Some(index),

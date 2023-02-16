@@ -179,9 +179,9 @@ mod test {
         let conn = DbConnection::connect_memory(id.clone()).unwrap();
         conn.migrate().unwrap();
         let conn = DbConnection::connect_memory(id).unwrap();
-        let conn = conn.get_pooled_connection().unwrap();
+        let mut conn = conn.get_pooled_connection().unwrap();
         let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
-            .get_result(&conn)
+            .get_result(&mut conn)
             .unwrap();
         assert_eq!(count, 0);
     }
