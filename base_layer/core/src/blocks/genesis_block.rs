@@ -551,10 +551,7 @@ mod test {
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(witness_mmr.get_merkle_root().unwrap(), block.header().witness_mr,);
         assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
-        assert_eq!(
-            calculate_validator_node_mr(&vn_nodes).unwrap(),
-            block.header().validator_node_mr,
-        );
+        assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
         // is correct)

@@ -60,13 +60,13 @@ pub enum MerkleProofError {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, PartialOrd, Ord, Default)]
 pub struct MerkleProof {
     /// The size of the MMR at the time the proof was created.
-    mmr_size: usize,
+    pub mmr_size: usize,
     /// The sibling path from the leaf up to the final sibling hashing to the local root.
     #[serde(with = "serde_support::hash")]
-    path: Vec<Hash>,
+    pub path: Vec<Hash>,
     /// The set of MMR peaks, not including the local peak for the candidate node
     #[serde(with = "serde_support::hash")]
-    peaks: Vec<Hash>,
+    pub peaks: Vec<Hash>,
 }
 
 impl MerkleProof {

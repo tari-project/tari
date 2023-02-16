@@ -72,7 +72,7 @@ pub use large_ints::{U256, U512};
 #[cfg(feature = "base_node")]
 mod domain_hashing {
     use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
-    use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
+    use tari_mmr::{pruned_hashset::PrunedHashSet, BalancedBinaryMerkleTree, Hash, MerkleMountainRange, MutableMmr};
 
     hash_domain!(
         KernelMmrHashDomain,
@@ -118,6 +118,7 @@ mod domain_hashing {
     );
     pub type ValidatorNodeMmrHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeMmrHashDomain>;
     pub type ValidatorNodeMmr = MerkleMountainRange<ValidatorNodeMmrHasherBlake256, Vec<Hash>>;
+    pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeMmrHasherBlake256>;
 }
 
 #[cfg(feature = "base_node")]
