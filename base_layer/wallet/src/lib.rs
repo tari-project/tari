@@ -20,6 +20,7 @@ pub mod test_utils;
 pub mod transaction_service;
 pub mod types;
 
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 pub use types::WalletHasher; // For use externally to the code base
 pub mod util;
 pub mod wallet;
@@ -57,24 +58,3 @@ pub type WalletSqlite = Wallet<
 
 hash_domain!(BurntOutputDomain, "burnt_output", 1);
 type BurntOutputDomainHasher = DomainSeparatedHasher<Blake256, BurntOutputDomain>;
-
-hash_domain!(
-    WalletOutputRewindKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_rewind_keys",
-    1
-);
-type WalletOutputRewindKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysDomain>;
-
-hash_domain!(
-    WalletOutputEncryptionKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_encryption_keys",
-    1
-);
-type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputEncryptionKeysDomain>;
-
-hash_domain!(
-    WalletOutputSpendingKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_spending_keys",
-    1
-);
-type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputSpendingKeysDomain>;

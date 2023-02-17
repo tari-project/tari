@@ -617,7 +617,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: true,
                     failure_message: Default::default(),
                     commitment: commitment.to_vec(),
-                    ownership_proof: ownership_proof.map(|o| o.to_vec()).unwrap_or(vec![]),
+                    ownership_proof: ownership_proof.map(|o| o.to_vec()).unwrap_or_default(),
                     rangeproof: rangeproof.to_vec(),
                 }
             },
