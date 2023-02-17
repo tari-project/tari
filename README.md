@@ -105,8 +105,11 @@ brew install --cask powershell
 ```
 
 #### (macOS M1 chipset)
-it is important to note that RandomX does not work on Xcode version 14.1 and newer. To compile Tari and run properly you need to run XCode version 14.0 or earlier.
+It is important to note that RandomX does not work on Xcode version 14.1 and newer. To compile Tari and run properly you need to run XCode version 14.0 or earlier.
 To run multiple versions of XCode you can use this guide [here](https://hacknicity.medium.com/working-with-multiple-versions-of-xcode-e331c01aa6bc)
+
+If randomX unit tests are still failing, please update the Mac to ensure its running at least `Darwin Kernel Version 22.3.0`
+
 
 #### (Ubuntu 18.04, including WSL-2 on Windows)
 

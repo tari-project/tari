@@ -145,4 +145,8 @@ message ConsensusConstants {
     repeated OutputType permitted_output_types = 29;
     /// The length of an epoch
     uint64 epoch_length = 30;
+    // The minimum deposit amount for a validator node registration
+    uint64 validator_node_registration_min_deposit_amount = 31;
+    uint64 validator_node_registration_min_lock_height = 32;
+    uint64 validator_node_registration_shuffle_interval_epoch = 33;
 }

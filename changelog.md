@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.45.0](https://github.com/tari-project/tari/compare/v0.44.1...v0.45.0) (2023-02-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* refactor database encryption (#5154)
+* update `Argon2` parameters (#5140)
+
+### Features
+
+* add `node {word} is in state {word}` ([33360cd](https://github.com/tari-project/tari/commit/33360cd1e9c8ad1dec1bd8193ca6cae1b79c81f4))
+* add get tari address to wallet ([1b0ed0b](https://github.com/tari-project/tari/commit/1b0ed0b99f8f36d7f04215b0ef846fdb13c095e7))
+* add graceful shutdown of base node ([c9797c5](https://github.com/tari-project/tari/commit/c9797c51e996fc043a6e4fd94ae1baebcd39d115))
+* add kill signal to cucumber nodes ([4cb21dc](https://github.com/tari-project/tari/commit/4cb21dc9148a32fbefae0017e984c634388f1543))
+* add shutdown clone ([ac956c9](https://github.com/tari-project/tari/commit/ac956c90d9ac3f78d7437ee24360c80204870341))
+* consolidate stealth payment code ([#5171](https://github.com/tari-project/tari/issues/5171)) ([b7747a2](https://github.com/tari-project/tari/commit/b7747a29c7032278b3ed88e13823d6e4fe7de45e))
+* fix miner ([7283eb2](https://github.com/tari-project/tari/commit/7283eb2c61e9e13313e256a1cc5ab191bb4f4b58))
+* gracefully shutdown grpc server ([947faf6](https://github.com/tari-project/tari/commit/947faf6559e6c16acdfe342c11c8c1ee99752d36))
+* refactor database encryption ([#5154](https://github.com/tari-project/tari/issues/5154)) ([41413fc](https://github.com/tari-project/tari/commit/41413fca3c66bf567777373d2b102c9d7ac0ea57))
+* refactor key-related field operations to be atomic ([#5178](https://github.com/tari-project/tari/issues/5178)) ([1ad79c9](https://github.com/tari-project/tari/commit/1ad79c946b3c67a3724f87d15ce55f29966d1e8b))
+* remove unused dependencies ([#5144](https://github.com/tari-project/tari/issues/5144)) ([a9d0f37](https://github.com/tari-project/tari/commit/a9d0f3711108ddb27599dc3e91834bb6cd02f821))
+* stagenet network ([#5173](https://github.com/tari-project/tari/issues/5173)) ([d2717a1](https://github.com/tari-project/tari/commit/d2717a1147e714f3978aaffb1e5af46986974335))
+* update `Argon2` parameters ([#5140](https://github.com/tari-project/tari/issues/5140)) ([4c4a056](https://github.com/tari-project/tari/commit/4c4a056f1f6623f6566b691a96c850ff905c0587))
+* wallet FFI cucumber ([795e717](https://github.com/tari-project/tari/commit/795e7178020b41bbda0510563e0ac0c2448eb359))
+* wallet password change ([#5175](https://github.com/tari-project/tari/issues/5175)) ([7f13fa5](https://github.com/tari-project/tari/commit/7f13fa5e64144c11b67201ab38bb55bdbb494680))
+
+
+### Bug Fixes
+
+* couple fixes for cucumber ([ad92e11](https://github.com/tari-project/tari/commit/ad92e1172682e602664ff512f9ce1495a566e473))
+* **dht/test:** ban peers who send empty encrypted messages  ([#5130](https://github.com/tari-project/tari/issues/5130)) ([86a9eaf](https://github.com/tari-project/tari/commit/86a9eaf700323a2794d2b71797ebf811ba3679b5))
+* do not propagate unsigned encrypted messages ([#5129](https://github.com/tari-project/tari/issues/5129)) ([d4fe7de](https://github.com/tari-project/tari/commit/d4fe7de1088aa986bf00d6ff4c31dd92659b4d95))
+* feature flag separation for validation ([#5137](https://github.com/tari-project/tari/issues/5137)) ([0e83463](https://github.com/tari-project/tari/commit/0e83463718001ef14564068f2087fb6dc50b0fa3))
+* panic on overflow in release mode ([#5150](https://github.com/tari-project/tari/issues/5150)) ([5f5808b](https://github.com/tari-project/tari/commit/5f5808b309cbf2416541652c7e2a4a923ef46e35))
+* potential ban ([#5146](https://github.com/tari-project/tari/issues/5146)) ([9892da6](https://github.com/tari-project/tari/commit/9892da6345468b798b0b669f010322f343fd9f4f))
+* **test:** broken address test ([#5134](https://github.com/tari-project/tari/issues/5134)) ([6b125af](https://github.com/tari-project/tari/commit/6b125af57570d48d5864158693f3ab935d23f6a9))
+* **wallet-grpc:** return correct available balance and add timelocked_balance ([#5181](https://github.com/tari-project/tari/issues/5181)) ([e001125](https://github.com/tari-project/tari/commit/e0011254ddbf4556a8b0ac2576869615c6549ccc))
+
 ### [0.44.1](https://github.com/tari-project/tari/compare/v0.44.0...v0.44.1) (2023-01-19)
 
 ## [0.44.0](https://github.com/tari-project/tari/compare/v0.43.3...v0.44.0) (2023-01-18)

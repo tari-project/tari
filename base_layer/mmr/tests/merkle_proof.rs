@@ -26,7 +26,7 @@ mod support;
 
 use support::int_to_hash;
 use tari_mmr::{
-    common::{is_leaf, node_index},
+    common::{is_leaf, node_index, LeafIndex},
     MerkleProof,
     MerkleProofError,
 };
@@ -69,7 +69,7 @@ fn med_mmr() {
     let mmr = create_mmr(size);
     let root = mmr.get_merkle_root().unwrap();
     let i = 499;
-    let pos = node_index(i);
+    let pos = node_index(LeafIndex(i));
     let hash = int_to_hash(i);
     let proof = MerkleProof::for_node(&mmr, pos).unwrap();
     assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_ok());
@@ -78,10 +78,10 @@ fn med_mmr() {
 #[test]
 fn a_big_proof() {
     let mmr = create_mmr(100_000);
-    let leaf_pos = 28_543;
+    let leaf_pos = LeafIndex(28_543);
     let mmr_index = node_index(leaf_pos);
     let root = mmr.get_merkle_root().unwrap();
-    let hash = int_to_hash(leaf_pos);
+    let hash = int_to_hash(leaf_pos.0);
     let proof = MerkleProof::for_node(&mmr, mmr_index).unwrap();
     assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, mmr_index).is_ok())
 }
@@ -90,8 +90,8 @@ fn a_big_proof() {
 fn for_leaf_node() {
     let mmr = create_mmr(100);
     let root = mmr.get_merkle_root().unwrap();
-    let leaf_pos = 28;
-    let hash = int_to_hash(leaf_pos);
+    let leaf_pos = LeafIndex(28);
+    let hash = int_to_hash(leaf_pos.0);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();
     assert!(proof
         .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, leaf_pos)
@@ -104,7 +104,7 @@ const BINCODE_PROOF: &str = "080000000000000002000000000000002000000000000000834
 #[test]
 fn serialisation() {
     let mmr = create_mmr(5);
-    let proof = MerkleProof::for_leaf_node(&mmr, 3).unwrap();
+    let proof = MerkleProof::for_leaf_node(&mmr, LeafIndex(3)).unwrap();
     let json_proof = serde_json::to_string(&proof).unwrap();
     assert_eq!(&json_proof, JSON_PROOF);
 
@@ -123,7 +123,7 @@ fn deserialization() {
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
     println!("{}", proof);
     assert!(proof
-        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), 3)
+        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
         .is_ok());
 
     // Verify bincode-derived proof
@@ -131,6 +131,6 @@ fn deserialization() {
     let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
     println!("{}", proof);
     assert!(proof
-        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), 3)
+        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
         .is_ok());
 }

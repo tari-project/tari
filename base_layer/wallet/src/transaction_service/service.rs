@@ -70,10 +70,10 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PKtrait, SecretKey},
     ristretto::RistrettoComSig,
-    tari_utilities::{ByteArray, ByteArrayError},
+    tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -119,14 +119,20 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::WalletHasher,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::{
+        one_sided::{
+            diffie_hellman_stealth_domain_hasher,
+            shared_secret_to_output_encryption_key,
+            shared_secret_to_output_rewind_key,
+            shared_secret_to_output_spending_key,
+            stealth_address_script_spending_key,
+        },
+        wallet_identity::WalletIdentity,
+        watch::Watch,
+    },
     utxo_scanner_service::RECOVERY_KEY,
     BurntOutputDomainHasher,
     OperationId,
-    WalletOutputEncryptionKeysDomainHasher,
-    WalletOutputRewindKeysDomainHasher,
-    WalletOutputSpendingKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -1363,7 +1369,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            script!(PushPubKey(Box::new(dest_pubkey))),
+            one_sided_payment_script(&dest_pubkey),
         )
         .await
     }
@@ -1577,12 +1583,9 @@ where
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
         let dest_pubkey = destination.public_key().clone();
-        let c = WalletHasher::new_with_label("stealth_address")
-            .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
-            .finalize();
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, &dest_pubkey);
 
-        let script_spending_key =
-            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey;
+        let script_spending_key = stealth_address_script_spending_key(&c, &dest_pubkey);
 
         self.send_one_sided_or_stealth(
             destination,
@@ -1592,7 +1595,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
+            stealth_payment_script(&nonce_public_key, &script_spending_key),
         )
         .await
     }
@@ -2755,36 +2758,6 @@ pub struct PendingCoinbaseSpendingKey {
     pub spending_key: PrivateKey,
 }
 
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output spending key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputSpendingKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
 /// Contains the generated TxId and TransactionStatus transaction send result
 #[derive(Debug)]
 pub struct TransactionSendResult {
@@ -2795,31 +2768,28 @@ pub struct TransactionSendResult {
 #[cfg(test)]
 mod tests {
     use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::Opcode;
-    use WalletHasher;
+    use tari_script::{stealth_payment_script, Opcode};
 
     use super::*;
+    use crate::util::one_sided::{diffie_hellman_stealth_domain_hasher, stealth_address_script_spending_key};
 
     #[test]
     fn test_stealth_addresses() {
         // recipient's keys
         let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
-        let (b, big_b) = PublicKey::random_keypair(&mut OsRng);
+        let (_b, big_b) = PublicKey::random_keypair(&mut OsRng);
 
         // Sender generates a random nonce key-pair: R=r⋅G
         let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = WalletHasher::new_with_label("stealth_address")
-            .chain(CommsDHKE::new(&r, &big_a).as_bytes())
-            .finalize();
+        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-        let sender_spending_key =
-            PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+        let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
 
-        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
+        let script = stealth_payment_script(&big_r, &sender_spending_key);
 
         // ----------------------------------------------------------------------------
         // imitating the receiving end, scanning and extraction
@@ -2828,13 +2798,10 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = WalletHasher::new_with_label("stealth_address")
-                .chain(CommsDHKE::new(&a, big_r).as_bytes())
-                .finalize();
+            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
 
             // computing a spending key `Ks=(c+b)G` for comparison
-            let receiver_spending_key =
-                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
+            let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
 
             // computing a scanning key `Ks=cG+B` for comparison
             let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;

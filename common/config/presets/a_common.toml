@@ -6,12 +6,12 @@
 ########################################################################################################################
 
 [common]
-#override_from="esmeralda"
+#override_from="stagenet"
 #base_path="<HOME>/.tari"
 
-[esmeralda.auto_update]
+[stagenet.auto_update]
 # Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
-update_uris = ["updates.esmeralda.taripulse.com"]
+update_uris = ["updates.stagenet.taripulse.com"]
 
 [auto_update]
 # Name server for auto update (default = "1.1.1.1:53/cloudflare.net")

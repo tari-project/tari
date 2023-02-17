@@ -236,6 +236,7 @@ message GetBalanceResponse {
     uint64 available_balance = 1;
     uint64 pending_incoming_balance = 2;
     uint64 pending_outgoing_balance = 3;
+    uint64 timelocked_balance = 4;
 }
 
 message GetUnspentAmountsResponse {

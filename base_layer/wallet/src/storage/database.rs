@@ -33,6 +33,7 @@ use tari_comms::{
     tor::TorIdentity,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
+use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
@@ -57,6 +58,9 @@ pub trait WalletBackend: Send + Sync + Clone {
         height: u64,
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError>;
+
+    /// Change the passphrase used to encrypt the database
+    fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,6 +137,11 @@ where T: WalletBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
+    }
+
+    pub fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError> {
+        self.db.change_passphrase(existing, new)?;
+        Ok(())
     }
 
     pub fn get_master_seed(&self) -> Result<Option<CipherSeed>, WalletStorageError> {
