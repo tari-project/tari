@@ -113,6 +113,18 @@ jobs:
             -exec sed -i -e "s/libwallet-.*\///g" '{}' \;
           ls -alht
 
+      - name: Archive libwallet-ios-xcframework
+        shell: bash
+        working-directory: libwallets
+        run: |
+          ls -alht
+          if [ -d libwallet-ios-xcframework ]; then
+            #zip -j libwallet-ios-xcframework.zip libwallet-ios-xcframework/*
+            7z a libwallet-ios-xcframework.zip libwallet-ios-xcframework/*
+            rm -fr libwallet-ios-xcframework/*
+          fi
+          ls -alht
+
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
