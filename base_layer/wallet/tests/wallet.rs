@@ -119,11 +119,7 @@ async fn create_wallet(
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::LocalNet;
-    let node_identity = NodeIdentity::random(
-        &mut OsRng,
-        vec![get_next_memory_address()],
-        PeerFeatures::COMMUNICATION_NODE,
-    );
+    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
         override_from: None,
         public_addresses: vec![],
@@ -214,11 +210,8 @@ async fn test_wallet() {
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
 
-    let base_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        vec![get_next_memory_address()],
-        PeerFeatures::COMMUNICATION_NODE,
-    );
+    let base_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // create wallet creates a local wallet
     let network = Network::LocalNet;
@@ -545,7 +538,7 @@ async fn test_store_and_forward_send_tx() {
 
     let base_node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec!["/memory/0".parse().unwrap()],
+        "/memory/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let (tx, _rx) = mpsc::channel(100);
@@ -663,12 +656,12 @@ async fn test_import_utxo() {
     let shutdown = Shutdown::new();
     let alice_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec!["/ip4/127.0.0.1/tcp/24521".parse().unwrap()],
+        "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec!["/ip4/127.0.0.1/tcp/24522".parse().unwrap()],
+        "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let temp_dir = tempdir().unwrap();

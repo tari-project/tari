@@ -745,7 +745,12 @@ mod test {
             peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
             peer2.node_id
         );
-        assert!(peer_storage.find_by_node_id(&peer3.node_id).unwrap().is_none());
+        assert!(peer_storage
+            .find_by_node_id(&peer3.node_id)
+            .unwrap()
+            .unwrap()
+            .deleted_at
+            .is_some());
     }
 
     fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {

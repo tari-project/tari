@@ -37,6 +37,9 @@ pub struct MultiaddrWithStats {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum PeerAddressSource {
     Config,
+    FromNodeIdentity {
+        peer_identity_claim: PeerIdentityClaim,
+    },
     FromPeerConnection {
         peer_identity_claim: PeerIdentityClaim,
     },
@@ -60,6 +63,7 @@ impl PeerAddressSource {
     pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
         match self {
             PeerAddressSource::Config => None,
+            PeerAddressSource::FromNodeIdentity { peer_identity_claim } => Some(peer_identity_claim),
             PeerAddressSource::FromPeerConnection { peer_identity_claim } => Some(peer_identity_claim),
             PeerAddressSource::FromDiscovery { peer_identity_claim } => Some(peer_identity_claim),
             PeerAddressSource::FromAnotherPeer {
@@ -74,6 +78,9 @@ impl Display for PeerAddressSource {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             PeerAddressSource::Config => write!(f, "Config"),
+            PeerAddressSource::FromNodeIdentity { .. } => {
+                write!(f, "FromNodeIdentity")
+            },
             PeerAddressSource::FromPeerConnection { .. } => write!(f, "FromPeerConnection"),
             PeerAddressSource::FromDiscovery { .. } => write!(f, "FromDiscovery"),
             PeerAddressSource::FromAnotherPeer { .. } => write!(f, "FromAnotherPeer"),
@@ -87,6 +94,9 @@ impl PartialEq for PeerAddressSource {
         match self {
             PeerAddressSource::Config => {
                 matches!(other, PeerAddressSource::Config)
+            },
+            PeerAddressSource::FromNodeIdentity { .. } => {
+                matches!(other, PeerAddressSource::FromNodeIdentity { .. })
             },
             PeerAddressSource::FromPeerConnection { .. } => {
                 matches!(other, PeerAddressSource::FromPeerConnection { .. })

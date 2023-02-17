@@ -50,7 +50,7 @@ pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
         .parse()
         .unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, vec![public_addr], features))
+    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features))
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {

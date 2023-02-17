@@ -49,6 +49,7 @@ fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
 // Unit tests for get_closer_peers request
 mod get_closer_peers {
     use super::*;
+    use crate::rpc::PeerInfo;
 
     #[tokio::test]
     async fn it_returns_empty_peer_stream() {
@@ -93,11 +94,11 @@ mod get_closer_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<Peer>>();
+            .collect::<Vec<PeerInfo>>();
 
         let mut dist = NodeDistance::zero();
         for p in &peers {
-            let current = p.node_id.distance(node_identity.node_id());
+            let current = NodeId::from_public_key(&p.public_key).distance(node_identity.node_id());
             assert!(dist < current);
             dist = current;
         }
@@ -170,7 +171,7 @@ mod get_peers {
     use tari_comms::{peer_manager::Peer, test_utils::node_identity::build_many_node_identities};
 
     use super::*;
-    use crate::proto::rpc::GetPeersRequest;
+    use crate::{proto::rpc::GetPeersRequest, rpc::PeerInfo};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_returns_empty_peer_stream() {
@@ -213,10 +214,10 @@ mod get_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<Peer>>();
+            .collect::<Vec<PeerInfo>>();
 
-        assert_eq!(peers.iter().filter(|p| p.features.is_client()).count(), 2);
-        assert_eq!(peers.iter().filter(|p| p.features.is_node()).count(), 3);
+        assert_eq!(peers.iter().filter(|p| p.peer_features.is_client()).count(), 2);
+        assert_eq!(peers.iter().filter(|p| p.peer_features.is_node()).count(), 3);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -244,9 +245,9 @@ mod get_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<Peer>>();
+            .collect::<Vec<PeerInfo>>();
 
-        assert!(peers.iter().all(|p| p.features.is_node()));
+        assert!(peers.iter().all(|p| p.peer_features.is_node()));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

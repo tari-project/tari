@@ -65,6 +65,8 @@ const LOG_TARGET: &str = "comms::dht::connectivity";
 /// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
+    #[error("Peer connection did not have a peer identity claim")]
+    PeerConnectionMissingPeerIdentityClaim,
     #[error("ConnectivityError: {0}")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("PeerManagerError: {0}")]
@@ -506,15 +508,19 @@ impl DhtConnectivity {
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
         if conn.direction() == ConnectionDirection::Outbound {
-            self.peer_manager
-                .mark_last_seen(
-                    conn.peer_node_id(),
-                    conn.address(),
-                    &PeerAddressSource::FromPeerConnection {
-                        peer_identity_claim: conn.peer_identity_claim().clone(),
-                    },
-                )
-                .await?;
+            if let Some(peer_identity_claim) = conn.peer_identity_claim() {
+                self.peer_manager
+                    .mark_last_seen(
+                        conn.peer_node_id(),
+                        conn.address(),
+                        &PeerAddressSource::FromPeerConnection {
+                            peer_identity_claim: peer_identity_claim.clone(),
+                        },
+                    )
+                    .await?;
+            } else {
+                return Err(DhtConnectivityError::PeerConnectionMissingPeerIdentityClaim);
+            }
         }
         if conn.peer_features().is_client() {
             debug!(

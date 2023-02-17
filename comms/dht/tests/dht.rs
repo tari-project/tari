@@ -101,7 +101,7 @@ fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec![format!("/memory/{}", port).parse().unwrap()],
+        format!("/memory/{}", port).parse().unwrap(),
         features,
     ))
 }

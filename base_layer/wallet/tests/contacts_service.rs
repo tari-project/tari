@@ -66,7 +66,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec![get_next_memory_address()],
+        get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let comms_config = P2pConfig {

@@ -20,9 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    str::FromStr,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use tokio::{
@@ -42,7 +45,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing,
     multiplexing::{IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerIdentityClaim},
+    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerIdentityClaim},
     test_utils::{node_identity::build_node_identity, transport},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
@@ -51,16 +54,16 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
     let (tx, rx) = mpsc::channel(1);
+    let addr = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
     (
-        PeerConnection::new(
+        PeerConnection::unverified(
             1,
             tx,
             node_id,
             PeerFeatures::COMMUNICATION_NODE,
-            Multiaddr::empty(),
+            addr.clone(),
             ConnectionDirection::Inbound,
             AtomicRefCounter::new(),
-            todo!(),
         ),
         rx,
     )
@@ -89,7 +92,7 @@ pub async fn create_peer_connection_mock_pair(
     rt_handle.spawn(mock.run());
 
     (
-        PeerConnection::new(
+        PeerConnection::unverified(
             // ID must be unique since it is used for connection equivalency, so we re-implement this in the mock
             ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             tx1,
@@ -98,10 +101,9 @@ pub async fn create_peer_connection_mock_pair(
             listen_addr.clone(),
             ConnectionDirection::Inbound,
             mock_state_in.substream_counter(),
-            todo!(),
         ),
         mock_state_in,
-        PeerConnection::new(
+        PeerConnection::unverified(
             ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             tx2,
             peer1.node_id,
@@ -109,7 +111,6 @@ pub async fn create_peer_connection_mock_pair(
             listen_addr,
             ConnectionDirection::Outbound,
             mock_state_out.substream_counter(),
-            todo!(),
         ),
         mock_state_out,
     )

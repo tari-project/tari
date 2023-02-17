@@ -63,31 +63,7 @@ impl DhtRpcServiceImpl {
             let iter = peers
                 .into_iter()
                 .filter_map(|peer| {
-                    let peer_info = PeerInfo {
-                        public_key: peer.public_key,
-                        addresses: peer
-                            .addresses
-                            .addresses()
-                            .iter()
-                            .filter_map(|addr| {
-                                // TODO: find the source of the empty addresses
-                                if addr.address().is_empty() {
-                                    return None;
-                                }
-                                if let Some(claim) = addr.source.peer_identity_claim() {
-                                    Some(PeerInfoAddress {
-                                        address: addr.address().clone(),
-                                        peer_identity_claim: claim.clone(),
-                                    })
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect(),
-                        peer_features: peer.features,
-                        user_agent: peer.user_agent,
-                        supported_protocols: peer.supported_protocols,
-                    };
+                    let peer_info: PeerInfo = peer.into();
 
                     if !peer_info.addresses.is_empty() {
                         Some(GetPeersResponse {

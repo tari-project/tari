@@ -42,6 +42,8 @@ pub enum PeerValidatorError {
     InvalidPeerSignature { peer: NodeId },
     #[error("One or more peer addresses were invalid for '{peer}'")]
     InvalidPeerAddresses { peer: NodeId },
+    #[error("Peer '{peer}' was banned")]
+    PeerHasNoAddresses { peer: NodeId },
     #[error("Peer manager error: {0}")]
     PeerManagerError(#[from] PeerManagerError),
 }
@@ -63,6 +65,9 @@ impl<'a> PeerValidator<'a> {
     pub async fn validate_and_add_peer(&self, new_peer: PeerInfo) -> Result<bool, PeerValidatorError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
 
+        if new_peer.addresses.is_empty() {
+            return Err(PeerValidatorError::PeerHasNoAddresses { peer: node_id });
+        }
         let mut peer = Peer::new(
             new_peer.public_key.clone(),
             node_id.clone(),
@@ -119,11 +124,23 @@ fn validate_node_id(public_key: &CommsPublicKey, node_id: &NodeId) -> Result<Nod
 
 #[cfg(test)]
 mod tests {
-    use tari_comms::net_address::MultiaddressesWithStats;
+    use std::str::FromStr;
+
+    use tari_comms::{
+        multiaddr::Multiaddr,
+        net_address::MultiaddressesWithStats,
+        peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
+        types::Signature,
+    };
+    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
     use tari_test_utils::unpack_enum;
+    use tari_utilities::ByteArray;
 
     use super::*;
-    use crate::test_utils::{build_peer_manager, make_node_identity};
+    use crate::{
+        envelope::NodeDestination::PublicKey,
+        test_utils::{build_peer_manager, make_node_identity},
+    };
 
     #[tokio::test]
     async fn it_adds_a_valid_unsigned_peer() {
@@ -131,9 +148,25 @@ mod tests {
         let config = DhtConfig::default_local_test();
         let node_identity = make_node_identity();
         let mut peer = node_identity.to_peer();
-        peer.identity_signature = None;
+        peer.addresses = MultiaddressesWithStats::new(vec![]);
+        let addr = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
+        peer.addresses.add_address(&addr, &PeerAddressSource::FromDiscovery {
+            peer_identity_claim: PeerIdentityClaim {
+                addresses: vec![addr.clone()],
+                features: PeerFeatures::COMMUNICATION_NODE,
+                signature: IdentitySignature::new(
+                    0,
+                    Signature::new(
+                        RistrettoPublicKey::from_bytes(&[0u8; 32]).unwrap(),
+                        RistrettoSecretKey::from_bytes(&[0u8; 32]).unwrap(),
+                    ),
+                    Default::default(),
+                ),
+                unverified_data: None,
+            },
+        });
         let validator = PeerValidator::new(&peer_manager, &config);
-        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
+        let is_new = validator.validate_and_add_peer(peer.clone().into()).await.unwrap();
         assert!(is_new);
         assert!(peer_manager.exists(&peer.public_key).await);
     }
@@ -147,57 +180,8 @@ mod tests {
         // Peer MUST provide at least one address
         peer.addresses = MultiaddressesWithStats::new(vec![]);
         let validator = PeerValidator::new(&peer_manager, &config);
-        let err = validator.validate_and_add_peer(peer.clone()).await.unwrap_err();
+        let err = validator.validate_and_add_peer(peer.clone().into()).await.unwrap_err();
         unpack_enum!(PeerValidatorError::InvalidPeerAddresses { .. } = err);
         assert!(!peer_manager.exists(&peer.public_key).await);
-    }
-
-    #[ignore = "no longer relevant"]
-    #[tokio::test]
-    async fn it_updates_a_newer_signed_peer() {
-        let peer_manager = build_peer_manager();
-        let config = DhtConfig::default_local_test();
-        let validator = PeerValidator::new(&peer_manager, &config);
-
-        let node_identity = make_node_identity();
-        let peer = node_identity.to_peer();
-        peer_manager.add_peer(peer).await.unwrap();
-
-        node_identity.set_public_address("/dns4/updated.com/tcp/1234".parse().unwrap());
-        node_identity.sign();
-        let peer = node_identity.to_peer();
-
-        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
-        assert!(!is_new);
-        let peer = peer_manager
-            .find_by_public_key(&peer.public_key)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(peer.addresses[0].address().to_string(), "/dns4/updated.com/tcp/1234");
-    }
-
-    #[tokio::test]
-    async fn it_does_not_update_a_valid_unsigned_peer() {
-        let peer_manager = build_peer_manager();
-        let config = DhtConfig::default_local_test();
-        let validator = PeerValidator::new(&peer_manager, &config);
-
-        let node_identity = make_node_identity();
-        let prev_addr = node_identity.public_address();
-        let mut peer = node_identity.to_peer();
-        peer_manager.add_peer(peer.clone()).await.unwrap();
-
-        peer.identity_signature = None;
-        peer.update_addresses(vec!["/dns4/updated.com/tcp/1234".parse().unwrap()]);
-
-        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
-        assert!(!is_new);
-        let peer = peer_manager
-            .find_by_public_key(&peer.public_key)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(peer.addresses[0].address(), &prev_addr);
     }
 }

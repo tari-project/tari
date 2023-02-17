@@ -189,24 +189,28 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
 
 #[cfg(test)]
 mod test {
-    // use std::str::FromStr;
+    use std::str::FromStr;
 
-    // use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::{PublicKey, SecretKey};
 
-    // use super::*;
-    // use crate::peer_manager::{NodeId, Peer, PeerFlags};
+    use super::*;
+    use crate::peer_manager::{NodeId, Peer, PeerFlags};
 
     mod is_valid_for_peer {
-        // use super::*;
+        use super::*;
 
         #[test]
         fn it_returns_true_for_valid_signature() {
-            // let secret = CommsSecretKey::random(&mut OsRng);
-            // let public_key = CommsPublicKey::from_secret_key(&secret);
-            // let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            // let updated_at = Utc::now();
-            // // let identity =
-            // //     IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
+            let secret = CommsSecretKey::random(&mut OsRng);
+            let public_key = CommsPublicKey::from_secret_key(&secret);
+            let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
+            let updated_at = Utc::now();
+            let identity =
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
+            assert!(
+                identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                "Signature is not valid"
+            );
             // let node_id = NodeId::from_public_key(&public_key);
             //
             // let peer = Peer::new(
@@ -218,58 +222,40 @@ mod test {
             //     vec![],
             //     String::new(),
             // );
-            todo!("decide if we can remove this signature");
             // assert!(identity.is_valid_for_peer(&peer));
         }
 
         #[test]
         fn it_returns_false_for_tampered_address() {
-            // let secret = CommsSecretKey::random(&mut OsRng);
-            // let public_key = CommsPublicKey::from_secret_key(&secret);
-            // let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            // let updated_at = Utc::now();
-            // let identity =
-            //     IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            // let node_id = NodeId::from_public_key(&public_key);
-            //
-            // let tampered = Multiaddr::from_str("/ip4/127.0.0.1/tcp/4321").unwrap();
-            //
-            // let peer = Peer::new(
-            //     public_key,
-            //     node_id,
-            //     vec![tampered].into(),
-            //     PeerFlags::empty(),
-            //     PeerFeatures::COMMUNICATION_NODE,
-            //     vec![],
-            //     String::new(),
-            // );
-            // assert!(!identity.is_valid_for_peer(&peer));
-            todo!("decide if we can remove this signature");
+            let secret = CommsSecretKey::random(&mut OsRng);
+            let public_key = CommsPublicKey::from_secret_key(&secret);
+            let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
+            let updated_at = Utc::now();
+            let identity =
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
+
+            let tampered = Multiaddr::from_str("/ip4/127.0.0.1/tcp/4321").unwrap();
+            assert!(
+                !identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered]),
+                "Signature is not valid"
+            );
         }
 
         #[test]
         fn it_returns_false_for_tampered_features() {
-            // let secret = CommsSecretKey::random(&mut OsRng);
-            // let public_key = CommsPublicKey::from_secret_key(&secret);
-            // let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            // let updated_at = Utc::now();
-            // let identity =
-            //     IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            // let node_id = NodeId::from_public_key(&public_key);
-            //
-            // let tampered = PeerFeatures::COMMUNICATION_CLIENT;
-            //
-            // let peer = Peer::new(
-            //     public_key,
-            //     node_id,
-            //     vec![address].into(),
-            //     PeerFlags::empty(),
-            //     tampered,
-            //     vec![],
-            //     String::new(),
-            // );
-            // assert!(!identity.is_valid_for_peer(&peer));
-            todo!("decide if we can remove this signature");
+            let secret = CommsSecretKey::random(&mut OsRng);
+            let public_key = CommsPublicKey::from_secret_key(&secret);
+            let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
+            let updated_at = Utc::now();
+            let identity =
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
+
+            let tampered = PeerFeatures::COMMUNICATION_CLIENT;
+
+            assert!(
+                !identity.is_valid(&public_key, tampered, [&address]),
+                "Signature is not valid"
+            );
         }
     }
 }

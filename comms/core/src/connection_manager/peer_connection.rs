@@ -139,7 +139,7 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
-    peer_identity_claim: PeerIdentityClaim,
+    peer_identity_claim: Option<PeerIdentityClaim>,
 }
 
 impl PeerConnection {
@@ -163,7 +163,31 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
-            peer_identity_claim,
+            peer_identity_claim: Some(peer_identity_claim),
+        }
+    }
+
+    /// Should only be used in tests
+    pub(crate) fn unverified(
+        id: ConnectionId,
+        request_tx: mpsc::Sender<PeerConnectionRequest>,
+        peer_node_id: NodeId,
+        peer_features: PeerFeatures,
+        address: Multiaddr,
+        direction: ConnectionDirection,
+        substream_counter: AtomicRefCounter,
+    ) -> Self {
+        Self {
+            id,
+            request_tx,
+            peer_node_id,
+            peer_features,
+            address: Arc::new(address),
+            direction,
+            started_at: Instant::now(),
+            substream_counter,
+            handle_counter: Arc::new(()),
+            peer_identity_claim: None,
         }
     }
 
@@ -209,8 +233,8 @@ impl PeerConnection {
         Arc::strong_count(&self.handle_counter)
     }
 
-    pub fn peer_identity_claim(&self) -> &PeerIdentityClaim {
-        &self.peer_identity_claim
+    pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
+        self.peer_identity_claim.as_ref()
     }
 
     #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]

@@ -563,6 +563,7 @@ mod test {
     use rand::rngs::OsRng;
     use tari_comms::{
         multiaddr::Multiaddr,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
@@ -588,7 +589,10 @@ mod test {
         let example_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk),
-            vec!["/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap()].into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                vec!["/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap()],
+                &PeerAddressSource::Config,
+            ),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

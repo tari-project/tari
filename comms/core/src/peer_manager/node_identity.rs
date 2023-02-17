@@ -37,7 +37,14 @@ use tari_crypto::{
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{identity_signature::IdentitySignature, node_id::NodeId, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{
+        identity_signature::IdentitySignature,
+        node_id::NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerIdentityClaim,
+    },
     types::{CommsPublicKey, CommsSecretKey},
 };
 
@@ -203,10 +210,24 @@ impl NodeIdentity {
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {
+        let peer_identity_claim = PeerIdentityClaim {
+            addresses: self.public_addresses().clone(),
+            features: self.features,
+            signature: IdentitySignature::sign_new(
+                &self.secret_key,
+                self.features,
+                &self.public_addresses(),
+                Utc::now(),
+            ),
+            unverified_data: None,
+        };
         let peer = Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
-            MultiaddressesWithStats::from_addresses_with_source(self.public_addresses(), &PeerAddressSource::Config),
+            MultiaddressesWithStats::from_addresses_with_source(
+                self.public_addresses(),
+                &PeerAddressSource::FromNodeIdentity { peer_identity_claim },
+            ),
             PeerFlags::empty(),
             self.features(),
             Default::default(),

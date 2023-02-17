@@ -22,7 +22,7 @@
 
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{PeerFeatures, PeerIdentityClaim},
+    peer_manager::{Peer, PeerFeatures, PeerIdentityClaim},
     protocol::ProtocolId,
     types::CommsPublicKey,
 };
@@ -38,4 +38,34 @@ pub struct PeerInfo {
 pub struct PeerInfoAddress {
     pub address: Multiaddr,
     pub peer_identity_claim: PeerIdentityClaim,
+}
+
+impl From<Peer> for PeerInfo {
+    fn from(peer: Peer) -> Self {
+        PeerInfo {
+            public_key: peer.public_key,
+            addresses: peer
+                .addresses
+                .addresses()
+                .iter()
+                .filter_map(|addr| {
+                    // TODO: find the source of the empty addresses
+                    if addr.address().is_empty() {
+                        return None;
+                    }
+                    if let Some(claim) = addr.source.peer_identity_claim() {
+                        Some(PeerInfoAddress {
+                            address: addr.address().clone(),
+                            peer_identity_claim: claim.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            peer_features: peer.features,
+            user_agent: peer.user_agent,
+            supported_protocols: peer.supported_protocols,
+        }
+    }
 }

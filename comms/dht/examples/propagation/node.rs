@@ -68,8 +68,13 @@ pub async fn create<P: AsRef<Path>>(
     let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let node_identity =
-        node_identity.unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, vec![], Default::default())));
+    let node_identity = node_identity.unwrap_or_else(|| {
+        Arc::new(NodeIdentity::random_multiple_addresses(
+            &mut OsRng,
+            vec![],
+            Default::default(),
+        ))
+    });
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()

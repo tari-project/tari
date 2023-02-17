@@ -92,7 +92,7 @@ pub async fn create(
             ni.add_public_address(public_addr.clone());
             ni
         })
-        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, vec![public_addr], Default::default())));
+        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
 
     let listener_addr = format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
 

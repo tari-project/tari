@@ -223,12 +223,18 @@ where
         // try save the peer back to the peer manager
         let peer = dial_state.peer_mut();
         if let Ok(peer_connection) = &dial_result {
-            peer.update_addresses(
-                &peer_connection.peer_identity_claim().addresses,
-                &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_connection.peer_identity_claim().clone(),
-                },
-            );
+            if let Some(peer_identity) = peer_connection.peer_identity_claim() {
+                peer.update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.clone(),
+                });
+            } else {
+                error!(target: LOG_TARGET, "No identity claim provided");
+                let _ = dial_state
+                    .send_reply(Err(ConnectionManagerError::PeerConnectionError(
+                        "No identity claim provided".to_string(),
+                    )))
+                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+            }
         }
 
         let _ = self

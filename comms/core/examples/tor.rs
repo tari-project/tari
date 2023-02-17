@@ -179,7 +179,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_CLIENT,
     ));
 

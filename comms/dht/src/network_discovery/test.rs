@@ -113,13 +113,7 @@ mod state_machine {
         };
         let peers = iter::repeat_with(|| make_node_identity().to_peer())
             .map(|p| GetPeersResponse {
-                peer: Some(PeerInfo {
-                    public_key: p.public_key.clone().into(),
-                    addresses: p.addresses.iter().collect(),
-                    peer_features: p.features.into(),
-                    user_agent: "".to_string(),
-                    supported_protocols: vec![],
-                }),
+                peer: Some(PeerInfo::from(p).into()),
             })
             .take(NUM_PEERS)
             .collect();
@@ -157,58 +151,6 @@ mod state_machine {
         assert_eq!(info.num_duplicate_peers, 0);
         assert_eq!(info.num_succeeded, 1);
         assert_eq!(info.sync_peers, vec![peer_node_identity.node_id().clone()]);
-    }
-
-    #[ignore = "no longer checking invalid peer signatures"]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[allow(clippy::redundant_closure)]
-    async fn dht_banning_peers() {
-        const NUM_PEERS: usize = 3;
-        let config = DhtConfig {
-            num_neighbouring_nodes: 4,
-            network_discovery: NetworkDiscoveryConfig {
-                min_desired_peers: NUM_PEERS,
-                ..Default::default()
-            },
-            ..DhtConfig::default_local_test()
-        };
-        let (discovery_actor, connectivity_mock, peer_manager, node_identity, _event_rx, _shutdown) =
-            setup(config, make_node_identity(), vec![]).await;
-
-        let mock = DhtRpcServiceMock::new();
-        let service = rpc::DhtService::new(mock.clone());
-        let protocol_name = service.as_protocol_name();
-
-        let mut mock_server = MockRpcServer::new(service, node_identity.clone());
-        let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        // Add the peer that we'll sync from
-        peer_manager.add_peer(peer_node_identity.to_peer()).await.unwrap();
-        mock_server.serve();
-
-        // Create a connection to the RPC mock and then make it available to the connectivity manager mock
-        let connection = mock_server
-            .create_connection(peer_node_identity.to_peer(), protocol_name.into())
-            .await;
-
-        connectivity_mock
-            .set_connectivity_status(ConnectivityStatus::Online(NUM_PEERS))
-            .await;
-        connectivity_mock.add_active_connection(connection).await;
-
-        // Checking banning logic
-        let mut invalid_peer = make_node_identity().to_peer();
-        invalid_peer.set_valid_identity_signature(make_node_identity().identity_signature_read().clone().unwrap());
-        let resp = GetPeersResponse {
-            peer: Some(invalid_peer.clone().into()),
-        };
-        mock.get_peers.set_response(Ok(vec![resp])).await;
-
-        discovery_actor.spawn();
-
-        connectivity_mock.await_call_count(1).await;
-        let banned = connectivity_mock.take_banned_peers().await;
-        let (peer, _, _) = &banned[0];
-        assert_eq!(peer, peer_node_identity.node_id());
     }
 
     #[tokio::test]
