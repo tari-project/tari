@@ -239,11 +239,12 @@ mod test {
         use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
 
         #[tokio::test]
+        #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
                 .await
                 .unwrap();
-            let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
+            let seeds = resolver.resolve("seeds.esmeralda.tari.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }
