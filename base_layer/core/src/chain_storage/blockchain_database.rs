@@ -39,7 +39,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_crypto::hash::blake2::Blake256;
-use tari_mmr::{pruned_hashset::PrunedHashSet, BalancedBinaryMerkleTree};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;
@@ -94,7 +94,6 @@ use crate::{
     PrunedKernelMmr,
     PrunedWitnessMmr,
     ValidatorNodeBMT,
-    ValidatorNodeMmr,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -1390,7 +1389,7 @@ pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) ->
             .to_vec()
     }
 
-    let vn_bmt = ValidatorNodeBMT::create(validator_nodes.iter().map(|vn| hash_node(vn)).collect::<Vec<_>>());
+    let vn_bmt = ValidatorNodeBMT::create(validator_nodes.iter().map(hash_node).collect::<Vec<_>>());
     vn_bmt.get_merkle_root()
 }
 

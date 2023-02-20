@@ -182,7 +182,7 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     output_mmr.push(utxo.hash().to_vec()).unwrap();
-    let vn_mr = calculate_validator_node_mr(&[]).unwrap();
+    let vn_mr = calculate_validator_node_mr(&[]);
 
     header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;

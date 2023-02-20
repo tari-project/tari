@@ -42,7 +42,7 @@ where D: Digest + DomainDigest
     pub fn verify(&self, root: &Hash, leaf_hash: Hash) -> bool {
         let mut computed_root = leaf_hash;
         let mut node_index = self.node_index;
-        for sibling in self.path.iter() {
+        for sibling in &self.path {
             if node_index & 1 == 1 {
                 computed_root = hash_together::<D>(&computed_root, sibling);
             } else {
