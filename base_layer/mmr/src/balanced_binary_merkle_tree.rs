@@ -80,10 +80,10 @@ where D: Digest + DomainDigest
     }
 
     pub fn get_leaf(&self, leaf_index: usize) -> &Hash {
-        &self.hashes[leaf_index + (self.hashes.len() >> 1)]
+        self.get_hash(self.get_node_index(leaf_index))
     }
 
-    pub(crate) fn get_leaf_index(&self, leaf_index: usize) -> usize {
+    pub(crate) fn get_node_index(&self, leaf_index: usize) -> usize {
         leaf_index + (self.hashes.len() >> 1)
     }
 

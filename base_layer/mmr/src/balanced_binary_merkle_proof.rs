@@ -30,41 +30,44 @@ use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 #[derive(Debug)]
 pub struct BalancedBinaryMerkleProof<D> {
     pub path: Vec<Hash>,
-    pub leaf_index: usize,
+    pub node_index: usize,
     _phantom: PhantomData<D>,
 }
+
+// Since this is balanced tree, the index `2k+1` is always left child and `2k` is right child
 
 impl<D> BalancedBinaryMerkleProof<D>
 where D: Digest + DomainDigest
 {
-    pub fn verify_consume(mut self, root: &Hash, leaf_hash: Hash) -> bool {
+    pub fn verify(&self, root: &Hash, leaf_hash: Hash) -> bool {
         let mut computed_root = leaf_hash;
+        let mut node_index = self.node_index;
         for sibling in self.path.iter() {
-            if self.leaf_index & 1 == 1 {
+            if node_index & 1 == 1 {
                 computed_root = hash_together::<D>(&computed_root, sibling);
             } else {
                 computed_root = hash_together::<D>(sibling, &computed_root);
             }
-            self.leaf_index = (self.leaf_index - 1) >> 1;
+            node_index = (node_index - 1) >> 1;
         }
         &computed_root == root
     }
 
     pub fn generate_proof(tree: &BalancedBinaryMerkleTree<D>, leaf_index: usize) -> Self {
-        let mut index = tree.get_leaf_index(leaf_index);
+        let mut node_index = tree.get_node_index(leaf_index);
         let mut proof = Vec::new();
-        while index > 0 {
+        while node_index > 0 {
             // Sibling
-            let parent = (index - 1) >> 1;
+            let parent = (node_index - 1) >> 1;
             // The children are 2i+1 and 2i+2, so together are 4i+3, we substract one, we get the other.
-            let sibling = 4 * parent + 3 - index;
+            let sibling = 4 * parent + 3 - node_index;
             proof.push(tree.get_hash(sibling).clone());
-            // Parent
-            index = parent;
+            // Traverse to parent
+            node_index = parent;
         }
         Self {
             path: proof,
-            leaf_index: tree.get_leaf_index(leaf_index),
+            node_index: tree.get_node_index(leaf_index),
             _phantom: PhantomData,
         }
     }
@@ -78,11 +81,22 @@ mod test {
     hash_domain!(TestDomain, "testing", 0);
 
     #[test]
-    fn test_generate_and_verify() {
-        let leaves = vec![vec![0; 32]; 3000];
-        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
-        let root = bmt.get_merkle_root();
-        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0);
-        assert!(proof.verify_consume(&root, vec![0; 32]));
+    fn test_generate_and_verify_big_tree() {
+        for n in [1usize, 100, 1000, 10000] {
+            let leaves = (0..n)
+                .map(|i| [i.to_le_bytes().to_vec(), vec![0u8; 24]].concat())
+                .collect::<Vec<_>>();
+            let hash_0 = leaves[0].clone();
+            let hash_n_half = leaves[n / 2].clone();
+            let hash_last = leaves[n - 1].clone();
+            let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+            let root = bmt.get_merkle_root();
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0);
+            assert!(proof.verify(&root, hash_0));
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n / 2);
+            assert!(proof.verify(&root, hash_n_half));
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n - 1);
+            assert!(proof.verify(&root, hash_last));
+        }
     }
 }
