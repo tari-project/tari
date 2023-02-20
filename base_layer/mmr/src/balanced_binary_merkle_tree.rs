@@ -45,6 +45,7 @@ pub struct BalancedBinaryMerkleTree<D> {
 impl<D> BalancedBinaryMerkleTree<D>
 where D: Digest + DomainDigest
 {
+    // There is no push method for this tree. This tree is created at once and no modifications are allowed.
     pub fn create(leaves: Vec<Hash>) -> Self {
         let leaves_cnt = leaves.len();
         if leaves_cnt == 0 {
