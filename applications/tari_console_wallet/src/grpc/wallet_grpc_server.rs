@@ -599,23 +599,34 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 message.message,
+                if message.claim_public_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PublicKey::from_bytes(&message.claim_public_key)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
             )
             .await
         {
-            Ok(tx_id) => {
+            Ok((tx_id, commitment, ownership_proof, rangeproof)) => {
                 debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
                     failure_message: Default::default(),
+                    commitment: commitment.to_vec(),
+                    ownership_proof: ownership_proof.map(|o| o.to_vec()).unwrap_or_default(),
+                    rangeproof: rangeproof.to_vec(),
                 }
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
                 CreateBurnTransactionResponse {
-                    transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),
+                    ..Default::default()
                 }
             },
         };
