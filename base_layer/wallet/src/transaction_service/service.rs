@@ -1380,6 +1380,7 @@ where
     // used in the 2nd layer (DAN layer). When such an _ownership proof_ is presented later on as part of some
     // transaction metadata, the _claim public key_ can be revealed to enable verification of the _ownership proof_
     // and the transaction can be signed with the private key corresponding to the claim public key.
+    #[allow(clippy::too_many_lines)]
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
@@ -1434,8 +1435,8 @@ where
         let recipient_reply = rtp.get_signed_data()?.clone();
         let commitment = recipient_reply.output.commitment.clone();
         let range_proof = recipient_reply.output.proof.clone();
-        let (nonce_a, _pub_nonce_a) = PublicKey::random_keypair(&mut OsRng);
-        let (nonce_x, _pub_nonce_x) = PublicKey::random_keypair(&mut OsRng);
+        let nonce_a = PrivateKey::random(&mut OsRng);
+        let nonce_x = PrivateKey::random(&mut OsRng);
         let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
         let mut ownership_proof = None;
 
