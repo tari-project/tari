@@ -133,7 +133,7 @@ impl ConnectionManagerMock {
         self.state.add_call(format!("{:?}", req)).await;
         match req {
             DialPeer { node_id, mut reply_tx } => {
-                // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
+                // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 let result = self
                     .state
                     .active_conns
