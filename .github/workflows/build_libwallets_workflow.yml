@@ -136,12 +136,12 @@ jobs:
           echo "target_platform=${target_platform}" >> $GITHUB_ENV
           mkdir -p "${{ runner.temp }}/libwallet-ios-${target_platform}"
           cd "${{ runner.temp }}/libwallet-ios-${target_platform}"
-          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.iso_${target_platform}.a"
+          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.ios_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
           cp -v "$GITHUB_WORKSPACE/changelog.md" .
           cd ..
           shasum -a 256 \
-            "libwallet-ios-${target_platform}/libtari_wallet_ffi.iso_${target_platform}.a" \
+            "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.a" \
             "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" \
               > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256sums"
           ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
@@ -190,8 +190,8 @@ jobs:
           cp -v "libwallet-ios-x86_64/changelog.md" \
             libwallet-ios-universal/
           lipo -create \
-            "libwallet-ios-x86_64/libtari_wallet_ffi.iso_x86_64.a" \
-            "libwallet-ios-aarch64/libtari_wallet_ffi.iso_aarch64.a" \
+            "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
+            "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
               -output "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a"
           shasum -a 256 \
             "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a" \
@@ -212,8 +212,8 @@ jobs:
           ls -alht
           mkdir libwallet-ios-universal-sim
           lipo -create \
-            "libwallet-ios-x86_64/libtari_wallet_ffi.iso_x86_64.a" \
-            "libwallet-ios-aarch64-sim/libtari_wallet_ffi.iso_aarch64-sim.a" \
+            "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
+            "libwallet-ios-aarch64-sim/libtari_wallet_ffi.ios_aarch64-sim.a" \
               -output "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a"
           mkdir libwallet-ios-xcframework
           cp -v "libwallet-ios-x86_64/changelog.md" \
@@ -221,13 +221,13 @@ jobs:
           xcodebuild -create-xcframework \
             -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a" \
               -headers "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
-            -library "libwallet-ios-aarch64/libtari_wallet_ffi.iso_aarch64.a" \
+            -library "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
               -headers "libwallet-ios-aarch64/libtari_wallet_ffi.h" \
             -output libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework
           shasum -a 256 \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/Info.plist" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/Headers" \
-            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/libtari_wallet_ffi.iso_aarch64.a" \
+            "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/libtari_wallet_ffi.ios_aarch64.a" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/libtari_wallet_ffi.ios_universal-sim.a" \
               > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256sums"
