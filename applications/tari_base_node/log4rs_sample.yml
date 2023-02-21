@@ -14,7 +14,6 @@ appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
     kind: console
-
     encoder:
       pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
