@@ -34,7 +34,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::{DhtRpcService, PeerInfo, PeerInfoAddress},
+    rpc::{DhtRpcService, PeerInfo},
 };
 
 const LOG_TARGET: &str = "comms::dht::rpc";
@@ -73,7 +73,7 @@ impl DhtRpcServiceImpl {
                         None
                     }
                 })
-                .map(|i| Ok(i));
+                .map(Ok);
 
             let _result = utils::mpsc::send_all(&tx, iter).await;
         });

@@ -665,9 +665,9 @@ where
                 .map(|(tx_id, commitment, ownership_proof, rangeproof)| {
                     TransactionServiceResponse::BurntTransactionSent {
                         tx_id,
-                        commitment,
+                        commitment: commitment.into(),
                         ownership_proof,
-                        rangeproof,
+                        rangeproof: rangeproof.into(),
                     }
                 }),
             TransactionServiceRequest::RegisterValidatorNode {

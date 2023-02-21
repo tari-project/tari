@@ -233,7 +233,7 @@ where
                             peer.supported_protocols.push(protocol.clone());
                         }
                     }
-                    if peer.user_agent != unverified_data.user_agent && unverified_data.user_agent != "" {
+                    if peer.user_agent != unverified_data.user_agent && !unverified_data.user_agent.is_empty() {
                         peer.user_agent = unverified_data.user_agent.clone();
                     }
                 }

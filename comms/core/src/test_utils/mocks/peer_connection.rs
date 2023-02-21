@@ -45,7 +45,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing,
     multiplexing::{IncomingSubstreams, Substream, Yamux},
-    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerIdentityClaim},
+    peer_manager::{NodeId, Peer, PeerFeatures},
     test_utils::{node_identity::build_node_identity, transport},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
@@ -61,7 +61,7 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
             tx,
             node_id,
             PeerFeatures::COMMUNICATION_NODE,
-            addr.clone(),
+            addr,
             ConnectionDirection::Inbound,
             AtomicRefCounter::new(),
         ),

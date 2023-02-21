@@ -53,14 +53,10 @@ impl From<Peer> for PeerInfo {
                     if addr.address().is_empty() {
                         return None;
                     }
-                    if let Some(claim) = addr.source.peer_identity_claim() {
-                        Some(PeerInfoAddress {
-                            address: addr.address().clone(),
-                            peer_identity_claim: claim.clone(),
-                        })
-                    } else {
-                        None
-                    }
+                    addr.source.peer_identity_claim().map(|claim| PeerInfoAddress {
+                        address: addr.address().clone(),
+                        peer_identity_claim: claim.clone(),
+                    })
                 })
                 .collect(),
             peer_features: peer.features,

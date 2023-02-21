@@ -226,7 +226,7 @@ impl NodeIdentity {
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {
         let peer_identity_claim = PeerIdentityClaim {
-            addresses: self.public_addresses().clone(),
+            addresses: self.public_addresses(),
             features: self.features,
             signature: IdentitySignature::sign_new(
                 &self.secret_key,

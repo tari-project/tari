@@ -240,7 +240,7 @@ impl DhtDiscoveryService {
         let addresses: Vec<Multiaddr> = discovery_msg
             .addresses
             .into_iter()
-            .map(|addr| Multiaddr::try_from(addr))
+            .map(Multiaddr::try_from)
             .collect::<Result<_, _>>()
             .map_err(|e| DhtDiscoveryError::InvalidPeerMultiaddr(e.to_string()))?;
 
@@ -252,7 +252,7 @@ impl DhtDiscoveryService {
             PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
             discovery_msg
                 .identity_signature
-                .ok_or_else(|| DhtDiscoveryError::NoSignatureProvided)?
+                .ok_or(DhtDiscoveryError::NoSignatureProvided)?
                 .try_into()
                 .map_err(|e: anyhow::Error| DhtDiscoveryError::InvalidSignature(e.to_string()))?,
             None,
@@ -270,24 +270,6 @@ impl DhtDiscoveryService {
             .await?;
 
         Ok(peer)
-    }
-
-    fn validate_raw_node_id(
-        &self,
-        public_key: &CommsPublicKey,
-        raw_node_id: &[u8],
-    ) -> Result<NodeId, DhtDiscoveryError> {
-        // The reason that we check the given node id against what we expect instead of just using the given node id
-        // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
-        // the base layer)
-        let expected_node_id = NodeId::from_key(public_key);
-        let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
-        if expected_node_id == node_id {
-            Ok(expected_node_id)
-        } else {
-            // TODO: Misbehaviour #banheuristic
-            Err(DhtDiscoveryError::InvalidNodeId)
-        }
     }
 
     async fn initiate_peer_discovery(
