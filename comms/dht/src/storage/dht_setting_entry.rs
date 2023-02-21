@@ -41,7 +41,7 @@ impl fmt::Display for DhtMetadataKey {
 
 /// Struct used to create a new metadata entry
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "dht_metadata"]
+#[diesel(table_name = dht_metadata)]
 pub struct NewDhtMetadataEntry {
     pub key: String,
     pub value: Vec<u8>,
@@ -49,7 +49,7 @@ pub struct NewDhtMetadataEntry {
 
 /// Struct used that contains a metadata entry
 #[derive(Clone, Debug, Queryable, Identifiable)]
-#[table_name = "dht_metadata"]
+#[diesel(table_name = dht_metadata)]
 pub struct DhtMetadataEntry {
     pub id: i32,
     pub key: String,

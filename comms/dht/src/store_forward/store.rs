@@ -219,7 +219,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         );
 
         let service = self.next_service.ready_oneshot().await?;
-        return service.oneshot(message).await;
+        service.oneshot(message).await
     }
 
     async fn get_storage_priority(&self, message: &DecryptedDhtMessage) -> SafResult<Option<StoredMessagePriority>> {

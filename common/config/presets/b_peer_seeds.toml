@@ -15,6 +15,33 @@
 # All DNS seed records must pass DNSSEC validation
 #dns_seeds_use_dnssec = false
 
+[stagenet.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+dns_seeds = ["seeds.stagenet.tari.com"]
+# Custom specified peer seed nodes
+peer_seeds = [
+    # 1337e9449e63134fd5e0ba3207
+    "a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/onion3/rhoqxfbzz3uidp23erxu4mkwwexc2gg4q45rcxfpbhb35ycdv4ex2fid:18141",
+    # 1a1a1a4b79a81467a2c815a371
+    "b2c5db3a2858451d241d4e88677536f9e82a760111962785fb6a3cddc41f766e::/onion3/q32yxdg7l7os2zzx64e3f5u4mzib3lxlkdyguybkhtkd4pwfkpunjcyd:18141",
+    # 2b2b2b56e8e1479f1685d5f4ce
+    "1cdf34d27bee5e1edbc343a17f7d79a8a1974fe3f790e899d8987c1f11697e41::/onion3/fwvmhhcifr7yh7neqsweyjvu4bnlmljg6a6fsjdwify3b4aals2oc3yd:18141",
+    # 3c3c3c8c3aa72ea4c2a943564a
+    "a42eea2088e0ef663b8d29a9d039b0e5d51c1ddc1cf5ae28feb05ed52ead5a69::/onion3/k5khqg7fwkq7ujxievps22r42i5ykuieai64ze3kj5snsjkew3v7piid:18141",
+    # 4d4d4df1add5ac00a8c276f11e
+    "d49df057e1f1ae399ffabdeb59e7ad542439ab2b0bbd9ed23042175a93e4d03c::/onion3/hjeczose7rjo6o6qhsszkuzhrm6qfs7s4yeqzeuz2m67rkpijrtrwsad:18141",
+    # 5e5e5eace5fc25c4ce83fbaab6
+    "e65f18cb4a362b33667e0d39b3c93f06c0e822af09906914bdc65907b7cdc130::/onion3/uuv6j3vwq4dac6z3dblc2mjcoecrnxfka3wg43bcass5avbzix4nmzyd:18141",
+    # 6f6f6f01facc230ad923de9159
+    "0a755298f4bee8e6db64e345fe8f937e3882693a48c71b942b88744761b02067::/onion3/ksdogedobmqoud6ampvrjrhoozftgfkolhxqvnt7mo7ajqczku5tyyqd:18141",
+    # 777777aec8a3e4add50054d457
+    "0c22d3dc3983c74131d7dfb0c4c8ae9fb90c434826cf8ccc71e793bb72d36213::/onion3/so2be7uyg4kf5l7ys3fbk4eqovsfi63yuaqj7pahkkw2crujq43jdnyd:18141",
+    # 8888883587be3e94600c246c3b
+    "2ade610a2e95f1c686873944096f5a1f2c7ffcf47d67112b472c9208cc6e9532::/onion3/rmiknlrf7ngfvgpayf5qzuer2c547rzmyqbkbw45w5uessi3jodasdqd:18141",
+    # 99999903f5951fa1ca9505c3c2
+    "369ae9a89c3fc2804d6ec07e20bf10e5d0e72f565a71821fc7c611ae5bee0116::/onion3/crvsrmoyrk5uatvnafsmoykiqgywdqowupn3auq25iz7zxyf7xusjxid:18141",
+]
+
 [esmeralda.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
 dns_seeds = ["seeds.esmeralda.tari.com"]

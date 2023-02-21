@@ -238,7 +238,7 @@ impl ConnectivityManagerMock {
                     return;
                 }
                 let reply_tx = reply_tx.unwrap();
-                // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
+                // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 self.state
                     .with_state(|state| match state.pending_conns.get_mut(&node_id) {
                         Some(replies) => {

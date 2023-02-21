@@ -73,8 +73,9 @@ pub enum DbKey {
     ClientKey(String),
     MasterSeed,
     EncryptedMainKey,    // the database encryption key, itself encrypted with the secondary key
-    SecondaryKeySalt,    // the salt used (with the user's passphrase) to derive the secondary key
-    SecondaryKeyVersion, // the parameter version for the secondary key, which determines how it is derived
+    SecondaryKeySalt,    // the salt used (with the user's passphrase) to derive the secondary derivation key
+    SecondaryKeyVersion, // the parameter version for the secondary derivation key
+    SecondaryKeyHash,    // a hash commitment to the secondary derivation key
     WalletBirthday,
 }
 
@@ -90,6 +91,7 @@ impl DbKey {
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
             DbKey::SecondaryKeySalt => "SecondaryKeySalt".to_string(),
             DbKey::SecondaryKeyVersion => "SecondaryKeyVersion".to_string(),
+            DbKey::SecondaryKeyHash => "SecondaryKeyHash".to_string(),
             DbKey::WalletBirthday => "WalletBirthday".to_string(),
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
         }
@@ -108,6 +110,7 @@ pub enum DbValue {
     EncryptedMainKey(String),
     SecondaryKeySalt(String),
     SecondaryKeyVersion(String),
+    SecondaryKeyHash(String),
     WalletBirthday(String),
 }
 
@@ -348,6 +351,7 @@ impl Display for DbValue {
             DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
             DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),
             DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {}", v)),
+            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
             DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
         }

@@ -3815,11 +3815,13 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
 async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee: u64) {
     let mut client = world.get_wallet_client(&wallet).await.unwrap();
+    let identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
 
     let req = grpc::CreateBurnTransactionRequest {
         amount,
         fee_per_gram: fee,
         message: "Burning some tari".to_string(),
+        claim_public_key: identity.public_key,
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();
