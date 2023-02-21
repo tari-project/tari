@@ -22,6 +22,7 @@
 
 use std::{fs::File, path::Path, time::Duration};
 
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
@@ -60,10 +61,11 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
         Duration::from_secs(60),
     );
     pool.create_pool()?;
-    let connection = pool.get_pooled_connection()?;
+    let mut connection = pool.get_pooled_connection()?;
 
-    embed_migrations!("./migrations");
-    embedded_migrations::run(&connection)
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    connection
+        .run_pending_migrations(MIGRATIONS)
         .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
 
     Ok(WalletDbConnection::new(pool, Some(file_lock)))

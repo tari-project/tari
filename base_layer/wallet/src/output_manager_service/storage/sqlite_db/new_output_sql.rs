@@ -40,7 +40,7 @@ use crate::{
 /// equivalent datatypes for the members.
 #[derive(Clone, Derivative, Insertable, PartialEq)]
 #[derivative(Debug)]
-#[table_name = "outputs"]
+#[diesel(table_name = outputs)]
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
     #[derivative(Debug = "ignore")]
@@ -125,7 +125,7 @@ impl NewOutputSql {
     }
 
     /// Write this struct to the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
