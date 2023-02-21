@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.46.0](https://github.com/tari-project/tari/compare/v0.45.0...v0.46.0) (2023-02-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* add key commitment to database main key AEAD  (#5188)
+
+### Features
+
+* add key commitment to database main key AEAD  ([#5188](https://github.com/tari-project/tari/issues/5188)) ([95bc795](https://github.com/tari-project/tari/commit/95bc7956811020957d4cf0a8eef742124d44bcde))
+* add more burn details to burn command ([#5169](https://github.com/tari-project/tari/issues/5169)) ([e417e57](https://github.com/tari-project/tari/commit/e417e575beb23cd17a119984829ee7479d39c459))
+* print out warning if wallet grpc connections fails ([#5195](https://github.com/tari-project/tari/issues/5195)) ([4e1cb38](https://github.com/tari-project/tari/commit/4e1cb38aeec5cbb61e39920e3d1871699107c06f))
+
+
+### Bug Fixes
+
+* add missing consensus constants to get_constants grpc ([#5183](https://github.com/tari-project/tari/issues/5183)) ([9900d5d](https://github.com/tari-project/tari/commit/9900d5db3eacf463b479ad242391c9a2e0a38db8))
+
 ## [0.45.0](https://github.com/tari-project/tari/compare/v0.44.1...v0.45.0) (2023-02-14)
 
 
