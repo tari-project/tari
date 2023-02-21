@@ -145,8 +145,6 @@ mod state_machine {
 
         let event = event_rx.recv().await.unwrap();
         unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
-        assert!(info.has_new_neighbours());
-        assert_eq!(info.num_new_neighbours, NUM_PEERS);
         assert_eq!(info.num_new_peers, NUM_PEERS);
         assert_eq!(info.num_duplicate_peers, 0);
         assert_eq!(info.num_succeeded, 1);
@@ -234,7 +232,6 @@ mod discovery_ready {
         let (_, _, _, mut ready, context) = setup(config);
         context
             .set_last_round(DhtNetworkDiscoveryRoundInfo {
-                num_new_neighbours: 1,
                 num_new_peers: 1,
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
@@ -253,7 +250,12 @@ mod discovery_ready {
             ..Default::default()
         };
         let (_, _, _, mut ready, context) = setup(config);
-        context.set_last_round(Default::default()).await;
+        context
+            .set_last_round(DhtNetworkDiscoveryRoundInfo {
+                num_succeeded: 1,
+                ..Default::default()
+            })
+            .await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::OnConnectMode = state_event);
     }

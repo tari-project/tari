@@ -36,6 +36,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
@@ -536,11 +537,7 @@ async fn test_store_and_forward_send_tx() {
     .await
     .unwrap();
 
-    let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
-        "/memory/0".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    ));
+    let base_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (tx, _rx) = mpsc::channel(100);
     let (base_node, _dht, _msg_sender) = initialize_local_test_comms(
         base_node_identity,

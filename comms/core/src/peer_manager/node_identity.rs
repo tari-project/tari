@@ -145,6 +145,21 @@ impl NodeIdentity {
         }
     }
 
+    pub fn replace_public_address(&self, address: Multiaddr) {
+        let mut must_sign = false;
+        {
+            let mut lock = acquire_write_lock!(self.public_addresses);
+            if !lock.contains(&address) {
+                lock.clear();
+                lock.push(address);
+                must_sign = true;
+            }
+        }
+        if must_sign {
+            self.sign()
+        }
+    }
+
     /// Modify the peer features
     pub fn set_peer_features(&mut self, features: PeerFeatures) {
         let must_sign = features != self.features;

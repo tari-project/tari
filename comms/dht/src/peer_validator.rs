@@ -181,7 +181,7 @@ mod tests {
         peer.addresses = MultiaddressesWithStats::new(vec![]);
         let validator = PeerValidator::new(&peer_manager, &config);
         let err = validator.validate_and_add_peer(peer.clone().into()).await.unwrap_err();
-        unpack_enum!(PeerValidatorError::InvalidPeerAddresses { .. } = err);
+        unpack_enum!(PeerValidatorError::PeerHasNoAddresses { .. } = err);
         assert!(!peer_manager.exists(&peer.public_key).await);
     }
 }

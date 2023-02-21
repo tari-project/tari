@@ -147,7 +147,7 @@ impl Peer {
         self.metadata = other.metadata.clone();
         self.features = other.features;
         self.flags = other.flags;
-        if !self.user_agent.is_empty() {
+        if !other.user_agent.is_empty() {
             self.user_agent = other.user_agent.clone();
         }
     }

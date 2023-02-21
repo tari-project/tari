@@ -160,8 +160,6 @@ impl OnConnect {
         if num_added > 0 {
             self.context
                 .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
-                    // TODO: num_new_neighbours could be incorrect here
-                    num_new_neighbours: 0,
                     num_new_peers: num_added,
                     num_duplicate_peers: 0,
                     num_succeeded: num_added,

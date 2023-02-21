@@ -227,6 +227,16 @@ where
                 peer.update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.clone(),
                 });
+                if let Some(unverified_data) = &peer_identity.unverified_data {
+                    for protocol in &unverified_data.supported_protocols {
+                        if !peer.supported_protocols.contains(protocol) {
+                            peer.supported_protocols.push(protocol.clone());
+                        }
+                    }
+                    if peer.user_agent != unverified_data.user_agent && unverified_data.user_agent != "" {
+                        peer.user_agent = unverified_data.user_agent.clone();
+                    }
+                }
             } else {
                 error!(target: LOG_TARGET, "No identity claim provided");
                 let _ = dial_state
