@@ -33,7 +33,7 @@ use log4rs::config::RawConfig;
 use crate::ConfigError;
 
 /// Set up application-level logging using the Log4rs configuration file specified in
-pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), ConfigError> {
+pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")

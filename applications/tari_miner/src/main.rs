@@ -67,6 +67,7 @@ async fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
     initialize_logging(
         &cli.common.log_config_path("miner"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
     start_miner(cli).await
