@@ -167,7 +167,18 @@ async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, Walle
     let base_node_addr = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
     info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
-    let wallet_conn = connect_wallet(config).await?;
+
+    let wallet_conn = match connect_wallet(config).await {
+        Ok(client) => client,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not connect to wallet");
+            error!(
+                target: LOG_TARGET,
+                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
+            );
+            return Err(e);
+        },
+    };
 
     Ok((node_conn, wallet_conn))
 }
