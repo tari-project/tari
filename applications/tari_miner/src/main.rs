@@ -32,8 +32,8 @@ use tokio::runtime::Runtime;
 
 use crate::cli::Cli;
 
-pub const LOG_TARGET: &str = "tari_miner::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
+pub const LOG_TARGET: &str = "tari::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari::logging::miner::main";
 
 mod cli;
 mod config;

@@ -48,6 +48,13 @@ loggers:
       - miner
       - stdout
     additive: false
+  tari::miner:
+    level: debug
+    appenders:
+      - miner
+      - stdout
+    additive: false
+  tari_miner:
     level: debug
     appenders:
       - miner

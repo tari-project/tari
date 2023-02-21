@@ -52,8 +52,8 @@ use crate::{
     utils::{coinbase_request, extract_outputs_and_kernels},
 };
 
-pub const LOG_TARGET: &str = "tari_miner::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
+pub const LOG_TARGET: &str = "tari::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari::logging::miner::main";
 
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
