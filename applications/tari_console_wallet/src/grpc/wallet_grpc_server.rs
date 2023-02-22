@@ -41,6 +41,7 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CommitmentSignature,
         CreateBurnTransactionRequest,
         CreateBurnTransactionResponse,
         CreateTemplateRegistrationRequest,
@@ -617,7 +618,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: true,
                     failure_message: Default::default(),
                     commitment: commitment.to_vec(),
-                    ownership_proof: ownership_proof.map(|o| o.to_vec()).unwrap_or_default(),
+                    ownership_proof: ownership_proof.map(|o| CommitmentSignature::from(o)),
                     rangeproof: rangeproof.to_vec(),
                 }
             },
