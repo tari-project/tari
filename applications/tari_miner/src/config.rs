@@ -36,11 +36,17 @@
 //! All miner options configured under `[miner]` section of
 //! Tari's `config.toml`.
 
-use std::{str::FromStr, time::Duration};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
-use tari_common::SubConfigPath;
+use tari_common::{
+    configuration::{
+        bootstrap::{grpc_default_port, ApplicationType},
+        Network,
+    },
+    SubConfigPath,
+};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 
@@ -89,9 +95,13 @@ impl SubConfigPath for MinerConfig {
 
 impl Default for MinerConfig {
     fn default() -> Self {
+        let default_base_node_port = grpc_default_port(ApplicationType::BaseNode, Network::default());
+        let default_wallet_port = grpc_default_port(ApplicationType::ConsoleWallet, Network::default());
         Self {
-            base_node_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18142").unwrap(),
-            wallet_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap(),
+            base_node_grpc_address: format!("/ip4/127.0.0.1/tcp/{}", default_base_node_port)
+                .parse()
+                .unwrap(),
+            wallet_grpc_address: format!("/ip4/127.0.0.1/tcp/{}", default_wallet_port).parse().unwrap(),
             wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
