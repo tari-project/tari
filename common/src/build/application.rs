@@ -70,13 +70,13 @@ impl StaticApplicationInfo {
     }
 
     /// Add the git version commit and built type to the version number
-    /// The final output looks like 0.1.2-fc435c-release
+    /// The final output looks like 0.1.2-testnet+fc435c-release
     fn get_full_version(&self) -> String {
         let build = env::var("PROFILE").unwrap_or_else(|e| {
             emit_cargo_warn(e);
             "Unknown".to_string()
         });
-        format!("{}-{}-{}", self.manifest.package.version, self.commit, build)
+        format!("{}+{}-{}", self.manifest.package.version, self.commit, build)
     }
 
     /// Get the version number only

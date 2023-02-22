@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.45.1-stagenet.0](https://github.com/tari-project/tari/compare/v0.45.0...v0.45.1-stagenet.0) (2023-02-22)
+
+
+### Features
+
+* change the miner default grpc port ([#5199](https://github.com/tari-project/tari/issues/5199)) ([66dac7d](https://github.com/tari-project/tari/commit/66dac7d8d2513c9635289fc1e3b8e8904daa52ee))
+
 ## [0.45.0](https://github.com/tari-project/tari/compare/v0.44.1...v0.45.0) (2023-02-14)
 
 

@@ -3,14 +3,14 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "0.45.0"
+version = "0.45.1-stagenet.0"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 # TODO: remove this dependency and move Network into tari_common_types
-tari_common = { version = "^0.45", path = "../../common" }
+tari_common = {  path = "../../common" }
 
 
 borsh = "0.9.3"
