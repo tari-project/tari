@@ -50,10 +50,11 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, StageNet, Stibbons, Weatherwax};
+    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, NextNet, Ridcully, StageNet, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
         StageNet => get_stagenet_genesis_block(),
+        NextNet => get_nextnet_genesis_block(),
         Igor => get_igor_genesis_block(),
         Esmeralda => get_esmeralda_genesis_block(),
         LocalNet => get_esmeralda_genesis_block(),
@@ -80,7 +81,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 }
 
 fn get_stagenet_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block_stagenet in core/tests/helpers/block_builders.rs to generate the required
+    // Note: Use print_new_genesis_block_nextnet in core/tests/helpers/block_builders.rs to generate the required
     // fields below
     let excess_sig = Signature::new(
         PublicKey::from_hex("e487276e01039473094f492f20b707d3805399f799fc9d4ad77c648f2a5c0d18").unwrap(),
@@ -136,6 +137,100 @@ fn get_stagenet_genesis_block_raw() -> Block {
                 .unwrap(),
             output_mmr_size: 1,
             kernel_mr: FixedHash::from_hex("ad201fe393372af2313f5c55f491c9d4e864a7a796401453ef52eaf2cd042132").unwrap(),
+            kernel_mmr_size: 1,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: PrivateKey::from_hex(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            total_script_offset: PrivateKey::from_hex(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            nonce: 0,
+            pow: ProofOfWork {
+                pow_algo: PowAlgorithm::Sha3,
+                pow_data: vec![],
+            },
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
+        },
+        body,
+    }
+}
+
+pub fn get_nextnet_genesis_block() -> ChainBlock {
+    let block = get_nextnet_genesis_block_raw();
+
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: 1.into(),
+        total_accumulated_difficulty: 1,
+        accumulated_monero_difficulty: 1.into(),
+        accumulated_sha_difficulty: 1.into(),
+        target_difficulty: 1.into(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
+}
+
+fn get_nextnet_genesis_block_raw() -> Block {
+    // Note: Use print_new_genesis_block_stagenet in core/tests/helpers/block_builders.rs to generate the required
+    // fields below
+    let excess_sig = Signature::new(
+        PublicKey::from_hex("c2e01e3c69a7b9f664dcf6069bf0ac5ddba7ec24f7b37628649355cabefdd66a").unwrap(),
+        PrivateKey::from_hex("079988886b259373587a3d4f9abd6b4b7e3d483a6bc6fd67810291b9c5402d01").unwrap(),
+    );
+    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
+        Commitment::from_hex("3a2704f98f7a2f29d01c4f313955616f70a2afd54cff6addeb0d696e8a4b5e76").unwrap(),
+        PublicKey::from_hex("a25019606afab39eec37dca1b3ed928831116ab9761459cff91768377677f741").unwrap(),
+        PrivateKey::from_hex("3f047693eab2e424bbd41fdeea7c99cdf6fdcdccb6d679e621f95dca24029603").unwrap(),
+        PrivateKey::from_hex("58e625717af1fd2cf8634fda866fc13e0bd7b32dae0b85ed2597ec0191828a0f").unwrap(),
+        PrivateKey::from_hex("71cec1b930693191db40c3f62e5544b0ecba43686d79d61f1537cbbfa8ffd90c").unwrap(),
+    );
+    let extra = "Mathematical proof that something happened";
+    let coinbase = TransactionOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        OutputFeatures::create_coinbase(360, Some(extra.as_bytes().to_vec())),
+        Commitment::from_hex("dc06fb061ce57f7a785e970e3ac3f61be38cb18a094d6f56d46ff237aaf0dd29").unwrap(),
+        BulletRangeProof::from_hex("01262ef222ceaa3ad01b29d4e2c860226c55f098da593ece40f2f288217ce3d02458bdd4c7e0ccfdf95860fa0495c93a8e4c19cbc267c00fe1820a0bc1b23fc85a4ab1dba8d11e3bf22fe2836545baabd73cc01c35d36e04d6cbe6e26a8ae9227274f27ee2003ad9b42a0014f2d39c9090c7c4815a9a67755d623bbbd21e66d80918e62b4687dcab350b1c10c12426e62dc7f739ac2bc6c0336ddac37478da2c5e2c7bc0202212780a89c5184f4ab19a2a2562c1b81c2f8433524907a00e075a19b02e537dd72eb8889ac6a0ccefb621ace5ddc4d0c3457cb089c7ed84ba1acb0c1e957f739c6aa6fb866082fa9ef139556b19356a3bc1f9181c55c49723dfbf62a4ddf90b37b8ae76e245a9eaba87ebe4cb238f1b172ce09483ee635b2acad910524ef872385bdc18c20f4c72d55249d46dd8097b2d36d710962c85b71afb412fceb9a3e6d53712885c280abcfed3ff1468226f6bbcb3e1a314753b4db08a9032985fff2b819053b5bc44e464e9557242b0a45bcf1db2df17bd18e4d3d89b15684408e0051aacc69785eed91c7112fbcd2a5daaa0d7fd7084a430e48a9921531120f0395139b2950fe03dc24ccde6683aae2f6496b399c8e14703f9d042939f4b9c9f6168cdc6e4f0ef696f207b13284d104664af825fda2d2efca4f47872ee3c1c3140655a2215c0b3aa6696e59d950be6a69832a82f959ac9b2bc94cb0101003620089f16577e5281152441def452891e2145f7972a0213d8972d74bf5625087dba65abdab63be8def59bf9ac50be3c94986dac852983ece8e9d2a201f72603").unwrap(),
+        // A default script can never be spent, intentionally
+        script!(Nop),
+        // The Sender offset public key is not checked for coinbase outputs
+        PublicKey::from_hex("b6ec474ed5106296da315ae066739042597ba35094a6ae152a33bdd117661b2e").unwrap(),
+        coinbase_meta_sig,
+        // Covenant
+        Covenant::default(),
+        EncryptedValue::default(),
+        // Genesis blocks don't need to prove a minimum value
+        MicroTari::zero(),
+    );
+    let kernel = TransactionKernel::new(
+        TransactionKernelVersion::V0,
+        KernelFeatures::COINBASE_KERNEL,
+        MicroTari(0),
+        0,
+        Commitment::from_hex("e43e1ebfd31a86ed27ed9167522b31108e4117806ce12a1ede06e02e67da5f1c").unwrap(),
+        excess_sig,
+        None,
+    );
+    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
+    body.sort();
+    // set genesis timestamp
+    let genesis = DateTime::parse_from_rfc2822("24 Feb 2023 12:15:00 +0100").unwrap();
+    #[allow(clippy::cast_sign_loss)]
+    let timestamp = genesis.timestamp() as u64;
+    Block {
+        header: BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: FixedHash::zero(),
+            timestamp: timestamp.into(),
+            output_mr: FixedHash::from_hex("dbd70217d48910988e34a677528d49cec3c0cb091ba9edfb41f5320b565d314c").unwrap(),
+            witness_mr: FixedHash::from_hex("381e281523a39da58158a47e901ed78c6a86da1b913c25102b92deb369e718eb")
+                .unwrap(),
+            output_mmr_size: 1,
+            kernel_mr: FixedHash::from_hex("dfe55fd7137908009c05ec37e5c6e4b9d773e6cc1ca8f4c83c976ca118355c6b").unwrap(),
             kernel_mmr_size: 1,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -476,6 +571,14 @@ mod test {
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
         check_block(Network::StageNet, &block, 1, 1);
+    }
+
+    #[test]
+    fn nextnet_genesis_sanity_check() {
+        // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
+        // if consensus values change, e.g. new faucet or other
+        let block = get_nextnet_genesis_block();
+        check_block(Network::NextNet, &block, 1, 1);
     }
 
     #[test]
