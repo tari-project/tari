@@ -22,6 +22,7 @@ dns_seeds = ["seeds.stagenet.tari.com"]
 peer_seeds = [
     # 1337e9449e63134fd5e0ba3207
     "a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/onion3/rhoqxfbzz3uidp23erxu4mkwwexc2gg4q45rcxfpbhb35ycdv4ex2fid:18141",
+    "a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189",
     # 1a1a1a4b79a81467a2c815a371
     "b2c5db3a2858451d241d4e88677536f9e82a760111962785fb6a3cddc41f766e::/onion3/q32yxdg7l7os2zzx64e3f5u4mzib3lxlkdyguybkhtkd4pwfkpunjcyd:18141",
     # 2b2b2b56e8e1479f1685d5f4ce
@@ -36,10 +37,13 @@ peer_seeds = [
     "0a755298f4bee8e6db64e345fe8f937e3882693a48c71b942b88744761b02067::/onion3/ksdogedobmqoud6ampvrjrhoozftgfkolhxqvnt7mo7ajqczku5tyyqd:18141",
     # 777777aec8a3e4add50054d457
     "0c22d3dc3983c74131d7dfb0c4c8ae9fb90c434826cf8ccc71e793bb72d36213::/onion3/so2be7uyg4kf5l7ys3fbk4eqovsfi63yuaqj7pahkkw2crujq43jdnyd:18141",
+    "0c22d3dc3983c74131d7dfb0c4c8ae9fb90c434826cf8ccc71e793bb72d36213::/ip4/63.35.51.217/tcp/18189",
     # 8888883587be3e94600c246c3b
     "2ade610a2e95f1c686873944096f5a1f2c7ffcf47d67112b472c9208cc6e9532::/onion3/rmiknlrf7ngfvgpayf5qzuer2c547rzmyqbkbw45w5uessi3jodasdqd:18141",
+    "2ade610a2e95f1c686873944096f5a1f2c7ffcf47d67112b472c9208cc6e9532::/ip4/54.73.25.246/tcp/18189",
     # 99999903f5951fa1ca9505c3c2
     "369ae9a89c3fc2804d6ec07e20bf10e5d0e72f565a71821fc7c611ae5bee0116::/onion3/crvsrmoyrk5uatvnafsmoykiqgywdqowupn3auq25iz7zxyf7xusjxid:18141",
+    "369ae9a89c3fc2804d6ec07e20bf10e5d0e72f565a71821fc7c611ae5bee0116::/ip4/34.252.174.111/tcp/18189",
 ]
 
 [esmeralda.p2p.seeds]
@@ -47,38 +51,30 @@ peer_seeds = [
 dns_seeds = ["seeds.esmeralda.tari.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
-    # 7777773c100a094c4feaa686cf
-    "d2cc8ad88271f075d7c3896179dc867a79115a136c9d9e175fe4ea774dafc75c::/onion3/atlitn6ewryimdviu4kjkjos3ift5v3ykvosgtnfgjocpdmondhykqid:18141",
-    # 222222c9629a9fcf5a71a18838
-    "78b2c0bda70fd12a9987757ffc2851e197080af804353e8e025d28c785b6b447::/onion3/ysj76foyp7qkl7d5x63hyocmp5ydwcgkb25oalo23kj2vvx7zjvofqad:18141",
-    # 3333334aee7f7bfde22e77af02
-    "8648575c606269b032f43cd0d54728628ddb911e636bd65ea36e867a5ffd3643::/onion3/5d2owx6uoqcsoapprattb4fmektm3rcpfyzmmwmf64dsu55mhcqef2yd:18141",
-    # 888888fe452d7db3e87224cafb
-    "083ff333ad7e0e9f3678b67378ec339074474342a6357de64a76bdf15e4c955b::/onion3/ldgdytcrwzfbmbpz3dmyi6yzqzqbeamitpb2saxzxmp52qywlmsg4vyd:18141",
-    # 555555cf2a79f8da9a6b1fecb3
-    "ea420ae2948739bc35907b8ab5a2d41526ccef22ec92f8f8e2bb398500bf435a::/onion3/uybnlnzve4j4w2lj5bdoe2uurwsbjm73ck2cotlnknhu2l7msn26oeyd:18141",
-    # 444444f30fe3a4bf8e5937773e
-    "f688c69f2397dc0d4ad18168cd6ad13f93241a665acf19ab7f358fd661ac3d1c::/onion3/qejny5yprzidxt4rhstjmhsyfmeq4yb4r6tnn3pqowjr7e7roxcpxsqd:18141",
-    # 0000008034cc6453ffae1d0b80
+    # 0000008034cc6453ffae1d0b80  **  area8
     "40717ea5146cf6183c07469d188792b12a57b9da2e5af5bc50df270ff789257f::/onion3/qhmrwr2h3fnszwc4udhlgfpealm7mvw64enqghullrarc633fzmd6zqd:18141",
-    # bbbbbb1746d41d5be9936652fd
-    "faf52a5c6364e6bb7dc3a02743273115c7e218e1ef78f27d540c87b35715a005::/onion3/g5txoagsodgpkm2onsfn6r2fuzdzxlggaewre3edghdfzlw6szeo4cqd:18141",
-    # aaaaaac0add43b4b29a983891c
-    "a0e604c9a504558839a5c38faf034024a38c95fe6b04638b89dbfda756adff54::/onion3/vslf4ro52c4dktz2r5qybpwho3v25ikviwgvxf3ujryn2afock3qowad:18141",
+    "40717ea5146cf6183c07469d188792b12a57b9da2e5af5bc50df270ff789257f::/ip4/63.34.72.64/tcp/18189",
+    # 222222c9629a9fcf5a71a18838  **  seoul
+    "78b2c0bda70fd12a9987757ffc2851e197080af804353e8e025d28c785b6b447::/onion3/ysj76foyp7qkl7d5x63hyocmp5ydwcgkb25oalo23kj2vvx7zjvofqad:18141",
+    # 3333334aee7f7bfde22e77af02  **  oregon
+    "8648575c606269b032f43cd0d54728628ddb911e636bd65ea36e867a5ffd3643::/onion3/5d2owx6uoqcsoapprattb4fmektm3rcpfyzmmwmf64dsu55mhcqef2yd:18141",
+    # 444444f30fe3a4bf8e5937773e  **  nvir
+    "f688c69f2397dc0d4ad18168cd6ad13f93241a665acf19ab7f358fd661ac3d1c::/onion3/qejny5yprzidxt4rhstjmhsyfmeq4yb4r6tnn3pqowjr7e7roxcpxsqd:18141",
+    # 555555cf2a79f8da9a6b1fecb3  **  ncal
+    "ea420ae2948739bc35907b8ab5a2d41526ccef22ec92f8f8e2bb398500bf435a::/onion3/uybnlnzve4j4w2lj5bdoe2uurwsbjm73ck2cotlnknhu2l7msn26oeyd:18141",
+    # 6666663e4836ebe2999bc78e57  **  ireland
+    "747d45b8416ffe605d17958d36747eab7d3f5fc3d671e1b1b4884b2a44b98365::/onion3/n35n5fikcqqhhhjcdzpqul5v74mu7k6nikpafmlnwgiapphiw45tmryd:18141",
 ]
+
 
 [igor.p2p.seeds]
 # Custom specified peer seed nodes
 peer_seeds = [
-    # 3333332f12ee974aae8f120804
-    "faa8ab812dd050c8e235e31d56709dad27d586bcaf0c18bf096a39db36020604::/onion3/3dqw7lohmrxvzapt6s5dg742zfdchkvkbttwisq5myczo4lcpfyiiqad:18141",
-    # aaaaaaa
-    "36320757d5a60606f6e4df35743a4fd58cd0a102cf54202c789e3c4af444cb4e::/onion3/utf23v5lgghcdfrl3lojghbjqmb5qgae3um4nczreehkc353u7yb7rad:18141",
-
-    # DAN Seeds
-    # da100065d065f839dab6b6fb4f
-    "f24a6ed54362cee25c8e08e92bcd33e4d8ab2b733862948f863c982040d0d447::/onion3/s7sto2fd6cqf3wak2ec23gygb3d77p2ro7pcl2vesk6notgedjhy4nyd:18141",
-     # da4000fb6a031eced4ce65fe31
-    "9c127e9451d6721bfbe2b75434fcc19f6c7ab23523d4dacf7f5f5d601d2c8840::/onion3/kfh6trtkccp6mdbob42sb3sd464lzorn2ufys4zglnqhoxzsa4souaqd:18141"
-
+    # 2222bb888618d65d7b16e355f9
+    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
+    # aaaaf562a6ef070706fb9a7244
+    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
+    # dddd69c587a10c41ef2bf51397
+    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
 ]
+
