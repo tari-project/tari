@@ -51,6 +51,10 @@ use crate::{
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are
 /// stored in this data structure. The data itself can be stored anywhere as long as you can maintain a 1:1 mapping
 /// of the hash of that data to the leaf nodes in the MMR.
+///
+/// Because this implementation relies on the caller to hash leaf nodes, it is possible to instantiate an MMR that is
+/// susceptible to second-preimage attacks. The caller _must_ ensure that the hashers used to pre-hash leaf nodes and
+/// instantiate the MMR cannot produce collisions.
 #[derive(Debug)]
 pub struct MerkleMountainRange<D, B> {
     pub(crate) hashes: B,
