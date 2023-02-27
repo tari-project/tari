@@ -17,9 +17,6 @@ identity_file = "config/base_node_id_dibbler.json"
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_igor.json"
 
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18152")
-#grpc_address = "/ip4/127.0.0.1/tcp/18152"
-
 [esmeralda.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_esmeralda.json"
@@ -27,8 +24,10 @@ identity_file = "config/base_node_id_esmeralda.json"
 [stagenet.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_stagenet.json"
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
-#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+[nextnet.base_node]
+# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+identity_file = "config/base_node_id_nextnet.json"
 
 [base_node]
 # Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
