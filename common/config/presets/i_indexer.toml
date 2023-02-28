@@ -1,18 +1,18 @@
 
 ########################################################################################################################
 #                                                                                                                      #
-#                      Validator Node Configuration Options (ValidatorNodeConfig)                                      #
+#                                     Indexer Configuration Options (IndexerConfig)                                    #
 #                                                                                                                      #
 ########################################################################################################################
 
-[validator_node]
+[indexer]
 
-# A path to the file that stores your node identity and secret key (default = "validator_node_id.json")
-#identity_file = "validator_node_id.json"
+# A path to the file that stores your node identity and secret key (default = "indexer_id.json")
+#identity_file = "indexer_id.json"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport
-# (default = "validator_node_tor_id.json")
-#tor_identity_file = "validator_node_tor_id.json"
+# (default = "indexer_tor_id.json")
+#tor_identity_file = "indexer_tor_id.json"
 
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
@@ -23,14 +23,11 @@
 # The Tari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
 #base_node_grpc_address = "127.0.0.1/tcp/18142"
 
-# The Tari console wallet's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
-#wallet_grpc_address = "127.0.0.1/tcp/18143"
-
 # How often do we want to scan the base layer for changes. (default = 10)
 #base_layer_scanning_interval = 10
 
-# The relative path to store persistent data (default = "data/validator_node")
-#data_dir = "data/validator_node"
+# The relative path to store persistent data (default = "data/indexer")
+#data_dir = "data/indexer"
 
 # JSON-RPC listener address (default = "127.0.0.1:18200")
 #json_rpc_address = "127.0.0.1:18200"
@@ -38,8 +35,11 @@
 # HTTP UI listener address (default = "127.0.0.1:5000")
 #http_ui_address = "127.0.0.1:5000"
 
-# Set to true to enable auto registration for each epoch (default = true)
-#auto_register = true
+# Substate addresses to keep watching
+#address_watchlist=[]
 
-[validator_node.p2p]
+# How often do we want to scan the dan layer for change. (default = 10)
+#dan_layer_scanning_internal=10
+
+[indexer.p2p]
 #transport = "tor"
