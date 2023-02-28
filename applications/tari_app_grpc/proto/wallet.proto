@@ -139,7 +139,7 @@ message CreateBurnTransactionResponse{
     bool is_success = 2;
     string failure_message = 3;
     bytes commitment = 4;
-    bytes ownership_proof = 5;
+    CommitmentSignature ownership_proof = 5;
     bytes rangeproof = 6;
 }
 
