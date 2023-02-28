@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.47.0-pre.0](https://github.com/tari-project/tari/compare/v0.46.0...v0.47.0-pre.0) (2023-02-27)
+
+
+### Features
+
+* next net configuration ([#5204](https://github.com/tari-project/tari/issues/5204)) ([9f267fc](https://github.com/tari-project/tari/commit/9f267fcc4c34c84f4e713be5f20131170dc19664))
+
+
+### Bug Fixes
+
+* addresses mmr `find_peaks` bug ([#5182](https://github.com/tari-project/tari/issues/5182)) ([ee55e84](https://github.com/tari-project/tari/commit/ee55e843d0fd31b25163e118a3454ef666088c6c))
+
 ## [0.46.0](https://github.com/tari-project/tari/compare/v0.45.0...v0.46.0) (2023-02-21)
 
 

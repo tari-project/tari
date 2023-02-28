@@ -73,9 +73,10 @@ fn main() {
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
-    let cfg = load_configuration(cli.common.config_path().as_path(), true, &cli)?;
+    let cfg = load_configuration(cli.common.config_path(), true, &cli)?;
     initialize_logging(
         &cli.common.log_config_path("wallet"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
 

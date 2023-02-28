@@ -4973,6 +4973,7 @@ fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
 fn main() {
     initialize_logging(
         &PathBuf::from("log4rs/cucumber.yml"),
+        &PathBuf::from("./"),
         include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");

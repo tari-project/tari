@@ -54,6 +54,14 @@ message ComAndPubSignature {
     bytes u_y = 5;
 }
 
+// Define the explicit CommitmentSignature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type
+message CommitmentSignature {
+    bytes public_nonce = 1;
+    bytes u = 2;
+    bytes v = 3;
+}
+
 /// PoW Algorithm constants
 message PowAlgorithmConstants {
     uint64 max_target_time = 1;

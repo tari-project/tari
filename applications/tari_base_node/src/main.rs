@@ -121,6 +121,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     initialize_logging(
         &cli.common.log_config_path("base_node"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
     info!(
