@@ -20,7 +20,7 @@ We run a series of networks for different purposes but each network will have co
 
 - MainNet: The big shebang, the head hancho, the real deal. This is the Tari protocol at work.
 - StageNet: A stable network as similar as possible to MainNet available for testing.
-- NextNet: The next realease of the network. This should become available 8 weeks prior to going live on MainNet.
+- NextNet: The next release of the network. This should become available 8 weeks prior to going live on MainNet.
 - TestNet(s): Our named test networks used for development. Where we can play a little fast and loose with features where, although we try to avoid it- the networks may see breakages and resets more frequently.
   - Example networks (non exhaustive):
     - `Esme`: Has been our stable-er testnet prior to StageNet. It sees new features and enhancements as they come out, and supports our mobile wallets Tari Aurora on iOS and Android.
@@ -34,7 +34,7 @@ Let's define some facts for our discussion about releasing.
 - NextNet is at v1.54.0-rc.0
 - TestNet is at v1.55.0-pre.4
 
-The naming practice here helps to differentiate where any particular version is meant to be deployed too. Any version containing `pre` is destined for a TestNet and will have all features enabled. A version containing `rc` is destined for NextNet as it is the release candidate for the future StageNet/MainNet release. Any singular version with no pre-release version appended such as v1.53.0 means this is a StageNet/MainNet build. No in development features should be enabled when this is compiled.
+The naming practice here helps to differentiate where any particular version is meant to be deployed too. Any version containing `pre` is destined for a TestNet and will have all features enabled. A version containing `rc` is destined for NextNet as it is the release candidate for the future StageNet/MainNet release. Any singular version with no pre-release version appended such as v1.53.0 means this is a StageNet/MainNet build. None of the in-development features should be enabled when this is compiled.
 
 ### Development releases
 
