@@ -83,7 +83,7 @@ There's lots of PR's changing the version. _Yes_. This happens.
 
 ## Hotfixes
 
-Note: This follows the Gitflow process for hotfixes.
+Note: This follows the Gitflow process for hotfixes³.
 
 If an important bug fix is required on MainNet. A developer will create a new branch *from the last MainNet tag*. The fix will be applied. This branch will have *3* PR's. 
 - The hotfix branch back into development
@@ -92,7 +92,20 @@ If an important bug fix is required on MainNet. A developer will create a new br
 
 The oddity here is that this is the _only_ time code from the MainNet tag moves backwards into the development branch.
 
+```
+hotfix:                             *
+                                    |
+stagenet/mainnet:           *       *           *
+                            |       |           |
+nextnet:              * - - *       *     * - - *
+                      |             |     |
+development:      * - - * - - * - - * - - * - - *
+                        |           |           |
+testnet:                *           *           *
+```
+
 ## References
 
 1. [How Rust is Made](https://doc.rust-lang.org/book/appendix-07-nightly-rust.html) https://doc.rust-lang.org/book/appendix-07-nightly-rust.html
 2. [A successful git branching model](https://nvie.com/posts/a-successful-git-branching-model/) https://nvie.com/posts/a-successful-git-branching-model/
+3. [Hotfix branches](https://nvie.com/posts/a-successful-git-branching-model/#hotfix-branches) https://nvie.com/posts/a-successful-git-branching-model/#hotfix-branches
