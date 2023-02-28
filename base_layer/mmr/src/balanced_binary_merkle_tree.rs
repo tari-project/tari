@@ -36,6 +36,10 @@ pub enum BalancedBinaryMerkleTreeError {
 
 // The hashes are perfectly balanced binary tree, so parent at index `i` (0-based) has children at positions `2*i+1` and
 // `2*i+1`.
+//
+// Because this implementation relies on the caller to hash leaf nodes, it is possible to instantiate a tree that is
+/// susceptible to second-preimage attacks. The caller _must_ ensure that the hashers used to pre-hash leaf nodes and
+/// instantiate the tree cannot produce collisions.
 #[derive(Debug)]
 pub struct BalancedBinaryMerkleTree<D> {
     hashes: Vec<Hash>,
