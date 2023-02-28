@@ -583,6 +583,7 @@ mod validator_node_merkle_root {
     use super::*;
     use crate::{
         transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
+        ValidatorNodeBMT,
         ValidatorNodeMmr,
     };
 
@@ -618,18 +619,13 @@ mod validator_node_merkle_root {
             .unwrap()
             .unwrap();
 
-        let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
-        vn_mmr
-            .push(
-                Blake256::new()
-                    .chain(public_key.as_bytes())
-                    .chain(shard_key.as_slice())
-                    .finalize()
-                    .to_vec(),
-            )
-            .unwrap();
+        let vn_bmt = ValidatorNodeBMT::create(vec![Blake256::new()
+            .chain(public_key.as_bytes())
+            .chain(shard_key.as_slice())
+            .finalize()
+            .to_vec()]);
 
         let tip = db.fetch_tip_header().unwrap();
-        assert_eq!(tip.header().validator_node_mr, vn_mmr.get_merkle_root().unwrap());
+        assert_eq!(tip.header().validator_node_mr, vn_bmt.get_merkle_root());
     }
 }
