@@ -38,7 +38,6 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
@@ -79,9 +78,17 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
+    consensus::{
+        chain_strength_comparer::ChainStrengthComparer,
+        ConsensusConstants,
+        ConsensusManager,
+        DomainSeparatedConsensusHasher,
+    },
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::{
+        transaction_components::{TransactionInput, TransactionKernel},
+        TransactionHashDomain,
+    },
     validation::{
         helpers::calc_median_timestamp,
         CandidateBlockValidator,
@@ -1381,10 +1388,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
 pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
     fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
-        use digest::Digest;
-        Blake256::new()
-            .chain(pk.as_bytes())
-            .chain(s.as_slice())
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node")
+            .chain(pk)
+            .chain(s)
             .finalize()
             .to_vec()
     }

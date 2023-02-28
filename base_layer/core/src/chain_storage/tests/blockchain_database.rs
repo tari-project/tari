@@ -574,16 +574,14 @@ mod clear_all_pending_headers {
 }
 
 mod validator_node_merkle_root {
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_common_types::types::PublicKey;
-    use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
-    use tari_utilities::ByteArray;
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
     use crate::{
+        chain_storage::calculate_validator_node_mr,
         transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
-        ValidatorNodeBMT,
         ValidatorNodeMmr,
     };
 
@@ -619,13 +617,9 @@ mod validator_node_merkle_root {
             .unwrap()
             .unwrap();
 
-        let vn_bmt = ValidatorNodeBMT::create(vec![Blake256::new()
-            .chain(public_key.as_bytes())
-            .chain(shard_key.as_slice())
-            .finalize()
-            .to_vec()]);
+        let merkle_root = calculate_validator_node_mr(&[(public_key, shard_key)]);
 
         let tip = db.fetch_tip_header().unwrap();
-        assert_eq!(tip.header().validator_node_mr, vn_bmt.get_merkle_root());
+        assert_eq!(tip.header().validator_node_mr, merkle_root);
     }
 }
