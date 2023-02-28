@@ -55,6 +55,17 @@ After all the above tags have occurred it would leave us with the version change
 - NextNet from v1.54.0-rc.0 -> v1.55.0-rc.0
 - TestNet from v1.55.0-pre.4 -> v1.55.0-pre.5 -> v1.56.0-pre.0
 
+A visual aid for a sequence of events and lifetimes of channels:
+```
+development:      * - - * - - * - - * - - * - - * - - * - - * -- * -- *
+                        |           |     |           |          |
+testnet:                *           *     |           |          *
+                                          |           |
+nextnet:                                  * - - - *   * - - - *
+                                                  |           |
+stagenet/mainnet:                                 *           *
+```
+
 ### Notable side-effects
 
 There's lots of PR's changing the version. _Yes_. This happens.
