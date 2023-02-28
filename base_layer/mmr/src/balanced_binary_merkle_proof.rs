@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
+use std::{collections::HashMap, convert::TryInto, marker::PhantomData};
 
 use digest::Digest;
 use tari_common::DomainDigest;
+use tari_utilities::ByteArray;
+use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 
@@ -73,10 +75,99 @@ where D: Digest + DomainDigest
     }
 }
 
+#[derive(Debug, Error)]
+pub enum MergedBalancedBinaryMerkleProofError {
+    #[error("Can't merge zero proofs.")]
+    CantMergeZeroProofs,
+}
+
+#[derive(Debug)]
+pub struct MergedBalancedBinaryMerkleProof<D> {
+    pub paths: Vec<Vec<Vec<u8>>>,
+    pub leaves_indices: Vec<usize>,
+    pub join_indices: Vec<Option<usize>>,
+    pub heights: Vec<usize>,
+    _phantom: PhantomData<D>,
+}
+
+impl<D> MergedBalancedBinaryMerkleProof<D>
+where D: Digest + DomainDigest
+{
+    pub fn create_from_proofs(
+        proofs: Vec<BalancedBinaryMerkleProof<D>>,
+    ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
+        let heights = proofs.iter().map(|proof| proof.path.len()).collect::<Vec<_>>();
+        let max_height = heights
+            .iter()
+            .max()
+            .ok_or(MergedBalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+        let mut indices = proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>();
+        let mut paths = vec![Vec::new(); proofs.len()];
+        let mut join_indices = vec![None; proofs.len()];
+        for height in (0..*max_height).rev() {
+            let mut hash_map = HashMap::new();
+            for (index, proof) in proofs.iter().enumerate() {
+                // If this path was already joined ignore it.
+                if join_indices[index].is_none() && proof.path.len() > height {
+                    let parent = (indices[index] - 1) >> 1;
+                    if let Some(sibling) = hash_map.insert(parent, index) {
+                        join_indices[index] = Some(sibling);
+                        // The sibling doesn't need a hash, it needs an index to this.
+                        *paths[sibling].first_mut().unwrap() = index.to_le_bytes().to_vec();
+                    } else {
+                        paths[index].insert(0, proof.path[proof.path.len() - 1 - height].clone());
+                    }
+                    indices[index] = parent;
+                }
+            }
+        }
+        Ok(Self {
+            paths,
+            leaves_indices: proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>(),
+            heights,
+            join_indices,
+            _phantom: PhantomData,
+        })
+    }
+
+    pub fn verify_consume(mut self, root: &Hash, leaves_hashes: Vec<Hash>) -> bool {
+        let mut computed_hashes = leaves_hashes;
+        let max_height = self.heights.iter().max().unwrap();
+        let length = computed_hashes.len();
+        // We need to compute the hashes row by row to be sure they are processed correctly.
+        for height in (0..*max_height).rev() {
+            let hashes = computed_hashes.clone();
+            for (leaf, index) in computed_hashes.iter_mut().zip(0..length) {
+                if self.heights[index] > height {
+                    if let Some(hash_or_index) = self.paths[index].pop() {
+                        let hash = match hash_or_index.len() {
+                            8 => {
+                                let index = usize::from_le_bytes(hash_or_index.as_bytes().try_into().unwrap());
+                                &hashes[index]
+                            },
+                            32 => &hash_or_index,
+                            _ => panic!("It should be either index (size 8) or hash (size 32)"),
+                        };
+                        let parent = (self.leaves_indices[index] - 1) >> 1;
+                        if self.leaves_indices[index] & 1 == 1 {
+                            *leaf = hash_together::<D>(leaf, hash);
+                        } else {
+                            *leaf = hash_together::<D>(hash, leaf);
+                        }
+                        self.leaves_indices[index] = parent;
+                    }
+                }
+            }
+        }
+        &computed_hashes[0] == root
+    }
+}
+
 #[cfg(test)]
 mod test {
     use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 
+    use super::MergedBalancedBinaryMerkleProof;
     use crate::{BalancedBinaryMerkleProof, BalancedBinaryMerkleTree};
     hash_domain!(TestDomain, "testing", 0);
 
@@ -98,5 +189,31 @@ mod test {
             let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n - 1);
             assert!(proof.verify(&root, hash_last));
         }
+    }
+
+    #[test]
+    fn test_merge_proof() {
+        let leaves = (0..255).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves.clone());
+        let indices = [50, 0, 200, 150, 100];
+        let root = bmt.get_merkle_root();
+        let proofs = indices
+            .iter()
+            .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, *i))
+            .collect::<Vec<_>>();
+        let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
+        assert!(merged_proof.verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>()));
+    }
+
+    #[test]
+    fn test_merge_proof_full_tree() {
+        let leaves = (0..255).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves.clone());
+        let root = bmt.get_merkle_root();
+        let proofs = (0..255)
+            .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, i))
+            .collect::<Vec<_>>();
+        let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
+        assert!(merged_proof.verify_consume(&root, leaves));
     }
 }
