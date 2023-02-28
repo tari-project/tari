@@ -32,8 +32,8 @@
 # JSON-RPC listener address (default = "127.0.0.1:18200")
 #json_rpc_address = "127.0.0.1:18200"
 
-# HTTP UI listener address (default = "127.0.0.1:5000")
-#http_ui_address = "127.0.0.1:5000"
+# HTTP UI listener address (default = "127.0.0.1:15000")
+#http_ui_address = "127.0.0.1:15000"
 
 # Substate addresses to keep watching
 #address_watchlist=[]
