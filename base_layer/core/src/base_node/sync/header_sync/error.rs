@@ -87,12 +87,4 @@ pub enum BlockHeaderSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
-    #[error(
-        "Validator node MMR at height {height} is not correct. Expected {actual} to equal the computed {computed}"
-    )]
-    ValidatorNodeMmr {
-        height: u64,
-        actual: String,
-        computed: String,
-    },
 }
