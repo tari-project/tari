@@ -63,7 +63,6 @@ impl DhtRpcServiceImpl {
             let iter = peers
                 .into_iter()
                 .filter_map(|peer| {
-                    warn!(target: LOG_TARGET, "Peer: {:?}", peer);
                     let peer_info: PeerInfo = peer.into();
 
                     if peer_info.addresses.is_empty() {

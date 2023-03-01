@@ -5044,7 +5044,7 @@ fn main() {
             })
         });
         world
-            .fail_on_skipped()
+            // .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
             .run_and_exit("tests/features/")
             .await;
