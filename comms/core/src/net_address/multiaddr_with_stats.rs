@@ -155,20 +155,24 @@ impl MultiaddrWithStats {
             }
             self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
             self.last_failed_reason = other.last_failed_reason.clone();
-            match (self.source.peer_identity_claim(), other.source.peer_identity_claim()) {
-                (None, None) => (),
-                (None, Some(_)) => {
-                    self.source = other.source.clone();
-                },
-                (Some(_), None) => (),
-                (Some(self_source), Some(other_source)) => {
-                    if other_source.signature.updated_at() > self_source.signature.updated_at() {
-                        self.source = other.source.clone();
-                    }
-                },
-            }
-            self.calculate_quality_score();
+            self.update_source_if_better(&other.source);
         }
+    }
+
+    pub fn update_source_if_better(&mut self, source: &PeerAddressSource) {
+        match (self.source.peer_identity_claim(), source.peer_identity_claim()) {
+            (None, None) => (),
+            (None, Some(_)) => {
+                self.source = source.clone();
+            },
+            (Some(_), None) => (),
+            (Some(self_source), Some(other_source)) => {
+                if other_source.signature.updated_at() > self_source.signature.updated_at() {
+                    self.source = source.clone();
+                }
+            },
+        }
+        self.calculate_quality_score();
     }
 
     pub fn address(&self) -> &Multiaddr {

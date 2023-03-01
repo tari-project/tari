@@ -114,7 +114,11 @@ pub async fn spawn_base_node_with_config(
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
         // temp_dir_path = tempdir().unwrap().path().to_path_buf();
-        temp_dir_path = get_base_dir().join("base_nodes").join(&format!("port_{}", port));
+        temp_dir_path = get_base_dir()
+            .join("base_nodes")
+            .join(&format!("grpc_port_{}", grpc_port))
+            .join(bn_name.clone());
+
         base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
     };
@@ -172,16 +176,20 @@ pub async fn spawn_base_node_with_config(
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
         base_node_config.base_node.p2p.public_addresses =
             vec![base_node_config.base_node.p2p.transport.tcp.listener_address.clone()];
-        base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
+        // base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
+        // base_node_config.base_node.p2p.peer_database_name = "peer_db.mdb".to_string();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
-        base_node_config.base_node.p2p.dht.database_url =
-            DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlite"));
+        // base_node_config.base_node.p2p.dht.database_url =
+        //     DbConnectionUrl::File(temp_dir_path.clone().join("dht.sqlite"));
         base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
         };
+
+        // Heirachically set the base path for all configs
+        base_node_config.base_node.set_base_path(temp_dir_path.clone());
 
         println!(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",

@@ -106,6 +106,9 @@ pub async fn run_base_node_with_cli(
 
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
+    if let Some(grpc) = config.base_node.grpc_address.as_ref() {
+        log_mdc::insert("grpc", grpc.to_string());
+    }
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");

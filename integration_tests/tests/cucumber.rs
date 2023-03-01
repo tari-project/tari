@@ -382,7 +382,27 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
         if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
             return;
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    panic!("Peer was not connected in time");
+}
+
+#[when(expr = "I wait for {word} to have {int} connections")]
+async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
+    let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
+
+    for _i in 0..100 {
+        let res = match node_client {
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+        };
+        let res = res.into_inner();
+
+        if res.connected_peers.len() >= num_connections {
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
     panic!("Peer was not connected in time");

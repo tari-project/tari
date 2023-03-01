@@ -8,6 +8,7 @@ use std::{
 };
 
 use chrono::{NaiveDateTime, Utc};
+use log::warn;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -111,6 +112,12 @@ impl MultiaddressesWithStats {
             self.addresses
                 .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
             self.addresses.sort();
+        } else {
+            self.addresses
+                .iter_mut()
+                .find(|x| x.address() == net_address)
+                .unwrap()
+                .update_source_if_better(&source);
         }
     }
 
@@ -121,11 +128,11 @@ impl MultiaddressesWithStats {
     /// Compares the existing set of addresses to the provided address set and remove missing addresses and
     /// add new addresses without discarding the usage stats of the existing and remaining addresses.
     pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) {
-        self.addresses = self
-            .addresses
-            .drain(..)
-            .filter(|addr| addresses.contains(addr.address()))
-            .collect();
+        for address in addresses {
+            if let Some(addr) = self.addresses.iter_mut().find(|a| &a.address() == &address) {
+                addr.update_source_if_better(&source);
+            }
+        }
 
         let to_add = addresses
             .iter()
