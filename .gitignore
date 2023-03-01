@@ -63,3 +63,4 @@ clients/validator_node_grpc_client/package-lock.json
 clients/wallet_grpc_client/package-lock.json
 pie/
 /integration_tests/.husky/_/husky.sh
+/integration_tests/tests/temp

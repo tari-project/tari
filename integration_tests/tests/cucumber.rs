@@ -5023,7 +5023,11 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
-        world.run_and_exit("tests/features/").await;
+        world
+            .fail_on_skipped()
+            // .fail_fast() - Not yet supported in 0.18
+            .run_and_exit("tests/features/")
+            .await;
     });
 
     // If by any chance we have anything in the stdout buffer just log it.

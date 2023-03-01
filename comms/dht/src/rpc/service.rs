@@ -65,12 +65,12 @@ impl DhtRpcServiceImpl {
                 .filter_map(|peer| {
                     let peer_info: PeerInfo = peer.into();
 
-                    if !peer_info.addresses.is_empty() {
+                    if peer_info.addresses.is_empty() {
+                        None
+                    } else {
                         Some(GetPeersResponse {
                             peer: Some(peer_info.into()),
                         })
-                    } else {
-                        None
                     }
                 })
                 .map(Ok);
