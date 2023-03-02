@@ -42,6 +42,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,
@@ -52,7 +53,6 @@ use tari_utilities::hex::{from_hex, Hex};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,

@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,37 +20,4 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, sync::Arc};
-
-use diesel::{
-    r2d2::{ConnectionManager, PooledConnection},
-    SqliteConnection,
-};
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-use tari_contacts::contacts_service::storage::sqlite_db::{ContactService, DbError, PooledDbConnection};
-
-#[derive(Clone)]
-pub struct WalletDbConnection {
-    pool: SqliteConnectionPool,
-    _file_lock: Arc<Option<File>>,
-}
-
-impl WalletDbConnection {
-    pub fn new(pool: SqliteConnectionPool, file_lock: Option<File>) -> Self {
-        Self {
-            pool,
-            _file_lock: Arc::new(file_lock),
-        }
-    }
-}
-
-impl ContactService for WalletDbConnection {}
-
-impl PooledDbConnection for WalletDbConnection {
-    type Error = DbError;
-
-    fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error> {
-        let conn = self.pool.get_pooled_connection()?;
-        Ok(conn)
-    }
-}
+pub mod diesel_ext;

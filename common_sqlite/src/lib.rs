@@ -23,3 +23,4 @@
 mod connection_options;
 pub mod error;
 pub mod sqlite_connection_pool;
+pub mod util;

@@ -20,10 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 use chrono::NaiveDateTime;
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use diesel::{
+    prelude::*,
+    r2d2,
+    r2d2::{ConnectionManager, PooledConnection},
+    result::Error as DieselError,
+    SqliteConnection,
+};
+use tari_common_sqlite::{error::SqliteStorageError, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
@@ -34,22 +41,53 @@ use crate::{
         storage::database::{Contact, ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
     },
     schema::contacts,
-    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::diesel_ext::ExpectedRowsExtension,
 };
+
+pub trait PooledDbConnection: Send + Sync + Clone {
+    type Error;
+
+    fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error>;
+}
+
+pub trait ContactService {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DbError {
+    #[error("Database error: `{0}`")]
+    SqliteStorageError(#[from] SqliteStorageError),
+    #[error("Operation not supported")]
+    OperationNotSupported,
+    #[error("Conversion error: `{0}`")]
+    ConversionError(String),
+    #[error("Database error: `{0}`")]
+    DieselR2d2Error(#[from] r2d2::Error),
+    #[error("Database error: `{0}`")]
+    DieselConnectionError(#[from] ConnectionError),
+    #[error("Database error: `{0}`")]
+    DatabaseMigrationError(String),
+    #[error("Database error: `{0}`")]
+    BlockingTaskSpawnError(String),
+}
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
-pub struct ContactsServiceSqliteDatabase {
-    database_connection: WalletDbConnection,
+pub struct ContactsServiceSqliteDatabase<TContactServiceDbConnection> {
+    database_connection: Arc<TContactServiceDbConnection>,
 }
-impl ContactsServiceSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection) -> Self {
-        Self { database_connection }
+
+impl<TContactServiceDbConnection: PooledDbConnection + ContactService>
+    ContactsServiceSqliteDatabase<TContactServiceDbConnection>
+{
+    pub fn new(database_connection: TContactServiceDbConnection) -> Self {
+        Self {
+            database_connection: Arc::new(database_connection),
+        }
     }
 }
 
-impl ContactsBackend for ContactsServiceSqliteDatabase {
+impl<TContactServiceDbConnection> ContactsBackend for ContactsServiceSqliteDatabase<TContactServiceDbConnection>
+where TContactServiceDbConnection: PooledDbConnection<Error = DbError> + ContactService
+{
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
@@ -287,7 +325,7 @@ mod test {
     use std::{convert::TryFrom, io::Write};
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
-    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_types::{

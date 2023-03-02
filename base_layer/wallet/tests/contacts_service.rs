@@ -24,11 +24,7 @@ use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
 use tari_common_types::types::PublicKey;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_service_framework::StackBuilder;
-use tari_shutdown::Shutdown;
-use tari_test_utils::random;
-use tari_wallet::contacts_service::{
+use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
     storage::{
@@ -37,6 +33,10 @@ use tari_wallet::contacts_service::{
     },
     ContactsServiceInitializer,
 };
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_service_framework::StackBuilder;
+use tari_shutdown::Shutdown;
+use tari_test_utils::random;
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 pub mod support;

@@ -11,7 +11,6 @@
 mod macros;
 pub mod base_node_service;
 pub mod connectivity_service;
-pub mod contacts_service;
 pub mod error;
 mod operation_id;
 pub mod output_manager_service;
@@ -37,13 +36,13 @@ pub mod schema;
 pub mod utxo_scanner_service;
 
 pub use config::{TransactionStage, WalletConfig};
+use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
 pub use wallet::Wallet;
 
 use crate::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::wallet::WalletSqliteDatabase,
+    storage::{sqlite_db::wallet::WalletSqliteDatabase, sqlite_utilities::WalletDbConnection},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 
@@ -51,6 +50,6 @@ pub type WalletSqlite = Wallet<
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
-    ContactsServiceSqliteDatabase,
+    ContactsServiceSqliteDatabase<WalletDbConnection>,
     KeyManagerSqliteDatabase,
 >;

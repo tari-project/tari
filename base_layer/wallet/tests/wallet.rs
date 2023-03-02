@@ -40,6 +40,11 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
+use tari_contacts::contacts_service::{
+    handle::ContactsLivenessEvent,
+    service::ContactMessageType,
+    storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
@@ -68,11 +73,6 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
 use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
-    contacts_service::{
-        handle::ContactsLivenessEvent,
-        service::ContactMessageType,
-        storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
-    },
     error::{WalletError, WalletStorageError},
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,

@@ -41,6 +41,7 @@ use tari_comms::{
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
+use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
@@ -876,6 +877,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
+    use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::{

@@ -32,7 +32,7 @@ use tari_comms::peer_manager::NodeId;
 
 use crate::contacts_service::error::ContactsServiceStorageError;
 
-const LOG_TARGET: &str = "wallet::contacts_service::database";
+const LOG_TARGET: &str = "contacts::contacts_service::database";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {

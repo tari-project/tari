@@ -30,6 +30,7 @@ use tari_common_types::{
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_contacts::contacts_service::storage::sqlite_db::DbError;
 use tari_core::transactions::{
     transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
@@ -243,6 +244,8 @@ pub enum TransactionStorageError {
     TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
+    #[error("Db error: `{0}`")]
+    DbError(#[from] DbError),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

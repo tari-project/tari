@@ -37,10 +37,12 @@ use diesel::{
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
+use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PrivateKey},
 };
+use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
@@ -61,10 +63,7 @@ use crate::{
     },
     schema::{known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 
 mod new_output_sql;
