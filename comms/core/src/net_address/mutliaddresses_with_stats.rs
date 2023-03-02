@@ -8,7 +8,6 @@ use std::{
 };
 
 use chrono::{NaiveDateTime, Utc};
-use log::warn;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -108,16 +107,16 @@ impl MultiaddressesWithStats {
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
     pub fn add_address(&mut self, net_address: &Multiaddr, source: &PeerAddressSource) {
-        if !self.addresses.iter().any(|x| x.address() == net_address) {
-            self.addresses
-                .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
-            self.addresses.sort();
-        } else {
+        if self.addresses.iter().any(|x| x.address() == net_address) {
             self.addresses
                 .iter_mut()
                 .find(|x| x.address() == net_address)
                 .unwrap()
-                .update_source_if_better(&source);
+                .update_source_if_better(source);
+        } else {
+            self.addresses
+                .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
+            self.addresses.sort();
         }
     }
 
@@ -129,8 +128,8 @@ impl MultiaddressesWithStats {
     /// add new addresses without discarding the usage stats of the existing and remaining addresses.
     pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) {
         for address in addresses {
-            if let Some(addr) = self.addresses.iter_mut().find(|a| &a.address() == &address) {
-                addr.update_source_if_better(&source);
+            if let Some(addr) = self.addresses.iter_mut().find(|a| a.address() == address) {
+                addr.update_source_if_better(source);
             }
         }
 
