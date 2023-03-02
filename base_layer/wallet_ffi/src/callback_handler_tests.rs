@@ -731,6 +731,7 @@ mod test {
             faux_unconfirmed_tx.destination_address,
             None,
             None,
+            false,
         );
         let data = ContactsLivenessData::new(
             contact.address.clone(),

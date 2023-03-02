@@ -312,7 +312,7 @@ async fn test_wallet() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new(public_key, Network::LocalNet);
 
-        contacts.push(Contact::new(random::string(8), address, None, None));
+        contacts.push(Contact::new(random::string(8), address, None, None, false));
 
         alice_wallet
             .contacts_service
@@ -871,7 +871,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(bob_identity.to_peer())
         .await
         .unwrap();
-    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None);
+    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None, false);
     alice_wallet.contacts_service.upsert_contact(contact_bob).await.unwrap();
 
     bob_wallet
@@ -880,7 +880,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(alice_identity.to_peer())
         .await
         .unwrap();
-    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None);
+    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None, false);
     bob_wallet.contacts_service.upsert_contact(contact_alice).await.unwrap();
 
     alice_wallet

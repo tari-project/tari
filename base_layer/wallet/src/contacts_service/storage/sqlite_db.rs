@@ -85,6 +85,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
+                        favourite: Some(c.favourite as i32),
                     })
                     .is_err()
                     {
@@ -100,6 +101,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                             alias: None,
                             last_seen: Some(Some(date_time)),
                             latency: Some(latency),
+                            favourite: None,
                         })?;
                     return Ok(Some(DbValue::TariAddress(Box::new(
                         TariAddress::from_bytes(&contact.address)
@@ -140,6 +142,7 @@ struct ContactSql {
     alias: String,
     last_seen: Option<NaiveDateTime>,
     latency: Option<i32>,
+    favourite: i32,
 }
 
 impl ContactSql {
@@ -245,6 +248,11 @@ impl TryFrom<ContactSql> for Contact {
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as u32),
+            favourite: match o.favourite {
+                0 => false,
+                1 => true,
+                _ => return Err(ContactsServiceStorageError::ConversionError),
+            },
         })
     }
 }
@@ -260,6 +268,7 @@ impl From<Contact> for ContactSql {
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as i32),
+            favourite: i32::from(o.favourite),
         }
     }
 }
@@ -270,6 +279,7 @@ pub struct UpdateContact {
     alias: Option<String>,
     last_seen: Option<Option<NaiveDateTime>>,
     latency: Option<Option<i32>>,
+    favourite: Option<i32>,
 }
 
 #[cfg(test)]
@@ -324,7 +334,7 @@ mod test {
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
                 let address = TariAddress::new(pub_key, Network::default());
-                contacts.push(Contact::new(names[i].clone(), address, None, None));
+                contacts.push(Contact::new(names[i].clone(), address, None, None, false));
                 ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();
             }
 
@@ -354,11 +364,13 @@ mod test {
                     alias: Some("Fred".to_string()),
                     last_seen: None,
                     latency: None,
+                    favourite: Some(true as i32),
                 })
                 .unwrap();
 
             let c_updated = ContactSql::find_by_address(&contacts[1].address.to_bytes(), &mut conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());
+            assert_eq!(c_updated.favourite, true as i32);
         });
     }
 }

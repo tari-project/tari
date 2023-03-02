@@ -218,7 +218,7 @@ impl AppState {
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
-        let contact = Contact::new(alias, address, None, None);
+        let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
