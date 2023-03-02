@@ -85,7 +85,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
-                        favourite: Some(c.favourite as i32),
+                        favourite: Some(i32::from(true)),
                     })
                     .is_err()
                     {
@@ -364,13 +364,13 @@ mod test {
                     alias: Some("Fred".to_string()),
                     last_seen: None,
                     latency: None,
-                    favourite: Some(true as i32),
+                    favourite: Some(i32::from(true)),
                 })
                 .unwrap();
 
             let c_updated = ContactSql::find_by_address(&contacts[1].address.to_bytes(), &mut conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());
-            assert_eq!(c_updated.favourite, true as i32);
+            assert_eq!(c_updated.favourite, i32::from(true));
         });
     }
 }
