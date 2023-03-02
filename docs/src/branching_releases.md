@@ -18,11 +18,11 @@ We run a series of networks for different purposes but each network will have co
 
 ### Networks
 
-- MainNet: The big shebang, the head hancho, the real deal. This is the Tari protocol at work.
+- MainNet: The big shebang, the head honcho, the real deal. This is the Tari protocol at work.
 - StageNet: A stable network as similar as possible to MainNet available for testing.
 - NextNet: The next release of the network. This should become available 8 weeks prior to going live on MainNet.
 - TestNet(s): Our named test networks used for development. Where we can play a little fast and loose with features where, although we try to avoid it- the networks may see breakages and resets more frequently.
-  - Example networks (non exhaustive):
+  - Example networks (non-exhaustive):
     - `Esme`: Has been our stable-er testnet prior to StageNet. It sees new features and enhancements as they come out, and supports our mobile wallets Tari Aurora on iOS and Android.
     - `Igor`: Is used in the development of the DAN Layer and sees frequent resets to help support the rapid pace of the development team.
 
@@ -58,7 +58,7 @@ Developers can perform this process as often and as many times as they want.
 
 Every 8 weeks the development team will trigger both a NextNet, and StageNet/MainNet release. To be specific the current NextNet version will become the next StageNet/MainNet version. And a new NextNet version will be tagged for the NextNet network, and for use 8 week in the future in StageNet/Mainnet. To do this a developer will checkout the current NextNet tag v1.54.0-rc.0. They can then re-tag this version as v1.54.0. This will trigger a new compilation of the StageNet/MainNet binaries with the flag `TARI_NETWORK=mainnet` which will ensure any existing feature gate is closed.  
 Next the developer will checkout the development branch. From here create a new release branch `nextnet-1.55.0-rc.0`. Make any version bumps or changes necessary. Tag this new branch as v1.55.0-rc.0 triggering a CI compilation of the NextNet binary with the flag `TARI_NETWORK=nextnet` which will allow feature gates in the testing status to stay open. The release branch can be merged back into development and then deleted.
-Lastly the development branch should be reset to the _next_ version v1.56.0-pre.0. This make it simple for the next testnet release and leaves no questions as to what version comes next.
+Lastly the development branch should be reset to the _next_ version v1.56.0-pre.0. This makes it simple for the next testnet release and leaves no questions as to what version comes next.
 
 After all the above tags have occurred it would leave us with the version changes as follows:
 
