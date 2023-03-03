@@ -61,7 +61,7 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 #[derive(Debug)]
 pub enum ConnectionManagerEvent {
     // Peer connection
-    PeerConnected(PeerConnection),
+    PeerConnected(Box<PeerConnection>),
     PeerDisconnected(ConnectionId, NodeId),
     PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),

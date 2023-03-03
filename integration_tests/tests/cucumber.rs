@@ -382,7 +382,27 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
         if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
             return;
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    panic!("Peer was not connected in time");
+}
+
+#[when(expr = "I wait for {word} to have {int} connections")]
+async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
+    let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
+
+    for _i in 0..100 {
+        let res = match node_client {
+            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
+        };
+        let res = res.into_inner();
+
+        if res.connected_peers.len() >= num_connections {
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
     panic!("Peer was not connected in time");
@@ -3944,7 +3964,7 @@ async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: Strin
 
     let args = SetBaseNodeArgs {
         public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-        address: Multiaddr::from_str(node_identity.public_address.as_str()).unwrap(),
+        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
     };
 
     cli.command2 = Some(CliCommands::SetBaseNode(args));
@@ -3967,7 +3987,7 @@ async fn change_custom_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet
 
     let args = SetBaseNodeArgs {
         public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-        address: Multiaddr::from_str(node_identity.public_address.as_str()).unwrap(),
+        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
     };
 
     cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
@@ -4306,7 +4326,7 @@ async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: 
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.public_address().to_string(),
+        base_node.identity.first_public_address().to_string(),
     );
 }
 
@@ -4317,7 +4337,7 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
     let seed_node = world.get_node(&seed_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         seed_node.identity.public_key().to_hex(),
-        seed_node.identity.public_address().to_string(),
+        seed_node.identity.first_public_address().to_string(),
     );
 }
 
@@ -4326,7 +4346,7 @@ async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: Str
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.public_address().to_string(),
+        base_node.identity.first_public_address().to_string(),
     );
 }
 
@@ -4738,7 +4758,7 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.public_address().to_string(),
+        base_node.identity.first_public_address().to_string(),
     );
 }
 
@@ -4750,7 +4770,7 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.public_address().to_string(),
+        base_node.identity.first_public_address().to_string(),
     );
 }
 
@@ -5023,7 +5043,11 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
-        world.run_and_exit("tests/features/").await;
+        world
+            // .fail_on_skipped()
+            // .fail_fast() - Not yet supported in 0.18
+            .run_and_exit("tests/features/")
+            .await;
     });
 
     // If by any chance we have anything in the stdout buffer just log it.

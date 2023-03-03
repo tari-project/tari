@@ -31,7 +31,6 @@ use tokio::{
 use tokio_util::codec::{Framed, LinesCodec};
 
 use super::{event::TorControlEvent, parsers, response::ResponseLine, LOG_TARGET};
-use crate::runtime::task;
 
 pub fn spawn_monitor<TSocket>(
     mut cmd_rx: mpsc::Receiver<String>,
@@ -43,7 +42,7 @@ where
 {
     let (responses_tx, responses_rx) = mpsc::channel(100);
 
-    task::spawn(async move {
+    tokio::spawn(async move {
         let framed = Framed::new(socket, LinesCodec::new());
         let (mut sink, mut stream) = framed.split();
         loop {

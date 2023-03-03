@@ -4742,13 +4742,13 @@ pub unsafe extern "C" fn comms_config_create(
         Ok(public_address) => {
             let node_identity = NodeIdentity::new(
                 CommsSecretKey::default(),
-                public_address,
+                vec![public_address],
                 PeerFeatures::COMMUNICATION_CLIENT,
             );
 
             let config = TariCommsConfig {
                 override_from: None,
-                public_address: Some(node_identity.public_address()),
+                public_addresses: vec![node_identity.first_public_address()],
                 transport: (*transport).clone(),
                 auxiliary_tcp_listener_address: None,
                 datastore_path,
@@ -5260,23 +5260,27 @@ pub unsafe extern "C" fn wallet_create(
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
 
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
-        let node_address = wallet_database
-            .get_node_address()?
-            .or_else(|| comms_config.public_address.clone())
-            .unwrap_or_else(Multiaddr::empty);
+        let node_addresses = if comms_config.public_addresses.is_empty() {
+            vec![match wallet_database.get_node_address()? {
+                Some(addr) => addr,
+                None => Multiaddr::empty(),
+            }]
+        } else {
+            comms_config.public_addresses.clone()
+        };
         let identity_sig = wallet_database.get_comms_identity_signature()?;
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
         // to None
         let identity_sig = identity_sig.filter(|sig| {
             let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-            sig.is_valid(&comms_public_key, node_features, [&node_address])
+            sig.is_valid(&comms_public_key, node_features, &node_addresses)
         });
 
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
             comms_secret_key,
-            node_address,
+            node_addresses,
             node_features,
             identity_sig,
         ));
@@ -10522,7 +10526,8 @@ mod test {
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
             let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.public_address().to_string()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(node_identity.first_public_address().to_string()).unwrap())
+                    as *const c_char;
             wallet_add_base_node_peer(
                 wallet_ptr,
                 base_node_peer_public_key_ptr,

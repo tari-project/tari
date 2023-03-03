@@ -752,12 +752,10 @@ impl TestNode {
         });
     }
 
-    #[inline]
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         self.comms.node_identity()
     }
 
-    #[inline]
     pub fn to_peer(&self) -> Peer {
         self.comms.node_identity().to_peer()
     }
@@ -775,7 +773,7 @@ impl TestNode {
 
             match &*event {
                 PeerConnected(conn) if conn.peer_node_id() == node_id => {
-                    break Some(conn.clone());
+                    break Some(*conn.clone());
                 },
                 _ => {},
             }
@@ -905,7 +903,7 @@ async fn setup_comms_dht(
     let comms = CommsBuilder::new()
         .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
-        .with_listener_address(node_identity.public_address())
+        .with_listener_address(node_identity.first_public_address())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(1)

@@ -62,7 +62,6 @@ use crate::{
         ProtocolId,
         ProtocolNotification,
     },
-    runtime,
     test_utils::{node_identity::build_node_identity, transport::build_multiplexed_connections},
     NodeIdentity,
     Substream,
@@ -137,7 +136,7 @@ pub(super) async fn setup<T: GreetingRpc>(
     (inbound, outbound, server_hnd, node_identity, shutdown)
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn request_response_errors_and_streaming() {
     let (mut muxer, _outbound, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -220,7 +219,7 @@ async fn request_response_errors_and_streaming() {
     server_hnd.await.unwrap();
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn concurrent_requests() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -261,7 +260,7 @@ async fn concurrent_requests() {
     assert_eq!(spawned2.await.unwrap(), GreetingService::DEFAULT_GREETINGS[..5]);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn response_too_big() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -288,7 +287,7 @@ async fn response_too_big() {
         .unwrap();
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn ping_latency() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -302,7 +301,7 @@ async fn ping_latency() {
     assert!(latency.as_secs() < 5);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn server_shutdown_before_connect() {
     let (mut muxer, _outbound, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -316,7 +315,7 @@ async fn server_shutdown_before_connect() {
     ));
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn timeout() {
     let delay = Arc::new(RwLock::new(Duration::from_secs(10)));
     let (mut muxer, _outbound, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone()), 1).await;
@@ -341,7 +340,7 @@ async fn timeout() {
     assert_eq!(resp.greeting, "took a while to load");
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn unknown_protocol() {
     let (notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
 
@@ -370,7 +369,7 @@ async fn unknown_protocol() {
     ));
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn rejected_no_sessions_available() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
@@ -382,7 +381,7 @@ async fn rejected_no_sessions_available() {
     ));
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn stream_still_works_after_cancel() {
     let service_impl = GreetingService::default();
     let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
@@ -422,7 +421,7 @@ async fn stream_still_works_after_cancel() {
     });
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn stream_interruption_handling() {
     let service_impl = GreetingService::default();
     let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
@@ -469,7 +468,7 @@ async fn stream_interruption_handling() {
         .unwrap();
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn max_global_sessions() {
     let builder = RpcServer::builder().with_maximum_simultaneous_sessions(1);
     let (muxer, _outbound, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
@@ -527,7 +526,7 @@ async fn max_global_sessions() {
         .unwrap();
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn max_per_client_sessions() {
     let builder = RpcServer::builder()
         .with_maximum_simultaneous_sessions(3)

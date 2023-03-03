@@ -54,7 +54,6 @@ use crate::{
         ConnectionManagerRequester,
     },
     peer_manager::NodeId,
-    runtime::task,
     utils::datetime::format_duration,
     NodeIdentity,
     PeerConnection,
@@ -164,7 +163,7 @@ impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
-        task::spawn(async {
+        tokio::spawn(async {
             log_mdc::extend(mdc);
             Self::run(self).await
         })
@@ -316,18 +315,20 @@ impl ConnectivityManagerActor {
             },
         }
         match self.pool.get(&node_id) {
-            Some(state) if state.is_connected() => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Found existing connection for peer `{}`",
-                    node_id.short_str()
-                );
+            Some(state) => {
+                if !state.is_connected() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Existing connection is present but is_connected is false for some reason...."
+                    );
+                }
+
                 if let Some(reply_tx) = reply_tx {
                     let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
                 }
             },
-            _ => {
-                debug!(
+            None => {
+                info!(
                     target: LOG_TARGET,
                     "No existing connection found for peer `{}`. Dialing...",
                     node_id.short_str()
@@ -477,12 +478,13 @@ impl ConnectivityManagerActor {
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_failed();
+
         entry.failed_attempts()
     }
 
     async fn on_peer_connection_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
         if self.status.is_offline() {
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "Node is offline. Ignoring connection failure event for peer '{}'.", node_id
             );
@@ -498,10 +500,6 @@ impl ConnectivityManagerActor {
                 node_id.short_str(),
                 num_failed
             );
-            if !self.peer_manager.set_offline(node_id, true).await? {
-                // Only publish the `PeerOffline` event if we change from online to offline
-                self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
-            }
 
             if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
                 if !peer.is_banned() &&
@@ -544,11 +542,15 @@ impl ConnectivityManagerActor {
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
         use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
-        debug!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
                 match self.on_new_connection(new_conn).await {
                     TieBreak::KeepExisting => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Discarding new connection to peer '{}' because we already have an existing connection",
+                            new_conn.peer_node_id().short_str()
+                        );
                         // Ignore event, we discarded the new connection and keeping the current one
                         return Ok(());
                     },
@@ -605,7 +607,7 @@ impl ConnectivityManagerActor {
 
         let old_status = self.pool.set_status(node_id, new_status);
         if let Some(conn) = connection {
-            new_status = self.pool.insert_connection(conn);
+            new_status = self.pool.insert_connection(*conn);
         }
         if old_status != new_status {
             debug!(
@@ -618,17 +620,15 @@ impl ConnectivityManagerActor {
 
         use ConnectionStatus::{Connected, Disconnected, Failed};
         match (old_status, new_status) {
-            (_, Connected) => {
-                self.mark_peer_succeeded(node_id.clone());
-                match self.pool.get_connection(&node_id).cloned() {
-                    Some(conn) => {
-                        self.publish_event(ConnectivityEvent::PeerConnected(conn));
-                    },
-                    None => unreachable!(
-                        "Connection transitioning to CONNECTED state must always have a connection set i.e. \
-                         ConnectionPool::get_connection is Some"
-                    ),
-                }
+            (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
+                Some(conn) => {
+                    self.mark_peer_succeeded(node_id.clone());
+                    self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
+                },
+                None => unreachable!(
+                    "Connection transitioning to CONNECTED state must always have a connection set i.e. \
+                     ConnectionPool::get_connection is Some"
+                ),
             },
             (Connected, Disconnected) => {
                 self.publish_event(ConnectivityEvent::PeerDisconnected(node_id));
@@ -668,7 +668,7 @@ impl ConnectivityManagerActor {
             },
             Some(mut existing_conn) => {
                 if self.tie_break_existing_connection(&existing_conn, new_conn) {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \
                          connection (id: {}, peer: {}, direction: {})",

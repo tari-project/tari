@@ -163,19 +163,18 @@ impl DbConnection {
 #[cfg(test)]
 mod test {
     use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
-    use tari_comms::runtime;
     use tari_test_utils::random;
 
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn connect_and_migrate() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
         let output = conn.migrate().unwrap();
         assert!(output.starts_with("Running migration"));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn memory_connections() {
         let id = random::string(8);
         let conn = DbConnection::connect_memory(id.clone()).unwrap();

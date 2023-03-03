@@ -146,9 +146,8 @@ mod test {
     use tower::service_fn;
 
     use super::*;
-    use crate::runtime;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn run() {
         let items = vec![1, 2, 3, 4, 5, 6];
         let (tx, mut stream) = mpsc::channel(items.len());
@@ -159,10 +158,9 @@ mod test {
 
         let (out_tx, mut out_rx) = mpsc::channel(items.len());
 
-        let executor = runtime::current();
         let shutdown = Shutdown::new();
         let pipeline = Inbound::new(
-            BoundedExecutor::new(executor.clone(), 1),
+            BoundedExecutor::new(1),
             stream,
             service_fn(move |req| {
                 out_tx.try_send(req).unwrap();
@@ -171,7 +169,7 @@ mod test {
             shutdown.to_signal(),
         );
 
-        let spawned_task = executor.spawn(pipeline.run());
+        let spawned_task = tokio::spawn(pipeline.run());
 
         let received = collect_recv!(out_rx, take = items.len(), timeout = Duration::from_secs(10));
         assert!(received.iter().all(|i| items.contains(i)));

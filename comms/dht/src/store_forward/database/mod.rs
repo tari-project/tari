@@ -227,12 +227,11 @@ impl StoreAndForwardDatabase {
 
 #[cfg(test)]
 mod test {
-    use tari_comms::runtime;
     use tari_test_utils::random;
 
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn insert_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
         conn.migrate().unwrap();
@@ -252,7 +251,7 @@ mod test {
         assert_eq!(messages[1].body_hash, msg2.body_hash);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn remove_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
         conn.migrate().unwrap();
@@ -279,7 +278,7 @@ mod test {
         assert_eq!(messages[0].id, msg2_id);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn truncate_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
         conn.migrate().unwrap();

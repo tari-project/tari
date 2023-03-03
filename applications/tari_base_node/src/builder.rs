@@ -225,10 +225,10 @@ async fn build_node_context(
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
-            return ExitError::new(
+            ExitError::new(
                 ExitCode::DbInconsistentState,
                 format!("You may need to re-sync your database because {}", reason),
-            );
+            )
         } else {
             ExitError::new(ExitCode::DatabaseError, err)
         }

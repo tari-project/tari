@@ -40,15 +40,15 @@ use crate::{
         ConnectionManagerConfig,
         ConnectionManagerError,
     },
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
     peer_manager::PeerFeatures,
     protocol::ProtocolId,
-    runtime,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
 };
 
-#[runtime::test]
+#[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
@@ -76,9 +76,8 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn smoke() {
-    let rt_handle = runtime::current();
     // This test sets up Dialer and Listener components, uses the Dialer to dial the Listener,
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
     // receives and checks the message and then disconnects and shuts down.
@@ -122,10 +121,10 @@ async fn smoke() {
     );
     dialer.set_supported_protocols(supported_protocols.clone());
 
-    let dialer_fut = rt_handle.spawn(dialer.run());
+    let dialer_fut = tokio::spawn(dialer.run());
 
     let mut peer = node_identity1.to_peer();
-    peer.addresses = vec![address].into();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();
@@ -183,9 +182,8 @@ async fn smoke() {
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn banned() {
-    let rt_handle = runtime::current();
     let (event_tx, mut event_rx) = mpsc::channel(10);
     let mut shutdown = Shutdown::new();
 
@@ -231,10 +229,10 @@ async fn banned() {
     );
     dialer.set_supported_protocols(supported_protocols);
 
-    let dialer_fut = rt_handle.spawn(dialer.run());
+    let dialer_fut = tokio::spawn(dialer.run());
 
     let mut peer = node_identity1.to_peer();
-    peer.addresses = vec![address].into();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();

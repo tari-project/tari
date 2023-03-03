@@ -10,7 +10,9 @@ package tari.comms.identity;
 message PeerIdentityMsg {
     repeated bytes addresses = 1;
     uint64 features = 2;
+    // Note: not part of the signature
     repeated bytes supported_protocols = 3;
+    // Note: not part of the signature
     string user_agent = 4;
     // Signature that signs the peer identity
     IdentitySignature identity_signature = 5;

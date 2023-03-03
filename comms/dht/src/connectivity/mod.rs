@@ -39,6 +39,7 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
+    connection_manager::ConnectionDirection,
     connectivity::{
         ConnectivityError,
         ConnectivityEvent,
@@ -47,6 +48,7 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
+    net_address::PeerAddressSource,
     peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
     NodeIdentity,
     PeerConnection,
@@ -63,6 +65,8 @@ const LOG_TARGET: &str = "comms::dht::connectivity";
 /// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
+    #[error("Peer connection did not have a peer identity claim")]
+    PeerConnectionMissingPeerIdentityClaim,
     #[error("ConnectivityError: {0}")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("PeerManagerError: {0}")]
@@ -92,7 +96,6 @@ pub(crate) struct DhtConnectivity {
     dht_events: broadcast::Receiver<Arc<DhtEvent>>,
     metrics_collector: MetricsCollectorHandle,
     cooldown_in_effect: Option<Instant>,
-    recent_connection_failure_count: usize,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -120,7 +123,6 @@ impl DhtConnectivity {
             random_pool_last_refresh: None,
             stats: Stats::new(),
             dht_events,
-            recent_connection_failure_count: 0,
             cooldown_in_effect: None,
             shutdown_signal,
         }
@@ -290,12 +292,7 @@ impl DhtConnectivity {
         #[allow(clippy::single_match)]
         match event {
             DhtEvent::NetworkDiscoveryPeersAdded(info) => {
-                if info.has_new_neighbours() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Network discovery discovered {} more neighbouring peers. Reinitializing pools",
-                        info.num_new_peers
-                    );
+                if info.num_new_peers > 0 {
                     self.refresh_peer_pools().await?;
                 }
             },
@@ -496,7 +493,21 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
-        self.peer_manager.mark_last_seen(conn.peer_node_id()).await?;
+        if conn.direction() == ConnectionDirection::Outbound {
+            if let Some(peer_identity_claim) = conn.peer_identity_claim() {
+                self.peer_manager
+                    .mark_last_seen(
+                        conn.peer_node_id(),
+                        conn.address(),
+                        &PeerAddressSource::FromPeerConnection {
+                            peer_identity_claim: peer_identity_claim.clone(),
+                        },
+                    )
+                    .await?;
+            } else {
+                return Err(DhtConnectivityError::PeerConnectionMissingPeerIdentityClaim);
+            }
+        }
         if conn.peer_features().is_client() {
             debug!(
                 target: LOG_TARGET,
@@ -565,7 +576,7 @@ impl DhtConnectivity {
         debug!(target: LOG_TARGET, "Connectivity event: {}", event);
         match event {
             PeerConnected(conn) => {
-                self.handle_new_peer_connected(conn).await?;
+                self.handle_new_peer_connected(*conn).await?;
             },
             PeerConnectFailed(node_id) => {
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
@@ -579,33 +590,7 @@ impl DhtConnectivity {
                     debug!(target: LOG_TARGET, "{} is not managed by the DHT. Ignoring", node_id);
                     return Ok(());
                 }
-
-                const TOLERATED_CONNECTION_FAILURES: usize = 40;
-                if self.recent_connection_failure_count < TOLERATED_CONNECTION_FAILURES {
-                    self.recent_connection_failure_count += 1;
-                }
-
-                if self.recent_connection_failure_count == TOLERATED_CONNECTION_FAILURES &&
-                    self.cooldown_in_effect.is_none()
-                {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Too many ({}) connection failures, cooldown is in effect", TOLERATED_CONNECTION_FAILURES
-                    );
-                    self.cooldown_in_effect = Some(Instant::now());
-                }
-
-                if self
-                    .cooldown_in_effect
-                    .map(|ts| ts.elapsed() >= self.config.connectivity.high_failure_rate_cooldown)
-                    .unwrap_or(true)
-                {
-                    if self.cooldown_in_effect.is_some() {
-                        self.cooldown_in_effect = None;
-                        self.recent_connection_failure_count = 1;
-                    }
-                    self.replace_pool_peer(&node_id).await?;
-                }
+                self.replace_pool_peer(&node_id).await?;
                 self.log_status();
             },
             PeerDisconnected(node_id) => {
@@ -786,68 +771,40 @@ impl DhtConnectivity {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        let mut connect_ineligable_count = 0;
-        let mut banned_count = 0;
-        let mut excluded_count = 0;
-        let mut filtered_out_node_count = 0;
-        let mut already_connected = 0;
+        let offline_cooldown = self.config.offline_peer_cooldown;
         let query = PeerQuery::new()
             .select_where(|peer| {
                 if peer.is_banned() {
-                    banned_count += 1;
                     return false;
                 }
 
                 if peer.features.is_client() {
-                    filtered_out_node_count += 1;
                     return false;
                 }
 
                 if connected.contains(&&peer.node_id) {
-                    already_connected += 1;
                     return false;
                 }
 
                 if peer
                     .offline_since()
-                    .map(|since| since <= self.config.offline_peer_cooldown)
+                    .map(|since| since <= offline_cooldown)
                     .unwrap_or(false)
                 {
-                    connect_ineligable_count += 1;
                     return false;
                 }
 
                 let is_excluded = excluded.contains(&peer.node_id);
                 if is_excluded {
-                    excluded_count += 1;
                     return false;
                 }
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFromLastConnected(node_id))
-            // Fetch double here so that there is a bigger closest peer set that can be ordered by last seen
-            .limit(n * 2);
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
+            .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;
-        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "\n====================================\n Closest Peer Selection\n\n {num_peers} peer(s) selected\n \
-                 {total} peer(s) were not selected \n\n {banned} banned\n {filtered_out} not communication node\n \
-                 {not_connectable} are not connectable\n {excluded} explicitly excluded\n {already_connected} already \
-                 connected
-                 \n====================================\n",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count,
-                already_connected = already_connected
-            );
-        }
 
         Ok(peers.into_iter().map(|p| p.node_id).take(n).collect())
     }

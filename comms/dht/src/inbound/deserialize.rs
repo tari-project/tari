@@ -131,10 +131,7 @@ impl<S> Layer<S> for DeserializeLayer {
 
 #[cfg(test)]
 mod test {
-    use tari_comms::{
-        message::{MessageExt, MessageTag},
-        runtime,
-    };
+    use tari_comms::message::{MessageExt, MessageTag};
 
     use super::*;
     use crate::{
@@ -149,7 +146,7 @@ mod test {
         },
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn deserialize() {
         let spy = service_spy();
         let peer_manager = build_peer_manager();

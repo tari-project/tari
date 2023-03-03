@@ -66,7 +66,7 @@ impl TestFactory for NodeIdentityFactory {
 
         Ok(NodeIdentity::new(
             secret_key,
-            control_service_address,
+            vec![control_service_address],
             self.peer_features,
         ))
     }

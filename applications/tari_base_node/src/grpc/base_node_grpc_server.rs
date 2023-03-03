@@ -1357,7 +1357,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let identity = self.comms.node_identity_ref();
         Ok(Response::new(tari_rpc::NodeIdentity {
             public_key: identity.public_key().to_vec(),
-            public_address: identity.public_address().to_string(),
+            public_addresses: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
             node_id: identity.node_id().to_vec(),
         }))
     }

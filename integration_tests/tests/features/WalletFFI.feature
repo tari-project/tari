@@ -108,12 +108,11 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
+        Then I wait until base node BASE2 has 1 unconfirmed transactions in its mempool
         # The broadcast check does not include delivery; create some holding points to ensure it was received
-        When mining node MINER mines 2 blocks
-        Then all nodes are at height 22
-        When mining node MINER mines 2 blocks
+        When mining node MINER mines 4 blocks
         Then all nodes are at height 24
-        When mining node MINER mines 6 blocks
+#        When mining node MINER mines 6 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
         And I start TXO validation on ffi wallet FFI_WALLET

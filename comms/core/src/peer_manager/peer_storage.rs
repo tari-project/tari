@@ -24,14 +24,13 @@ use std::{collections::HashMap, time::Duration};
 
 use chrono::Utc;
 use log::*;
-use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_storage::{IterationResult, KeyValueStore};
 use tari_utilities::ByteArray;
 
 use crate::{
     peer_manager::{
-        peer::{Peer, PeerFlags},
+        peer::Peer,
         peer_id::{generate_peer_key, PeerId},
         NodeDistance,
         NodeId,
@@ -40,7 +39,6 @@ use crate::{
         PeerQuery,
         PeerQuerySortBy,
     },
-    protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
 
@@ -51,7 +49,7 @@ const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
 pub struct PeerStorage<DS> {
-    pub(crate) peer_db: DS,
+    peer_db: DS,
     public_key_index: HashMap<CommsPublicKey, PeerId>,
     node_id_index: HashMap<NodeId, PeerId>,
 }
@@ -103,8 +101,14 @@ where DS: KeyValueStore<PeerId, Peer>
                 trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
                 // Replace existing entry
                 peer.set_id(peer_key);
+                let mut existing_peer = self
+                    .peer_db
+                    .get(&peer_key)
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or(PeerManagerError::PeerNotFoundError)?;
+                existing_peer.merge(&peer);
                 self.peer_db
-                    .insert(peer_key, peer)
+                    .insert(peer_key, existing_peer)
                     .map_err(PeerManagerError::DatabaseError)?;
                 self.remove_index_links(peer_key);
                 self.add_index_links(peer_key, public_key, node_id);
@@ -125,69 +129,21 @@ where DS: KeyValueStore<PeerId, Peer>
         }
     }
 
-    /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
-    /// exist, the stored version will be replaced with the newly provided peer.
-
-    #[allow(clippy::option_option)]
-    pub fn update_peer(
-        &mut self,
-        public_key: &CommsPublicKey,
-        net_addresses: Option<Vec<Multiaddr>>,
-        flags: Option<PeerFlags>,
-        banned_until: Option<Option<Duration>>,
-        banned_reason: Option<String>,
-        is_offline: Option<bool>,
-        peer_features: Option<PeerFeatures>,
-        supported_protocols: Option<Vec<ProtocolId>>,
-    ) -> Result<(), PeerManagerError> {
-        match self.public_key_index.get(public_key).copied() {
-            Some(peer_key) => {
-                let mut stored_peer = self
-                    .peer_db
-                    .get(&peer_key)
-                    .map_err(PeerManagerError::DatabaseError)?
-                    .expect("Public key index and peer database are out of sync!");
-
-                trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
-
-                stored_peer.update(
-                    net_addresses,
-                    flags,
-                    banned_until,
-                    banned_reason,
-                    is_offline,
-                    peer_features,
-                    supported_protocols,
-                );
-
-                self.peer_db
-                    .insert(peer_key, stored_peer)
-                    .map_err(PeerManagerError::DatabaseError)?;
-
-                Ok(())
-            },
-            None => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Peer not found because the public key '{}' could not be found in the index",
-                    public_key
-                );
-                Err(PeerManagerError::PeerNotFoundError)
-            },
-        }
-    }
-
     /// The peer with the specified public_key will be removed from the PeerManager
     pub fn delete_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+        let mut peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        peer.deleted_at = Some(Utc::now().naive_utc());
         self.peer_db
-            .delete(&peer_key)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
-
-        self.remove_index_links(peer_key);
         Ok(())
     }
 
@@ -508,42 +464,6 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peer.is_banned())
     }
 
-    /// Changes the OFFLINE flag bit of the peer.
-    pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
-        let peer_key = *self
-            .node_id_index
-            .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let mut peer: Peer = self
-            .peer_db
-            .get(&peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .expect("node_id_index is out of sync with peer db");
-        let was_offline = peer.is_offline();
-        peer.set_offline(offline);
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)?;
-        Ok(was_offline)
-    }
-
-    /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
-    pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
-        let peer_key = *self
-            .node_id_index
-            .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let mut peer: Peer = self
-            .peer_db
-            .get(&peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .expect("node_id_index is out of sync with peer db");
-        peer.addresses.add_address(net_address);
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)
-    }
-
     /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
     /// It will return None if the value was empty and the old value if the value was updated
     pub fn set_peer_metadata(
@@ -567,18 +487,6 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         Ok(result)
     }
-
-    pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut peer = self
-            .find_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        peer.last_seen = Some(Utc::now().naive_utc());
-        peer.set_offline(false);
-        self.peer_db
-            .insert(peer.id(), peer)
-            .map_err(PeerManagerError::DatabaseError)?;
-        Ok(())
-    }
 }
 
 #[allow(clippy::from_over_into)]
@@ -592,12 +500,13 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 mod test {
     use std::iter::repeat_with;
 
+    use multiaddr::Multiaddr;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
     use crate::{
-        net_address::MultiaddressesWithStats,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
@@ -610,9 +519,10 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -626,7 +536,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address4);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address4], &PeerAddressSource::Config);
         let peer2: Peer = Peer::new(
             pk,
             node_id,
@@ -641,8 +552,9 @@ mod test {
         let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_address(&net_address6);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address5], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address6, &PeerAddressSource::Config);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -690,9 +602,10 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_address(&net_address2);
-        net_addresses.add_address(&net_address3);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address1], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -706,7 +619,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address4);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address4], &PeerAddressSource::Config);
         let peer2: Peer = Peer::new(
             pk,
             node_id,
@@ -721,8 +635,9 @@ mod test {
         let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_address(&net_address6);
+        let mut net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address5], &PeerAddressSource::Config);
+        net_addresses.add_address(&net_address6, &PeerAddressSource::Config);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -784,7 +699,8 @@ mod test {
         // Test delete of border case peer
         assert!(peer_storage.delete_peer(&peer3.node_id).is_ok());
 
-        assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
+        // It is a logical delete, so there should still be 3 peers in the db
+        assert_eq!(peer_storage.peer_db.len().unwrap(), 3);
 
         assert_eq!(
             peer_storage
@@ -802,7 +718,12 @@ mod test {
                 .public_key,
             peer2.public_key
         );
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
+        assert!(peer_storage
+            .find_by_public_key(&peer3.public_key)
+            .unwrap()
+            .unwrap()
+            .deleted_at
+            .is_some());
 
         assert_eq!(
             peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
@@ -812,57 +733,21 @@ mod test {
             peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
             peer2.node_id
         );
-        assert!(peer_storage.find_by_node_id(&peer3.node_id).unwrap().is_none());
-
-        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
-        peer_storage.find_by_public_key(&peer2.public_key).unwrap().unwrap();
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
-
-        // Test of delete with moving behaviour
-        assert!(peer_storage.add_peer(peer3.clone()).is_ok());
-        assert!(peer_storage.delete_peer(&peer2.node_id).is_ok());
-
-        assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
-
-        assert_eq!(
-            peer_storage
-                .find_by_public_key(&peer1.public_key)
-                .unwrap()
-                .unwrap()
-                .public_key,
-            peer1.public_key
-        );
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
-        assert_eq!(
-            peer_storage
-                .find_by_public_key(&peer3.public_key)
-                .unwrap()
-                .unwrap()
-                .public_key,
-            peer3.public_key
-        );
-
-        assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
-            peer1.node_id
-        );
-        assert!(peer_storage.find_by_node_id(&peer2.node_id).unwrap().is_none());
-        assert_eq!(
-            peer_storage.find_by_node_id(&peer3.node_id).unwrap().unwrap().node_id,
-            peer3.node_id
-        );
-
-        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
-        peer_storage.find_by_public_key(&peer3.public_key).unwrap().unwrap();
+        assert!(peer_storage
+            .find_by_node_id(&peer3.node_id)
+            .unwrap()
+            .unwrap()
+            .deleted_at
+            .is_some());
     }
 
-    fn create_test_peer(features: PeerFeatures, ban: bool, offline: bool) -> Peer {
+    fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address);
+        let net_addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config);
         let mut peer = Peer::new(
             pk,
             node_id,
@@ -875,7 +760,6 @@ mod test {
         if ban {
             peer.ban_for(Duration::from_secs(600), "".to_string());
         }
-        peer.set_offline(offline);
         peer
     }
 
@@ -883,16 +767,16 @@ mod test {
     fn test_in_network_region() {
         let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
 
-        let mut nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+        let mut nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
             .take(5)
-            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false)).take(4))
+            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
             .collect::<Vec<_>>();
 
         for p in &nodes {
             peer_storage.add_peer(p.clone()).unwrap();
         }
 
-        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false).node_id;
+        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false).node_id;
 
         nodes.sort_by(|a, b| {
             a.node_id

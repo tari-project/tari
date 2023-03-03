@@ -75,7 +75,7 @@ pub async fn get_peer_addresses(world: &TariWorld, peers: &Vec<String>) -> Vec<S
         peer_addresses.push(format!(
             "{}::{}",
             peer.identity.public_key(),
-            peer.identity.public_address()
+            peer.identity.first_public_address()
         ));
     }
 

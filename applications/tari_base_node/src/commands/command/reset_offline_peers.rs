@@ -43,12 +43,8 @@ impl CommandContext {
             .comms
             .peer_manager()
             .update_each(|mut peer| {
-                if peer.is_offline() {
-                    peer.set_offline(false);
-                    Some(peer)
-                } else {
-                    None
-                }
+                peer.addresses.reset_connection_attempts();
+                Some(peer)
             })
             .await?;
 

@@ -228,9 +228,9 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::{memsocket::MemorySocket, runtime};
+    use crate::memsocket::MemorySocket;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn negotiate_success() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -255,7 +255,7 @@ mod test {
         assert_eq!(out_proto.unwrap(), ProtocolId::from_static(b"A"));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn negotiate_fail() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -280,7 +280,7 @@ mod test {
         unpack_enum!(ProtocolError::ProtocolOutboundNegotiationFailed { .. } = out_proto.unwrap_err());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn negotiate_fail_max_rounds() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -305,7 +305,7 @@ mod test {
         unpack_enum!(ProtocolError::ProtocolNegotiationTerminatedByPeer = out_proto.unwrap_err());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn negotiate_success_optimistic() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -326,7 +326,7 @@ mod test {
         out_proto.unwrap();
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn negotiate_fail_optimistic() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);

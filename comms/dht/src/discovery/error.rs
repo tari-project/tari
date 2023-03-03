@@ -44,6 +44,10 @@ pub enum DhtDiscoveryError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("InvalidPeerMultiaddr: {0}")]
     InvalidPeerMultiaddr(String),
+    #[error("No signature provided")]
+    NoSignatureProvided,
+    #[error("Invalid signature: {0}")]
+    InvalidSignature(String),
 }
 
 impl DhtDiscoveryError {

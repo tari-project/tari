@@ -40,11 +40,10 @@ use crate::{
         ConnectionManagerRequester,
         PeerConnectionError,
     },
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
-    runtime,
-    runtime::task,
     test_utils::{
         build_peer_manager,
         count_string_occurrences,
@@ -54,7 +53,7 @@ use crate::{
     transports::{MemoryTransport, TcpTransport},
 };
 
-#[runtime::test]
+#[tokio::test]
 async fn connect_to_nonexistent_peer() {
     let rt_handle = Handle::current();
     let node_identity = build_node_identity(PeerFeatures::empty());
@@ -87,7 +86,7 @@ async fn connect_to_nonexistent_peer() {
     shutdown.trigger();
 }
 
-#[runtime::test]
+#[tokio::test]
 #[allow(clippy::similar_names)]
 async fn dial_success() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
@@ -146,7 +145,7 @@ async fn dial_success() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            vec![public_address2].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -199,7 +198,7 @@ async fn dial_success() {
     assert_eq!(buf, MSG);
 }
 
-#[runtime::test]
+#[tokio::test]
 #[allow(clippy::similar_names)]
 async fn dial_success_aux_tcp_listener() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
@@ -249,7 +248,7 @@ async fn dial_success_aux_tcp_listener() {
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
-            vec![tcp_listener_addr].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![tcp_listener_addr], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -295,7 +294,7 @@ async fn dial_success_aux_tcp_listener() {
     assert_eq!(buf, MSG);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 
@@ -337,7 +336,7 @@ async fn simultaneous_dial_events() {
         .add_peer(Peer::new(
             node_identities[1].public_key().clone(),
             node_identities[1].node_id().clone(),
-            vec![public_address2].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -350,7 +349,7 @@ async fn simultaneous_dial_events() {
         .add_peer(Peer::new(
             node_identities[0].public_key().clone(),
             node_identities[0].node_id().clone(),
-            vec![public_address1].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![public_address1], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -389,7 +388,7 @@ async fn simultaneous_dial_events() {
     // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn dial_cancelled() {
     let mut shutdown = Shutdown::new();
 
@@ -424,7 +423,7 @@ async fn dial_cancelled() {
     peer_manager1.add_peer(node_identity2.to_peer()).await.unwrap();
 
     let (ready_tx, ready_rx) = oneshot::channel();
-    let dial_result = task::spawn({
+    let dial_result = tokio::spawn({
         let mut cm = conn_man1.clone();
         let node_id = node_identity2.node_id().clone();
         async move {

@@ -801,7 +801,7 @@ async fn test_reorg() {
 }
 
 static EMISSION: [u64; 2] = [10, 10];
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {

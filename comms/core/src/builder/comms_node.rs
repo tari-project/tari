@@ -227,15 +227,20 @@ impl UnspawnedCommsNode {
             ctl.set_proxied_addr(listening_info.bind_address());
             let hs = ctl.create_hidden_service().await?;
             let onion_addr = hs.get_onion_address();
-            if node_identity.public_address() != onion_addr {
-                node_identity.set_public_address(onion_addr);
+            if !node_identity.public_addresses().contains(&onion_addr) {
+                node_identity.add_public_address(onion_addr);
             }
             hidden_service = Some(hs);
         }
         info!(
             target: LOG_TARGET,
-            "Your node's public address is '{}'",
-            node_identity.public_address()
+            "Your node's public addresses are '{}'",
+            node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
 
         // Spawn liveness check now that we have the final address
@@ -244,7 +249,7 @@ impl UnspawnedCommsNode {
             .map(|interval| {
                 LivenessCheck::spawn(
                     transport,
-                    node_identity.public_address(),
+                    node_identity.first_public_address(),
                     interval,
                     shutdown_signal.clone(),
                 )

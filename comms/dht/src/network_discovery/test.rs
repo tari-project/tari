@@ -25,7 +25,6 @@ use tari_comms::{
     connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    runtime,
     test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
@@ -49,6 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
+    use crate::rpc::PeerInfo;
 
     async fn setup(
         mut config: DhtConfig,
@@ -99,7 +99,7 @@ mod state_machine {
         )
     }
 
-    #[runtime::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
         const NUM_PEERS: usize = 3;
@@ -112,7 +112,9 @@ mod state_machine {
             ..DhtConfig::default_local_test()
         };
         let peers = iter::repeat_with(|| make_node_identity().to_peer())
-            .map(|p| GetPeersResponse { peer: Some(p.into()) })
+            .map(|p| GetPeersResponse {
+                peer: Some(PeerInfo::from(p).into()),
+            })
             .take(NUM_PEERS)
             .collect();
         let (discovery_actor, connectivity_mock, peer_manager, node_identity, mut event_rx, _shutdown) =
@@ -143,66 +145,13 @@ mod state_machine {
 
         let event = event_rx.recv().await.unwrap();
         unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
-        assert!(info.has_new_neighbours());
-        assert_eq!(info.num_new_neighbours, NUM_PEERS);
         assert_eq!(info.num_new_peers, NUM_PEERS);
         assert_eq!(info.num_duplicate_peers, 0);
         assert_eq!(info.num_succeeded, 1);
         assert_eq!(info.sync_peers, vec![peer_node_identity.node_id().clone()]);
     }
 
-    #[runtime::test]
-    #[allow(clippy::redundant_closure)]
-    async fn dht_banning_peers() {
-        const NUM_PEERS: usize = 3;
-        let config = DhtConfig {
-            num_neighbouring_nodes: 4,
-            network_discovery: NetworkDiscoveryConfig {
-                min_desired_peers: NUM_PEERS,
-                ..Default::default()
-            },
-            ..DhtConfig::default_local_test()
-        };
-        let (discovery_actor, connectivity_mock, peer_manager, node_identity, _event_rx, _shutdown) =
-            setup(config, make_node_identity(), vec![]).await;
-
-        let mock = DhtRpcServiceMock::new();
-        let service = rpc::DhtService::new(mock.clone());
-        let protocol_name = service.as_protocol_name();
-
-        let mut mock_server = MockRpcServer::new(service, node_identity.clone());
-        let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        // Add the peer that we'll sync from
-        peer_manager.add_peer(peer_node_identity.to_peer()).await.unwrap();
-        mock_server.serve();
-
-        // Create a connection to the RPC mock and then make it available to the connectivity manager mock
-        let connection = mock_server
-            .create_connection(peer_node_identity.to_peer(), protocol_name.into())
-            .await;
-
-        connectivity_mock
-            .set_connectivity_status(ConnectivityStatus::Online(NUM_PEERS))
-            .await;
-        connectivity_mock.add_active_connection(connection).await;
-
-        // Checking banning logic
-        let mut invalid_peer = make_node_identity().to_peer();
-        invalid_peer.set_valid_identity_signature(make_node_identity().identity_signature_read().clone().unwrap());
-        let resp = GetPeersResponse {
-            peer: Some(invalid_peer.clone().into()),
-        };
-        mock.get_peers.set_response(Ok(vec![resp])).await;
-
-        discovery_actor.spawn();
-
-        connectivity_mock.await_call_count(1).await;
-        let banned = connectivity_mock.take_banned_peers().await;
-        let (peer, _, _) = &banned[0];
-        assert_eq!(peer, peer_node_identity.node_id());
-    }
-
-    #[runtime::test]
+    #[tokio::test]
     async fn it_shuts_down() {
         let (discovery, _, _, _, _, mut shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
 
@@ -254,7 +203,7 @@ mod discovery_ready {
         (node_identity, peer_manager, connectivity_mock, ready, context)
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_begins_aggressive_discovery() {
         let (_, pm, _, mut ready, _) = setup(Default::default());
         let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
@@ -266,14 +215,14 @@ mod discovery_ready {
         assert!(params.num_peers_to_request.is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_idles_if_no_sync_peers() {
         let (_, _, _, mut ready, _) = setup(Default::default());
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_idles_if_num_rounds_reached() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
@@ -283,7 +232,6 @@ mod discovery_ready {
         let (_, _, _, mut ready, context) = setup(config);
         context
             .set_last_round(DhtNetworkDiscoveryRoundInfo {
-                num_new_neighbours: 1,
                 num_new_peers: 1,
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
@@ -294,7 +242,7 @@ mod discovery_ready {
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_transitions_to_on_connect() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
@@ -302,7 +250,12 @@ mod discovery_ready {
             ..Default::default()
         };
         let (_, _, _, mut ready, context) = setup(config);
-        context.set_last_round(Default::default()).await;
+        context
+            .set_last_round(DhtNetworkDiscoveryRoundInfo {
+                num_succeeded: 1,
+                ..Default::default()
+            })
+            .await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::OnConnectMode = state_event);
     }

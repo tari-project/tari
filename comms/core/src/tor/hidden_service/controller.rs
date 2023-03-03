@@ -31,7 +31,6 @@ use tokio::{sync::broadcast, time};
 
 use crate::{
     multiaddr::Multiaddr,
-    runtime::task,
     socks,
     tor::{
         control_client::{
@@ -145,7 +144,7 @@ impl HiddenServiceController {
         let mut shutdown_signal = hidden_service.shutdown_signal.clone();
         let mut event_stream = self.client.as_ref().unwrap().get_event_stream();
 
-        task::spawn({
+        tokio::spawn({
             async move {
                 loop {
                     let either = future::select(&mut shutdown_signal, event_stream.next()).await;

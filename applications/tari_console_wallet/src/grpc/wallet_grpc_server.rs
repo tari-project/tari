@@ -223,7 +223,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_vec(),
-            public_address: identity.public_address().to_string(),
+            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
             node_id: identity.node_id().to_vec(),
         }))
     }

@@ -239,9 +239,9 @@ pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     BurntTransactionSent {
         tx_id: TxId,
-        commitment: Commitment,
+        commitment: Box<Commitment>,
         ownership_proof: Option<RistrettoComSig>,
-        rangeproof: BulletRangeProof,
+        rangeproof: Box<BulletRangeProof>,
     },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
@@ -545,7 +545,7 @@ impl TransactionServiceHandle {
                 commitment,
                 ownership_proof,
                 rangeproof,
-            } => Ok((tx_id, commitment, ownership_proof, rangeproof)),
+            } => Ok((tx_id, *commitment, ownership_proof, *rangeproof)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -25,7 +25,7 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use tari_comms::{
     message::MessageTag,
-    multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::{
@@ -80,7 +80,7 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

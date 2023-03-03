@@ -71,11 +71,11 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     ));
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {
-                listener_address: node_identity.public_address(),
+                listener_address: node_identity.first_public_address(),
             },
             ..Default::default()
         },
