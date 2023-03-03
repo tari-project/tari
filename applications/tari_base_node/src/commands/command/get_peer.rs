@@ -66,9 +66,7 @@ impl CommandContext {
         let peer_manager = self.comms.peer_manager();
         let peers = peer_manager.find_all_starts_with(&partial).await?;
         let peers = {
-            if !peers.is_empty() {
-                peers
-            } else {
+            if peers.is_empty() {
                 let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
                     original_str: original_str.clone(),
                 })?;
@@ -77,6 +75,8 @@ impl CommandContext {
                     .await?
                     .ok_or(ArgsError::NoPeerMatching { original_str })?;
                 vec![peer]
+            } else {
+                peers
             }
         };
 
