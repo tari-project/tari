@@ -487,18 +487,6 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         Ok(result)
     }
-
-    // pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-    //     let mut peer = self
-    //         .find_by_node_id(node_id)?
-    //         .ok_or(PeerManagerError::PeerNotFoundError)?;
-    //     peer.last_seen = Some(Utc::now().naive_utc());
-    //     peer.set_offline(false);
-    //     self.peer_db
-    //         .insert(peer.id(), peer)
-    //         .map_err(PeerManagerError::DatabaseError)?;
-    //     Ok(())
-    // }
 }
 
 #[allow(clippy::from_over_into)]

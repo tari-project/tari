@@ -24,7 +24,7 @@ use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use tari_comms::{
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,
@@ -168,7 +168,7 @@ mod get_closer_peers {
 mod get_peers {
     use std::time::Duration;
 
-    use tari_comms::{peer_manager::Peer, test_utils::node_identity::build_many_node_identities};
+    use tari_comms::test_utils::node_identity::build_many_node_identities;
 
     use super::*;
     use crate::{proto::rpc::GetPeersRequest, rpc::PeerInfo};

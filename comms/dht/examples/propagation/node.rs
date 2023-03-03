@@ -25,8 +25,6 @@ use std::{path::Path, sync::Arc, time::Duration};
 use rand::rngs::OsRng;
 use tari_comms::{
     backoff::ConstantBackoff,
-    multiaddr::Multiaddr,
-    net_address::MultiaddressesWithStats,
     peer_manager::PeerFeatures,
     pipeline,
     pipeline::SinkService,

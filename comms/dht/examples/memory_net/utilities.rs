@@ -24,7 +24,6 @@
 use std::{
     collections::HashMap,
     fmt,
-    fmt::Debug,
     iter,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -63,7 +62,6 @@ use tari_comms_dht::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
-    CachedStore,
     LMDBWrapper,
 };
 use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};

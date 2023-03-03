@@ -207,7 +207,7 @@ impl DhtNetworkDiscovery {
 
     async fn transition(&mut self, current_state: State, next_event: StateEvent) -> State {
         let config = &self.config().network_discovery;
-        warn!(
+        debug!(
             target: LOG_TARGET,
             "Transition triggered from current state `{}` by event `{}`", current_state, next_event
         );

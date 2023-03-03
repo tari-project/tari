@@ -137,10 +137,7 @@ mod tests {
     use tari_utilities::ByteArray;
 
     use super::*;
-    use crate::{
-        envelope::NodeDestination::PublicKey,
-        test_utils::{build_peer_manager, make_node_identity},
-    };
+    use crate::test_utils::{build_peer_manager, make_node_identity};
 
     #[tokio::test]
     async fn it_adds_a_valid_unsigned_peer() {

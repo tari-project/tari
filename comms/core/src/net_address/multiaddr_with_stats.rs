@@ -314,7 +314,6 @@ mod test {
     use std::time::Duration;
 
     use super::*;
-    use crate::net_address::MultiaddressesWithStats;
 
     #[test]
     fn test_update_latency() {

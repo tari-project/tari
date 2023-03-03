@@ -41,7 +41,7 @@ use crate::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Substream,
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,

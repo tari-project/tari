@@ -102,7 +102,6 @@ impl PeerManager {
     /// [PeerQuery]: crate::peer_manager::PeerQuery
     pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
         let lock = self.peer_storage.read().await;
-        // task::block_in_place(|| lock.perform_query(peer_query))
         lock.perform_query(peer_query)
     }
 
@@ -148,7 +147,6 @@ impl PeerManager {
     ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(pubkey).await {
             Ok(Some(mut peer)) => {
-                // peer.connection_stats.set_connection_success();
                 peer.addresses.update_addresses(&addresses, source);
                 peer.features = peer_features;
                 self.add_peer(peer.clone()).await?;
@@ -238,8 +236,6 @@ impl PeerManager {
             },
             None => Err(PeerManagerError::PeerNotFoundError),
         }
-
-        // self.peer_storage.write().await.mark_last_seen(node_id)
     }
 
     /// Fetch n random peers
@@ -269,7 +265,6 @@ impl PeerManager {
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
         let lock = self.peer_storage.read().await;
-        // task::block_in_place(|| lock.calc_region_threshold(region_node_id, n, features))
         lock.calc_region_threshold(region_node_id, n, features)
     }
 

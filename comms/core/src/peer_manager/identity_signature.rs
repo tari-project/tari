@@ -194,7 +194,6 @@ mod test {
     use tari_crypto::keys::{PublicKey, SecretKey};
 
     use super::*;
-    use crate::peer_manager::{NodeId, Peer, PeerFlags};
 
     mod is_valid_for_peer {
         use super::*;
@@ -211,18 +210,6 @@ mod test {
                 identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
                 "Signature is not valid"
             );
-            // let node_id = NodeId::from_public_key(&public_key);
-            //
-            // let peer = Peer::new(
-            //     public_key,
-            //     node_id,
-            //     vec![address].into(),
-            //     PeerFlags::empty(),
-            //     PeerFeatures::COMMUNICATION_NODE,
-            //     vec![],
-            //     String::new(),
-            // );
-            // assert!(identity.is_valid_for_peer(&peer));
         }
 
         #[test]

@@ -134,7 +134,7 @@ impl DiscoveryReady {
                 let num_peers_to_select = self.config().network_discovery.max_sync_peers;
 
                 if stats.has_new_peers() {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Last peer sync round found {} new peer(s). Attempting to sync from those peers if they are \
                          closer than existing peers",
@@ -153,7 +153,7 @@ impl DiscoveryReady {
                         .map(|p| p.node_id)
                         .collect::<Vec<_>>()
                 } else {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Last peer sync round found no new peers. Transitioning to OnConnectMode",
                     );
@@ -161,7 +161,7 @@ impl DiscoveryReady {
                 }
             },
             None => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "No previous round, selecting {} random peers for peer sync",
                     self.config().network_discovery.max_sync_peers,
@@ -180,7 +180,7 @@ impl DiscoveryReady {
         };
 
         if peers.is_empty() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "No more sync peers after round #{}. Idling...",
                 self.context.num_rounds()

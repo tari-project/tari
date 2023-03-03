@@ -24,7 +24,6 @@ use std::{convert::TryInto, sync::Arc};
 use rand::rngs::OsRng;
 use tari_comms::{
     message::{InboundMessage, MessageExt, MessageTag},
-    multiaddr::Multiaddr,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,

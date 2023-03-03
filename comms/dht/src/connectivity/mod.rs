@@ -97,8 +97,6 @@ pub(crate) struct DhtConnectivity {
     metrics_collector: MetricsCollectorHandle,
     cooldown_in_effect: Option<Instant>,
     shutdown_signal: ShutdownSignal,
-    // lol - quick concurrency hack
-    is_refreshing_neighbour_pool: bool,
 }
 
 impl DhtConnectivity {
@@ -127,7 +125,6 @@ impl DhtConnectivity {
             dht_events,
             cooldown_in_effect: None,
             shutdown_signal,
-            is_refreshing_neighbour_pool: false,
         }
     }
 
@@ -363,10 +360,6 @@ impl DhtConnectivity {
     }
 
     async fn refresh_neighbour_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        if self.is_refreshing_neighbour_pool {
-            return Ok(());
-        }
-        self.is_refreshing_neighbour_pool = true;
         let mut new_neighbours = self
             .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
             .await?;
@@ -377,7 +370,6 @@ impl DhtConnectivity {
                 "Unable to refresh neighbouring peer pool because there are insufficient known/online peers",
             );
             self.redial_neighbours_as_required().await?;
-            self.is_refreshing_neighbour_pool = false;
             return Ok(());
         }
 
@@ -417,7 +409,6 @@ impl DhtConnectivity {
 
         self.redial_neighbours_as_required().await?;
 
-        self.is_refreshing_neighbour_pool = false;
         Ok(())
     }
 
@@ -599,33 +590,6 @@ impl DhtConnectivity {
                     debug!(target: LOG_TARGET, "{} is not managed by the DHT. Ignoring", node_id);
                     return Ok(());
                 }
-
-                // const TOLERATED_CONNECTION_FAILURES: usize = 40;
-                // if self.recent_connection_failure_count < TOLERATED_CONNECTION_FAILURES {
-                //     self.recent_connection_failure_count += 1;
-                // }
-                //
-                // if self.recent_connection_failure_count == TOLERATED_CONNECTION_FAILURES &&
-                //     self.cooldown_in_effect.is_none()
-                // {
-                //     warn!(
-                //         target: LOG_TARGET,
-                //         "Too many ({}) connection failures, cooldown is in effect", TOLERATED_CONNECTION_FAILURES
-                //     );
-                //     self.cooldown_in_effect = Some(Instant::now());
-                // }
-                //
-                // if self
-                //     .cooldown_in_effect
-                //     .map(|ts| ts.elapsed() >= self.config.connectivity.high_failure_rate_cooldown)
-                //     .unwrap_or(true)
-                // {
-                //     if self.cooldown_in_effect.is_some() {
-                //         self.cooldown_in_effect = None;
-                //         self.recent_connection_failure_count = 1;
-                //     }
-                //     self.replace_pool_peer(&node_id).await?;
-                // }
                 self.replace_pool_peer(&node_id).await?;
                 self.log_status();
             },
@@ -807,26 +771,18 @@ impl DhtConnectivity {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        // let mut connect_ineligable_count = 0;
-        // let mut banned_count = 0;
-        // let mut excluded_count = 0;
-        // let mut filtered_out_node_count = 0;
-        // let mut already_connected = 0;
         let offline_cooldown = self.config.offline_peer_cooldown;
         let query = PeerQuery::new()
             .select_where(|peer| {
                 if peer.is_banned() {
-                    // banned_count += 1;
                     return false;
                 }
 
                 if peer.features.is_client() {
-                    // filtered_out_node_count += 1;
                     return false;
                 }
 
                 if connected.contains(&&peer.node_id) {
-                    // already_connected += 1;
                     return false;
                 }
 
@@ -835,20 +791,16 @@ impl DhtConnectivity {
                     .map(|since| since <= offline_cooldown)
                     .unwrap_or(false)
                 {
-                    // connect_ineligable_count += 1;
                     return false;
                 }
 
                 let is_excluded = excluded.contains(&peer.node_id);
                 if is_excluded {
-                    // excluded_count += 1;
                     return false;
                 }
 
                 true
             })
-            // TODO: Check if this logic is correct. At the moment I want them in the same order every time
-            // .sort_by(PeerQuerySortBy::DistanceFromLastConnected(node_id))
             .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 

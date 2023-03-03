@@ -23,7 +23,7 @@
 use std::{
     default::Default,
     fmt::{Debug, Formatter},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process,
     str::FromStr,
     sync::Arc,
@@ -35,10 +35,9 @@ use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::CommonConfig;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
-use tempfile::tempdir;
 use tokio::task;
 use tonic::transport::Channel;
 
@@ -116,7 +115,7 @@ pub async fn spawn_base_node_with_config(
         // temp_dir_path = tempdir().unwrap().path().to_path_buf();
         temp_dir_path = get_base_dir()
             .join("base_nodes")
-            .join(&format!("grpc_port_{}", grpc_port))
+            .join(format!("grpc_port_{}", grpc_port))
             .join(bn_name.clone());
 
         base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();

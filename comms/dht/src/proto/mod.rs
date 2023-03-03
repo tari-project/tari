@@ -129,14 +129,8 @@ impl TryFrom<DiscoveryMessage> for PeerInfo {
                 })
                 .collect::<Result<_, Self::Error>>()?,
             peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
-            // supported_protocols: value
-            //     .supported_protocols
-            //     .into_iter()
-            //     .map(|b| b.try_into())
-            //     .collect::<Result<_, _>>()?
             supported_protocols: vec![],
             user_agent: "".to_string(),
-            // user_agent: value.user_agent,
         })
     }
 }

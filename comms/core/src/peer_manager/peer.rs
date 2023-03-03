@@ -77,8 +77,6 @@ pub struct Peer {
     pub banned_reason: String,
     /// Features supported by the peer
     pub features: PeerFeatures,
-    // Connection statics for the peer
-    // pub connection_stats: PeerConnectionStats,
     /// Protocols supported by the peer. This should not be considered a definitive list of supported protocols and is
     /// used as information for more efficient protocol negotiation.
     pub supported_protocols: Vec<ProtocolId>,
@@ -113,7 +111,6 @@ impl Peer {
             features,
             banned_until: None,
             banned_reason: String::new(),
-            // connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
             user_agent,
@@ -138,7 +135,6 @@ impl Peer {
         self.banned_reason = other.banned_reason.clone();
         self.added_at = cmp::min(self.added_at, other.added_at);
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
-        // self.connection_stats.merge(&other.connection_stats);
         for protocol in &other.supported_protocols {
             if !self.supported_protocols.contains(protocol) {
                 self.supported_protocols.push(protocol.clone());
@@ -231,16 +227,6 @@ impl Peer {
         self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
     }
 
-    // /// Marks the peer as offline if true, or not offline if false
-    // pub fn set_offline(&mut self, is_offline: bool) -> &mut Self {
-    //     if is_offline {
-    //         self.offline_at = Some(Utc::now().naive_utc());
-    //     } else {
-    //         self.offline_at = None;
-    //     }
-    //     self
-    // }
-
     /// This will store metadata inside of the metadata field in the peer.
     /// It will return None if the value was empty and the old value if the value was updated
     pub fn set_metadata(&mut self, key: u8, data: Vec<u8>) -> Option<Vec<u8>> {
@@ -324,7 +310,6 @@ impl Display for Peer {
                 f => format!("{:?}", f),
             },
             user_agent,
-            // self.connection_stats,
         ))
     }
 }

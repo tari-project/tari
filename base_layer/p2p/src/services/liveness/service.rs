@@ -368,7 +368,6 @@ mod test {
     use rand::rngs::OsRng;
     use tari_comms::{
         message::MessageTag,
-        multiaddr::Multiaddr,
         net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,

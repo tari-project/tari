@@ -473,13 +473,11 @@ impl ConnectivityManagerActor {
     fn mark_peer_succeeded(&mut self, node_id: NodeId) {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_success();
-        // self.peer_manager.mark_last_seen(node_id.clone(), Some(addr_used));
     }
 
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_failed();
-        // self.peer_manager.mark_peer_failed(node_id, addr_tried);
 
         entry.failed_attempts()
     }
