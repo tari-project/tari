@@ -45,7 +45,7 @@ jobs:
           LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
         with:
           command: test
-          args: --all-features --no-fail-fast --exclude tari_integration_tests
+          args: --all-features --no-fail-fast --workspace --exclude tari_integration_tests
 
       - name: prepare coverage data
         env:
