@@ -1535,7 +1535,7 @@ where
             reciprocal_claim_public_key: public_spend_key,
             commitment,
             ownership_proof,
-            range_proof: range_proof.into(),
+            range_proof,
         }))
     }
 
