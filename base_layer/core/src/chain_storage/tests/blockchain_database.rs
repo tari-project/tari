@@ -582,15 +582,15 @@ mod validator_node_merkle_root {
     use crate::{
         chain_storage::calculate_validator_node_mr,
         transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
-        ValidatorNodeMmr,
+        ValidatorNodeBMT,
     };
 
     #[test]
     fn it_has_the_correct_genesis_merkle_root() {
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
+        let vn_mmr = ValidatorNodeBMT::create(Vec::new());
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db);
-        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root().unwrap());
+        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root());
     }
 
     #[test]

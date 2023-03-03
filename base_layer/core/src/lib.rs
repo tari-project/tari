@@ -112,13 +112,12 @@ mod domain_hashing {
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 
     hash_domain!(
-        ValidatorNodeMmrHashDomain,
+        ValidatorNodeBmtHashDomain,
         "com.tari.tari_project.base_layer.core.validator_node_mmr",
         1
     );
-    pub type ValidatorNodeMmrHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeMmrHashDomain>;
-    pub type ValidatorNodeMmr = MerkleMountainRange<ValidatorNodeMmrHasherBlake256, Vec<Hash>>;
-    pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeMmrHasherBlake256>;
+    pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeBmtHashDomain>;
+    pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
 }
 
 #[cfg(feature = "base_node")]
