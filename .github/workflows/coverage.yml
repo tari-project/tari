@@ -8,7 +8,11 @@ name: Source Coverage
       - ci-coverage-*
 
 env:
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   coverage:
@@ -41,7 +45,7 @@ jobs:
           LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
         with:
           command: test
-          args: --all-features --no-fail-fast
+          args: --all-features --no-fail-fast --workspace --exclude tari_integration_tests
 
       - name: prepare coverage data
         env:

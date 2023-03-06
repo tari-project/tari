@@ -25,17 +25,22 @@ use std::{
     fmt,
 };
 
+use anyhow::anyhow;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
     types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::proto::dht::JoinMessage;
+use crate::{
+    proto::dht::{DiscoveryMessage, JoinMessage},
+    rpc::{PeerInfo, PeerInfoAddress},
+};
 
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");
@@ -68,8 +73,8 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
     fn from(identity: T) -> Self {
         let node_identity = identity.as_ref();
         Self {
-            node_id: node_identity.node_id().to_vec(),
-            addresses: vec![node_identity.public_address().to_string()],
+            public_key: node_identity.public_key().to_vec(),
+            addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
             peer_features: node_identity.features().bits(),
             nonce: OsRng.next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
@@ -81,8 +86,8 @@ impl fmt::Display for dht::JoinMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "JoinMessage(NodeId = {}, Addresses = {:?}, Features = {:?})",
-            self.node_id.to_hex(),
+            "JoinMessage(PK = {}, Addresses = {:?}, Features = {:?})",
+            self.public_key.to_hex(),
             self.addresses,
             PeerFeatures::from_bits_truncate(self.peer_features),
         )
@@ -91,46 +96,144 @@ impl fmt::Display for dht::JoinMessage {
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
 
-impl From<Peer> for rpc::Peer {
-    fn from(peer: Peer) -> Self {
-        rpc::Peer {
-            public_key: peer.public_key.to_vec(),
-            addresses: peer
-                .addresses
+impl TryFrom<DiscoveryMessage> for PeerInfo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
+        let identity_signature = value
+            .identity_signature
+            .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
+            .try_into()?;
+
+        let identity_claim = PeerIdentityClaim {
+            addresses: value
                 .addresses
                 .iter()
-                .map(|addr| addr.address.to_string())
+                .map(|a| Multiaddr::try_from(a.clone()))
+                .collect::<Result<_, _>>()?,
+            features: PeerFeatures::from_bits_truncate(value.peer_features),
+            signature: identity_signature,
+            unverified_data: None,
+        };
+
+        Ok(Self {
+            public_key: RistrettoPublicKey::from_bytes(&value.public_key)?,
+            addresses: value
+                .addresses
+                .iter()
+                .map(|a| {
+                    Ok(PeerInfoAddress {
+                        address: Multiaddr::try_from(a.clone())?,
+                        peer_identity_claim: identity_claim.clone(),
+                    })
+                })
+                .collect::<Result<_, Self::Error>>()?,
+            peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
+            supported_protocols: vec![],
+            user_agent: "".to_string(),
+        })
+    }
+}
+
+impl From<PeerInfo> for rpc::PeerInfo {
+    fn from(value: PeerInfo) -> Self {
+        Self {
+            public_key: value.public_key.to_vec(),
+            addresses: value.addresses.into_iter().map(Into::into).collect(),
+            peer_features: value.peer_features.bits(),
+            supported_protocols: value
+                .supported_protocols
+                .into_iter()
+                .map(|b| b.as_ref().to_vec())
                 .collect(),
-            peer_features: peer.features.bits(),
-            identity_signature: peer.identity_signature.as_ref().map(Into::into),
+            user_agent: value.user_agent,
         }
     }
 }
 
-impl TryInto<Peer> for rpc::Peer {
+impl From<PeerInfoAddress> for rpc::PeerInfoAddress {
+    fn from(value: PeerInfoAddress) -> Self {
+        Self {
+            address: value.address.to_vec(),
+            peer_identity_claim: Some(value.peer_identity_claim.into()),
+        }
+    }
+}
+
+impl From<PeerIdentityClaim> for rpc::PeerIdentityClaim {
+    fn from(value: PeerIdentityClaim) -> Self {
+        Self {
+            addresses: value.addresses.iter().map(|a| a.to_vec()).collect(),
+            peer_features: value.features.bits(),
+            identity_signature: Some((&value.signature).into()),
+        }
+    }
+}
+
+impl TryInto<PeerInfo> for rpc::PeerInfo {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<Peer, Self::Error> {
-        let pk = CommsPublicKey::from_bytes(&self.public_key)?;
-        let node_id = NodeId::from_public_key(&pk);
+    fn try_into(self) -> Result<PeerInfo, Self::Error> {
+        let public_key = CommsPublicKey::from_bytes(&self.public_key)?;
         let addresses = self
             .addresses
-            .iter()
-            .filter_map(|addr| addr.parse::<Multiaddr>().ok())
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
+        let peer_features = PeerFeatures::from_bits_truncate(self.peer_features);
+        let supported_protocols = self
+            .supported_protocols
+            .into_iter()
+            .map(|b| b.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(PeerInfo {
+            public_key,
+            addresses,
+            peer_features,
+            user_agent: self.user_agent,
+            supported_protocols,
+        })
+    }
+}
+
+impl TryInto<PeerInfoAddress> for rpc::PeerInfoAddress {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<PeerInfoAddress, Self::Error> {
+        let address = Multiaddr::try_from(self.address)?;
+        let peer_identity_claim = self
+            .peer_identity_claim
+            .ok_or_else(|| anyhow::anyhow!("Missing peer identity claim"))?
+            .try_into()?;
+
+        Ok(PeerInfoAddress {
+            address,
+            peer_identity_claim,
+        })
+    }
+}
+
+impl TryInto<PeerIdentityClaim> for rpc::PeerIdentityClaim {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<PeerIdentityClaim, Self::Error> {
+        let addresses = self
+            .addresses
+            .into_iter()
+            .filter_map(|addr| Multiaddr::try_from(addr).ok())
             .collect::<Vec<_>>();
-        let mut peer = Peer::new(
-            pk,
-            node_id,
-            addresses.into(),
-            PeerFlags::NONE,
-            PeerFeatures::from_bits_truncate(self.peer_features),
-            Default::default(),
-            String::new(),
-        );
 
-        peer.identity_signature = self.identity_signature.map(TryInto::try_into).transpose()?;
-
-        Ok(peer)
+        let features = PeerFeatures::from_bits_truncate(self.peer_features);
+        let signature = self
+            .identity_signature
+            .map(TryInto::try_into)
+            .ok_or_else(|| anyhow::anyhow!("No signature"))??;
+        Ok(PeerIdentityClaim {
+            addresses,
+            features,
+            signature,
+            unverified_data: None,
+        })
     }
 }
 

@@ -421,7 +421,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 },
             };
 
-            let steps_back = resp.fork_hash_index as u64 + offset as u64;
+            let steps_back = resp.fork_hash_index + offset as u64;
             return Ok((resp, block_hashes, steps_back));
         }
     }
@@ -701,17 +701,37 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         if !has_switched_to_new_chain {
-            return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: self
-                    .header_validator
+            if sync_peer.claimed_chain_metadata().accumulated_difficulty() <
+                self.header_validator
                     .current_valid_chain_tip_header()
-                    .map(|h| h.accumulated_data().total_accumulated_difficulty),
-                local: split_info
-                    .local_tip_header
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
-            });
+                    .map(|h| h.accumulated_data().total_accumulated_difficulty)
+                    .unwrap_or_default()
+            {
+                // We should only return this error if the peer sent a PoW less than they advertised.
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    actual: self
+                        .header_validator
+                        .current_valid_chain_tip_header()
+                        .map(|h| h.accumulated_data().total_accumulated_difficulty),
+                    local: split_info
+                        .local_tip_header
+                        .accumulated_data()
+                        .total_accumulated_difficulty,
+                });
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Received pow from peer matches claimed, difficulty #{} but local is higher: ({}) and we have not \
+                     swapped. Ignoring",
+                    sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    split_info
+                        .local_tip_header
+                        .accumulated_data()
+                        .total_accumulated_difficulty
+                );
+                return Ok(());
+            }
         }
 
         // Commit the last blocks that don't fit into the COMMIT_EVENT_N_HEADERS blocks

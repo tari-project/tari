@@ -65,7 +65,7 @@ impl<T> Slot<T> {
 struct SwitchBoard(HashMap<NonZeroU16, Slot<UnboundedSender<MemorySocket>>>, u16);
 
 pub fn acquire_next_memsocket_port() -> NonZeroU16 {
-    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    let mut switchboard = (*SWITCHBOARD).lock().unwrap();
     let port = loop {
         let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
 
@@ -93,7 +93,7 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
 }
 
 pub fn release_memsocket_port(port: NonZeroU16) {
-    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    let mut switchboard = (*SWITCHBOARD).lock().unwrap();
     if let Entry::Occupied(entry) = switchboard.0.entry(port) {
         match *entry.get() {
             Slot::Acquired => {
@@ -149,7 +149,7 @@ pub struct MemoryListener {
 
 impl Drop for MemoryListener {
     fn drop(&mut self) {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
         // Remove the Sending side of the channel in the switchboard when
         // MemoryListener is dropped
         switchboard.0.remove(&self.port);
@@ -179,7 +179,7 @@ impl MemoryListener {
     ///
     /// [`local_addr`]: #method.local_addr
     pub fn bind(port: u16) -> io::Result<Self> {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
 
         // Get the port we should bind to.  If 0 was given, use a random port
         let port = if let Some(port) = NonZeroU16::new(port) {
@@ -381,7 +381,7 @@ impl MemorySocket {
     /// # Ok(())}
     /// ```
     pub fn connect(port: u16) -> io::Result<MemorySocket> {
-        let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+        let mut switchboard = (*SWITCHBOARD).lock().unwrap();
 
         // Find port to connect to
         let port = NonZeroU16::new(port).ok_or(ErrorKind::AddrNotAvailable)?;
@@ -515,7 +515,7 @@ mod test {
     use tokio_stream::StreamExt;
 
     use super::*;
-    use crate::{framing, runtime};
+    use crate::framing;
 
     #[test]
     fn listener_bind() -> io::Result<()> {
@@ -526,7 +526,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_connect() -> io::Result<()> {
         let port = acquire_next_memsocket_port().into();
         let mut listener = MemoryListener::bind(port)?;
@@ -544,7 +544,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn listen_on_port_zero() -> io::Result<()> {
         let mut listener = MemoryListener::bind(0)?;
         let listener_addr = listener.local_addr();
@@ -569,7 +569,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn listener_correctly_frees_port_on_drop() {
         async fn connect_on_port(port: u16) {
             let mut listener = MemoryListener::bind(port).unwrap();
@@ -590,7 +590,7 @@ mod test {
         connect_on_port(port).await;
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_write_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -605,7 +605,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn partial_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -621,7 +621,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn partial_read_write_both_sides() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -645,7 +645,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn many_small_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -666,7 +666,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn large_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -682,7 +682,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_zero_bytes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -698,7 +698,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_bytes_with_large_buffer() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -713,7 +713,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_and_write_canonical_framing() -> io::Result<()> {
         let (a, b) = MemorySocket::new_pair();
         let mut a = framing::canonical(a, 1024);

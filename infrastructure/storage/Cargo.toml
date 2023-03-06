@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.44.0"
+version = "0.47.0-pre.0"
 edition = "2018"
 
 [dependencies]
@@ -15,7 +15,6 @@ log = "0.4.0"
 lmdb-zero = "0.4.4"
 thiserror = "1.0.26"
 serde = "1.0.80"
-serde_derive = "1.0.80"
 
 [dev-dependencies]
 rand = "0.7.3"

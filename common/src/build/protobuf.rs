@@ -152,7 +152,7 @@ impl ProtobufCompiler {
             self.include_paths
                 .iter()
                 .fold(Vec::with_capacity(self.include_paths.len()), |mut protos, path| {
-                    protos.extend(walk_files(&path, "proto"));
+                    protos.extend(walk_files(path, "proto"));
                     protos
                 });
 
@@ -160,7 +160,7 @@ impl ProtobufCompiler {
             .proto_paths
             .iter()
             .fold(Vec::with_capacity(self.proto_paths.len()), |mut protos, path| {
-                protos.extend(walk_files(&path, "proto"));
+                protos.extend(walk_files(path, "proto"));
                 protos
             });
 

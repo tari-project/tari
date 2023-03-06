@@ -31,7 +31,7 @@ use chrono::NaiveDateTime;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{PublicKey, Signature},
+    types::{BulletRangeProof, Commitment, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -42,6 +42,7 @@ use tari_core::{
         transaction_components::{OutputFeatures, Transaction, TransactionOutput},
     },
 };
+use tari_crypto::ristretto::RistrettoComSig;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -86,6 +87,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+        claim_public_key: Option<PublicKey>,
     },
     RegisterValidatorNode {
         amount: MicroTari,
@@ -235,6 +237,12 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    BurntTransactionSent {
+        tx_id: TxId,
+        commitment: Box<Commitment>,
+        ownership_proof: Option<RistrettoComSig>,
+        rangeproof: Box<BulletRangeProof>,
+    },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -519,7 +527,8 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError> {
+        claim_public_key: Option<PublicKey>,
+    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, BulletRangeProof), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -527,10 +536,16 @@ impl TransactionServiceHandle {
                 selection_criteria,
                 fee_per_gram,
                 message,
+                claim_public_key,
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::BurntTransactionSent {
+                tx_id,
+                commitment,
+                ownership_proof,
+                rangeproof,
+            } => Ok((tx_id, *commitment, ownership_proof, *rangeproof)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

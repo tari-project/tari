@@ -38,6 +38,8 @@ use crate::ConfigurationError;
 #[serde(try_from = "String", into = "String")]
 pub enum Network {
     MainNet = 0x00,
+    StageNet = 0x01,
+    NextNet = 0x02,
     LocalNet = 0x10,
     Ridcully = 0x21,
     Stibbons = 0x22,
@@ -57,6 +59,8 @@ impl Network {
         use Network::*;
         match self {
             MainNet => "mainnet",
+            StageNet => "stagenet",
+            NextNet => "nextnet",
             Ridcully => "ridcully",
             Stibbons => "stibbons",
             Weatherwax => "weatherwax",
@@ -72,7 +76,7 @@ impl Network {
 impl Default for Network {
     fn default() -> Self {
         // TODO: set the default network to mainnet
-        Network::Esmeralda
+        Network::StageNet
     }
 }
 
@@ -87,6 +91,8 @@ impl FromStr for Network {
             "stibbons" => Ok(Stibbons),
             "weatherwax" => Ok(Weatherwax),
             "mainnet" => Ok(MainNet),
+            "nextnet" => Ok(NextNet),
+            "stagenet" => Ok(StageNet),
             "localnet" => Ok(LocalNet),
             "igor" => Ok(Igor),
             "dibbler" => Ok(Dibbler),
@@ -94,7 +100,7 @@ impl FromStr for Network {
             invalid => Err(ConfigurationError::new(
                 "network",
                 Some(value.to_string()),
-                &format!("Invalid network option: {}", invalid),
+                format!("Invalid network option: {}", invalid),
             )),
         }
     }
@@ -119,6 +125,8 @@ impl TryFrom<u8> for Network {
     fn try_from(v: u8) -> Result<Self, ConfigurationError> {
         match v {
             x if x == Network::MainNet as u8 => Ok(Network::MainNet),
+            x if x == Network::StageNet as u8 => Ok(Network::StageNet),
+            x if x == Network::NextNet as u8 => Ok(Network::NextNet),
             x if x == Network::LocalNet as u8 => Ok(Network::LocalNet),
             x if x == Network::Ridcully as u8 => Ok(Network::Ridcully),
             x if x == Network::Stibbons as u8 => Ok(Network::Stibbons),
@@ -129,7 +137,7 @@ impl TryFrom<u8> for Network {
             _ => Err(ConfigurationError::new(
                 "network",
                 Some(v.to_string()),
-                &format!("Invalid network option: {}", v),
+                format!("Invalid network option: {}", v),
             )),
         }
     }
@@ -149,6 +157,8 @@ mod test {
     fn network_bytes() {
         // get networks
         let mainnet = Network::MainNet;
+        let stagenet = Network::StageNet;
+        let nextnet = Network::NextNet;
         let localnet = Network::LocalNet;
         let ridcully = Network::Ridcully;
         let stibbons = Network::Stibbons;
@@ -159,6 +169,8 @@ mod test {
 
         // test .as_byte()
         assert_eq!(mainnet.as_byte(), 0x00_u8);
+        assert_eq!(stagenet.as_byte(), 0x01_u8);
+        assert_eq!(nextnet.as_byte(), 0x02_u8);
         assert_eq!(localnet.as_byte(), 0x10_u8);
         assert_eq!(ridcully.as_byte(), 0x21_u8);
         assert_eq!(stibbons.as_byte(), 0x22_u8);
@@ -169,6 +181,8 @@ mod test {
 
         // test .as_key_str()
         assert_eq!(mainnet.as_key_str(), "mainnet");
+        assert_eq!(stagenet.as_key_str(), "stagenet");
+        assert_eq!(nextnet.as_key_str(), "nextnet");
         assert_eq!(localnet.as_key_str(), "localnet");
         assert_eq!(ridcully.as_key_str(), "ridcully");
         assert_eq!(stibbons.as_key_str(), "stibbons");
@@ -181,13 +195,15 @@ mod test {
     #[test]
     fn network_default() {
         let network = Network::default();
-        assert_eq!(network, Network::Esmeralda);
+        assert_eq!(network, Network::StageNet);
     }
 
     #[test]
     fn network_from_str() {
         // test .from_str()
         assert_eq!(Network::from_str("mainnet").unwrap(), Network::MainNet);
+        assert_eq!(Network::from_str("stagenet").unwrap(), Network::StageNet);
+        assert_eq!(Network::from_str("nextnet").unwrap(), Network::NextNet);
         assert_eq!(Network::from_str("localnet").unwrap(), Network::LocalNet);
         assert_eq!(Network::from_str("ridcully").unwrap(), Network::Ridcully);
         assert_eq!(Network::from_str("stibbons").unwrap(), Network::Stibbons);
@@ -204,6 +220,8 @@ mod test {
     #[test]
     fn network_from_byte() {
         assert_eq!(Network::try_from(0x00).unwrap(), Network::MainNet);
+        assert_eq!(Network::try_from(0x01).unwrap(), Network::StageNet);
+        assert_eq!(Network::try_from(0x02).unwrap(), Network::NextNet);
         assert_eq!(Network::try_from(0x10).unwrap(), Network::LocalNet);
         assert_eq!(Network::try_from(0x21).unwrap(), Network::Ridcully);
         assert_eq!(Network::try_from(0x22).unwrap(), Network::Stibbons);

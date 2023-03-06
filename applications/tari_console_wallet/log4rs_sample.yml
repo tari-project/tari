@@ -14,7 +14,7 @@ appenders:
 # An appender named "stdout" that writes to file.
   stdout:
     kind: rolling_file
-    path: "log/wallet/stdout.log"
+    path: "{{log_dir}}/log/wallet/stdout.log"
     append: false
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
@@ -32,7 +32,7 @@ appenders:
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
-    path: "log/wallet/network.log"
+    path: "{{log_dir}}/log/wallet/network.log"
     policy:
       kind: compound
       trigger:
@@ -42,14 +42,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/wallet/network.{}.log"
+        pattern: "{{log_dir}}/log/wallet/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: rolling_file
-    path: "log/wallet/base_layer.log"
+    path: "{{log_dir}}/log/wallet/base_layer.log"
     policy:
       kind: compound
       trigger:
@@ -59,14 +59,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/wallet/base_layer.{}.log"
+        pattern: "{{log_dir}}/log/wallet/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
-    path: "log/wallet/other.log"
+    path: "{{log_dir}}/log/wallet/other.log"
     policy:
       kind: compound
       trigger:
@@ -76,20 +76,20 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/wallet/other.{}.log"
+        pattern: "{{log_dir}}/log/wallet/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
 # root (to base_layer)
 root:
-  level: info
+  level: debug
   appenders:
     - other
 
 loggers:
   # base_layer
   wallet:
-    level: info
+    level: debug
     appenders:
       - base_layer
       - stdout

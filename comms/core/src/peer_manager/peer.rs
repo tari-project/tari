@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp,
     collections::HashMap,
     convert::TryFrom,
     fmt::Display,
@@ -35,14 +36,12 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
 use super::{
-    connection_stats::PeerConnectionStats,
     node_id::{deserialize_node_id_from_hex, NodeId},
     peer_id::PeerId,
     PeerFeatures,
 };
 use crate::{
-    net_address::MultiaddressesWithStats,
-    peer_manager::identity_signature::IdentitySignature,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     protocol::ProtocolId,
     types::CommsPublicKey,
     utils::datetime::{format_local_datetime, is_max_datetime, safe_future_datetime_from_duration},
@@ -76,12 +75,8 @@ pub struct Peer {
     pub flags: PeerFlags,
     pub banned_until: Option<NaiveDateTime>,
     pub banned_reason: String,
-    pub offline_at: Option<NaiveDateTime>,
-    pub last_seen: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
-    /// Connection statics for the peer
-    pub connection_stats: PeerConnectionStats,
     /// Protocols supported by the peer. This should not be considered a definitive list of supported protocols and is
     /// used as information for more efficient protocol negotiation.
     pub supported_protocols: Vec<ProtocolId>,
@@ -92,9 +87,8 @@ pub struct Peer {
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
     /// We use a hashmap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
-    /// Signs the peer information with a timestamp to prevent malleability. This is optional for backward
-    /// compatibility, but without this, the identity (addresses etc) cannot be updated.
-    pub identity_signature: Option<IdentitySignature>,
+    /// If this peer has been deleted.
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
 impl Peer {
@@ -117,14 +111,11 @@ impl Peer {
             features,
             banned_until: None,
             banned_reason: String::new(),
-            offline_at: None,
-            last_seen: None,
-            connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
             user_agent,
             metadata: HashMap::new(),
-            identity_signature: None,
+            deleted_at: None,
         }
     }
 
@@ -133,9 +124,28 @@ impl Peer {
     /// This method panics if the peer does not have a PeerId, and therefore is not persisted.
     /// If the caller should be sure that the peer is persisted before calling this function.
     /// This can be checked by using `Peer::is_persisted`.
-    #[inline]
     pub fn id(&self) -> PeerId {
         self.id.expect("call to Peer::id() when peer is not persisted")
+    }
+
+    /// Merges the data with another peer. This is usually used to update a peer before it is saved to the
+    /// database so that data is not overwritten
+    pub fn merge(&mut self, other: &Peer) {
+        self.addresses.merge(&other.addresses);
+        self.banned_reason = other.banned_reason.clone();
+        self.added_at = cmp::min(self.added_at, other.added_at);
+        self.banned_until = cmp::max(self.banned_until, other.banned_until);
+        for protocol in &other.supported_protocols {
+            if !self.supported_protocols.contains(protocol) {
+                self.supported_protocols.push(protocol.clone());
+            }
+        }
+        self.metadata = other.metadata.clone();
+        self.features = other.features;
+        self.flags = other.flags;
+        if !other.user_agent.is_empty() {
+            self.user_agent = other.user_agent.clone();
+        }
     }
 
     pub fn is_persisted(&self) -> bool {
@@ -150,12 +160,17 @@ impl Peer {
 
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
-        self.offline_at.is_some()
+        self.addresses.offline_at().is_some()
+    }
+
+    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+        self.addresses.offline_at()
     }
 
     /// The length of time since a peer was marked as offline
     pub fn offline_since(&self) -> Option<Duration> {
-        self.offline_at
+        let offline_at = self.addresses.offline_at();
+        offline_at
             .map(|offline_at| Utc::now().naive_utc() - offline_at)
             .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
     }
@@ -169,54 +184,9 @@ impl Peer {
         self.id = Some(id);
     }
 
-    #[allow(clippy::option_option)]
-    pub fn update(
-        &mut self,
-        net_addresses: Option<Vec<Multiaddr>>,
-        flags: Option<PeerFlags>,
-        banned_until: Option<Option<Duration>>,
-        banned_reason: Option<String>,
-        is_offline: Option<bool>,
-        features: Option<PeerFeatures>,
-        supported_protocols: Option<Vec<ProtocolId>>,
-    ) {
-        if let Some(new_net_addresses) = net_addresses {
-            self.addresses.update_addresses(new_net_addresses);
-            self.identity_signature = None;
-        }
-        if let Some(new_flags) = flags {
-            self.flags = new_flags
-        }
-        if let Some(banned_until) = banned_until {
-            self.banned_until = banned_until
-                .map(safe_future_datetime_from_duration)
-                .map(|dt| dt.naive_utc());
-        }
-        if let Some(banned_reason) = banned_reason {
-            self.banned_reason = banned_reason;
-        }
-        if let Some(is_offline) = is_offline {
-            self.set_offline(is_offline);
-        }
-        if let Some(new_features) = features {
-            self.features = new_features;
-            self.identity_signature = None;
-        }
-        if let Some(supported_protocols) = supported_protocols {
-            self.supported_protocols = supported_protocols;
-        }
-    }
-
-    /// Returns `Some(true)` if the identity signature is valid, otherwise `Some(false)`. If no signature is present,
-    /// None is returned.
-    pub fn is_valid_identity_signature(&self) -> Option<bool> {
-        let identity_signature = self.identity_signature.as_ref()?;
-        Some(identity_signature.is_valid_for_peer(self))
-    }
-
     /// Provides that date time of the last successful interaction with the peer
     pub fn last_seen(&self) -> Option<NaiveDateTime> {
-        self.last_seen
+        self.addresses.last_seen()
     }
 
     /// Provides that length of time since the last successful interaction with the peer
@@ -257,16 +227,6 @@ impl Peer {
         self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
     }
 
-    /// Marks the peer as offline if true, or not offline if false
-    pub fn set_offline(&mut self, is_offline: bool) -> &mut Self {
-        if is_offline {
-            self.offline_at = Some(Utc::now().naive_utc());
-        } else {
-            self.offline_at = None;
-        }
-        self
-    }
-
     /// This will store metadata inside of the metadata field in the peer.
     /// It will return None if the value was empty and the old value if the value was updated
     pub fn set_metadata(&mut self, key: u8, data: Vec<u8>) -> Option<Vec<u8>> {
@@ -278,16 +238,9 @@ impl Peer {
         self.metadata.get(&key)
     }
 
-    /// Set the identity signature of the peer. WARNING: It is up to the caller to ensure that the signature is valid.
-    pub fn set_valid_identity_signature(&mut self, signature: IdentitySignature) -> &mut Self {
-        self.identity_signature = Some(signature);
-        self
-    }
-
     /// Update the peer's addresses. This call will invalidate the identity signature.
-    pub fn update_addresses(&mut self, addresses: Vec<Multiaddr>) -> &mut Self {
-        self.addresses.update_addresses(addresses);
-        self.identity_signature = None;
+    pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) -> &mut Self {
+        self.addresses.update_addresses(addresses, source);
         self
     }
 
@@ -295,7 +248,6 @@ impl Peer {
     pub fn set_features(&mut self, features: PeerFeatures) -> &mut Self {
         if self.features != features {
             self.features = features;
-            self.identity_signature = None;
         }
         self
     }
@@ -310,16 +262,7 @@ impl Peer {
     }
 
     pub fn to_short_string(&self) -> String {
-        format!(
-            "{}::{}",
-            self.public_key,
-            self.addresses
-                .addresses
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        )
+        format!("{}::{}", self.public_key, self.addresses)
     }
 }
 
@@ -334,8 +277,8 @@ impl Display for Peer {
 
         let status_str = {
             let mut s = Vec::new();
-            if let Some(offline_at) = self.offline_at.as_ref() {
-                s.push(format!("Offline since: {}", format_local_datetime(offline_at)));
+            if let Some(offline_at) = self.offline_at() {
+                s.push(format!("Offline since: {}", format_local_datetime(&offline_at)));
             }
 
             if let Some(dt) = self.banned_until() {
@@ -355,16 +298,11 @@ impl Display for Peer {
         };
 
         f.write_str(&format!(
-            "{}[{}] PK={} ({}) - {}. Type: {}. User agent: {}. {}.",
+            "{}[{}] PK={} ({}) - {}. Type: {}. User agent: {}.",
             flags_str,
             self.node_id.short_str(),
             self.public_key,
-            self.addresses
-                .addresses
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(","),
+            self.addresses,
             status_str,
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
@@ -372,7 +310,6 @@ impl Display for Peer {
                 f => format!("{:?}", f),
             },
             user_agent,
-            self.connection_stats,
         ))
     }
 }
@@ -391,7 +328,6 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
-    use bytes::Bytes;
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -400,19 +336,17 @@ mod test {
     };
 
     use super::*;
-    use crate::{
-        net_address::MultiaddressesWithStats,
-        peer_manager::NodeId,
-        test_utils::node_identity::build_node_identity,
-        types::CommsPublicKey,
-    };
+    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
 
     #[test]
     fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
-        let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
+        let addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+            &PeerAddressSource::Config,
+        );
         let mut peer: Peer = Peer::new(
             pk,
             node_id,
@@ -431,76 +365,6 @@ mod test {
     }
 
     #[test]
-    fn test_offline_since() {
-        let mut peer = build_node_identity(Default::default()).to_peer();
-        assert!(peer.offline_since().is_none());
-        peer.set_offline(true);
-        assert!(peer.offline_since().is_some());
-        peer.offline_at = Some(Utc::now().naive_utc() + chrono::Duration::seconds(10));
-        assert_eq!(peer.offline_since().unwrap(), Duration::from_secs(0));
-    }
-
-    #[test]
-    fn test_is_offline() {
-        let mut peer = build_node_identity(Default::default()).to_peer();
-        assert!(!peer.is_offline());
-        peer.set_offline(true);
-        assert!(peer.is_offline());
-    }
-
-    #[test]
-    fn test_update() {
-        let mut rng = rand::rngs::OsRng;
-        let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&public_key1);
-        let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut peer: Peer = Peer::new(
-            public_key1.clone(),
-            node_id.clone(),
-            MultiaddressesWithStats::from(net_address1.clone()),
-            PeerFlags::default(),
-            PeerFeatures::empty(),
-            Default::default(),
-            Default::default(),
-        );
-
-        let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
-
-        static DUMMY_PROTOCOL: Bytes = Bytes::from_static(b"dummy");
-        peer.update(
-            Some(vec![net_address2.clone(), net_address3.clone()]),
-            None,
-            Some(Some(Duration::from_secs(1000))),
-            Some("".to_string()),
-            None,
-            Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(vec![DUMMY_PROTOCOL.clone()]),
-        );
-
-        assert_eq!(peer.public_key, public_key1);
-        assert_eq!(peer.node_id, node_id);
-        assert!(!peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address1));
-        assert!(peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address2));
-        assert!(peer
-            .addresses
-            .addresses
-            .iter()
-            .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
-        assert!(peer.is_banned());
-        assert!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION));
-        assert_eq!(peer.supported_protocols, vec![DUMMY_PROTOCOL.clone()]);
-    }
-
-    #[test]
     fn json_ser_der() {
         let expected_pk_hex = "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031";
         let expected_nodeid_hex = "c1a7552e5d9e9b257c4008b965";
@@ -509,7 +373,10 @@ mod test {
         let peer = Peer::new(
             pk,
             node_id,
-            "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                vec!["/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap()],
+                &PeerAddressSource::Config,
+            ),
             PeerFlags::empty(),
             PeerFeatures::empty(),
             Default::default(),

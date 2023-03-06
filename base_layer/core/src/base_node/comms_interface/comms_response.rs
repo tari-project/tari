@@ -38,6 +38,7 @@ use crate::{
 };
 
 /// API Response enum
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),

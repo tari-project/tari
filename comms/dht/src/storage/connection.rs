@@ -22,7 +22,6 @@
 
 use std::{
     convert::TryFrom,
-    io,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -31,6 +30,7 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
@@ -148,40 +148,41 @@ impl DbConnection {
 
     /// Run database migrations
     pub fn migrate(&self) -> Result<String, StorageError> {
-        embed_migrations!("./migrations");
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        let mut buf = io::Cursor::new(Vec::new());
-        let conn = self.get_pooled_connection()?;
-        embedded_migrations::run_with_output(&conn, &mut buf)
+        let mut conn = self.get_pooled_connection()?;
+        let result: Vec<String> = conn
+            .run_pending_migrations(MIGRATIONS)
+            .map(|v| v.into_iter().map(|b| format!("Running migration {}", b)).collect())
             .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
-        Ok(String::from_utf8_lossy(&buf.into_inner()).to_string())
+
+        Ok(result.join("\r\n"))
     }
 }
 
 #[cfg(test)]
 mod test {
-    use diesel::{expression::sql_literal::sql, sql_types::Integer, RunQueryDsl};
-    use tari_comms::runtime;
+    use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
     use tari_test_utils::random;
 
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn connect_and_migrate() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
         let output = conn.migrate().unwrap();
         assert!(output.starts_with("Running migration"));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn memory_connections() {
         let id = random::string(8);
         let conn = DbConnection::connect_memory(id.clone()).unwrap();
         conn.migrate().unwrap();
         let conn = DbConnection::connect_memory(id).unwrap();
-        let conn = conn.get_pooled_connection().unwrap();
+        let mut conn = conn.get_pooled_connection().unwrap();
         let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
-            .get_result(&conn)
+            .get_result(&mut conn)
             .unwrap();
         assert_eq!(count, 0);
     }

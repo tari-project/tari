@@ -4,3 +4,4 @@
 - [TariScript No-Op script vulnerability](tari_script_no_op_vulnerability.md)
 - [Replay attacks](replay_attacks.md)
 - [Multi-party range proving](multi_party_range.md)
+- [Branching and Release cycles](branching_releases.md)

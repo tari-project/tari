@@ -45,9 +45,9 @@ impl CommandContext {
     pub fn whoami(&self) -> Result<(), Error> {
         println!("{}", self.base_node_identity);
         let peer = format!(
-            "{}::{}",
+            "{}::{:?}",
             self.base_node_identity.public_key().to_hex(),
-            self.base_node_identity.public_address()
+            self.base_node_identity.public_addresses()
         );
         let network = self.config.network();
         let qr_link = format!(

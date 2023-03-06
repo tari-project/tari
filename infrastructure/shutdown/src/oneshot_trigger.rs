@@ -23,6 +23,7 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -36,8 +37,9 @@ pub fn channel<T: Clone>() -> OneshotTrigger<T> {
     OneshotTrigger::new()
 }
 
+#[derive(Clone, Debug)]
 pub struct OneshotTrigger<T> {
-    sender: Option<oneshot::Sender<T>>,
+    sender: Arc<Mutex<Option<oneshot::Sender<T>>>>,
     signal: OneshotSignal<T>,
 }
 
@@ -45,7 +47,7 @@ impl<T: Clone> OneshotTrigger<T> {
     pub fn new() -> Self {
         let (tx, rx) = oneshot::channel();
         Self {
-            sender: Some(tx),
+            sender: Arc::new(Mutex::new(Some(tx))),
             signal: rx.shared().into(),
         }
     }
@@ -55,13 +57,14 @@ impl<T: Clone> OneshotTrigger<T> {
     }
 
     pub fn broadcast(&mut self, item: T) {
-        if let Some(tx) = self.sender.take() {
+        let mut x = self.sender.lock().unwrap();
+        if let Some(tx) = (*x).take() {
             let _result = tx.send(item);
         }
     }
 
     pub fn is_used(&self) -> bool {
-        self.sender.is_none()
+        self.sender.lock().unwrap().is_none()
     }
 }
 

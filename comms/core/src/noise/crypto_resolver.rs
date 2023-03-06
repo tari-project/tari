@@ -54,7 +54,7 @@ impl CryptoResolver for TariCryptoResolver {
 
     fn resolve_dh(&self, choice: &DHChoice) -> Option<Box<dyn Dh>> {
         match *choice {
-            DHChoice::Curve25519 => Some(Box::new(CommsDiffieHellman::default())),
+            DHChoice::Curve25519 => Some(Box::<CommsDiffieHellman>::default()),
             _ => None,
         }
     }
@@ -137,7 +137,7 @@ mod test {
     fn build_keypair() -> Keypair {
         snow::Builder::with_resolver(
             NOISE_IX_PARAMETER.parse().unwrap(),
-            Box::new(TariCryptoResolver::default()),
+            Box::<TariCryptoResolver>::default(),
         )
         .generate_keypair()
         .unwrap()

@@ -36,11 +36,12 @@ use sha2::Sha256;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, RangeProof, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
+    consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
@@ -68,12 +69,14 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PKtrait, SecretKey},
-    tari_utilities::{ByteArray, ByteArrayError},
+    ristretto::RistrettoComSig,
+    tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -116,13 +119,20 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::WalletHasher,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::{
+        one_sided::{
+            diffie_hellman_stealth_domain_hasher,
+            shared_secret_to_output_encryption_key,
+            shared_secret_to_output_rewind_key,
+            shared_secret_to_output_spending_key,
+            stealth_address_script_spending_key,
+        },
+        wallet_identity::WalletIdentity,
+        watch::Watch,
+    },
     utxo_scanner_service::RECOVERY_KEY,
+    BurntOutputDomainHasher,
     OperationId,
-    WalletOutputEncryptionKeysDomainHasher,
-    WalletOutputRewindKeysDomainHasher,
-    WalletOutputSpendingKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -224,6 +234,7 @@ where
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         wallet_identity: WalletIdentity,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
@@ -239,8 +250,8 @@ where
             wallet_identity,
             factories,
             config: config.clone(),
-
             shutdown_signal,
+            consensus_manager,
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -640,16 +651,25 @@ where
                 selection_criteria,
                 fee_per_gram,
                 message,
+                claim_public_key,
             } => self
                 .burn_tari(
                     amount,
                     selection_criteria,
                     fee_per_gram,
                     message,
+                    claim_public_key,
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(TransactionServiceResponse::TransactionSent),
+                .map(|(tx_id, commitment, ownership_proof, rangeproof)| {
+                    TransactionServiceResponse::BurntTransactionSent {
+                        tx_id,
+                        commitment: commitment.into(),
+                        ownership_proof,
+                        rangeproof: rangeproof.into(),
+                    }
+                }),
             TransactionServiceRequest::RegisterValidatorNode {
                 amount,
                 validator_node_public_key,
@@ -999,8 +1019,6 @@ where
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
-            self.last_seen_tip_height,
-            None,
         );
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
@@ -1139,12 +1157,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1276,12 +1289,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1361,25 +1369,29 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            script!(PushPubKey(Box::new(dest_pubkey))),
+            one_sided_payment_script(&dest_pubkey),
         )
         .await
     }
 
-    /// Creates a transaction to burn some Tari
-    /// # Arguments
-    /// 'amount': The amount of Tari to send to the recipient
-    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    /// Creates a transaction to burn some Tari. The optional _claim public key_ parameter is used in the challenge of
+    /// the
+    // corresponding optional _ownership proof_ return value. Burn commitments and ownership proofs will exclusively be
+    // used in the 2nd layer (DAN layer). When such an _ownership proof_ is presented later on as part of some
+    // transaction metadata, the _claim public key_ can be revealed to enable verification of the _ownership proof_
+    // and the transaction can be signed with the private key corresponding to the claim public key.
+    #[allow(clippy::too_many_lines)]
     pub async fn burn_tari(
         &mut self,
         amount: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+        claim_public_key: Option<PublicKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, RangeProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
         let output_features = OutputFeatures::create_burn_output();
         // Prepare sender part of the transaction
@@ -1411,16 +1423,52 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        // TODO: Save spending key in key manager
         let spend_key = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spend_key,
+            spend_key.clone(),
             &self.resources.factories,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
+        let commitment = recipient_reply.output.commitment.clone();
+        let range_proof = recipient_reply.output.proof.clone();
+        let nonce_a = PrivateKey::random(&mut OsRng);
+        let nonce_x = PrivateKey::random(&mut OsRng);
+        let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
+        let mut ownership_proof = None;
 
+        if let Some(claim_public_key) = claim_public_key {
+            let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
+                .chain(pub_nonce.as_bytes())
+                .chain(commitment.as_bytes())
+                .chain(claim_public_key.as_bytes());
+
+            let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+
+            warn!(target: LOG_TARGET, "Pub nonce: {}", pub_nonce.to_vec().to_hex());
+            warn!(
+                target: LOG_TARGET,
+                "claim_public_key: {}",
+                claim_public_key.to_vec().to_hex()
+            );
+            warn!(target: LOG_TARGET, "Challenge: {}", challenge.to_vec().to_hex());
+            ownership_proof = Some(RistrettoComSig::sign(
+                &PrivateKey::from(amount),
+                &spend_key,
+                &nonce_a,
+                &nonce_x,
+                challenge.as_bytes(),
+                &*self.resources.factories.commitment,
+            )?);
+            warn!(
+                target: LOG_TARGET,
+                "Ownership proof: {}",
+                ownership_proof.clone().unwrap().to_vec().to_hex()
+            );
+        }
         // Start finalizing
 
         stp.add_single_recipient_info(recipient_reply)
@@ -1428,12 +1476,7 @@ where
 
         // Finalize
 
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )
-        .map_err(|e| {
+        stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
@@ -1475,7 +1518,7 @@ where
             ),
         )?;
 
-        Ok(tx_id)
+        Ok((tx_id, commitment, ownership_proof, range_proof))
     }
 
     pub async fn register_validator_node(
@@ -1541,12 +1584,9 @@ where
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
         let dest_pubkey = destination.public_key().clone();
-        let c = WalletHasher::new_with_label("stealth_address")
-            .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
-            .finalize();
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, &dest_pubkey);
 
-        let script_spending_key =
-            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey;
+        let script_spending_key = stealth_address_script_spending_key(&c, &dest_pubkey);
 
         self.send_one_sided_or_stealth(
             destination,
@@ -1556,7 +1596,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
+            stealth_payment_script(&nonce_public_key, &script_spending_key),
         )
         .await
     }
@@ -1873,8 +1913,6 @@ where
                     TransactionMetadata::default(),
                     None,
                     stage,
-                    None,
-                    self.last_seen_tip_height,
                     sender_protocol,
                 );
 
@@ -2006,8 +2044,6 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
-                None,
-                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -2192,8 +2228,6 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
-                None,
-                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -2700,6 +2734,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub wallet_identity: WalletIdentity,
+    pub consensus_manager: ConsensusManager,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
@@ -2724,36 +2759,6 @@ pub struct PendingCoinbaseSpendingKey {
     pub spending_key: PrivateKey,
 }
 
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output spending key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputSpendingKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
 /// Contains the generated TxId and TransactionStatus transaction send result
 #[derive(Debug)]
 pub struct TransactionSendResult {
@@ -2764,31 +2769,28 @@ pub struct TransactionSendResult {
 #[cfg(test)]
 mod tests {
     use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::Opcode;
-    use WalletHasher;
+    use tari_script::{stealth_payment_script, Opcode};
 
     use super::*;
+    use crate::util::one_sided::{diffie_hellman_stealth_domain_hasher, stealth_address_script_spending_key};
 
     #[test]
     fn test_stealth_addresses() {
         // recipient's keys
         let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
-        let (b, big_b) = PublicKey::random_keypair(&mut OsRng);
+        let (_b, big_b) = PublicKey::random_keypair(&mut OsRng);
 
         // Sender generates a random nonce key-pair: R=r⋅G
         let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = WalletHasher::new_with_label("stealth_address")
-            .chain(CommsDHKE::new(&r, &big_a).as_bytes())
-            .finalize();
+        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-        let sender_spending_key =
-            PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+        let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
 
-        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
+        let script = stealth_payment_script(&big_r, &sender_spending_key);
 
         // ----------------------------------------------------------------------------
         // imitating the receiving end, scanning and extraction
@@ -2797,13 +2799,10 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = WalletHasher::new_with_label("stealth_address")
-                .chain(CommsDHKE::new(&a, big_r).as_bytes())
-                .finalize();
+            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
 
             // computing a spending key `Ks=(c+b)G` for comparison
-            let receiver_spending_key =
-                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
+            let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
 
             // computing a scanning key `Ks=cG+B` for comparison
             let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;

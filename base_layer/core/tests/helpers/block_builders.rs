@@ -119,6 +119,28 @@ fn genesis_template(
     (block, output)
 }
 
+// #[ignore = "used to generate a new nextnet genesis block"]
+/// This is a helper function to generate and print out a block that can be used as the genesis block.
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_nextnet
+/// --exact --nocapture`
+/// 1. The block and range proof will be printed
+/// 1. Profit!
+#[test]
+fn print_new_genesis_block_nextnet() {
+    print_new_genesis_block(Network::NextNet, "Mathematical proof that something happened");
+}
+
+// #[ignore = "used to generate a new stagenet genesis block"]
+/// This is a helper function to generate and print out a block that can be used as the genesis block.
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_stagenet
+/// --exact --nocapture`
+/// 1. The block and range proof will be printed
+/// 1. Profit!
+#[test]
+fn print_new_genesis_block_stagenet() {
+    print_new_genesis_block(Network::StageNet, "Tokenized and connected");
+}
+
 // #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
@@ -171,7 +193,7 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     output_mmr.push(utxo.hash().to_vec()).unwrap();
-    let vn_mr = calculate_validator_node_mr(&[]).unwrap();
+    let vn_mr = calculate_validator_node_mr(&[]);
 
     header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;

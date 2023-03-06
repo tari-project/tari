@@ -41,16 +41,24 @@ pub struct Contact {
     pub node_id: NodeId,
     pub last_seen: Option<NaiveDateTime>,
     pub latency: Option<u32>,
+    pub favourite: bool,
 }
 
 impl Contact {
-    pub fn new(alias: String, address: TariAddress, last_seen: Option<NaiveDateTime>, latency: Option<u32>) -> Self {
+    pub fn new(
+        alias: String,
+        address: TariAddress,
+        last_seen: Option<NaiveDateTime>,
+        latency: Option<u32>,
+        favourite: bool,
+    ) -> Self {
         Self {
             alias,
             node_id: NodeId::from_key(address.public_key()),
             address,
             last_seen,
             latency,
+            favourite,
         }
     }
 }

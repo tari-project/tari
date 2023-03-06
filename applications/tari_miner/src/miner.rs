@@ -35,14 +35,14 @@ use thread::JoinHandle;
 
 use super::difficulty::BlockHeaderSha3;
 
-pub const LOG_TARGET: &str = "tari_miner::miner::standalone";
+pub const LOG_TARGET: &str = "tari::miner::standalone";
 
 // Identify how often mining thread is reporting / checking context
 // ~400_000 hashes per second
 const REPORTING_FREQUENCY: u64 = 3_000_000;
 
 // Thread's stack size, ideally we would fit all thread's data in the CPU L1 cache
-const STACK_SIZE: usize = 32_000;
+const STACK_SIZE: usize = 320_000;
 
 /// Miner will send regular reports from every mining threads
 #[derive(Debug)]

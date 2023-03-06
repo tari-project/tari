@@ -31,6 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
@@ -39,7 +40,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
-    consensus::NetworkConsensus,
+    consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -67,7 +68,7 @@ use tari_p2p::{
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
 };
-use tari_script::{script, ExecutionStack, TariScript};
+use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
@@ -141,6 +142,7 @@ where
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
         node_identity: Arc<NodeIdentity>,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
         output_manager_database: OutputManagerDatabase<V>,
@@ -191,6 +193,7 @@ where
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
                 wallet_identity.clone(),
+                consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
             ))
@@ -265,7 +268,7 @@ where
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(comms.node_identity().public_address())?;
+        wallet_database.set_node_address(comms.node_identity().first_public_address())?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
@@ -321,19 +324,19 @@ where
                 .await?;
         }
 
-        let addresses = vec![address].into();
         let peer_manager = self.comms.peer_manager();
         let mut connectivity = self.comms.connectivity();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
-            if current_peer.addresses != addresses {
+            if current_peer.addresses.contains(&address) {
                 info!(
                     target: LOG_TARGET,
                     "Address for base node differs from storage. Was {}, setting to {}",
                     current_peer.addresses,
-                    addresses
+                    address
                 );
-                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+
+                current_peer.addresses.add_address(&address, &PeerAddressSource::Config);
                 peer_manager.add_peer(current_peer.clone()).await?;
             }
             connectivity
@@ -345,7 +348,7 @@ where
             let peer = Peer::new(
                 public_key,
                 node_id,
-                addresses,
+                MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
                 Default::default(),
@@ -699,7 +702,7 @@ async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
-    let script = script!(PushPubKey(Box::new(node_identity.public_key().clone())));
+    let script = one_sided_payment_script(node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake256>()

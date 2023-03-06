@@ -41,10 +41,12 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CommitmentSignature,
         CreateBurnTransactionRequest,
         CreateBurnTransactionResponse,
         CreateTemplateRegistrationRequest,
         CreateTemplateRegistrationResponse,
+        GetAddressResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -221,8 +223,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_vec(),
-            public_address: identity.public_address().to_string(),
+            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
             node_id: identity.node_id().to_vec(),
+        }))
+    }
+
+    async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
+        let network = self.wallet.network.as_network();
+        let pk = self.wallet.comms.node_identity().public_key().clone();
+        let address = TariAddress::new(pk, network);
+        Ok(Response::new(GetAddressResponse {
+            address: address.to_bytes().to_vec(),
         }))
     }
 
@@ -256,9 +267,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
         };
         Ok(Response::new(GetBalanceResponse {
-            available_balance: balance.available_balance.0,
+            available_balance: balance
+                .available_balance
+                .saturating_sub(balance.time_locked_balance.unwrap_or_default())
+                .0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
+            timelocked_balance: balance.time_locked_balance.unwrap_or_default().0,
         }))
     }
 
@@ -585,23 +600,34 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 message.message,
+                if message.claim_public_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PublicKey::from_bytes(&message.claim_public_key)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
             )
             .await
         {
-            Ok(tx_id) => {
+            Ok((tx_id, commitment, ownership_proof, rangeproof)) => {
                 debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
                     failure_message: Default::default(),
+                    commitment: commitment.to_vec(),
+                    ownership_proof: ownership_proof.map(CommitmentSignature::from),
+                    rangeproof: rangeproof.to_vec(),
                 }
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
                 CreateBurnTransactionResponse {
-                    transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),
+                    ..Default::default()
                 }
             },
         };

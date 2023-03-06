@@ -45,6 +45,7 @@ pub fn create_peer_storage() -> CommsDatabase {
     LMDBWrapper::new(Arc::new(peer_database))
 }
 
+#[cfg(test)]
 pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,

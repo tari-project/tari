@@ -51,7 +51,7 @@ pub struct Cli {
     /// possible.
     #[clap(long, env = "TARI_WALLET_PASSWORD", hide_env_values = true)]
     pub password: Option<SafePassword>,
-    /// Change the password for the console wallet
+    /// Change the password for the console wallet and exit
     #[clap(long, alias = "update-password")]
     pub change_password: bool,
     /// Force wallet recovery

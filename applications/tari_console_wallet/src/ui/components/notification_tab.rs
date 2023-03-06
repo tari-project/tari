@@ -8,7 +8,7 @@
 // Currently notifications are only added from the wallet_event_monitor which has
 // add_notification method.
 
-use tari_comms::runtime::Handle;
+use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},

@@ -302,7 +302,7 @@ where
 {
     let access = txn.access();
 
-    let cursor = txn.cursor(&*db).map_err(|e| {
+    let cursor = txn.cursor(db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;

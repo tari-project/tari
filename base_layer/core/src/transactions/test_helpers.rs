@@ -601,10 +601,8 @@ pub fn create_sender_transaction_protocol_with(
 ) -> Result<SenderTransactionProtocol, TransactionProtocolError> {
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
-    let constants = ConsensusManager::builder(Network::LocalNet)
-        .build()
-        .consensus_constants(0)
-        .clone();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let constants = rules.consensus_constants(0).clone();
     let mut stx_builder = SenderTransactionProtocol::builder(0, constants);
     stx_builder
         .with_lock_height(lock_height)
@@ -626,7 +624,7 @@ pub fn create_sender_transaction_protocol_with(
     });
 
     let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
-    stx_protocol.finalize(&factories, None, u64::MAX)?;
+    stx_protocol.finalize()?;
 
     Ok(stx_protocol)
 }
@@ -637,9 +635,7 @@ pub fn create_sender_transaction_protocol_with(
 /// The output features will be applied to every output
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
     let (mut stx_protocol, outputs) = create_stx_protocol(schema);
-    stx_protocol
-        .finalize(&CryptoFactories::default(), None, u64::MAX)
-        .unwrap();
+    stx_protocol.finalize().unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs)
 }

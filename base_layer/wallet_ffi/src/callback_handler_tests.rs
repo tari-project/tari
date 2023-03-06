@@ -124,56 +124,56 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn received_tx_reply_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_reply_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn received_tx_finalized_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_finalized_tx_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn broadcast_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn mined_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn faux_confirmed_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_confirmed_callback_called = true;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn faux_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn transaction_send_result_callback(_tx_id: u64, status: *mut TransactionSendStatus) {
@@ -205,7 +205,7 @@ mod test {
             _ => (),
         }
         drop(lock);
-        Box::from_raw(tx);
+        drop(Box::from_raw(tx))
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: u64) {
@@ -230,7 +230,7 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_balance_updated += 1;
         drop(lock);
-        Box::from_raw(balance);
+        drop(Box::from_raw(balance));
     }
 
     unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, result: u64) {
@@ -731,6 +731,7 @@ mod test {
             faux_unconfirmed_tx.destination_address,
             None,
             None,
+            false,
         );
         let data = ContactsLivenessData::new(
             contact.address.clone(),

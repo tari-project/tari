@@ -1368,6 +1368,7 @@ void seed_words_destroy(struct TariSeedWords *seed_words);
  */
 TariContact *contact_create(const char *alias,
                             TariWalletAddress *address,
+                            bool favourite,
                             int *error_out);
 
 /**
@@ -1387,6 +1388,24 @@ TariContact *contact_create(const char *alias,
  */
 char *contact_get_alias(TariContact *contact,
                         int *error_out);
+
+/**
+ * Gets the favourite status of the TariContact
+ *
+ * ## Arguments
+ * `contact` - The pointer to a TariContact
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
+ * null as well.
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+bool contact_get_favourite(TariContact *contact,
+                           int *error_out);
 
 /**
  * Gets the TariWalletAddress of the TariContact
@@ -2478,7 +2497,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * `database_path` - The database path char array pointer which. This is the folder path where the
  * database files will be created and the application has write access to
  * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
- * `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet
+ * `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet, stagenet
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -2527,6 +2546,40 @@ void comms_config_destroy(TariCommsConfig *wc);
  */
 struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet,
                                                         int *error_out);
+
+/**
+ * Gets the length of the public keys vector
+ *
+ * ## Arguments
+ * `public_keys` - Pointer to TariPublicKeys
+ *
+ * ## Returns
+ * `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys, int *error_out);
+
+/**
+ * Gets a ByteVector at position in a EmojiSet
+ *
+ * ## Arguments
+ * `public_keys` - The pointer to a TariPublicKeys
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
+ */
+TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
+                                  unsigned int position,
+                                  int *error_out);
 
 /**
  * Creates a TariWallet

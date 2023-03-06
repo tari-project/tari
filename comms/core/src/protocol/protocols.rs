@@ -128,7 +128,7 @@ impl<TSubstream> Protocols<TSubstream> {
 
     /// Returns an iterator of currently registered [ProtocolId](self::ProtocolId)
     pub fn iter(&self) -> impl Iterator<Item = &ProtocolId> {
-        self.protocols.iter().map(|(protocol_id, _)| protocol_id)
+        self.protocols.keys()
     }
 }
 
@@ -148,7 +148,6 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::runtime;
 
     #[test]
     fn add() {
@@ -163,7 +162,7 @@ mod test {
         assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn notify() {
         let (tx, mut rx) = mpsc::channel(1);
         let protos = [ProtocolId::from_static(b"/tari/test/1")];
@@ -180,7 +179,7 @@ mod test {
         assert_eq!(peer_id, NodeId::new());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn notify_fail_not_registered() {
         let mut protocols = Protocols::<()>::new();
 

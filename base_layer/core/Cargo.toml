@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.44.0"
+version = "0.47.0-pre.0"
 edition = "2018"
 
 [features]
@@ -19,23 +19,22 @@ avx2 = ["tari_crypto/simd_backend"]
 benches = ["base_node", "criterion"]
 
 [dependencies]
-tari_common = { version = "^0.44", path = "../../common" }
-tari_common_types = { version = "^0.44", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.44", path = "../../comms/core" }
-tari_comms_dht = { version = "^0.44", path = "../../comms/dht" }
-tari_comms_rpc_macros = { version = "^0.44", path = "../../comms/rpc_macros" }
+tari_common = {  path = "../../common" }
+tari_common_types = {  path = "../../base_layer/common_types" }
+tari_comms = {  path = "../../comms/core" }
+tari_comms_dht = {  path = "../../comms/dht" }
+tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
-tari_mmr = { version = "^0.44", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
-tari_p2p = { version = "^0.44", path = "../../base_layer/p2p" }
+tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
+tari_p2p = {  path = "../../base_layer/p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = { version = "^0.44", path = "../service_framework" }
-tari_shutdown = { version = "^0.44", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.44", path = "../../infrastructure/storage" }
-tari_test_utils = { version = "^0.44", path = "../../infrastructure/test_utils" }
+tari_service_framework = {  path = "../service_framework" }
+tari_shutdown = {  path = "../../infrastructure/shutdown" }
+tari_storage = {  path = "../../infrastructure/storage" }
+tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.10", features = ["borsh"] }
 
-async-trait = "0.1.50"
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
@@ -73,20 +72,19 @@ strum_macros = "0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
-tracing-attributes = "*"
 uint = { version = "0.9", default-features = false }
 zeroize = "1"
 
 [dev-dependencies]
-tari_p2p = { version = "^0.44", path = "../../base_layer/p2p", features = ["test-mocks"] }
-tari_test_utils = { version = "^0.44", path = "../../infrastructure/test_utils" }
+tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
+tari_test_utils = {  path = "../../infrastructure/test_utils" }
 
 config = { version = "0.13.0" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { version = "^0.44", path = "../../common", features = ["build"] }
+tari_common = {  path = "../../common", features = ["build"] }
 
 [[bench]]
 name = "mempool"

@@ -455,7 +455,6 @@ mod test {
     use tari_comms::{
         message::{MessageExt, MessageTag},
         pipeline::SinkService,
-        runtime,
         test_utils::mocks::create_connectivity_mock,
         types::CommsDHKE,
         wrap_in_envelope_body,
@@ -480,8 +479,8 @@ mod test {
         },
     };
 
-    #[runtime::test]
-    async fn stack_unencrypted() {
+    #[tokio::test]
+    async fn test_stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
@@ -532,8 +531,8 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    #[runtime::test]
-    async fn stack_encrypted() {
+    #[tokio::test]
+    async fn test_stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
@@ -585,8 +584,8 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    #[runtime::test]
-    async fn stack_forward() {
+    #[tokio::test]
+    async fn test_stack_forward() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
         let shutdown = Shutdown::new();
@@ -650,8 +649,8 @@ mod test {
         assert_eq!(spy.call_count(), 0);
     }
 
-    #[runtime::test]
-    async fn stack_filter_saf_message() {
+    #[tokio::test]
+    async fn test_stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();

@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.44.0"
+version = "0.47.0-pre.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -27,7 +27,6 @@ tari_script = { path = "../../infrastructure/tari_script" }
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.23", default-features = false, features = ["signal", "sync"] }
 
-base64 = "0.13.0"
 bitflags = "1.2.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.1.1", features = ["derive", "env"] }
@@ -48,7 +47,6 @@ strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
 tonic = "0.6.2"
-tracing = "0.1.26"
 unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
 zeroize = "1"
@@ -68,3 +66,5 @@ features = ["crossterm"]
 avx2 = ["tari_core/avx2", "tari_crypto/simd_backend", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
 libtor = ["tari_libtor"]
 
+[package.metadata.cargo-machete]
+ignored = ["strum"]

@@ -46,7 +46,7 @@ use tari_core::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
+    validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{inputs, script, TariScript};
@@ -247,7 +247,7 @@ async fn inbound_fetch_blocks() {
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManager::builder(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let block0 = consensus_manager.get_genesis_block();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -260,7 +260,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         ..Default::default()
     };
     let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
-    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),

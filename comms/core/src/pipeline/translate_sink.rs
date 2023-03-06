@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::Sink;
 use std::{
     marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::Sink;
 
 /// A sink which takes inputs sent to it, translates them and sends them on a given sink
 pub struct TranslateSink<F, S, I> {
@@ -91,12 +92,13 @@ where F: FnMut(I) -> Option<O>
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::runtime;
     use futures::{SinkExt, StreamExt};
     use tokio::sync::mpsc;
 
-    #[runtime::test]
+    use super::*;
+    use crate::runtime;
+
+    #[tokio::test]
     async fn check_translates() {
         let (tx, mut rx) = mpsc::channel(1);
 

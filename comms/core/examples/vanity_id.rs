@@ -114,7 +114,7 @@ fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Res
             if tx
                 .try_send(NodeIdentity::new(
                     k,
-                    Multiaddr::empty(),
+                    vec![Multiaddr::empty()],
                     PeerFeatures::COMMUNICATION_NODE,
                 ))
                 .is_err()

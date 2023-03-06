@@ -22,15 +22,10 @@
 
 use std::{future::Future, sync::Arc};
 
-use futures::future::Either;
 use tokio::{
-    runtime,
     sync::{OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
-use tracing::{span, Instrument, Level};
-
-use crate::runtime::current;
 
 /// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
 #[derive(Debug)]
@@ -41,26 +36,21 @@ pub struct TrySpawnError;
 /// Use the asynchronous spawn method to spawn a task. If a given number of tasks are already spawned and have not
 /// completed, the spawn function will block (asynchronously) until a previously spawned task completes.
 pub struct BoundedExecutor {
-    inner: runtime::Handle,
+    // inner: runtime::Handle,
     semaphore: Arc<Semaphore>,
     max_available: usize,
 }
 
 impl BoundedExecutor {
-    pub fn new(executor: runtime::Handle, num_permits: usize) -> Self {
+    pub fn new(num_permits: usize) -> Self {
         Self {
-            inner: executor,
             semaphore: Arc::new(Semaphore::new(num_permits)),
             max_available: num_permits,
         }
     }
 
-    pub fn from_current(num_permits: usize) -> Self {
-        Self::new(current(), num_permits)
-    }
-
     pub fn allow_maximum() -> Self {
-        Self::new(current(), Self::max_theoretical_tasks())
+        Self::new(Self::max_theoretical_tasks())
     }
 
     pub const fn max_theoretical_tasks() -> usize {
@@ -70,19 +60,16 @@ impl BoundedExecutor {
         usize::MAX >> 4
     }
 
-    #[inline]
     pub fn can_spawn(&self) -> bool {
         self.num_available() > 0
     }
 
     /// Returns the remaining number of tasks that can be spawned on this executor without waiting.
-    #[inline]
     pub fn num_available(&self) -> usize {
         self.semaphore.available_permits()
     }
 
     /// Returns the maximum number of concurrent tasks that can be spawned on this executor without waiting.
-    #[inline]
     pub fn max_available(&self) -> usize {
         self.max_available
     }
@@ -114,13 +101,12 @@ impl BoundedExecutor {
     /// # Examples
     ///
     /// ```
-    /// use tokio::runtime::Runtime;
+    /// use tokio::runtime::Handle;
     /// use tari_comms::bounded_executor::BoundedExecutor;
     ///
     /// # fn dox() {
     /// // Create the runtime
-    /// let mut rt = Runtime::new().unwrap();
-    /// let executor = BoundedExecutor::new(rt.handle().clone(), 1);
+    /// let executor = BoundedExecutor::new(1);
     ///
     /// // Spawn a future onto the runtime
     /// // NOTE: BoundedExecutor::spawn is an async function and therefore, must be polled/awaited for the task to be spawned
@@ -132,8 +118,8 @@ impl BoundedExecutor {
     ///     println!("will always run after the first task");
     /// });
     ///
-    /// rt.block_on(task1);
-    /// rt.block_on(task2);
+    /// Handle::current().block_on(task1);
+    /// Handle::current().block_on(task2);
     /// # }
     /// ```
     ///
@@ -146,16 +132,9 @@ impl BoundedExecutor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let span = span!(Level::TRACE, "bounded_executor::waiting_time");
         // SAFETY: acquire_owned only fails if the semaphore is closed (i.e self.semaphore.close() is called) - this
         // never happens in this implementation
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .instrument(span)
-            .await
-            .expect("semaphore closed");
+        let permit = self.semaphore.clone().acquire_owned().await.expect("semaphore closed");
         self.do_spawn(permit, future)
     }
 
@@ -164,93 +143,13 @@ impl BoundedExecutor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        self.inner.spawn(async move {
-            let span = span!(Level::TRACE, "bounded_executor::do_work");
-            let ret = future.instrument(span).await;
+        // let task = task::Builder::new().inner
+        tokio::spawn(async move {
             // Task is finished, release the permit
+            let ret = future.await;
             drop(permit);
             ret
         })
-    }
-}
-
-/// A task executor that can be configured to be bounded or unbounded.
-pub struct OptionallyBoundedExecutor {
-    inner: Either<runtime::Handle, BoundedExecutor>,
-}
-
-impl OptionallyBoundedExecutor {
-    /// Create a new OptionallyBoundedExecutor. If `num_permits` is `None` the executor will be unbounded.
-    pub fn new(executor: runtime::Handle, num_permits: Option<usize>) -> Self {
-        Self {
-            inner: num_permits
-                .map(|n| Either::Right(BoundedExecutor::new(executor.clone(), n)))
-                .unwrap_or_else(|| Either::Left(executor)),
-        }
-    }
-
-    /// Create a new OptionallyBoundedExecutor from the current tokio context. If `num_permits` is `None` the executor
-    /// will be unbounded.
-    pub fn from_current(num_permits: Option<usize>) -> Self {
-        Self::new(current(), num_permits)
-    }
-
-    /// Returns true if this executor can spawn, otherwise false.
-    pub fn can_spawn(&self) -> bool {
-        match &self.inner {
-            Either::Left(_) => true,
-            Either::Right(exec) => exec.can_spawn(),
-        }
-    }
-
-    /// Try spawn a new task returning its `JoinHandle`. An error is returned if the executor is bounded and currently
-    /// full.
-    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        match &self.inner {
-            Either::Left(exec) => Ok(exec.spawn(future)),
-            Either::Right(exec) => exec.try_spawn(future),
-        }
-    }
-
-    /// Spawns a new task returning its `JoinHandle`. If the executor is running `num_permits` tasks, this waits until a
-    /// task is available.
-    pub async fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        match &self.inner {
-            Either::Left(exec) => exec.spawn(future),
-            Either::Right(exec) => exec.spawn(future).await,
-        }
-    }
-
-    /// Returns the number tasks that can be spawned on this executor without blocking.
-    pub fn num_available(&self) -> usize {
-        match &self.inner {
-            Either::Left(_) => usize::MAX,
-            Either::Right(exec) => exec.num_available(),
-        }
-    }
-
-    /// Returns the max number tasks that can be performed concurrenly
-    pub fn max_available(&self) -> Option<usize> {
-        match &self.inner {
-            Either::Left(_) => None,
-            Either::Right(exec) => Some(exec.max_available()),
-        }
-    }
-}
-
-impl From<runtime::Handle> for OptionallyBoundedExecutor {
-    fn from(handle: runtime::Handle) -> Self {
-        Self {
-            inner: Either::Left(handle),
-        }
     }
 }
 
@@ -267,13 +166,12 @@ mod test {
     use tokio::time::sleep;
 
     use super::*;
-    use crate::runtime;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn spawn() {
         let flag = Arc::new(AtomicBool::new(false));
         let flag_cloned = flag.clone();
-        let executor = BoundedExecutor::new(runtime::current(), 1);
+        let executor = BoundedExecutor::new(1);
 
         // Spawn 1
         let task1_fut = executor

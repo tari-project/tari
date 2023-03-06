@@ -44,7 +44,7 @@ pub fn display_compressed_string(string: String, len_first: usize, len_last: usi
 
 /// Utility function to display the first net address of a &Peer as a String
 pub fn display_address(peer: &Peer) -> String {
-    match peer.addresses.first() {
+    match peer.addresses.best() {
         Some(address) => address.to_string(),
         None => "".to_string(),
     }

@@ -28,7 +28,6 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::HashOutput,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -97,8 +96,6 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
-    prev_header: Option<HashOutput>,
-    height: Option<u64>,
     tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
 }
@@ -122,8 +119,6 @@ where
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
         >,
         stage: TransactionSendProtocolStage,
-        prev_header: Option<HashOutput>,
-        height: Option<u64>,
         sender_protocol: Option<SenderTransactionProtocol>,
     ) -> Self {
         Self {
@@ -137,8 +132,6 @@ where
             message,
             service_request_reply_channel,
             stage,
-            prev_header,
-            height,
             tx_meta,
             sender_protocol,
         }
@@ -549,20 +542,13 @@ where
             .add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        outbound_tx
-            .sender_protocol
-            .finalize(
-                &self.resources.factories,
-                self.prev_header,
-                self.height.unwrap_or(u64::MAX),
-            )
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
-                );
-                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-            })?;
+        outbound_tx.sender_protocol.finalize().map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
+            );
+            TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+        })?;
 
         let tx = outbound_tx
             .sender_protocol

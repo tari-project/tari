@@ -90,7 +90,7 @@ pub fn draw_dialog<B>(
     }
     let center_area = centered_rect_absolute(
         width.min(full_area.width).saturating_sub(2),
-        ((spans.len()) as u16).max(2).min(full_area.height),
+        ((spans.len()) as u16).clamp(2, full_area.height),
         full_area,
     );
 

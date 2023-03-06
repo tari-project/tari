@@ -18,7 +18,7 @@ mod builder;
 pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
 
 pub mod connection_manager;
-pub use connection_manager::{validate_peer_addresses, PeerConnection, PeerConnectionError};
+pub use connection_manager::{validate_addresses, PeerConnection, PeerConnectionError};
 
 pub mod connectivity;
 
@@ -40,7 +40,6 @@ pub mod backoff;
 pub mod bounded_executor;
 pub mod memsocket;
 pub mod protocol;
-pub mod runtime;
 #[macro_use]
 pub mod message;
 pub mod net_address;

@@ -39,6 +39,8 @@ service Wallet {
     rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
     // This returns the identity information
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+    // This returns the tari address
+    rpc GetAddress (Empty) returns (GetAddressResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Tari to a number of recipients
@@ -87,6 +89,10 @@ message GetVersionResponse {
     string version = 1;
 }
 
+message GetAddressResponse {
+    bytes address = 1;
+}
+
 message TransferRequest {
     repeated PaymentRecipient recipients = 1;
 }
@@ -99,6 +105,7 @@ message CreateBurnTransactionRequest{
     uint64 amount = 1;
     uint64 fee_per_gram = 2;
     string message = 3;
+    bytes claim_public_key = 4;
 }
 
 
@@ -131,6 +138,9 @@ message CreateBurnTransactionResponse{
     uint64 transaction_id = 1;
     bool is_success = 2;
     string failure_message = 3;
+    bytes commitment = 4;
+    CommitmentSignature ownership_proof = 5;
+    bytes rangeproof = 6;
 }
 
 message TransferResult {
@@ -226,6 +236,7 @@ message GetBalanceResponse {
     uint64 available_balance = 1;
     uint64 pending_incoming_balance = 2;
     uint64 pending_outgoing_balance = 3;
+    uint64 timelocked_balance = 4;
 }
 
 message GetUnspentAmountsResponse {

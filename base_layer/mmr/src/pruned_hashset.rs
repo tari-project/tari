@@ -58,7 +58,7 @@ where
 
     fn try_from(base_mmr: &MerkleMountainRange<D, B>) -> Result<Self, Self::Error> {
         let base_offset = base_mmr.len()?;
-        let peak_indices = find_peaks(base_offset);
+        let peak_indices = find_peaks(base_offset).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         let peak_hashes = peak_indices
             .iter()
             .map(|i| match base_mmr.get_node_hash(*i)? {

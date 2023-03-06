@@ -107,7 +107,7 @@ impl StackItem {
     /// Take a byte slice and read the next stack item from it, including any associated data. `read_next` returns a
     /// tuple of the deserialised item, and an updated slice that has the Opcode and data removed.
     pub fn read_next(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        let code = bytes.get(0)?;
+        let code = bytes.first()?;
         match *code {
             TYPE_NUMBER => StackItem::b_to_number(&bytes[1..]),
             TYPE_HASH => StackItem::b_to_hash(&bytes[1..]),

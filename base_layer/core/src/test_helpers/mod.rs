@@ -103,6 +103,7 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
     block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
     block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
+
     (block, coinbase_output)
 }
 
@@ -123,7 +124,7 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
     let peer_database_name = {
         let mut rng = rand::thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
+            .map(|_| rng.sample(Alphanumeric))
             .take(8)
             .collect::<String>()
     };

@@ -181,7 +181,7 @@ mod test {
         assert!(decrypt_bytes_integral_nonce(
             &cipher,
             b"correct_domain".to_vec(),
-            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)].to_vec()
+            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)]
         )
         .is_err());
     }

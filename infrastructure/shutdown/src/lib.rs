@@ -39,6 +39,7 @@ use crate::oneshot_trigger::OneshotSignal;
 ///
 /// _Note_: This will trigger when dropped, so the `Shutdown` instance should be held as
 /// long as required by the application.
+#[derive(Clone, Debug)]
 pub struct Shutdown(oneshot_trigger::OneshotTrigger<()>);
 impl Shutdown {
     pub fn new() -> Self {

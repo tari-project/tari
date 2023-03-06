@@ -135,7 +135,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
+            .map(|_| rng.sample(Alphanumeric))
             .take(8)
             .collect::<String>()
     };
@@ -155,7 +155,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()
-        .with_listener_address(node_identity.public_address())
+        .with_listener_address(node_identity.first_public_address())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_user_agent(&"/test/1.0")
@@ -204,7 +204,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
 
     comms
         .node_identity()
-        .set_public_address(comms.listening_address().clone());
+        .add_public_address(comms.listening_address().clone());
 
     Ok((comms, dht, event_sender))
 }
