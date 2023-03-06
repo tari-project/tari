@@ -2651,6 +2651,7 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
 pub unsafe extern "C" fn contact_create(
     alias: *const c_char,
     address: *mut TariWalletAddress,
+    favourite: bool,
     error_out: *mut c_int,
 ) -> *mut TariContact {
     let mut error = 0;
@@ -2679,7 +2680,7 @@ pub unsafe extern "C" fn contact_create(
         return ptr::null_mut();
     }
 
-    let contact = Contact::new(alias_string, (*address).clone(), None, None);
+    let contact = Contact::new(alias_string, (*address).clone(), None, None, favourite);
     Box::into_raw(Box::new(contact))
 }
 
@@ -2714,6 +2715,34 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out:
         }
     }
     CString::into_raw(a)
+}
+
+/// Gets the favourite status of the TariContact
+///
+/// ## Arguments
+/// `contact` - The pointer to a TariContact
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
+/// null as well.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn contact_get_favourite(contact: *mut TariContact, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    let mut favourite = false;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if contact.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        favourite = (*contact).favourite;
+    }
+
+    favourite
 }
 
 /// Gets the TariWalletAddress of the TariContact
@@ -9078,7 +9107,9 @@ mod test {
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let test_contact = contact_create(test_contact_alias, test_address, error_ptr);
+            let test_contact = contact_create(test_contact_alias, test_address, true, error_ptr);
+            let favourite = contact_get_favourite(test_contact, error_ptr);
+            assert!(favourite);
             let alias = contact_get_alias(test_contact, error_ptr);
             let alias_string = CString::from_raw(alias).to_str().unwrap().to_owned();
             assert_eq!(alias_string, test_str);
@@ -9104,12 +9135,12 @@ mod test {
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let mut _test_contact = contact_create(ptr::null_mut(), test_contact_address, error_ptr);
+            let mut _test_contact = contact_create(ptr::null_mut(), test_contact_address, false, error_ptr);
             assert_eq!(
                 error,
                 LibWalletError::from(InterfaceError::NullError("alias_ptr".to_string())).code
             );
-            _test_contact = contact_create(test_contact_alias, ptr::null_mut(), error_ptr);
+            _test_contact = contact_create(test_contact_alias, ptr::null_mut(), false, error_ptr);
             assert_eq!(
                 error,
                 LibWalletError::from(InterfaceError::NullError("public_key_ptr".to_string())).code
@@ -9120,6 +9151,11 @@ mod test {
                 LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
             );
             let _contact_address = contact_get_tari_address(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
+            );
+            let _contact_address = contact_get_favourite(ptr::null_mut(), error_ptr);
             assert_eq!(
                 error,
                 LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code

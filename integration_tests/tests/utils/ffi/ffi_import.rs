@@ -190,6 +190,7 @@ extern "C" {
     pub fn contact_create(
         alias: *const c_char,
         address: *mut TariWalletAddress,
+        favourite: bool,
         error_out: *mut c_int,
     ) -> *mut TariContact;
     pub fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char;
