@@ -49,8 +49,8 @@ Example: `v1.55.2-rc.7`
 
 ### Development releases
 
-A developer writes a new feature `Feature-Y`. It is written behind a feature gate. They merge this new feature into `development`. They now want to run this feature on the `Esme` test network. They create a disposable release branch in the name of the version that will be tagged with the preface `testnet` and incrementing the number at the end of the `pre` version `testnet-1.55-pre.5`. Once any upgrade related changes are made such as incrementing the version through different crates, the developer will then tag the version `v1.55.0-pre.5`. The branch can be merged back into development, and the branch deleted.
-This new tag will trigger the release CI to compile Tari applications with the flag `TARI_NETWORK=esme` which will enable all development feature gates.
+A developer created a new feature which was added behind a feature gate. They merged it into the `development` environment and want to test it on the `Esme` test network. To do this, they created a temporary branch named `testnet-1.55-pre.5` and made any necessary changes such as upgrading the version. Once complete, they tagged the version as `v1.55.0-pre.5`. The branch can be merged back into development, and then deleted.
+By tagging this new version, it will prompt the release CI to compile Tari applications with the `TARI_NETWORK=esme` flag enabled, which allows all development feature gates to be utilized.
 
 Developers can perform this process as often and as many times as they want.
 
