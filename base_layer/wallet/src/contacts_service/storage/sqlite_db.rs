@@ -85,7 +85,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
-                        favourite: Some(i32::from(true)),
+                        favourite: Some(i32::from(c.favourite)),
                     })
                     .is_err()
                     {
