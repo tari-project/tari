@@ -58,7 +58,7 @@ where D: Digest + DomainDigest
                 _phantom: PhantomData,
             };
         }
-        // The size of the tree of `n` leaves is `2*n+1` where the leaves are at the end of the array.
+        // The size of the tree of `n` leaves is `2*n - 1` where the leaves are at the end of the array.
         let mut hashes = Vec::with_capacity(2 * leaves_cnt - 1);
         hashes.extend(vec![vec![0; 32]; leaves_cnt - 1]);
         hashes.extend(leaves);
