@@ -322,14 +322,24 @@ impl ConnectivityManagerActor {
                 }
             },
             maybe_state => {
-                info!(
-                    target: LOG_TARGET,
-                    "Connection is not connected (status={}) `{}`. Dialing...",
-                    maybe_state
-                        .map(|s| s.status().to_string())
-                        .unwrap_or_else(|| "NotConnected".to_string()),
-                    node_id.short_str()
-                );
+                match maybe_state {
+                    Some(state) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Connection was previously attempted for peer {}. Current status is '{}'. Dialing again...",
+                            node_id.short_str(),
+                            state.status()
+                        );
+                    },
+                    None => {
+                        info!(
+                            target: LOG_TARGET,
+                            "No connection for peer {}. Dialing...",
+                            node_id.short_str(),
+                        );
+                    },
+                }
+
                 if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
                     error!(
                         target: LOG_TARGET,
