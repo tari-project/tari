@@ -315,22 +315,18 @@ impl ConnectivityManagerActor {
             },
         }
         match self.pool.get(&node_id) {
-            Some(state) => {
-                if !state.is_connected() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Existing connection is present but is_connected is false for some reason...."
-                    );
-                }
-
+            Some(state) if state.is_connected() => {
                 if let Some(reply_tx) = reply_tx {
                     let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
                 }
             },
-            None => {
+            maybe_state => {
                 info!(
                     target: LOG_TARGET,
-                    "No existing connection found for peer `{}`. Dialing...",
+                    "No connection found for peer (status={}) `{}`. Dialing...",
+                    maybe_state
+                        .map(|s| s.status().to_string())
+                        .unwrap_or_else(|| "NotConnected".to_string()),
                     node_id.short_str()
                 );
                 if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
