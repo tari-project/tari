@@ -315,10 +315,10 @@ pub async fn init_wallet(
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
     let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
-        vec![match wallet_db.get_node_address()? {
-            Some(addr) => addr,
-            None => Multiaddr::empty(),
-        }]
+        match wallet_db.get_node_address()? {
+            Some(addr) => vec![addr],
+            None => vec![],
+        }
     } else {
         config.wallet.p2p.public_addresses.clone()
     };
