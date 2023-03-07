@@ -79,13 +79,22 @@ where D: Digest + DomainDigest
 pub enum MergedBalancedBinaryMerkleProofError {
     #[error("Can't merge zero proofs.")]
     CantMergeZeroProofs,
+    #[error("Bad proof semantics")]
+    BadProofSemantics,
+}
+
+/// Flag to indicate if proof data represents an index or a node hash
+/// This reduces the need for checking lengths instead
+#[derive(Clone, Debug)]
+pub enum MergedBalancedBinaryMerkleDataType {
+    Index,
+    Hash,
 }
 
 #[derive(Debug)]
 pub struct MergedBalancedBinaryMerkleProof<D> {
-    pub paths: Vec<Vec<Vec<u8>>>,
-    pub leaves_indices: Vec<usize>,
-    pub join_indices: Vec<Option<usize>>,
+    pub paths: Vec<Vec<(MergedBalancedBinaryMerkleDataType, Vec<u8>)>>, // these tuples can contain indexes or hashes!
+    pub node_indices: Vec<usize>,
     pub heights: Vec<usize>,
     _phantom: PhantomData<D>,
 }
@@ -110,12 +119,19 @@ where D: Digest + DomainDigest
                 // If this path was already joined ignore it.
                 if join_indices[index].is_none() && proof.path.len() > height {
                     let parent = (indices[index] - 1) >> 1;
-                    if let Some(sibling) = hash_map.insert(parent, index) {
-                        join_indices[index] = Some(sibling);
-                        // The sibling doesn't need a hash, it needs an index to this.
-                        *paths[sibling].first_mut().unwrap() = index.to_le_bytes().to_vec();
+                    if let Some(other_proof) = hash_map.insert(parent, index) {
+                        join_indices[index] = Some(other_proof);
+                        // The other proof doesn't need a hash, it needs an index to this proof
+                        *paths[other_proof].first_mut().unwrap() =
+                            (MergedBalancedBinaryMerkleDataType::Index, index.to_le_bytes().to_vec());
                     } else {
-                        paths[index].insert(0, proof.path[proof.path.len() - 1 - height].clone());
+                        paths[index].insert(
+                            0,
+                            (
+                                MergedBalancedBinaryMerkleDataType::Hash,
+                                proof.path[proof.path.len() - 1 - height].clone(),
+                            ),
+                        );
                     }
                     indices[index] = parent;
                 }
@@ -123,43 +139,68 @@ where D: Digest + DomainDigest
         }
         Ok(Self {
             paths,
-            leaves_indices: proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>(),
+            node_indices: proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>(),
             heights,
-            join_indices,
             _phantom: PhantomData,
         })
     }
 
-    pub fn verify_consume(mut self, root: &Hash, leaves_hashes: Vec<Hash>) -> bool {
+    pub fn verify_consume(
+        mut self,
+        root: &Hash,
+        leaves_hashes: Vec<Hash>,
+    ) -> Result<bool, MergedBalancedBinaryMerkleProofError> {
+        // Check that the proof and verifier data match
+        let n = self.node_indices.len(); // number of merged proofs
+        if self.paths.len() != n || leaves_hashes.len() != n {
+            return Err(MergedBalancedBinaryMerkleProofError::BadProofSemantics);
+        }
+
         let mut computed_hashes = leaves_hashes;
-        let max_height = self.heights.iter().max().unwrap();
-        let length = computed_hashes.len();
+        let max_height = self
+            .heights
+            .iter()
+            .max()
+            .ok_or(MergedBalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+
         // We need to compute the hashes row by row to be sure they are processed correctly.
         for height in (0..*max_height).rev() {
             let hashes = computed_hashes.clone();
-            for (leaf, index) in computed_hashes.iter_mut().zip(0..length) {
+            for (leaf, index) in computed_hashes.iter_mut().zip(0..n) {
                 if self.heights[index] > height {
                     if let Some(hash_or_index) = self.paths[index].pop() {
-                        let hash = match hash_or_index.len() {
-                            8 => {
-                                let index = usize::from_le_bytes(hash_or_index.as_bytes().try_into().unwrap());
-                                &hashes[index]
+                        let hash = match hash_or_index.0 {
+                            MergedBalancedBinaryMerkleDataType::Index => {
+                                // An index must be a valid `usize`
+                                let index = usize::from_le_bytes(
+                                    hash_or_index
+                                        .1
+                                        .as_bytes()
+                                        .try_into()
+                                        .map_err(|_| MergedBalancedBinaryMerkleProofError::BadProofSemantics)?,
+                                );
+
+                                // The index must also point to one of the proofs
+                                if index < hashes.len() {
+                                    &hashes[index]
+                                } else {
+                                    return Err(MergedBalancedBinaryMerkleProofError::BadProofSemantics);
+                                }
                             },
-                            32 => &hash_or_index,
-                            _ => panic!("It should be either index (size 8) or hash (size 32)"),
+                            MergedBalancedBinaryMerkleDataType::Hash => &hash_or_index.1,
                         };
-                        let parent = (self.leaves_indices[index] - 1) >> 1;
-                        if self.leaves_indices[index] & 1 == 1 {
+                        let parent = (self.node_indices[index] - 1) >> 1;
+                        if self.node_indices[index] & 1 == 1 {
                             *leaf = hash_together::<D>(leaf, hash);
                         } else {
                             *leaf = hash_together::<D>(hash, leaf);
                         }
-                        self.leaves_indices[index] = parent;
+                        self.node_indices[index] = parent;
                     }
                 }
             }
         }
-        &computed_hashes[0] == root
+        Ok(&computed_hashes[0] == root)
     }
 }
 
@@ -202,7 +243,9 @@ mod test {
             .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, *i))
             .collect::<Vec<_>>();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
-        assert!(merged_proof.verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>()));
+        assert!(merged_proof
+            .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
+            .unwrap());
     }
 
     #[test]
@@ -214,6 +257,6 @@ mod test {
             .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, i))
             .collect::<Vec<_>>();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
-        assert!(merged_proof.verify_consume(&root, leaves));
+        assert!(merged_proof.verify_consume(&root, leaves).unwrap());
     }
 }
