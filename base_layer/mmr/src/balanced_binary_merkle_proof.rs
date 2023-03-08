@@ -22,6 +22,7 @@
 
 use std::{collections::HashMap, convert::TryInto, marker::PhantomData};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common::DomainDigest;
@@ -30,10 +31,10 @@ use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BalancedBinaryMerkleProof<D> {
     pub path: Vec<Hash>,
-    pub node_index: usize,
+    pub node_index: u32,
     _phantom: PhantomData<D>,
 }
 
@@ -70,7 +71,7 @@ where D: Digest + DomainDigest
         }
         Self {
             path: proof,
-            node_index: tree.get_node_index(leaf_index),
+            node_index: tree.get_node_index(leaf_index) as u32,
             _phantom: PhantomData,
         }
     }
@@ -95,8 +96,8 @@ pub enum MergedBalancedBinaryMerkleDataType {
 #[derive(Debug)]
 pub struct MergedBalancedBinaryMerkleProof<D> {
     pub paths: Vec<Vec<(MergedBalancedBinaryMerkleDataType, Vec<u8>)>>, // these tuples can contain indexes or hashes!
-    pub node_indices: Vec<usize>,
-    pub heights: Vec<usize>,
+    pub node_indices: Vec<u32>,
+    pub heights: Vec<u32>,
     _phantom: PhantomData<D>,
 }
 
@@ -106,7 +107,7 @@ where D: Digest + DomainDigest
     pub fn create_from_proofs(
         proofs: Vec<BalancedBinaryMerkleProof<D>>,
     ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
-        let heights = proofs.iter().map(|proof| proof.path.len()).collect::<Vec<_>>();
+        let heights = proofs.iter().map(|proof| proof.path.len() as u32).collect::<Vec<_>>();
         let max_height = heights
             .iter()
             .max()
@@ -118,7 +119,7 @@ where D: Digest + DomainDigest
             let mut hash_map = HashMap::new();
             for (index, proof) in proofs.iter().enumerate() {
                 // If this path was already joined ignore it.
-                if join_indices[index].is_none() && proof.path.len() > height {
+                if join_indices[index].is_none() && proof.path.len() > height as usize {
                     let parent = (indices[index] - 1) >> 1;
                     if let Some(other_proof) = hash_map.insert(parent, index) {
                         join_indices[index] = Some(other_proof);
@@ -130,7 +131,7 @@ where D: Digest + DomainDigest
                             0,
                             (
                                 MergedBalancedBinaryMerkleDataType::Hash,
-                                proof.path[proof.path.len() - 1 - height].clone(),
+                                proof.path[proof.path.len() - 1 - height as usize].clone(),
                             ),
                         );
                     }

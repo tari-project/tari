@@ -92,7 +92,7 @@ where D: Digest + DomainDigest
         leaf_index + (self.hashes.len() >> 1)
     }
 
-    pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<usize, BalancedBinaryMerkleTreeError> {
+    pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<u32, BalancedBinaryMerkleTreeError> {
         let pos = self
             .hashes
             .position(hash)
@@ -102,7 +102,7 @@ where D: Digest + DomainDigest
             // The hash provided was not for leaf, but for node.
             Err(BalancedBinaryMerkleTreeError::LeafNotFound)
         } else {
-            Ok(pos - (self.hashes.len() >> 1))
+            Ok(pos as u32 - (self.hashes.len() as u32 >> 1))
         }
     }
 }
