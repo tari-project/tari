@@ -30,7 +30,7 @@ use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct BalancedBinaryMerkleProof<D> {
     pub path: Vec<Hash>,
     pub node_index: usize,
