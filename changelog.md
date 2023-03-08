@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.48.0-pre.0](https://github.com/tari-project/tari/compare/v0.47.0-pre.0...v0.48.0-pre.0) (2023-03-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **peer_db:** more accurate peer stats per address (#5142)
+* use consensus hashing API for validator node MMR (#5207)
+* **consensus:** add balanced binary merkle tree (#5189)
+
+### Features
+
+* add favourite flag to contact ([#5217](https://github.com/tari-project/tari/issues/5217)) ([0371b60](https://github.com/tari-project/tari/commit/0371b608dd7a59664e7c8e1494335709ad21943c))
+* add indexer config ([#5210](https://github.com/tari-project/tari/issues/5210)) ([cf95601](https://github.com/tari-project/tari/commit/cf9560192de56ce1be22468b4551c5a60e5d9440))
+* add merge proof for balanced binary merkle tree ([#5193](https://github.com/tari-project/tari/issues/5193)) ([8962909](https://github.com/tari-project/tari/commit/8962909127ded86249099bfdd384ac4e8b0db0ee))
+* **consensus:** add balanced binary merkle tree ([#5189](https://github.com/tari-project/tari/issues/5189)) ([8d34e8a](https://github.com/tari-project/tari/commit/8d34e8a8eee2ed88ad0ab866a185d10a43300ec1))
+* log to base dir ([#5197](https://github.com/tari-project/tari/issues/5197)) ([5147b5c](https://github.com/tari-project/tari/commit/5147b5c81082396dc80605e5a9422eec8b06c1b1))
+* **peer_db:** more accurate peer stats per address ([#5142](https://github.com/tari-project/tari/issues/5142)) ([fdad1c6](https://github.com/tari-project/tari/commit/fdad1c6bf7914bbdc0ffc25ef729506196881c35))
+
+
+### Bug Fixes
+
+* add grpc commitment signature proto type ([#5200](https://github.com/tari-project/tari/issues/5200)) ([d523f1e](https://github.com/tari-project/tari/commit/d523f1e556d0f56c784923600fe48f93e2239520))
+* peer seeds for esme/igor ([#5202](https://github.com/tari-project/tari/issues/5202)) ([1bc226c](https://github.com/tari-project/tari/commit/1bc226c85c0810c9ad01dfb6539d8b614cc71fb8))
+* remove panics from merged BBMT verification ([#5221](https://github.com/tari-project/tari/issues/5221)) ([a4c5fce](https://github.com/tari-project/tari/commit/a4c5fce5e43153db090465f3623989ed07dfd627))
+* source coverage ci failure ([#5209](https://github.com/tari-project/tari/issues/5209)) ([80294a1](https://github.com/tari-project/tari/commit/80294a1a931d248413166966eebb1e297249e506))
+* use consensus hashing API for validator node MMR ([#5207](https://github.com/tari-project/tari/issues/5207)) ([de28115](https://github.com/tari-project/tari/commit/de281154ac339cd0e8b0eac59bcf933851dcc5c6))
+* wallet reuse existing tor address ([#5092](https://github.com/tari-project/tari/issues/5092)) ([576f44e](https://github.com/tari-project/tari/commit/576f44e48d781e3a61be138549484c4b4a79773e))
+* **wallet:** avoids empty addresses in node identity ([#5224](https://github.com/tari-project/tari/issues/5224)) ([1a66312](https://github.com/tari-project/tari/commit/1a66312d13dff7fd627930be88cfebffc4b08074))
+
 ## [0.47.0-pre.0](https://github.com/tari-project/tari/compare/v0.46.0...v0.47.0-pre.0) (2023-02-27)
 
 
