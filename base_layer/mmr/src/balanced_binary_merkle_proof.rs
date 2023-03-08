@@ -23,13 +23,14 @@
 use std::{collections::HashMap, convert::TryInto, marker::PhantomData};
 
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_common::DomainDigest;
 use tari_utilities::ByteArray;
 use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct BalancedBinaryMerkleProof<D> {
     pub path: Vec<Hash>,
     pub node_index: usize,
