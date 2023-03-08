@@ -152,8 +152,12 @@ pub mod pruned_hashset;
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
 pub use backend::{ArrayLike, ArrayLikeExt};
-pub use balanced_binary_merkle_proof::{BalancedBinaryMerkleProof, MergedBalancedBinaryMerkleProof};
-pub use balanced_binary_merkle_tree::BalancedBinaryMerkleTree;
+pub use balanced_binary_merkle_proof::{
+    BalancedBinaryMerkleProof,
+    MergedBalancedBinaryMerkleProof,
+    MergedBalancedBinaryMerkleProofError,
+};
+pub use balanced_binary_merkle_tree::{BalancedBinaryMerkleTree, BalancedBinaryMerkleTreeError};
 /// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.
 pub use mem_backend_vec::MemBackendVec;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
