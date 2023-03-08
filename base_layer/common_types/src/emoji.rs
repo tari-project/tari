@@ -97,7 +97,8 @@ lazy_static! {
     pub static ref REVERSE_EMOJI: HashMap<char, u8> = {
         let mut m = HashMap::with_capacity(DICT_SIZE);
         EMOJI.iter().enumerate().for_each(|(i, c)| {
-            m.insert(*c, i as u8);
+            #[allow(clippy::cast_possible_truncation)]
+            m.insert(*c, i as u8); // this can't truncate if the table contains at most 2^8 elements
         });
         m
     };
