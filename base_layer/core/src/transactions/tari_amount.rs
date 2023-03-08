@@ -69,7 +69,14 @@ pub enum MicroTariError {
     #[error("Failed to parse value: {0}")]
     ParseError(String),
     #[error("Failed to convert value: {0}")]
-    ConversionError(#[from] DecimalConvertError),
+    ConversionError(DecimalConvertError),
+}
+
+// DecimalConvertError does not implement Error
+impl From<DecimalConvertError> for MicroTariError {
+    fn from(err: DecimalConvertError) -> Self {
+        MicroTariError::ConversionError(err)
+    }
 }
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
