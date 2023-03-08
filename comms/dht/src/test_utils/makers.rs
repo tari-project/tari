@@ -214,7 +214,7 @@ pub fn make_dht_envelope<T: prost::Message>(
         crypt::encrypt_message(&key_message, &mut message, masked_public_key.as_bytes()).unwrap();
         message.freeze()
     } else {
-        prepare_message(false, message).freeze()
+        prepare_message(false, message).unwrap().freeze()
     };
     let header = make_dht_header(
         node_identity,

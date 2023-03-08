@@ -288,7 +288,8 @@ impl OutboundMessageRequester {
             message.to_propagation_header()
         };
         let msg = wrap_in_envelope_body!(header, message.into_inner());
-        let body = prepare_message(params.encryption.is_encrypt(), &msg);
+        let body = prepare_message(params.encryption.is_encrypt(), &msg)
+            .map_err(|_| DhtOutboundError::PaddingError(String::from("Unable to pad message")))?;
         self.send_raw(params, body).await
     }
 
@@ -305,7 +306,8 @@ impl OutboundMessageRequester {
             trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
         }
         let msg = wrap_in_envelope_body!(message);
-        let body = prepare_message(params.encryption.is_encrypt(), &msg);
+        let body = prepare_message(params.encryption.is_encrypt(), &msg)
+            .map_err(|_| DhtOutboundError::PaddingError(String::from("Unable to pad message")))?;
         self.send_raw(params, body).await
     }
 
@@ -322,7 +324,8 @@ impl OutboundMessageRequester {
             trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
         }
         let msg = wrap_in_envelope_body!(message);
-        let body = prepare_message(params.encryption.is_encrypt(), &msg);
+        let body = prepare_message(params.encryption.is_encrypt(), &msg)
+            .map_err(|_| DhtOutboundError::PaddingError(String::from("Unable to pad message")))?;
         self.send_raw_no_wait(params, body).await
     }
 
