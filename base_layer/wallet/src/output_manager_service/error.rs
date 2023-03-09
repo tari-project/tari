@@ -22,9 +22,9 @@
 
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_contacts::contacts_service::storage::sqlite_db::DbError;
 use tari_core::transactions::{
     transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
@@ -193,7 +193,7 @@ pub enum OutputManagerStorageError {
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]
-    DbError(#[from] DbError),
+    SqliteStorageError(#[from] SqliteStorageError),
 }
 
 impl From<OutputManagerError> for ExitError {

@@ -20,17 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, io::Write, sync::Arc};
 
 use chrono::NaiveDateTime;
-use diesel::{
-    prelude::*,
-    r2d2,
-    r2d2::{ConnectionManager, PooledConnection},
-    result::Error as DieselError,
-    SqliteConnection,
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use tari_common_sqlite::{
+    error::SqliteStorageError,
+    sqlite_connection_pool::PooledDbConnection,
+    util::diesel_ext::ExpectedRowsExtension,
 };
-use tari_common_sqlite::{error::SqliteStorageError, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
@@ -43,31 +42,11 @@ use crate::{
     schema::contacts,
 };
 
-pub trait PooledDbConnection: Send + Sync + Clone {
-    type Error;
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-    fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error>;
-}
-
+// A marker trait for types used in the ContactService. Any struct that will be used in the service should be tagged
+// with the trait.
 pub trait ContactService {}
-
-#[derive(Debug, thiserror::Error)]
-pub enum DbError {
-    #[error("Database error: `{0}`")]
-    SqliteStorageError(#[from] SqliteStorageError),
-    #[error("Operation not supported")]
-    OperationNotSupported,
-    #[error("Conversion error: `{0}`")]
-    ConversionError(String),
-    #[error("Database error: `{0}`")]
-    DieselR2d2Error(#[from] r2d2::Error),
-    #[error("Database error: `{0}`")]
-    DieselConnectionError(#[from] ConnectionError),
-    #[error("Database error: `{0}`")]
-    DatabaseMigrationError(String),
-    #[error("Database error: `{0}`")]
-    BlockingTaskSpawnError(String),
-}
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -75,7 +54,7 @@ pub struct ContactsServiceSqliteDatabase<TContactServiceDbConnection> {
     database_connection: Arc<TContactServiceDbConnection>,
 }
 
-impl<TContactServiceDbConnection: PooledDbConnection + ContactService>
+impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError> + ContactService>
     ContactsServiceSqliteDatabase<TContactServiceDbConnection>
 {
     pub fn new(database_connection: TContactServiceDbConnection) -> Self {
@@ -83,10 +62,33 @@ impl<TContactServiceDbConnection: PooledDbConnection + ContactService>
             database_connection: Arc::new(database_connection),
         }
     }
+
+    pub fn init(database_connection: TContactServiceDbConnection) -> Self {
+        let db = Self::new(database_connection);
+        db.run_migrations().expect("Migrations to run");
+        db
+    }
+
+    fn run_migrations(&self) -> Result<Vec<String>, SqliteStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))
+    }
 }
 
 impl<TContactServiceDbConnection> ContactsBackend for ContactsServiceSqliteDatabase<TContactServiceDbConnection>
-where TContactServiceDbConnection: PooledDbConnection<Error = DbError> + ContactService
+where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError> + ContactService
 {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -322,12 +324,11 @@ pub struct UpdateContact {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, io::Write};
+    use std::convert::{TryFrom, TryInto};
 
-    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
-    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
+    use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
     use tari_common_types::{
         tari_address::TariAddress,
         types::{PrivateKey, PublicKey},
@@ -335,36 +336,24 @@ mod test {
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
+    use super::*;
     use crate::contacts_service::storage::{
         database::Contact,
         sqlite_db::{ContactSql, UpdateContact},
     };
+
+    impl ContactService for DbConnection {}
 
     #[test]
     fn test_crud() {
         with_temp_dir(|dir_path| {
             let db_name = format!("{}.sqlite3", string(8).as_str());
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
+            let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-            const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
-            let mut conn =
-                SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-            conn.run_pending_migrations(MIGRATIONS)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|b| {
-                            let m = format!("Running migration {}", b);
-                            std::io::stdout()
-                                .write_all(m.as_ref())
-                                .expect("Couldn't write migration number to stdout");
-                            m
-                        })
-                        .collect::<Vec<String>>()
-                })
-                .expect("Migrations failed");
-
-            sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
+            let db = DbConnection::connect_url(&url).unwrap();
+            let _service = ContactsServiceSqliteDatabase::init(db.clone());
+            let mut conn = db.get_pooled_connection().unwrap();
 
             let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
 

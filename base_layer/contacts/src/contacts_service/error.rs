@@ -27,7 +27,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
-use crate::contacts_service::storage::{database::DbKey, sqlite_db::DbError};
+use crate::contacts_service::storage::database::DbKey;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -70,6 +70,4 @@ pub enum ContactsServiceStorageError {
     BlockingTaskSpawnError(String),
     #[error("We got an error")]
     UnknownError,
-    #[error("Error: `{0}`")]
-    DbError(#[from] DbError),
 }

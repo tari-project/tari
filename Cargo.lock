@@ -5288,9 +5288,15 @@ dependencies = [
 name = "tari_common_sqlite"
 version = "0.48.0-pre.1"
 dependencies = [
+ "chrono",
  "diesel",
+ "diesel_migrations",
  "log",
+ "serde",
+ "tari_test_utils",
+ "tari_utilities",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

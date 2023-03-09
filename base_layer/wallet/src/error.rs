@@ -31,7 +31,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_contacts::contacts_service::{error::ContactsServiceError, storage::sqlite_db::DbError};
+use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_core::transactions::transaction_components::TransactionError;
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
@@ -175,8 +175,6 @@ pub enum WalletStorageError {
     RecoverySeedError(String),
     #[error("Bad encryption version: `{0}`")]
     BadEncryptionVersion(String),
-    #[error("Error: `{0}`")]
-    DbError(#[from] DbError),
 }
 
 impl From<WalletStorageError> for ExitError {

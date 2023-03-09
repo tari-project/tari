@@ -37,12 +37,11 @@ use diesel::{
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
-use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
+use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PrivateKey},
 };
-use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};

@@ -26,8 +26,11 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-use tari_contacts::contacts_service::storage::sqlite_db::{ContactService, DbError, PooledDbConnection};
+use tari_common_sqlite::{
+    error::SqliteStorageError,
+    sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
+};
+use tari_contacts::contacts_service::storage::sqlite_db::ContactService;
 
 #[derive(Clone)]
 pub struct WalletDbConnection {
@@ -47,7 +50,7 @@ impl WalletDbConnection {
 impl ContactService for WalletDbConnection {}
 
 impl PooledDbConnection for WalletDbConnection {
-    type Error = DbError;
+    type Error = SqliteStorageError;
 
     fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error> {
         let conn = self.pool.get_pooled_connection()?;

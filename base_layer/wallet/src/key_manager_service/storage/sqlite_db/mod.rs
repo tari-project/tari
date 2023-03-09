@@ -28,7 +28,7 @@ use std::{
 use chacha20poly1305::XChaCha20Poly1305;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
-use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tokio::time::Instant;
 
 use crate::{

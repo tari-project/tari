@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
-use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
+use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{
@@ -43,7 +43,6 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_contacts::contacts_service::storage::sqlite_db::PooledDbConnection;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::{
     hex::{from_hex, Hex},
