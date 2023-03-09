@@ -488,9 +488,7 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Change script", &self.private_nonce, &mut message);
-        Self::check_value("Change input data", &self.private_nonce, &mut message);
-        Self::check_value("Change script private key", &self.private_nonce, &mut message);
+        Self::check_value("Missing private nonce", &self.private_nonce, &mut message);
 
         if !message.is_empty() {
             return self.build_err(&message.join(","));
