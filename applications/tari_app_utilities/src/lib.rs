@@ -28,3 +28,13 @@ pub mod consts {
     // Import the auto-generated const values from the Manifest and Git
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
+
+/// Non-64-bit architectures are untested. Depending on the application, it may not compile already or could be various
+/// classes of bugs (overflows, crashes, etc). Use this macro to explicitly fail compilation on non-64-bit targets.
+#[macro_export]
+macro_rules! deny_non_64_bit_archs {
+    () => {
+        #[cfg(not(target_pointer_width = "64"))]
+        compile_error!("Only 64-bit architectures are supported");
+    };
+}

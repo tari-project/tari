@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// non-64-bit not supported
+tari_app_utilities::deny_non_64_bit_archs!();
+
 mod block_template_data;
 mod block_template_protocol;
 mod cli;
