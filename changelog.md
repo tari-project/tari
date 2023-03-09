@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.48.0-pre.1](https://github.com/tari-project/tari/compare/v0.48.0-pre.0...v0.48.0-pre.1) (2023-03-08)
+
+
+### Bug Fixes
+
+* **comms:** dial if connection is not connected ([#5223](https://github.com/tari-project/tari/issues/5223)) ([0a060b6](https://github.com/tari-project/tari/commit/0a060b6827247a5772d04dde477f0494019bad89))
+* export error types for balance merkle tree ([#5229](https://github.com/tari-project/tari/issues/5229)) ([9db0501](https://github.com/tari-project/tari/commit/9db0501af3b464f430e889e21dc889ea736886ea))
+* fix compile error using decimal-rs 0.1.42 ([#5228](https://github.com/tari-project/tari/issues/5228)) ([6edbb1c](https://github.com/tari-project/tari/commit/6edbb1c8745593e41dd24585c9f8d399a96fff51))
+
 ## [0.48.0-pre.0](https://github.com/tari-project/tari/compare/v0.47.0-pre.0...v0.48.0-pre.0) (2023-03-07)
 
 
