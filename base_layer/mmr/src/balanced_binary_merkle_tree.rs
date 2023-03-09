@@ -26,14 +26,18 @@ use digest::Digest;
 use tari_common::DomainDigest;
 use thiserror::Error;
 
-use crate::{cast_to_u32, common::hash_together, ArrayLike, Hash};
+use crate::{common::hash_together, ArrayLike, Hash};
+
+pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleTreeError> {
+    u32::try_from(value).map_err(|_| BalancedBinaryMerkleTreeError::MathOverFlow)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum BalancedBinaryMerkleTreeError {
     #[error("There is no leaf with the hash provided.")]
     LeafNotFound,
     #[error("Math overflow")]
-    MathoverFlow,
+    MathOverFlow,
 }
 
 // The hashes are perfectly balanced binary tree, so parent at index `i` (0-based) has children at positions `2*i+1` and

@@ -131,7 +131,6 @@
 //!    0 1  2 3  4 5  6  7  8  9 10 11 12  <-- Leaf node indices
 //!    ----------------------------------
 //! ```
-use std::convert::TryFrom;
 
 pub type Hash = Vec<u8>;
 pub type HashSlice = [u8];
@@ -191,8 +190,4 @@ if_native_bitmap! {
     pub use mutable_mmr::MutableMmr;
     /// A data structure for storing all the data required to restore the state of an MMR.
     pub use mutable_mmr_leaf_nodes::MutableMmrLeafNodes;
-}
-
-pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleTreeError> {
-    u32::try_from(value).map_err(|_| BalancedBinaryMerkleTreeError::MathoverFlow)
 }
