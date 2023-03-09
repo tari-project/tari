@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, marker::PhantomData};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    marker::PhantomData,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
@@ -57,7 +61,10 @@ where D: Digest + DomainDigest
         &computed_root == root
     }
 
-    pub fn generate_proof(tree: &BalancedBinaryMerkleTree<D>, leaf_index: usize) -> Self {
+    pub fn generate_proof(
+        tree: &BalancedBinaryMerkleTree<D>,
+        leaf_index: usize,
+    ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
         let mut node_index = tree.get_node_index(leaf_index);
         let mut proof = Vec::new();
         while node_index > 0 {
@@ -69,11 +76,12 @@ where D: Digest + DomainDigest
             // Traverse to parent
             node_index = parent;
         }
-        Self {
+        Ok(Self {
             path: proof,
-            node_index: tree.get_node_index(leaf_index) as u32,
+            node_index: u32::try_from(tree.get_node_index(leaf_index))
+                .map_err(|_| MergedBalancedBinaryMerkleProofError::MathOverflow)?,
             _phantom: PhantomData,
-        }
+        })
     }
 }
 
@@ -83,6 +91,8 @@ pub enum MergedBalancedBinaryMerkleProofError {
     CantMergeZeroProofs,
     #[error("Bad proof semantics")]
     BadProofSemantics,
+    #[error("Math overflow")]
+    MathOverflow,
 }
 
 /// Flag to indicate if proof data represents an index or a node hash
@@ -107,7 +117,16 @@ where D: Digest + DomainDigest
     pub fn create_from_proofs(
         proofs: Vec<BalancedBinaryMerkleProof<D>>,
     ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
-        let heights = proofs.iter().map(|proof| proof.path.len() as u32).collect::<Vec<_>>();
+        let heights = proofs
+            .iter()
+            .map(|proof| {
+                proof
+                    .path
+                    .len()
+                    .try_into()
+                    .map_err(|_| MergedBalancedBinaryMerkleProofError::MathOverflow)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let max_height = heights
             .iter()
             .max()
@@ -225,11 +244,11 @@ mod test {
             let hash_last = leaves[n - 1].clone();
             let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
             let root = bmt.get_merkle_root();
-            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0);
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
             assert!(proof.verify(&root, hash_0));
-            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n / 2);
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n / 2).unwrap();
             assert!(proof.verify(&root, hash_n_half));
-            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n - 1);
+            let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, n - 1).unwrap();
             assert!(proof.verify(&root, hash_last));
         }
     }
@@ -243,7 +262,8 @@ mod test {
         let proofs = indices
             .iter()
             .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, *i))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
         assert!(merged_proof
             .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
@@ -257,7 +277,8 @@ mod test {
         let root = bmt.get_merkle_root();
         let proofs = (0..255)
             .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, i))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(proofs).unwrap();
         assert!(merged_proof.verify_consume(&root, leaves).unwrap());
     }
