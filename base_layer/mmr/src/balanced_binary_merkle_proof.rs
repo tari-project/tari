@@ -33,7 +33,7 @@ use tari_common::DomainDigest;
 use tari_utilities::ByteArray;
 use thiserror::Error;
 
-use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
+use crate::{cast_to_u32, common::hash_together, BalancedBinaryMerkleTree, Hash};
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BalancedBinaryMerkleProof<D> {
@@ -78,8 +78,7 @@ where D: Digest + DomainDigest
         }
         Ok(Self {
             path: proof,
-            node_index: u32::try_from(tree.get_node_index(leaf_index))
-                .map_err(|_| MergedBalancedBinaryMerkleProofError::MathOverflow)?,
+            node_index: cast_to_u32(tree.get_node_index(leaf_index))?,
             _phantom: PhantomData,
         })
     }
@@ -119,13 +118,7 @@ where D: Digest + DomainDigest
     ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
         let heights = proofs
             .iter()
-            .map(|proof| {
-                proof
-                    .path
-                    .len()
-                    .try_into()
-                    .map_err(|_| MergedBalancedBinaryMerkleProofError::MathOverflow)
-            })
+            .map(|proof| cast_to_u32(proof.path.len())?)
             .collect::<Result<Vec<_>, _>>()?;
         let max_height = heights
             .iter()

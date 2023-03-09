@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
+use std::{convert::TryFrom, marker::PhantomData};
 
 use digest::Digest;
 use tari_common::DomainDigest;
 use thiserror::Error;
 
-use crate::{common::hash_together, ArrayLike, Hash};
+use crate::{cast_to_u32, common::hash_together, ArrayLike, Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum BalancedBinaryMerkleTreeError {
     #[error("There is no leaf with the hash provided.")]
     LeafNotFound,
+    #[error("Math overflow")]
+    MathoverFlow,
 }
 
 // The hashes are perfectly balanced binary tree, so parent at index `i` (0-based) has children at positions `2*i+1` and
@@ -102,7 +104,7 @@ where D: Digest + DomainDigest
             // The hash provided was not for leaf, but for node.
             Err(BalancedBinaryMerkleTreeError::LeafNotFound)
         } else {
-            Ok(pos as u32 - (self.hashes.len() as u32 >> 1))
+            Ok(cast_to_u32(pos - (self.hashes.len() >> 1))?)
         }
     }
 }
