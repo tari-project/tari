@@ -470,6 +470,13 @@ where
                 let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::GetNextSpendAndScriptKeys => {
+                let (spend_key, script_key) = self.get_spend_and_script_keys().await?;
+                Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
+            },
+            OutputManagerRequest::GetRewindData => {
+                Ok(OutputManagerResponse::RewindData(self.resources.rewind_data.clone()))
+            },
         }
     }
 
@@ -1025,13 +1032,14 @@ where
 
         if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
-            builder.with_change_script(
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-            );
+            builder
+                .with_change_secret(spending_key)
+                .with_rewindable_outputs(self.resources.rewind_data.clone())
+                .with_change_script(
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                );
         }
 
         let stp = builder
