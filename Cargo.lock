@@ -5474,7 +5474,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "0.47.0-pre.0"
+version = "0.48.0-pre.1"
 dependencies = [
  "chrono",
  "diesel",
