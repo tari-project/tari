@@ -7,7 +7,7 @@ version = "0.48.0-pre.1"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.7" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
 # TODO: remove this dependency and move Network into tari_common_types
 tari_common = {  path = "../../common" }
