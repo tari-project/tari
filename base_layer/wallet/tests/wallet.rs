@@ -711,7 +711,7 @@ async fn test_import_utxo() {
         OutputManagerDatabase::new(output_manager_backend.clone()),
         TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
-        ContactsServiceSqliteDatabase::new(connection.clone()),
+        ContactsServiceSqliteDatabase::init(connection.clone()),
         KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
