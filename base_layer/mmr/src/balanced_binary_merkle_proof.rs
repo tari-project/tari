@@ -35,8 +35,8 @@ use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
 
-pub(crate) fn cast_to_u32(value: usize) -> Result<u32, MergedBalancedBinaryMerkleProofError> {
-    u32::try_from(value).map_err(|_| MergedBalancedBinaryMerkleProofError::MathOverflow)
+pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleProofError> {
+    u32::try_from(value).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
@@ -68,7 +68,7 @@ where D: Digest + DomainDigest
     pub fn generate_proof(
         tree: &BalancedBinaryMerkleTree<D>,
         leaf_index: usize,
-    ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
+    ) -> Result<Self, BalancedBinaryMerkleProofError> {
         let mut node_index = tree.get_node_index(leaf_index);
         let mut proof = Vec::new();
         while node_index > 0 {
@@ -89,7 +89,7 @@ where D: Digest + DomainDigest
 }
 
 #[derive(Debug, Error)]
-pub enum MergedBalancedBinaryMerkleProofError {
+pub enum BalancedBinaryMerkleProofError {
     #[error("Can't merge zero proofs.")]
     CantMergeZeroProofs,
     #[error("Bad proof semantics")]
@@ -119,7 +119,7 @@ where D: Digest + DomainDigest
 {
     pub fn create_from_proofs(
         proofs: Vec<BalancedBinaryMerkleProof<D>>,
-    ) -> Result<Self, MergedBalancedBinaryMerkleProofError> {
+    ) -> Result<Self, BalancedBinaryMerkleProofError> {
         let heights = proofs
             .iter()
             .map(|proof| cast_to_u32(proof.path.len()))
@@ -127,7 +127,7 @@ where D: Digest + DomainDigest
         let max_height = heights
             .iter()
             .max()
-            .ok_or(MergedBalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+            .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
         let mut indices = proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>();
         let mut paths = vec![Vec::new(); proofs.len()];
         let mut join_indices = vec![None; proofs.len()];
@@ -167,11 +167,11 @@ where D: Digest + DomainDigest
         mut self,
         root: &Hash,
         leaves_hashes: Vec<Hash>,
-    ) -> Result<bool, MergedBalancedBinaryMerkleProofError> {
+    ) -> Result<bool, BalancedBinaryMerkleProofError> {
         // Check that the proof and verifier data match
         let n = self.node_indices.len(); // number of merged proofs
         if self.paths.len() != n || leaves_hashes.len() != n {
-            return Err(MergedBalancedBinaryMerkleProofError::BadProofSemantics);
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
 
         let mut computed_hashes = leaves_hashes;
@@ -179,7 +179,7 @@ where D: Digest + DomainDigest
             .heights
             .iter()
             .max()
-            .ok_or(MergedBalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+            .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
 
         // We need to compute the hashes row by row to be sure they are processed correctly.
         for height in (0..*max_height).rev() {
@@ -195,14 +195,14 @@ where D: Digest + DomainDigest
                                         .1
                                         .as_bytes()
                                         .try_into()
-                                        .map_err(|_| MergedBalancedBinaryMerkleProofError::BadProofSemantics)?,
+                                        .map_err(|_| BalancedBinaryMerkleProofError::BadProofSemantics)?,
                                 );
 
                                 // The index must also point to one of the proofs
                                 if index < hashes.len() {
                                     &hashes[index]
                                 } else {
-                                    return Err(MergedBalancedBinaryMerkleProofError::BadProofSemantics);
+                                    return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
                                 }
                             },
                             MergedBalancedBinaryMerkleDataType::Hash => &hash_or_index.1,
