@@ -101,7 +101,7 @@ use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage,
 use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::random;
+use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_utilities::SafePassword;
 use tari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -154,7 +154,7 @@ use tokio::{
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
 };

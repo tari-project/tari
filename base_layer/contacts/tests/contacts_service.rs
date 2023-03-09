@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common_types::types::PublicKey;
+use tari_common::configuration::{Network, StringList};
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
@@ -34,17 +38,6 @@ use tari_contacts::contacts_service::{
     ContactsServiceInitializer,
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_service_framework::StackBuilder;
-use tari_shutdown::Shutdown;
-use tari_test_utils::random;
-use tempfile::tempdir;
-use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
-pub mod support;
-use support::data::get_temp_sqlite_database_connection;
-use tari_common::configuration::{Network, StringList};
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::P2pInitializer,
@@ -55,8 +48,11 @@ use tari_p2p::{
     TransportConfig,
     TransportType,
 };
-
-use crate::support::comms_and_services::get_next_memory_address;
+use tari_service_framework::StackBuilder;
+use tari_shutdown::Shutdown;
+use tari_test_utils::{comms_and_services::get_next_memory_address, paths::with_temp_dir, random, random::string};
+use tempfile::tempdir;
+use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     runtime: &mut Runtime,
@@ -132,78 +128,85 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 
 #[test]
 pub fn test_contacts_service() {
-    let mut runtime = Runtime::new().unwrap();
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = ContactsServiceSqliteDatabase::new(connection);
+    with_temp_dir(|dir_path| {
+        let mut runtime = Runtime::new().unwrap();
 
-    let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
-    let mut liveness_event_stream = contacts_service.get_contacts_liveness_event_stream();
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
+        let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-    let mut contacts = Vec::new();
-    for i in 0..5 {
+        let db = DbConnection::connect_url(&url).unwrap();
+        let backend = ContactsServiceSqliteDatabase::init(db);
+
+        let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
+        let mut liveness_event_stream = contacts_service.get_contacts_liveness_event_stream();
+
+        let mut contacts = Vec::new();
+        for i in 0..5 {
+            let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+            let address = TariAddress::new(public_key, Network::default());
+
+            contacts.push(Contact::new(random::string(8), address, None, None, false));
+
+            runtime
+                .block_on(contacts_service.upsert_contact(contacts[i].clone()))
+                .unwrap();
+        }
+
+        let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
+        assert_eq!(contacts, got_contacts);
+
+        let contact = runtime
+            .block_on(contacts_service.get_contact(contacts[0].address.clone()))
+            .unwrap();
+        assert_eq!(contact, contacts[0]);
+
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new(public_key, Network::default());
 
-        contacts.push(Contact::new(random::string(8), address, None, None, false));
+        let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
+        match contact {
+            Ok(_) => panic!("There should be an error here"),
+            Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
+                assert_eq!(val, DbKey::Contact(address.clone()))
+            },
+            _ => panic!("There should be a specific error here"),
+        }
+        let result = runtime.block_on(contacts_service.remove_contact(address.clone()));
+        match result {
+            Ok(_) => panic!("There should be an error here"),
+            Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
+                assert_eq!(val, DbKey::Contact(address))
+            },
+            _ => panic!("There should be a specific error here"),
+        }
+
+        let _contact = runtime
+            .block_on(contacts_service.remove_contact(contacts[0].address.clone()))
+            .unwrap();
+        contacts.remove(0);
+        let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
+
+        assert_eq!(contacts, got_contacts);
+
+        let mut updated_contact = contacts[1].clone();
+        updated_contact.alias = "Fred".to_string();
+        updated_contact.favourite = true;
 
         runtime
-            .block_on(contacts_service.upsert_contact(contacts[i].clone()))
+            .block_on(contacts_service.upsert_contact(updated_contact.clone()))
             .unwrap();
-    }
+        let new_contact = runtime
+            .block_on(contacts_service.get_contact(updated_contact.address))
+            .unwrap();
 
-    let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
-    assert_eq!(contacts, got_contacts);
+        assert_eq!(new_contact.alias, updated_contact.alias);
 
-    let contact = runtime
-        .block_on(contacts_service.get_contact(contacts[0].address.clone()))
-        .unwrap();
-    assert_eq!(contact, contacts[0]);
-
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-    let address = TariAddress::new(public_key, Network::default());
-
-    let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
-    match contact {
-        Ok(_) => panic!("There should be an error here"),
-        Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-            assert_eq!(val, DbKey::Contact(address.clone()))
-        },
-        _ => panic!("There should be a specific error here"),
-    }
-    let result = runtime.block_on(contacts_service.remove_contact(address.clone()));
-    match result {
-        Ok(_) => panic!("There should be an error here"),
-        Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-            assert_eq!(val, DbKey::Contact(address))
-        },
-        _ => panic!("There should be a specific error here"),
-    }
-
-    let _contact = runtime
-        .block_on(contacts_service.remove_contact(contacts[0].address.clone()))
-        .unwrap();
-    contacts.remove(0);
-    let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
-
-    assert_eq!(contacts, got_contacts);
-
-    let mut updated_contact = contacts[1].clone();
-    updated_contact.alias = "Fred".to_string();
-    updated_contact.favourite = true;
-
-    runtime
-        .block_on(contacts_service.upsert_contact(updated_contact.clone()))
-        .unwrap();
-    let new_contact = runtime
-        .block_on(contacts_service.get_contact(updated_contact.address))
-        .unwrap();
-
-    assert_eq!(new_contact.alias, updated_contact.alias);
-
-    #[allow(clippy::match_wild_err_arm)]
-    match liveness_event_stream.try_recv() {
-        Ok(_) => panic!("Should not receive any event here"),
-        Err(TryRecvError::Empty) => {},
-        Err(_) => panic!("Should not receive any other type of error here"),
-    };
+        #[allow(clippy::match_wild_err_arm)]
+        match liveness_event_stream.try_recv() {
+            Ok(_) => panic!("Should not receive any event here"),
+            Err(TryRecvError::Empty) => {},
+            Err(_) => panic!("Should not receive any other type of error here"),
+        };
+    });
 }

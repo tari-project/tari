@@ -30,6 +30,8 @@ tower = "0.4"
 
 [dev-dependencies]
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_comms_dht = {  path = "../../comms/dht", features = ["test-mocks"] }
+tempfile = "3.1.0"
 
 [features]
 default=["bundled_sqlite"]

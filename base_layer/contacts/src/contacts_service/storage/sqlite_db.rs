@@ -44,17 +44,13 @@ use crate::{
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-// A marker trait for types used in the ContactService. Any struct that will be used in the service should be tagged
-// with the trait.
-pub trait ContactService {}
-
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct ContactsServiceSqliteDatabase<TContactServiceDbConnection> {
     database_connection: Arc<TContactServiceDbConnection>,
 }
 
-impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError> + ContactService>
+impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>>
     ContactsServiceSqliteDatabase<TContactServiceDbConnection>
 {
     pub fn new(database_connection: TContactServiceDbConnection) -> Self {
@@ -88,7 +84,7 @@ impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
 }
 
 impl<TContactServiceDbConnection> ContactsBackend for ContactsServiceSqliteDatabase<TContactServiceDbConnection>
-where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError> + ContactService
+where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
 {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -341,8 +337,6 @@ mod test {
         database::Contact,
         sqlite_db::{ContactSql, UpdateContact},
     };
-
-    impl ContactService for DbConnection {}
 
     #[test]
     fn test_crud() {
