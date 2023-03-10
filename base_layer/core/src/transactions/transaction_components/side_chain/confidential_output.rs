@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2023. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,39 +22,9 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::transactions::transaction_components::{
-    side_chain::confidential_output::ConfidentialOutputData,
-    CodeTemplateRegistration,
-    ValidatorNodeRegistration,
-};
+use tari_common_types::types::PublicKey;
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
-pub enum SideChainFeature {
-    ValidatorNodeRegistration(ValidatorNodeRegistration),
-    TemplateRegistration(CodeTemplateRegistration),
-    ConfidentialOutput(ConfidentialOutputData),
-}
-
-impl SideChainFeature {
-    pub fn template_registration(&self) -> Option<&CodeTemplateRegistration> {
-        match self {
-            Self::TemplateRegistration(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
-        match self {
-            Self::ValidatorNodeRegistration(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
-        match self {
-            Self::ConfidentialOutput(v) => Some(v),
-            _ => None,
-        }
-    }
+pub struct ConfidentialOutputData {
+    pub claim_public_key: PublicKey,
 }

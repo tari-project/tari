@@ -1390,7 +1390,11 @@ where
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let output_features = OutputFeatures::create_burn_output();
+        let output_features = claim_public_key
+            .as_ref()
+            .cloned()
+            .map(OutputFeatures::create_burn_confidential_output)
+            .unwrap_or_else(OutputFeatures::create_burn_output);
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
@@ -1535,7 +1539,7 @@ where
             reciprocal_claim_public_key: public_spend_key,
             commitment,
             ownership_proof,
-            range_proof: range_proof.into(),
+            range_proof,
         }))
     }
 
