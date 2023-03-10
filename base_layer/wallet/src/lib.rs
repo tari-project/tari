@@ -20,7 +20,6 @@ pub mod test_utils;
 pub mod transaction_service;
 pub mod types;
 
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 pub use types::WalletHasher; // For use externally to the code base
 pub mod util;
 pub mod wallet;
@@ -55,6 +54,3 @@ pub type WalletSqlite = Wallet<
     ContactsServiceSqliteDatabase,
     KeyManagerSqliteDatabase,
 >;
-
-hash_domain!(BurntOutputDomain, "burnt_output", 1);
-type BurntOutputDomainHasher = DomainSeparatedHasher<Blake256, BurntOutputDomain>;
