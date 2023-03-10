@@ -35,6 +35,6 @@ pub mod consts {
 macro_rules! deny_non_64_bit_archs {
     () => {
         #[cfg(not(target_pointer_width = "64"))]
-        compile_error!("Only 64-bit architectures are supported");
+        compile_error!("Only 64-bit architectures are supported. Here's a medal for trying 🏅");
     };
 }
