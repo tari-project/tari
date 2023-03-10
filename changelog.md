@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.0](https://github.com/tari-project/tari/compare/v0.48.0-pre.1...v0.49.0-pre.0) (2023-03-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wallet:** use ECDH shard secret for burn mask with claim pubkey (#5238)
+
+### Features
+
+* add necessary trait bounds to balanced merkle tree ([#5232](https://github.com/tari-project/tari/issues/5232)) ([3b971a3](https://github.com/tari-project/tari/commit/3b971a3b0e39be774a1a21c477222d95a0e1b242))
+* update tari-crypto to v0.16.8 ([#5236](https://github.com/tari-project/tari/issues/5236)) ([c9d355b](https://github.com/tari-project/tari/commit/c9d355baeea2d6087f72df8c2c1645ef2c06ce88))
+* **wallet:** use ECDH shard secret for burn mask with claim pubkey ([#5238](https://github.com/tari-project/tari/issues/5238)) ([78838bf](https://github.com/tari-project/tari/commit/78838bfc64839be0ba79d1d668d0c6fb2e72e69e))
+
 ## [0.48.0-pre.1](https://github.com/tari-project/tari/compare/v0.48.0-pre.0...v0.48.0-pre.1) (2023-03-08)
 
 
