@@ -611,15 +611,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
             )
             .await
         {
-            Ok((tx_id, commitment, ownership_proof, rangeproof)) => {
+            Ok((tx_id, proof)) => {
                 debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
                     failure_message: Default::default(),
-                    commitment: commitment.to_vec(),
-                    ownership_proof: ownership_proof.map(CommitmentSignature::from),
-                    rangeproof: rangeproof.to_vec(),
+                    commitment: proof.commitment.to_vec(),
+                    ownership_proof: proof.ownership_proof.map(CommitmentSignature::from),
+                    range_proof: proof.range_proof.to_vec(),
+                    reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
                 }
             },
             Err(e) => {

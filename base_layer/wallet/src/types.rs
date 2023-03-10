@@ -33,3 +33,12 @@ pub(crate) trait PersistentKeyManager {
 }
 
 hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1, wallet_hasher);
+
+// Hasher used in the DAN to derive masks and encrypted value keys
+hasher!(
+    Blake256,
+    ConfidentialOutputHasher,
+    "com.tari.layer_two.confidential_output",
+    1,
+    confidentia_output_hasher
+);
