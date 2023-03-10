@@ -729,8 +729,7 @@ mod test {
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
-             private key"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing private nonce"
         );
 
         let mut builder = err.builder;
