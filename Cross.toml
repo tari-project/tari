@@ -1,5 +1,11 @@
+[target.x86_64-linux-android]
+image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
+
 [target.x86_64-linux-android.env]
 passthrough = ["CFLAGS"]
+
+[target.aarch64-linux-android]
+image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
 
 [target.aarch64-linux-android.env]
 passthrough = ["CFLAGS"]
