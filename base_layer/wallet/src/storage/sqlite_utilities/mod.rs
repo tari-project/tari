@@ -26,11 +26,11 @@ use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
 
 use crate::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
@@ -112,7 +112,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
         WalletSqliteDatabase,
         TransactionServiceSqliteDatabase,
         OutputManagerSqliteDatabase,
-        ContactsServiceSqliteDatabase,
+        ContactsServiceSqliteDatabase<WalletDbConnection>,
         KeyManagerSqliteDatabase,
     ),
     WalletStorageError,
@@ -128,7 +128,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     let wallet_backend = WalletSqliteDatabase::new(connection.clone(), passphrase)?;
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
-    let contacts_backend = ContactsServiceSqliteDatabase::new(connection.clone());
+    let contacts_backend = ContactsServiceSqliteDatabase::init(connection.clone());
     let key_manager_backend = KeyManagerSqliteDatabase::new(connection, wallet_backend.cipher()).map_err(|e| {
         error!(target: LOG_TARGET, "Error migrating key manager database: {:?}", e);
         WalletStorageError::DatabaseMigrationError(e.to_string())

@@ -20,10 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Write, sync::Arc};
 
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use tari_common_sqlite::{
+    error::SqliteStorageError,
+    sqlite_connection_pool::PooledDbConnection,
+    util::diesel_ext::ExpectedRowsExtension,
+};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
@@ -34,22 +40,52 @@ use crate::{
         storage::database::{Contact, ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
     },
     schema::contacts,
-    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::diesel_ext::ExpectedRowsExtension,
 };
+
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
-pub struct ContactsServiceSqliteDatabase {
-    database_connection: WalletDbConnection,
+pub struct ContactsServiceSqliteDatabase<TContactServiceDbConnection> {
+    database_connection: Arc<TContactServiceDbConnection>,
 }
-impl ContactsServiceSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection) -> Self {
-        Self { database_connection }
+
+impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>>
+    ContactsServiceSqliteDatabase<TContactServiceDbConnection>
+{
+    pub fn new(database_connection: TContactServiceDbConnection) -> Self {
+        Self {
+            database_connection: Arc::new(database_connection),
+        }
+    }
+
+    pub fn init(database_connection: TContactServiceDbConnection) -> Self {
+        let db = Self::new(database_connection);
+        db.run_migrations().expect("Migrations to run");
+        db
+    }
+
+    fn run_migrations(&self) -> Result<Vec<String>, SqliteStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))
     }
 }
 
-impl ContactsBackend for ContactsServiceSqliteDatabase {
+impl<TContactServiceDbConnection> ContactsBackend for ContactsServiceSqliteDatabase<TContactServiceDbConnection>
+where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
+{
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
@@ -284,12 +320,11 @@ pub struct UpdateContact {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, io::Write};
+    use std::convert::{TryFrom, TryInto};
 
-    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
-    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
+    use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
     use tari_common_types::{
         tari_address::TariAddress,
         types::{PrivateKey, PublicKey},
@@ -297,6 +332,7 @@ mod test {
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
+    use super::*;
     use crate::contacts_service::storage::{
         database::Contact,
         sqlite_db::{ContactSql, UpdateContact},
@@ -307,26 +343,11 @@ mod test {
         with_temp_dir(|dir_path| {
             let db_name = format!("{}.sqlite3", string(8).as_str());
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
+            let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-            const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
-            let mut conn =
-                SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-            conn.run_pending_migrations(MIGRATIONS)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|b| {
-                            let m = format!("Running migration {}", b);
-                            std::io::stdout()
-                                .write_all(m.as_ref())
-                                .expect("Couldn't write migration number to stdout");
-                            m
-                        })
-                        .collect::<Vec<String>>()
-                })
-                .expect("Migrations failed");
-
-            sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
+            let db = DbConnection::connect_url(&url).unwrap();
+            let _service = ContactsServiceSqliteDatabase::init(db.clone());
+            let mut conn = db.get_pooled_connection().unwrap();
 
             let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
 

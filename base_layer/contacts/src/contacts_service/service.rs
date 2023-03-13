@@ -42,7 +42,7 @@ use crate::contacts_service::{
     storage::database::{Contact, ContactsBackend, ContactsDatabase},
 };
 
-const LOG_TARGET: &str = "wallet:contacts_service";
+const LOG_TARGET: &str = "contacts::contacts_service";
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -70,7 +70,6 @@ where St: ?Sized + Stream + Unpin
 #[cfg(test)]
 mod test {
     use futures::stream;
-    use tari_comms::runtime;
 
     use super::*;
 

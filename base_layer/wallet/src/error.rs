@@ -31,6 +31,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_core::transactions::transaction_components::TransactionError;
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
@@ -40,7 +41,6 @@ use thiserror::Error;
 
 use crate::{
     base_node_service::error::BaseNodeServiceError,
-    contacts_service::error::ContactsServiceError,
     key_manager_service::KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,

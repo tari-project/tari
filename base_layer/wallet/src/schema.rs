@@ -33,17 +33,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    contacts (address) {
-        address -> Binary,
-        node_id -> Binary,
-        alias -> Text,
-        last_seen -> Nullable<Timestamp>,
-        latency -> Nullable<Integer>,
-        favourite -> Integer,
-    }
-}
-
-diesel::table! {
     inbound_transactions (tx_id) {
         tx_id -> BigInt,
         source_address -> Binary,
@@ -153,7 +142,6 @@ diesel::table! {
 diesel::allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
-    contacts,
     inbound_transactions,
     key_manager_states,
     known_one_sided_payment_scripts,

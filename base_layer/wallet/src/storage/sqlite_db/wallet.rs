@@ -35,6 +35,7 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{generic_array::GenericArray, FixedOutput};
 use log::*;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -876,6 +877,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::{

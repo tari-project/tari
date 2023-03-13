@@ -99,6 +99,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
+use tari_contacts::contacts_service::storage::database::Contact;
 use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
@@ -135,7 +136,6 @@ use tari_utilities::{
 };
 use tari_wallet::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
-    contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -208,12 +208,12 @@ pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
-pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
+pub type TariContact = tari_contacts::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
-pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
+pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 

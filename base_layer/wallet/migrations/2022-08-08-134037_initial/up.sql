@@ -26,14 +26,6 @@ CREATE TABLE completed_transactions (
     transaction_signature_key   BLOB    DEFAULT 0  NOT NULL
 );
 
-CREATE TABLE contacts (
-    address     BLOB PRIMARY KEY NOT NULL UNIQUE,
-    node_id     BLOB             NOT NULL UNIQUE,
-    alias       TEXT             NOT NULL,
-    last_seen   DATETIME         NULL,
-    latency     INTEGER          NULL
-);
-
 CREATE TABLE inbound_transactions (
     tx_id               BIGINT PRIMARY KEY NOT NULL,
     source_address      BLOB               NOT NULL,

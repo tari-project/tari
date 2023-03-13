@@ -143,3 +143,9 @@ impl SqliteConnectionPool {
         }
     }
 }
+
+pub trait PooledDbConnection: Send + Sync + Clone {
+    type Error;
+
+    fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error>;
+}

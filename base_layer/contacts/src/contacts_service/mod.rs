@@ -46,7 +46,7 @@ use crate::contacts_service::{
     storage::database::{ContactsBackend, ContactsDatabase},
 };
 
-const LOG_TARGET: &str = "wallet::contacts_service::initializer";
+const LOG_TARGET: &str = "contacts::contacts_service::initializer";
 
 pub struct ContactsServiceInitializer<T>
 where T: ContactsBackend

@@ -20,6 +20,11 @@ mod test {
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
     use tari_comms_dht::event::DhtEvent;
+    use tari_contacts::contacts_service::{
+        handle::{ContactsLivenessData, ContactsLivenessEvent},
+        service::{ContactMessageType, ContactOnlineStatus},
+        storage::database::Contact,
+    };
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
         transaction_components::Transaction,
@@ -31,11 +36,6 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_wallet::{
         connectivity_service::OnlineStatus,
-        contacts_service::{
-            handle::{ContactsLivenessData, ContactsLivenessEvent},
-            service::{ContactMessageType, ContactOnlineStatus},
-            storage::database::Contact,
-        },
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,

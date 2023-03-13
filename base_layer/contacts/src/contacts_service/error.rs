@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::connectivity::ConnectivityError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
-use crate::{contacts_service::storage::database::DbKey, error::WalletStorageError};
+use crate::contacts_service::storage::database::DbKey;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -58,7 +59,7 @@ pub enum ContactsServiceStorageError {
     #[error("Unexpected result error: `{0}`")]
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]
-    DieselR2d2Error(#[from] WalletStorageError),
+    DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]
@@ -67,4 +68,6 @@ pub enum ContactsServiceStorageError {
     DatabaseMigrationError(String),
     #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
+    #[error("We got an error")]
+    UnknownError,
 }

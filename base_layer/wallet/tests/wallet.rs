@@ -24,7 +24,7 @@ use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
-use support::{comms_and_services::get_next_memory_address, utils::make_input};
+use support::utils::make_input;
 use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -40,6 +40,11 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
+use tari_contacts::contacts_service::{
+    handle::ContactsLivenessEvent,
+    service::ContactMessageType,
+    storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
@@ -65,14 +70,9 @@ use tari_p2p::{
 };
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{collect_recv, random};
+use tari_test_utils::{collect_recv, comms_and_services::get_next_memory_address, random};
 use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
-    contacts_service::{
-        handle::ContactsLivenessEvent,
-        service::ContactMessageType,
-        storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
-    },
     error::{WalletError, WalletStorageError},
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
@@ -711,7 +711,7 @@ async fn test_import_utxo() {
         OutputManagerDatabase::new(output_manager_backend.clone()),
         TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
-        ContactsServiceSqliteDatabase::new(connection.clone()),
+        ContactsServiceSqliteDatabase::init(connection.clone()),
         KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),

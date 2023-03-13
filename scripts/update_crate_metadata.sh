@@ -34,6 +34,7 @@ function update_versions {
    infrastructure/storage
    infrastructure/test_utils
    base_layer/common_types
+   base_layer/contacts
    base_layer/core
    base_layer/key_manager
    base_layer/mmr

@@ -39,6 +39,11 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_contacts::contacts_service::{
+    handle::ContactsServiceHandle,
+    storage::database::ContactsBackend,
+    ContactsServiceInitializer,
+};
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
@@ -77,7 +82,6 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::{WalletError, WalletStorageError},
     key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
