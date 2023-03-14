@@ -37,7 +37,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -121,7 +121,7 @@ use crate::{
     },
     types::ConfidentialOutputHasher,
     util::{
-        burn_proof::{derive_diffie_hellman_burn_claim_encryption_key, derive_diffie_hellman_burn_claim_spend_key},
+        burn_proof::{derive_burn_claim_encryption_key, derive_diffie_hellman_burn_claim_spend_key},
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
@@ -1439,8 +1439,8 @@ where
                 // case a new spend key from the key manager) and the provided claim public key. The public
                 // nonce/spend_key is returned back to the caller.
                 let shared_spend_key = derive_diffie_hellman_burn_claim_spend_key(&spend_key, claim_public_key);
-                let shared_encryption_key =
-                    derive_diffie_hellman_burn_claim_encryption_key(&spend_key, claim_public_key);
+                let commitment = CommitmentFactory::default().commit_value(&shared_spend_key, amount.into());
+                let shared_encryption_key = derive_burn_claim_encryption_key(&shared_spend_key, &commitment);
 
                 let shared_rewind_data = RewindData {
                     rewind_blinding_key: rewind_data.rewind_blinding_key,
@@ -1470,19 +1470,18 @@ where
             let nonce_x = PrivateKey::random(&mut OsRng);
             let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
 
-            let hasher = ConfidentialOutputHasher::new_with_label("commitment_signature")
-                .chain(pub_nonce.as_bytes())
-                .chain(commitment.as_bytes())
-                .chain(claim_public_key.as_bytes());
-
-            let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+            let challenge = ConfidentialOutputHasher::new("commitment_signature")
+                .chain(&pub_nonce)
+                .chain(&commitment)
+                .chain(&claim_public_key)
+                .finalize();
 
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
                 &shared_spend_key,
                 &nonce_a,
                 &nonce_x,
-                &*challenge,
+                &challenge,
                 &*self.resources.factories.commitment,
             )?);
         }
