@@ -41,7 +41,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::CryptoFactories;
+use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
@@ -59,6 +59,7 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use zxcvbn::zxcvbn;
 
 use crate::{
     cli::Cli,
@@ -75,6 +76,40 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
+}
+
+/// Get feedback, if available, for a weak passphrase
+fn get_password_feedback(passphrase: &SafePassword) -> Option<Vec<String>> {
+    std::str::from_utf8(passphrase.reveal())
+        .ok()
+        .and_then(|passphrase| zxcvbn(passphrase, &[]).ok())
+        .and_then(|scored| scored.feedback().to_owned())
+        .map(|feedback| feedback.suggestions().to_owned())
+        .map(|suggestion| suggestion.into_iter().map(|item| item.to_string()).collect())
+}
+
+// Display password feedback to the user
+fn display_password_feedback(passphrase: &SafePassword) {
+    if passphrase.reveal().is_empty() {
+        // The passphrase is empty, which the scoring library doesn't handle
+        println!("However, an empty password puts your wallet at risk against an attacker with access to this device.");
+        println!("Use this only if you are sure that your device is safe from prying eyes!");
+        println!();
+    } else if let Some(feedback) = get_password_feedback(passphrase) {
+        // The scoring library provided feedback
+        println!(
+            "However, the password you chose is weak; a determined attacker with access to your device may be able to \
+             guess it."
+        );
+        println!("You may want to consider changing it to a stronger one.");
+        println!("Here are some suggestions:");
+        for suggestion in feedback {
+            println!("- {}", suggestion);
+        }
+        println!();
+    } else {
+        // There is no feedback to provide
+    }
 }
 
 /// Gets the password provided by command line argument or environment variable if available.
@@ -105,15 +140,7 @@ pub fn get_or_prompt_password(
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
-    let password = loop {
-        let pass = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
-        if pass.is_empty() {
-            println!("Password cannot be empty!");
-            continue;
-        } else {
-            break pass;
-        }
-    };
+    let password = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
     Ok(SafePassword::from(password))
 }
@@ -121,32 +148,39 @@ fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &ApplicationConfig,
-    arg_password: SafePassword,
+    existing: SafePassword,
     shutdown_signal: ShutdownSignal,
     non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
-    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal, non_interactive_mode).await?;
+    let mut wallet = init_wallet(
+        config,
+        existing.clone(),
+        None,
+        None,
+        shutdown_signal,
+        non_interactive_mode,
+    )
+    .await?;
 
-    let passphrase = prompt_password("New wallet password: ")?;
+    let new = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
 
-    if passphrase.reveal() != confirmed.reveal() {
+    if new.reveal() != confirmed.reveal() {
         return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
-    // wallet
-    //     .remove_encryption()
-    //     .await
-    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+    println!("Passwords match.");
 
-    // wallet
-    //     .apply_encryption(passphrase)
-    //     .await
-    //     .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+    // If the passphrase is weak, let the user know
+    display_password_feedback(&new);
 
-    println!("Wallet password changed successfully.");
-
-    Ok(())
+    // Use the existing and new passphrases to attempt to change the wallet passphrase
+    wallet.db.change_passphrase(&existing, &new).map_err(|e| match e {
+        WalletStorageError::InvalidPassphrase => {
+            ExitError::new(ExitCode::IncorrectOrEmptyPassword, "Your password was not changed.")
+        },
+        _ => ExitError::new(ExitCode::DatabaseError, "Your password was not changed."),
+    })
 }
 
 /// Populates the PeerConfig struct from:
@@ -163,7 +197,7 @@ pub async fn get_base_node_peer_config(
     let mut selected_base_node = match config.wallet.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed custom base node: {}", err)))?,
+            .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
         None => get_custom_base_node_peer_from_db(wallet),
     };
 
@@ -257,7 +291,7 @@ pub async fn init_wallet(
     non_interactive_mode: bool,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
-        &config
+        config
             .wallet
             .db_file
             .parent()
@@ -280,12 +314,13 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    let node_address = match config.wallet.p2p.public_address.clone() {
-        Some(addr) => addr,
-        None => match wallet_db.get_node_address()? {
-            Some(addr) => addr,
-            None => Multiaddr::empty(),
-        },
+    let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
+        match wallet_db.get_node_address()? {
+            Some(addr) => vec![addr],
+            None => vec![],
+        }
+    } else {
+        config.wallet.p2p.public_addresses.clone()
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
@@ -297,14 +332,9 @@ pub async fn init_wallet(
                 "Node identity overridden by file {}",
                 identity_file.to_string_lossy()
             );
-            setup_node_identity(
-                identity_file,
-                Some(&node_address),
-                true,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )?
+            setup_node_identity(identity_file, node_addresses, true, PeerFeatures::COMMUNICATION_CLIENT)?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_address.clone())?,
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses)?,
     };
 
     let mut wallet_config = config.wallet.clone();
@@ -312,13 +342,15 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
+    let consensus_manager = ConsensusManager::builder(config.wallet.network).build();
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
-        config.wallet.clone(),
+        wallet_config,
         config.peer_seeds.clone(),
         config.auto_update.clone(),
         node_identity,
+        consensus_manager,
         factories,
         wallet_db,
         output_db,
@@ -332,10 +364,7 @@ pub async fn init_wallet(
     .await
     .map_err(|e| match e {
         WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
-        e => ExitError::new(
-            ExitCode::WalletError,
-            &format!("Error creating Wallet Container: {}", e),
-        ),
+        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
     if let Some(hs) = wallet.comms.hidden_service() {
         wallet
@@ -349,7 +378,7 @@ pub async fn init_wallet(
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
-                &format!("Problem writing seed words to file: {}", e),
+                format!("Problem writing seed words to file: {}", e),
             )
         });
     };
@@ -375,7 +404,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
     let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
-    let address = Multiaddr::from_str(&identity.public_address).ok()?;
+    let address = Multiaddr::from_str(identity.public_addresses.first()?).ok()?;
     debug!(
         target: LOG_TARGET,
         "Local base node found with pk={} and addr={}",
@@ -388,7 +417,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
 fn setup_identity_from_db<D: WalletBackend + 'static>(
     wallet_db: &WalletDatabase<D>,
     master_seed: &CipherSeed,
-    node_address: Multiaddr,
+    node_addresses: Vec<Multiaddr>,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     let node_features = wallet_db
         .get_node_features()?
@@ -402,13 +431,13 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        sig.is_valid(&comms_public_key, node_features, [&node_address])
+        sig.is_valid(&comms_public_key, node_features, &node_addresses)
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
     let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
         comms_secret_key,
-        node_address,
+        node_addresses,
         node_features,
         identity_sig,
     ));
@@ -437,25 +466,33 @@ pub async fn start_wallet(
 
     let net_address = base_node
         .addresses
-        .first()
+        .best()
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), net_address.address.clone())
+        .set_base_node_peer(base_node.public_key.clone(), net_address.address().clone())
         .await
         .map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
-                &format!("Error setting wallet base node peer. {}", e),
+                format!("Error setting wallet base node peer. {}", e),
             )
         })?;
 
     // Restart transaction protocols if not running in script or command modes
-
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
+        // NOTE: https://github.com/tari-project/tari/issues/5227
+        debug!("revalidating all transactions");
+        if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
+            error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
+        }
+
+        debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
         }
+
+        debug!("validating transactions");
         if let Err(e) = wallet.transaction_service.validate_transactions().await {
             error!(
                 target: LOG_TARGET,
@@ -466,6 +503,7 @@ pub async fn start_wallet(
         // validate transaction outputs
         validate_txos(wallet).await?;
     }
+
     Ok(())
 }
 
@@ -625,13 +663,37 @@ pub(crate) fn boot_with_password(
                 return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
             }
 
+            println!("Passwords match.");
+
+            // If the passphrase is weak, let the user know
+            display_password_feedback(&password);
+
             password
         },
         WalletBoot::Existing | WalletBoot::Recovery => {
             debug!(target: LOG_TARGET, "Prompting for password.");
-            prompt_password("Prompt wallet password: ")?
+            prompt_password("Enter wallet password: ")?
         },
     };
 
     Ok((boot_mode, password))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_utilities::SafePassword;
+
+    use super::get_password_feedback;
+
+    #[test]
+    fn weak_password() {
+        let weak_password = SafePassword::from("weak");
+        assert!(get_password_feedback(&weak_password).is_some());
+    }
+
+    #[test]
+    fn strong_password() {
+        let strong_password = SafePassword::from("This is a reasonably strong password!");
+        assert!(get_password_feedback(&strong_password).is_none());
+    }
 }

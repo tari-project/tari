@@ -36,11 +36,13 @@ use tari_crypto::{
     range_proof::RangeProofService,
     tari_utilities::hex::Hex,
 };
+use tari_p2p::Network;
 use tari_script::{script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
 
 use super::*;
 use crate::{
+    consensus::ConsensusManager,
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
@@ -50,6 +52,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
+    validation::{transaction::TransactionInternalConsistencyValidator, ValidationError},
 };
 
 #[test]
@@ -326,11 +329,10 @@ fn check_timelocks() {
 fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
-
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
-    assert!(tx
-        .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .is_ok());
+    let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+    assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
 }
 
 #[test]
@@ -342,9 +344,10 @@ fn check_cut_through() {
     assert_eq!(tx.body.outputs().len(), 2);
     assert_eq!(tx.body.kernels().len(), 1);
 
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
-    tx.validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .unwrap();
+    let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+    validator.validate(&tx, None, None, u64::MAX).unwrap();
 
     let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
     let (tx2, _outputs) = test_helpers::spend_utxos(schema);
@@ -353,7 +356,7 @@ fn check_cut_through() {
     assert_eq!(tx2.body.outputs().len(), 3);
     assert_eq!(tx2.body.kernels().len(), 1);
 
-    let tx3 = tx + tx2;
+    let mut tx3 = tx + tx2;
     let mut tx3_cut_through = tx3.clone();
     // check that all inputs are as we expect them to be
     assert_eq!(tx3.body.inputs().len(), 3);
@@ -373,15 +376,14 @@ fn check_cut_through() {
         tx3_cut_through.body.outputs_mut().retain(|x| !input.is_equal_to(x));
         tx3_cut_through.body.inputs_mut().retain(|x| *x != input);
     }
+    tx3.body.sort();
+    tx3_cut_through.body.sort();
 
     // Validate basis transaction where cut-through has not been applied.
-    tx3.validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .unwrap();
+    validator.validate(&tx3, None, None, u64::MAX).unwrap();
 
     // tx3_cut_through has manual cut-through, it should not be possible so this should fail
-    tx3_cut_through
-        .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .unwrap_err();
+    validator.validate(&tx3_cut_through, None, None, u64::MAX).unwrap_err();
 }
 
 #[test]
@@ -425,11 +427,11 @@ fn inputs_not_malleable() {
     tx.body.inputs_mut()[0].set_script(script![Drop]).unwrap();
     tx.body.inputs_mut()[0].input_data = stack;
 
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
-    let err = tx
-        .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .unwrap_err();
-    unpack_enum!(TransactionError::InvalidSignatureError(_a) = err);
+    let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+    let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
+    unpack_enum!(ValidationError::TransactionError(_a) = err);
 }
 
 #[test]
@@ -499,8 +501,12 @@ mod validate_internal_consistency {
         // SenderTransactionProtocol::finalize() calls validate_internal_consistency
         let stx_protocol = create_sender_transaction_protocol_with(0, 5 * uT, inputs, outputs)?;
         // Otherwise if this passes check again with the height
+        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
         let tx = stx_protocol.take_transaction().unwrap();
-        tx.validate_internal_consistency(false, &CryptoFactories::default(), None, None, height)?;
+        validator
+            .validate(&tx, None, None, height)
+            .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
         Ok(())
     }
 
@@ -563,7 +569,7 @@ mod validate_internal_consistency {
         .unwrap_err();
 
         unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        unpack_enum!(TransactionError::CovenantError(_s) = err);
+        unpack_enum!(TransactionError::ValidationError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set

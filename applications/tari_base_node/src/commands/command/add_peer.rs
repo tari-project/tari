@@ -26,6 +26,7 @@ use clap::Parser;
 use tari_app_utilities::utilities::UniPublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
 
@@ -52,7 +53,7 @@ impl HandleCommand<ArgsAddPeer> for CommandContext {
         let peer = Peer::new(
             public_key,
             node_id.clone(),
-            vec![args.address].into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![args.address], &PeerAddressSource::Config),
             PeerFlags::empty(),
             PeerFeatures::empty(),
             vec![],

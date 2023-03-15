@@ -20,15 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Instant,
+};
 
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     log_if_error,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
+    multiaddr::Multiaddr,
+    net_address::PeerAddressSource,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerIdentityClaim, PeerManager},
     types::CommsPublicKey,
-    validate_peer_addresses,
+    validate_addresses,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -164,7 +171,7 @@ impl DhtDiscoveryService {
         trace!(
             target: LOG_TARGET,
             "Received discovery response message from {}",
-            discovery_msg.node_id.to_hex()
+            discovery_msg.public_key.to_hex()
         );
 
         match self.inflight_discoveries.remove(&discovery_msg.nonce) {
@@ -217,7 +224,7 @@ impl DhtDiscoveryService {
                     target: LOG_TARGET,
                     "Received a discovery response from peer '{}' that this node did not expect. It may have been \
                      cancelled earlier.",
-                    discovery_msg.node_id.to_hex()
+                    discovery_msg.public_key.to_hex()
                 );
             },
         }
@@ -228,16 +235,28 @@ impl DhtDiscoveryService {
         public_key: &CommsPublicKey,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<Peer, DhtDiscoveryError> {
-        let node_id = self.validate_raw_node_id(public_key, &discovery_msg.node_id)?;
+        let node_id = NodeId::from_public_key(public_key);
 
-        let addresses = discovery_msg
+        let addresses: Vec<Multiaddr> = discovery_msg
             .addresses
             .into_iter()
-            .filter_map(|addr| addr.parse().ok())
-            .collect::<Vec<_>>();
+            .map(Multiaddr::try_from)
+            .collect::<Result<_, _>>()
+            .map_err(|e| DhtDiscoveryError::InvalidPeerMultiaddr(e.to_string()))?;
 
-        validate_peer_addresses(&addresses, self.config.allow_test_addresses)
+        validate_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
+
+        let peer_identity_claim = PeerIdentityClaim::new(
+            addresses.clone(),
+            PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+            discovery_msg
+                .identity_signature
+                .ok_or(DhtDiscoveryError::NoSignatureProvided)?
+                .try_into()
+                .map_err(|e: anyhow::Error| DhtDiscoveryError::InvalidSignature(e.to_string()))?,
+            None,
+        );
 
         let peer = self
             .peer_manager
@@ -246,28 +265,11 @@ impl DhtDiscoveryService {
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+                &PeerAddressSource::FromDiscovery { peer_identity_claim },
             )
             .await?;
 
         Ok(peer)
-    }
-
-    fn validate_raw_node_id(
-        &self,
-        public_key: &CommsPublicKey,
-        raw_node_id: &[u8],
-    ) -> Result<NodeId, DhtDiscoveryError> {
-        // The reason that we check the given node id against what we expect instead of just using the given node id
-        // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
-        // the base layer)
-        let expected_node_id = NodeId::from_key(public_key);
-        let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
-        if expected_node_id == node_id {
-            Ok(expected_node_id)
-        } else {
-            // TODO: Misbehaviour #banheuristic
-            Err(DhtDiscoveryError::InvalidNodeId)
-        }
     }
 
     async fn initiate_peer_discovery(
@@ -317,8 +319,13 @@ impl DhtDiscoveryService {
         dest_public_key: Box<CommsPublicKey>,
     ) -> Result<(), DhtDiscoveryError> {
         let discover_msg = DiscoveryMessage {
-            node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.public_address().to_string()],
+            public_key: self.node_identity.public_key().to_vec(),
+            addresses: self
+                .node_identity
+                .public_addresses()
+                .into_iter()
+                .map(|a| a.to_vec())
+                .collect(),
             peer_features: self.node_identity.features().bits(),
             nonce,
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
@@ -352,7 +359,6 @@ impl DhtDiscoveryService {
 mod test {
     use std::time::Duration;
 
-    use tari_comms::runtime;
     use tari_shutdown::Shutdown;
 
     use super::*;
@@ -362,7 +368,7 @@ mod test {
         test_utils::{build_peer_manager, make_node_identity},
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn send_discovery() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -385,7 +391,7 @@ mod test {
         )
         .spawn();
 
-        let dest_public_key = Box::new(CommsPublicKey::default());
+        let dest_public_key = Box::<tari_crypto::ristretto::RistrettoPublicKey>::default();
         let result = requester
             .discover_peer(
                 *dest_public_key.clone(),

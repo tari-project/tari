@@ -47,7 +47,11 @@ name: Build docker images
           - xmrig
 
 env:
-  toolchain_default: nightly-2022-05-01
+  toolchain_default: nightly-2022-11-03
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   builds_envs_setup:

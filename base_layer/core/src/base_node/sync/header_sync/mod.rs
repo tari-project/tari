@@ -23,7 +23,7 @@
 mod error;
 pub use error::BlockHeaderSyncError;
 
+mod validator;
+
 mod synchronizer;
 pub use synchronizer::HeaderSynchronizer;
-
-mod validator;

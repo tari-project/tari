@@ -65,7 +65,7 @@ where
 
     // Send this node's identity
     let msg_bytes = PeerIdentityMsg {
-        addresses: vec![node_identity.public_address().to_vec()],
+        addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
         features: node_identity.features().bits(),
         supported_protocols,
         user_agent: network_info.user_agent,
@@ -73,7 +73,7 @@ where
     }
     .to_encoded_bytes();
 
-    write_protocol_frame(socket, network_info.major_version as u8, &msg_bytes).await?;
+    write_protocol_frame(socket, network_info.major_version, &msg_bytes).await?;
     socket.flush().await?;
 
     // Receive the connecting node's identity
@@ -195,12 +195,11 @@ mod test {
     use crate::{
         peer_manager::PeerFeatures,
         protocol::{IdentityProtocolError, NodeNetworkInfo},
-        runtime,
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
@@ -241,13 +240,27 @@ mod test {
         let identity1 = result2.unwrap();
 
         assert_eq!(identity1.features, node_identity1.features().bits());
-        assert_eq!(identity1.addresses, vec![node_identity1.public_address().to_vec()]);
+        assert_eq!(
+            identity1.addresses,
+            node_identity1
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_vec())
+                .collect::<Vec<_>>()
+        );
 
         assert_eq!(identity2.features, node_identity2.features().bits());
-        assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_vec()]);
+        assert_eq!(
+            identity2.addresses,
+            node_identity2
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_vec())
+                .collect::<Vec<_>>()
+        );
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn fail_cases() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();

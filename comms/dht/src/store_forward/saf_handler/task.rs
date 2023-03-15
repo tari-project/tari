@@ -624,7 +624,7 @@ mod test {
     use std::time::Duration;
 
     use chrono::{Timelike, Utc};
-    use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
+    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::collect_recv;
     use tari_utilities::{hex, hex::Hex};
     use tokio::{sync::mpsc, task, time::sleep};
@@ -822,7 +822,7 @@ mod test {
         assert!(stored_messages.iter().any(|s| s.body == msg2.as_bytes()));
     }
 
-    #[runtime::test]
+    #[tokio::test]
     #[allow(clippy::similar_names, clippy::too_many_lines)]
     async fn receive_stored_messages() {
         let spy = service_spy();
@@ -940,7 +940,7 @@ mod test {
         assert_eq!(last_saf_received.second(), msg2_time.second());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn stored_at_in_future() {
         let spy = service_spy();
         let (requester, _) = create_store_and_forward_mock();
@@ -1013,7 +1013,7 @@ mod test {
         assert!(last_saf_received.is_none());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn saf_message_was_requested() {
         let spy = service_spy();
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();

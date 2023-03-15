@@ -37,14 +37,9 @@ use tari_core::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
-        transaction_validators::{
-            MempoolValidator,
-            TxConsensusValidator,
-            TxInputAndMaturityValidator,
-            TxInternalConsistencyValidator,
-        },
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
+        transaction::TransactionFullValidator,
         DifficultyCalculator,
     },
 };
@@ -210,10 +205,11 @@ async fn build_node_context(
     let rules = ConsensusManager::builder(app_config.base_node.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
-        HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
+        BlockBodyInternalConsistencyValidator::new(
             rules.clone(),
             app_config.base_node.bypass_range_proof_verification,
             factories.clone(),
@@ -225,27 +221,25 @@ async fn build_node_context(
         rules.clone(),
         validators,
         app_config.base_node.storage,
-        DifficultyCalculator::new(rules.clone(), randomx_factory.clone()),
+        difficulty_calculator,
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
-            return ExitError::new(
+            ExitError::new(
                 ExitCode::DbInconsistentState,
                 format!("You may need to re-sync your database because {}", reason),
-            );
+            )
         } else {
             ExitError::new(ExitCode::DatabaseError, err)
         }
     })?;
-    let mempool_validator = MempoolValidator::new(vec![
-        Box::new(TxInternalConsistencyValidator::new(
-            factories.clone(),
-            app_config.base_node.bypass_range_proof_verification,
-            blockchain_db.clone(),
-        )),
-        Box::new(TxConsensusValidator::new(blockchain_db.clone())),
-        Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
-    ]);
+
+    let mempool_validator = TransactionFullValidator::new(
+        factories.clone(),
+        app_config.base_node.bypass_range_proof_verification,
+        blockchain_db.clone(),
+        rules.clone(),
+    );
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),
         rules.clone(),

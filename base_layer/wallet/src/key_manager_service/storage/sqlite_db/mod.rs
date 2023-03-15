@@ -28,6 +28,7 @@ use std::{
 use chacha20poly1305::XChaCha20Poly1305;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tokio::time::Instant;
 
 use crate::{
@@ -52,8 +53,8 @@ pub struct KeyManagerSqliteDatabase {
 
 impl KeyManagerSqliteDatabase {
     /// Creates a new sql backend from provided wallet db connection
-    /// * `cipher` is used to encrypt the sensitive fields in the database, if no cipher is provided, the database will
-    ///   not encrypt sensitive fields
+    /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
+    /// from a provided password, which we enforce for class instantiation
     pub fn new(
         database_connection: WalletDbConnection,
         cipher: XChaCha20Poly1305,
@@ -64,36 +65,21 @@ impl KeyManagerSqliteDatabase {
         };
         Ok(db)
     }
-
-    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        o.decrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Decryption Error".to_string()))?;
-
-        Ok(())
-    }
-
-    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        o.encrypt(&cipher)
-            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-
-        Ok(())
-    }
 }
 
 impl KeyManagerBackend for KeyManagerSqliteDatabase {
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
+        let result = match KeyManagerStateSql::get_state(&branch, &mut conn).ok() {
             None => None,
-            Some(mut km) => {
-                self.decrypt_if_necessary(&mut km)?;
+            Some(km) => {
+                let cipher = acquire_read_lock!(self.cipher);
+                let km = km
+                    .decrypt(&cipher)
+                    .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
                 Some(KeyManagerState::try_from(km)?)
             },
         };
@@ -112,12 +98,15 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
 
-        let mut km_sql = NewKeyManagerStateSql::from(key_manager);
-        self.encrypt_if_necessary(&mut km_sql)?;
-        km_sql.commit(&conn)?;
+        let km_sql = NewKeyManagerStateSql::from(key_manager);
+        let km_sql = km_sql
+            .encrypt(&cipher)
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+        km_sql.commit(&mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -133,16 +122,21 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        self.decrypt_if_necessary(&mut km)?;
+        let cipher = acquire_read_lock!(self.cipher);
+        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let mut km = km
+            .decrypt(&cipher)
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&km.primary_key_index[..8]);
         let index = u64::from_le_bytes(bytes) + 1;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        self.encrypt_if_necessary(&mut km)?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
+        let km = km
+            .encrypt(&cipher)
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -158,13 +152,18 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
     fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
-        self.decrypt_if_necessary(&mut km)?;
+        let cipher = acquire_read_lock!(self.cipher);
+        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let mut km = km
+            .decrypt(&cipher)
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
         km.primary_key_index = index.to_le_bytes().to_vec();
-        self.encrypt_if_necessary(&mut km)?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
+        let km = km
+            .encrypt(&cipher)
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -181,9 +180,10 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, io::Write};
 
-    use diesel::{Connection, SqliteConnection};
+    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use tari_test_utils::random;
     use tempfile::tempdir;
 
@@ -196,30 +196,43 @@ mod test {
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+        let mut conn =
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .expect("Migrations failed");
 
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
         let branch = random::string(8);
-        assert!(KeyManagerStateSql::get_state(&branch, &conn).is_err());
+        assert!(KeyManagerStateSql::get_state(&branch, &mut conn).is_err());
 
         let state1 = KeyManagerState {
             branch_seed: branch.clone(),
             primary_key_index: 0,
         };
 
-        NewKeyManagerStateSql::from(state1.clone()).commit(&conn).unwrap();
-        let state1_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
+        NewKeyManagerStateSql::from(state1.clone()).commit(&mut conn).unwrap();
+        let state1_read = KeyManagerStateSql::get_state(&branch, &mut conn).unwrap();
         let id = state1_read.id;
 
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
 
         let index: u64 = 2;
-        KeyManagerStateSql::set_index(id, index.to_le_bytes().to_vec(), &conn).unwrap();
+        KeyManagerStateSql::set_index(id, index.to_le_bytes().to_vec(), &mut conn).unwrap();
 
-        let state3_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
+        let state3_read = KeyManagerStateSql::get_state(&branch, &mut conn).unwrap();
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&state3_read.primary_key_index[..8]);
         assert_eq!(u64::from_le_bytes(bytes), 2);

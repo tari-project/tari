@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[table_name = "scanned_blocks"]
+#[diesel(table_name = scanned_blocks)]
 pub struct ScannedBlockSql {
     header_hash: Vec<u8>,
     height: i64,
@@ -46,7 +46,7 @@ pub struct ScannedBlockSql {
 }
 
 impl ScannedBlockSql {
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<ScannedBlockSql>, WalletStorageError> {
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<ScannedBlockSql>, WalletStorageError> {
         Ok(scanned_blocks::table
             .order(scanned_blocks::height.desc())
             .load::<ScannedBlockSql>(conn)?)
@@ -72,20 +72,20 @@ impl ScannedBlockSql {
         }
     }
 
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         diesel::insert_into(scanned_blocks::table)
             .values(self.clone())
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn clear_all(conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+    pub fn clear_all(conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         diesel::delete(scanned_blocks::table).execute(conn)?;
         Ok(())
     }
 
     /// Clear Scanned Blocks from the given height and higher
-    pub fn clear_from_and_higher(height: u64, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+    pub fn clear_from_and_higher(height: u64, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.ge(height as i64))).execute(conn)?;
         Ok(())
     }
@@ -93,7 +93,7 @@ impl ScannedBlockSql {
     pub fn clear_before_height(
         height: u64,
         exclude_recovered: bool,
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
     ) -> Result<(), WalletStorageError> {
         let mut query = diesel::delete(scanned_blocks::table)
             .into_boxed()

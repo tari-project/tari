@@ -89,7 +89,7 @@ pub async fn create(
     .unwrap();
     let node_identity = node_identity
         .map(|ni| {
-            ni.set_public_address(public_addr.clone());
+            ni.add_public_address(public_addr.clone());
             ni
         })
         .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));

@@ -41,7 +41,7 @@ use tari_core::{
         sync::rpc::BaseNodeSyncRpcService,
     },
     blocks::ChainBlock,
-    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -79,12 +79,14 @@ async fn setup() -> (
     TempDir,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_coinbase_lockheight(1)
+        .build();
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
 
     let (block0, utxo0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();

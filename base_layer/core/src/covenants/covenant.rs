@@ -61,7 +61,7 @@ impl BorshSerialize for Covenant {
     }
 }
 
-impl<'a> BorshDeserialize for Covenant {
+impl BorshDeserialize for Covenant {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
         let len = buf.read_varint()?;
         let mut data = Vec::with_capacity(len);

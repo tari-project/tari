@@ -19,28 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::AchievedTargetDifficulty,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty},
     transactions::transaction_components::Transaction,
-    validation::{error::ValidationError, DifficultyCalculator},
+    validation::error::ValidationError,
 };
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
-#[async_trait]
-pub trait BlockSyncBodyValidation: Send + Sync {
-    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError>;
+pub trait BlockBodyValidator<B>: Send + Sync {
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
-pub trait PostOrphanBodyValidation<B>: Send + Sync {
-    fn validate_body_for_valid_orphan(
+pub trait CandidateBlockValidator<B>: Send + Sync {
+    fn validate_body_with_metadata(
         &self,
         backend: &B,
         block: &ChainBlock,
@@ -48,20 +46,22 @@ pub trait PostOrphanBodyValidation<B>: Send + Sync {
     ) -> Result<(), ValidationError>;
 }
 
-pub trait MempoolTransactionValidation: Send + Sync {
-    fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError>;
+pub trait TransactionValidator: Send + Sync {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
 }
 
-pub trait OrphanValidation: Send + Sync {
-    fn validate(&self, item: &Block) -> Result<(), ValidationError>;
+pub trait InternalConsistencyValidator: Send + Sync {
+    fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
+pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
-        db: &TBackend,
+        db: &B,
         header: &BlockHeader,
-        difficulty: &DifficultyCalculator,
+        prev_header: &BlockHeader,
+        prev_timestamps: &[EpochTime],
+        target_difficulty: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 

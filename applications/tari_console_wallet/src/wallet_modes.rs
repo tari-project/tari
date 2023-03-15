@@ -110,7 +110,7 @@ impl PeerConfig {
         } else {
             Err(ExitError::new(
                 ExitCode::ConfigError,
-                &"No peer seeds or base node peer defined in config!",
+                "No peer seeds or base node peer defined in config!",
             ))
         }
     }
@@ -171,7 +171,7 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
         if !command.trim().is_empty() && !command.trim().starts_with('#') {
             let command_trimmed = cli_parse_prefix.to_owned() + " " + command.trim();
             let parse_vec: Vec<&str> = command_trimmed.split(' ').collect();
-            let cli_parsed = Cli::try_parse_from(&parse_vec);
+            let cli_parsed = Cli::try_parse_from(parse_vec);
             match cli_parsed {
                 Ok(result) => {
                     if let Some(sub_command) = result.command2 {
@@ -271,7 +271,12 @@ pub fn tui_mode(
     if config.grpc_enabled {
         if let Some(address) = config.grpc_address.clone() {
             let grpc = WalletGrpcServer::new(wallet.clone());
-            handle.spawn(run_grpc(grpc, address, config.grpc_authentication.clone()));
+            handle.spawn(run_grpc(
+                grpc,
+                address,
+                config.grpc_authentication.clone(),
+                wallet.clone(),
+            ));
         }
     }
 
@@ -361,7 +366,7 @@ pub fn recovery_mode(
         WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
-            &"Unsupported post recovery mode",
+            "Unsupported post recovery mode",
         )),
     }
 }
@@ -369,10 +374,10 @@ pub fn recovery_mode(
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
-        let grpc = WalletGrpcServer::new(wallet);
+        let grpc = WalletGrpcServer::new(wallet.clone());
         let auth = config.grpc_authentication.clone();
         handle
-            .block_on(run_grpc(grpc, address, auth))
+            .block_on(run_grpc(grpc, address, auth, wallet))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("GRPC server is disabled");
@@ -385,6 +390,7 @@ async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
     auth_config: GrpcAuthentication,
+    wallet: WalletSqlite,
 ) -> Result<(), String> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (gRPC mode started)";
@@ -397,7 +403,7 @@ async fn run_grpc(
 
     Server::builder()
         .add_service(service)
-        .serve(address)
+        .serve_with_shutdown(address, wallet.wait_until_shutdown())
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
 

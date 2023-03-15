@@ -33,6 +33,7 @@ use tari_comms::{
     tor::TorIdentity,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
+use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
@@ -57,6 +58,9 @@ pub trait WalletBackend: Send + Sync + Clone {
         height: u64,
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError>;
+
+    /// Change the passphrase used to encrypt the database
+    fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,8 +72,10 @@ pub enum DbKey {
     BaseNodeChainMetadata,
     ClientKey(String),
     MasterSeed,
-    PassphraseHash,
-    EncryptionSalt,
+    EncryptedMainKey,    // the database encryption key, itself encrypted with the secondary key
+    SecondaryKeySalt,    // the salt used (with the user's passphrase) to derive the secondary derivation key
+    SecondaryKeyVersion, // the parameter version for the secondary derivation key
+    SecondaryKeyHash,    // a hash commitment to the secondary derivation key
     WalletBirthday,
 }
 
@@ -82,8 +88,10 @@ impl DbKey {
             DbKey::TorId => "TorId".to_string(),
             DbKey::ClientKey(k) => format!("ClientKey.{}", k),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
-            DbKey::PassphraseHash => "PassphraseHash".to_string(),
-            DbKey::EncryptionSalt => "EncryptionSalt".to_string(),
+            DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
+            DbKey::SecondaryKeySalt => "SecondaryKeySalt".to_string(),
+            DbKey::SecondaryKeyVersion => "SecondaryKeyVersion".to_string(),
+            DbKey::SecondaryKeyHash => "SecondaryKeyHash".to_string(),
             DbKey::WalletBirthday => "WalletBirthday".to_string(),
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
         }
@@ -99,8 +107,10 @@ pub enum DbValue {
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
     MasterSeed(CipherSeed),
-    PassphraseHash(String),
-    EncryptionSalt(String),
+    EncryptedMainKey(String),
+    SecondaryKeySalt(String),
+    SecondaryKeyVersion(String),
+    SecondaryKeyHash(String),
     WalletBirthday(String),
 }
 
@@ -130,6 +140,11 @@ where T: WalletBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
+    }
+
+    pub fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError> {
+        self.db.change_passphrase(existing, new)?;
+        Ok(())
     }
 
     pub fn get_master_seed(&self) -> Result<Option<CipherSeed>, WalletStorageError> {
@@ -333,8 +348,10 @@ impl Display for DbValue {
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
             DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
-            DbValue::PassphraseHash(h) => f.write_str(&format!("PassphraseHash: {}", h)),
-            DbValue::EncryptionSalt(s) => f.write_str(&format!("EncryptionSalt: {}", s)),
+            DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
+            DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),
+            DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {}", v)),
+            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
             DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
         }
@@ -378,7 +395,7 @@ mod test {
     fn test_database_crud() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
 
         let passphrase = SafePassword::from("my secret lovely passphrase");
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());

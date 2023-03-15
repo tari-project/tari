@@ -44,6 +44,8 @@ pub enum ValidationError {
     BlockError(#[from] BlockValidationError),
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
+    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
+    BlockTooLarge { actual_weight: u64, max_weight: u64 },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
     #[error("Contains an unknown input")]
@@ -98,7 +100,7 @@ pub enum ValidationError {
     #[error("End of time: {0}")]
     EndOfTimeError(String),
     #[error("Expected block height to be {expected}, but was {block_height}")]
-    IncorrectNextTipHeight { expected: u64, block_height: u64 },
+    IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
@@ -145,6 +147,8 @@ pub enum ValidationError {
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
+    #[error("Not enough timestamps provided. Expected {expected}, got {actual}")]
+    NotEnoughTimestamps { expected: usize, actual: usize },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

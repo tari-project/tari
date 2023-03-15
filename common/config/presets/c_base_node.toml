@@ -17,19 +17,21 @@ identity_file = "config/base_node_id_dibbler.json"
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_igor.json"
 
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18152")
-#grpc_address = "/ip4/127.0.0.1/tcp/18152"
-
 [esmeralda.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 identity_file = "config/base_node_id_esmeralda.json"
 
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
-#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+[stagenet.base_node]
+# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+identity_file = "config/base_node_id_stagenet.json"
+
+[nextnet.base_node]
+# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+identity_file = "config/base_node_id_nextnet.json"
 
 [base_node]
 # Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
-#network = "emseralda"
+#network = "stagenet"
 
 # Set to false to disable the base node GRPC server (default = true)
 #grpc_enabled = true
@@ -145,9 +147,9 @@ track_reorgs = true
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
-# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
 # automatically configured
-#public_address = "/ip4/172.2.3.4/tcp/18189"
+#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:

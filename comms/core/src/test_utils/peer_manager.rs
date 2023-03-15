@@ -45,7 +45,7 @@ mod not_test {
         let peer_database_name = {
             let mut rng = rand::thread_rng();
             iter::repeat(())
-                .map(|_| rng.sample(Alphanumeric) as char)
+                .map(|_| rng.sample(Alphanumeric))
                 .take(8)
                 .collect::<String>()
         };

@@ -287,7 +287,7 @@ where B: BlockchainBackend + 'static
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
-        if !(*status_watch.borrow()).bootstrapped {
+        if !(status_watch.borrow()).bootstrapped {
             debug!(
                 target: LOG_TARGET,
                 "Propagated block `{}` from peer `{}` not processed while busy with initial sync.",
@@ -373,7 +373,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
     // Determine if we are synced
     let status_watch = state_machine_handle.get_status_info_watch();
-    let is_synced = match (*status_watch.borrow()).state_info {
+    let is_synced = match (status_watch.borrow()).state_info {
         StateInfo::Listening(li) => li.is_synced(),
         _ => false,
     };

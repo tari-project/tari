@@ -39,8 +39,10 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,
@@ -51,7 +53,6 @@ use tari_utilities::hex::{from_hex, Hex};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
@@ -218,7 +219,7 @@ impl AppState {
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
 
-        let contact = Contact::new(alias, address, None, None);
+        let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
@@ -441,7 +442,7 @@ impl AppState {
     }
 
     pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
-        (&self.cached_data.confirmations).get(&tx_id)
+        self.cached_data.confirmations.get(&tx_id)
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
@@ -498,7 +499,7 @@ impl AppState {
         let peer = Peer::new(
             pub_key,
             node_id,
-            addr.into(),
+            MultiaddressesWithStats::from_addresses_with_source(vec![addr], &PeerAddressSource::Config),
             PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
@@ -854,7 +855,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 
@@ -869,7 +870,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -879,7 +880,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 
@@ -900,13 +901,13 @@ impl AppStateInner {
             .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
         self.wallet.db.set_client_key_value(
             CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         )?;
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -917,7 +918,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
+                previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
             )
             .await?;
 
@@ -1096,7 +1097,13 @@ impl AppStateData {
 
         let identity = MyIdentity {
             tari_address: wallet_identity.address.to_hex(),
-            network_address: wallet_identity.node_identity.public_address().to_string(),
+            network_address: wallet_identity
+                .node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
             emoji_id: eid,
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),

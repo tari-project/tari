@@ -42,10 +42,10 @@ mod test {
     #[test]
     fn parse() {
         let cidrs = ["127.0.0.1/32", "2620:0:0:0::0/16"];
-        let cidrs = parse_cidrs(&cidrs).unwrap();
+        let cidrs = parse_cidrs(cidrs).unwrap();
         assert_eq!(cidrs[0].network_length(), Some(32));
         assert_eq!(cidrs[1].network_length(), Some(16));
         let cidrs = ["127.0.0.1/32", "127.0-0.1/32", "127.0.0.1?32", "2620:0:2d0:200::7/32"];
-        parse_cidrs(&cidrs).unwrap_err();
+        parse_cidrs(cidrs).unwrap_err();
     }
 }

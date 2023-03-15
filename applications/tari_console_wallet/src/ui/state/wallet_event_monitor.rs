@@ -25,10 +25,10 @@ use std::{ops::Deref, sync::Arc};
 use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
+use tari_contacts::contacts_service::handle::ContactsLivenessEvent;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     connectivity_service::WalletConnectivityInterface,
-    contacts_service::handle::ContactsLivenessEvent,
     output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
@@ -97,7 +97,7 @@ impl WalletEventMonitor {
                             );
                             self.app_state_inner.write().await.add_event(EventListItem{
                                 event_type: "TransactionEvent".to_string(),
-                                desc: (&*msg).to_string()
+                                desc: (*msg).to_string()
                             });
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {

@@ -23,12 +23,13 @@
 use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
-use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
+use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
 use crate::{
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         migrations,
         peer::{Peer, PeerFlags},
@@ -47,14 +48,15 @@ use crate::{
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers.
 pub struct PeerManager {
-    peer_storage: RwLock<PeerStorage<KeyValueWrapper<CommsDatabase>>>,
+    // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
+    peer_storage: RwLock<PeerStorage<CachedStore<PeerId, Peer, KeyValueWrapper<CommsDatabase>>>>,
     _file_lock: Option<File>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
     pub fn new(database: CommsDatabase, file_lock: Option<File>) -> Result<PeerManager, PeerManagerError> {
-        let storage = PeerStorage::new_indexed(KeyValueWrapper::new(database))?;
+        let storage = PeerStorage::new_indexed(CachedStore::new(KeyValueWrapper::new(database)))?;
         Ok(Self {
             peer_storage: RwLock::new(storage),
             _file_lock: file_lock,
@@ -99,7 +101,8 @@ impl PeerManager {
     ///
     /// [PeerQuery]: crate::peer_manager::PeerQuery
     pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.perform_query(peer_query)
+        let lock = self.peer_storage.read().await;
+        lock.perform_query(peer_query)
     }
 
     /// Find the peer with the provided NodeID
@@ -140,12 +143,11 @@ impl PeerManager {
         node_id: NodeId,
         addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
+        source: &PeerAddressSource,
     ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(pubkey).await {
             Ok(Some(mut peer)) => {
-                peer.connection_stats.set_connection_success();
-                peer.addresses = addresses.into();
-                peer.set_offline(false);
+                peer.addresses.update_addresses(&addresses, source);
                 peer.features = peer_features;
                 self.add_peer(peer.clone()).await?;
                 Ok(peer)
@@ -154,7 +156,7 @@ impl PeerManager {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
-                    addresses.into(),
+                    MultiaddressesWithStats::from_addresses_with_source(addresses, source),
                     PeerFlags::default(),
                     peer_features,
                     Default::default(),
@@ -216,8 +218,24 @@ impl PeerManager {
             .closest_peers(node_id, n, excluded_peers, features)
     }
 
-    pub async fn mark_last_seen(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.mark_last_seen(node_id)
+    pub async fn mark_last_seen(
+        &self,
+        node_id: &NodeId,
+        addr: &Multiaddr,
+        source: &PeerAddressSource,
+    ) -> Result<(), PeerManagerError> {
+        let mut lock = self.peer_storage.write().await;
+        let peer = lock.find_by_node_id(node_id)?;
+        match peer {
+            Some(mut peer) => {
+                // if we have an address, update it
+                peer.addresses.add_address(addr, source);
+                peer.addresses.mark_last_seen_now(addr);
+                lock.add_peer(peer)?;
+                Ok(())
+            },
+            None => Err(PeerManagerError::PeerNotFoundError),
+        }
     }
 
     /// Fetch n random peers
@@ -246,10 +264,8 @@ impl PeerManager {
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .await
-            .calc_region_threshold(region_node_id, n, features)
+        let lock = self.peer_storage.read().await;
+        lock.calc_region_threshold(region_node_id, n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
@@ -282,16 +298,6 @@ impl PeerManager {
 
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         self.peer_storage.read().await.is_peer_banned(node_id)
-    }
-
-    /// Changes the offline flag bit of the peer. Return the previous offline state.
-    pub async fn set_offline(&self, node_id: &NodeId, is_offline: bool) -> Result<bool, PeerManagerError> {
-        self.peer_storage.write().await.set_offline(node_id, is_offline)
-    }
-
-    /// Adds a new net address to the peer if it doesn't yet exist
-    pub async fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.add_net_address(node_id, net_address)
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
@@ -353,13 +359,15 @@ mod test {
             peer::{Peer, PeerFlags},
             PeerFeatures,
         },
-        runtime,
     };
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
-        let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
+        let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap()],
+            &PeerAddressSource::Config,
+        );
         let mut peer = Peer::new(
             pk,
             node_id,
@@ -375,8 +383,8 @@ mod test {
         peer
     }
 
-    #[runtime::test]
-    async fn get_broadcast_identities() {
+    #[tokio::test]
+    async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
@@ -485,8 +493,8 @@ mod test {
         assert_ne!(identities1, identities2);
     }
 
-    #[runtime::test]
-    async fn calc_region_threshold() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -553,8 +561,8 @@ mod test {
         }
     }
 
-    #[runtime::test]
-    async fn closest_peers() {
+    #[tokio::test]
+    async fn test_closest_peers() {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -587,21 +595,24 @@ mod test {
         }
     }
 
-    #[runtime::test]
-    async fn add_or_update_online_peer() {
+    #[tokio::test]
+    async fn test_add_or_update_online_peer() {
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
-        peer.set_offline(true);
-        peer.connection_stats.set_connection_failed();
+        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
         peer_manager.add_peer(peer.clone()).await.unwrap();
 
         let peer = peer_manager
-            .add_or_update_online_peer(&peer.public_key, peer.node_id, vec![], peer.features)
+            .add_or_update_online_peer(
+                &peer.public_key,
+                peer.node_id,
+                vec![],
+                peer.features,
+                &PeerAddressSource::Config,
+            )
             .await
             .unwrap();
 
         assert!(!peer.is_offline());
-        assert_eq!(peer.connection_stats.failed_attempts(), 0);
     }
 }

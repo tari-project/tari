@@ -34,7 +34,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::DhtRpcService,
+    rpc::{DhtRpcService, PeerInfo},
 };
 
 const LOG_TARGET: &str = "comms::dht::rpc";
@@ -58,14 +58,23 @@ impl DhtRpcServiceImpl {
 
         // A maximum buffer size of 10 is selected arbitrarily and is to allow the producer/consumer some room to
         // buffer.
-        let (tx, rx) = mpsc::channel(cmp::min(10, peers.len() as usize));
+        let (tx, rx) = mpsc::channel(cmp::min(10, peers.len()));
         task::spawn(async move {
             let iter = peers
                 .into_iter()
-                .map(|peer| GetPeersResponse {
-                    peer: Some(peer.into()),
+                .filter_map(|peer| {
+                    let peer_info: PeerInfo = peer.into();
+
+                    if peer_info.addresses.is_empty() {
+                        None
+                    } else {
+                        Some(GetPeersResponse {
+                            peer: Some(peer_info.into()),
+                        })
+                    }
                 })
                 .map(Ok);
+
             let _result = utils::mpsc::send_all(&tx, iter).await;
         });
 
@@ -147,7 +156,8 @@ impl DhtRpcService for DhtRpcServiceImpl {
         let mut query = PeerQuery::new().select_where(|peer| {
             &peer.node_id != requester_node_id &&
                 (message.include_clients || !peer.features.is_client()) &&
-                !peer.is_banned()
+                !peer.is_banned() &&
+                peer.deleted_at.is_none()
         });
 
         if message.n > 0 {

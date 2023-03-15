@@ -1,7 +1,7 @@
 ---
 name: CI
 
-'on':
+"on":
   workflow_dispatch:
   push:
     branches:
@@ -15,17 +15,21 @@ name: CI
       - synchronize
 
 env:
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   PROTOC: protoc
   TERM: unkown
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   clippy:
     name: clippy
     #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -34,7 +38,6 @@ jobs:
         with:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
-          override: true
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -55,8 +58,8 @@ jobs:
           command: lints
           args: clippy --all-targets --all-features
   build:
-    name: check nightly
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    name: cargo check
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -81,8 +84,8 @@ jobs:
           command: check
           args: --release --package tari_wallet_ffi
   build-stable:
-    name: check stable
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    name: cargo check stable
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -104,7 +107,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --release --all-targets --locked
+          args: --release --all-targets --workspace --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
         uses: actions-rs/cargo@v1
         with:
@@ -112,7 +115,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   licenses:
     name: file licenses
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -125,7 +128,7 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [self-hosted, ubuntu18.04-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -152,12 +155,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -v --all-features --release
+          args: -v --all-features --release --workspace --exclude tari_integration_tests
 
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ubuntu-20.04]
     steps:
       - name: Save the PR number in an artifact
         shell: bash

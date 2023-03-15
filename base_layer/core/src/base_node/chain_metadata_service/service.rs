@@ -95,7 +95,7 @@ impl ChainMetadataService {
                     log_if_error!(
                         target: LOG_TARGET,
                         "Failed to handle liveness event because '{}'",
-                        self.handle_liveness_event(&*event).await
+                        self.handle_liveness_event(&event).await
                     );
                 },
 
@@ -131,10 +131,9 @@ impl ChainMetadataService {
         match event {
             // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Received ping from neighbouring node '{}'.",
-                    event.node_id
+                    "Received ping from neighbouring node '{}'.", event.node_id
                 );
                 self.number_of_rounds_no_pings = 0;
                 if event.metadata.has(MetadataKey::ChainMetadata) {

@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// non-64-bit not supported
+tari_app_utilities::deny_non_64_bit_archs!();
+
 #[macro_use]
 mod table;
 
@@ -57,9 +60,11 @@ pub use crate::{
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
-pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<ApplicationConfig>) -> Result<(), ExitError> {
-    let shutdown = Shutdown::new();
-
+pub async fn run_base_node(
+    shutdown: Shutdown,
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<ApplicationConfig>,
+) -> Result<(), ExitError> {
     let data_dir = config.base_node.data_dir.clone();
     let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
 
@@ -79,6 +84,7 @@ pub async fn run_base_node(node_identity: Arc<NodeIdentity>, config: Arc<Applica
         non_interactive_mode: true,
         watch: None,
         network: None,
+        profile_with_tokio_console: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
@@ -103,6 +109,9 @@ pub async fn run_base_node_with_cli(
 
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
+    if let Some(grpc) = config.base_node.grpc_address.as_ref() {
+        log_mdc::insert("grpc", grpc.to_string());
+    }
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");

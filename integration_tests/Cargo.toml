@@ -1,0 +1,62 @@
+[package]
+name = "tari_integration_tests"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.35.1"
+edition = "2018"
+
+[dependencies]
+tari_app_grpc = { path = "../applications/tari_app_grpc" }
+tari_app_utilities = { path = "../applications/tari_app_utilities" }
+tari_base_node = { path = "../applications/tari_base_node" }
+tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
+tari_common = { path = "../common" }
+tari_common_types = { path = "../base_layer/common_types" }
+tari_comms = { path = "../comms/core" }
+tari_comms_dht = { path = "../comms/dht" }
+tari_console_wallet = { path = "../applications/tari_console_wallet" }
+tari_core = { path = "../base_layer/core" }
+tari_merge_mining_proxy = { path = "../applications/tari_merge_mining_proxy" }
+tari_miner = { path = "../applications/tari_miner" }
+tari_p2p = { path = "../base_layer/p2p" }
+tari_script = { path = "../infrastructure/tari_script" }
+tari_shutdown = { path = "../infrastructure/shutdown" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
+tari_wallet = { path = "../base_layer/wallet" }
+tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
+
+anyhow = "1.0.53"
+async-trait = "0.1.50"
+chrono = "0.4.22"
+config = "0.13.0"
+csv = "1.1"
+futures = { version = "^0.3.1" }
+libc = "0.2.65"
+log = { version = "0.4.8", features = ["std"] }
+rand = "0.7"
+reqwest = "0.11.11"
+serde_json = "1.0.64"
+thiserror = "^1.0.20"
+time = "0.3.15"
+tokio = { version = "1.10", features = ["macros", "time", "sync", "rt-multi-thread"] }
+tonic = "0.6.2"
+
+
+[dev-dependencies]
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.8" }
+
+# FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
+#cucumber = { version = "0.13.0", features = ["default"] }
+cucumber = { version = "0.18.0", features = ["default", "libtest"] }
+tempfile = "3.3.0"
+indexmap = "1.9.1"
+
+[package.metadata.cargo-machete]
+ignored = ["tari_wallet_ffi"]
+
+[[test]]
+name = "cucumber" # this should be the same as the filename of your test target
+harness = false # allows Cucumber to print output instead of libtest
+

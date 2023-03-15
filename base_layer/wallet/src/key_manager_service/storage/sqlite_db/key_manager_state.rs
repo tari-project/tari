@@ -25,21 +25,22 @@ use std::convert::TryFrom;
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
+use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_utilities::Hidden;
 
 use crate::{
-    key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState},
-    schema::key_manager_states,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    key_manager_service::{
+        error::KeyManagerStorageError,
+        storage::{database::KeyManagerState, sqlite_db::Encryptable},
     },
+    schema::key_manager_states,
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
 };
 
 /// Represents a row in the key_manager_states table.
 #[derive(Clone, Debug, Queryable, Identifiable)]
-#[table_name = "key_manager_states"]
-#[primary_key(id)]
+#[diesel(table_name = key_manager_states)]
+#[diesel(primary_key(id))]
 pub struct KeyManagerStateSql {
     pub id: i32,
     pub branch_seed: String,
@@ -49,7 +50,7 @@ pub struct KeyManagerStateSql {
 
 /// Struct used to create a new Key manager in the database
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "key_manager_states"]
+#[diesel(table_name = key_manager_states)]
 pub struct NewKeyManagerStateSql {
     branch_seed: String,
     primary_key_index: Vec<u8>,
@@ -80,7 +81,7 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 
 impl NewKeyManagerStateSql {
     /// Commits a new key manager into the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         diesel::insert_into(key_manager_states::table)
             .values(self.clone())
             .execute(conn)?;
@@ -91,13 +92,13 @@ impl NewKeyManagerStateSql {
 impl KeyManagerStateSql {
     /// Retrieve every key manager branch currently in the database.
     /// Returns a `Vec` of [KeyManagerStateSql], if none are found, it will return an empty `Vec`.
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
         Ok(key_manager_states::table.load::<KeyManagerStateSql>(conn)?)
     }
 
     /// Retrieve the key manager for the provided branch
     /// Will return Err if the branch does not exist in the database
-    pub fn get_state(branch: &str, conn: &SqliteConnection) -> Result<KeyManagerStateSql, KeyManagerStorageError> {
+    pub fn get_state(branch: &str, conn: &mut SqliteConnection) -> Result<KeyManagerStateSql, KeyManagerStorageError> {
         key_manager_states::table
             .filter(key_manager_states::branch_seed.eq(branch.to_string()))
             .first::<KeyManagerStateSql>(conn)
@@ -105,7 +106,7 @@ impl KeyManagerStateSql {
     }
 
     /// Creates or updates the database with the key manager state in this instance.
-    pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn set_state(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         match KeyManagerStateSql::get_state(&self.branch_seed, conn) {
             Ok(km) => {
                 let update = KeyManagerStateUpdateSql {
@@ -131,7 +132,7 @@ impl KeyManagerStateSql {
     }
 
     /// Updates the key index of the of the provided key manager indicated by the id.
-    pub fn set_index(id: i32, index: Vec<u8>, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+    pub fn set_index(id: i32, index: Vec<u8>, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         let update = KeyManagerStateUpdateSql {
             branch_seed: None,
             primary_key_index: Some(index),
@@ -144,13 +145,6 @@ impl KeyManagerStateSql {
     }
 }
 
-#[derive(AsChangeset)]
-#[table_name = "key_manager_states"]
-pub struct KeyManagerStateUpdateSql {
-    branch_seed: Option<String>,
-    primary_key_index: Option<Vec<u8>>,
-}
-
 impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
@@ -158,21 +152,21 @@ impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.primary_key_index = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("primary_key_index"),
             Hidden::hide(self.primary_key_index.clone()),
         )?;
 
-        Ok(())
+        Ok(self)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.primary_key_index =
             decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), &self.primary_key_index)?;
 
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -183,17 +177,24 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.primary_key_index = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("primary_key_index"),
             Hidden::hide(self.primary_key_index.clone()),
         )?;
 
-        Ok(())
+        Ok(self)
     }
 
-    fn decrypt(&mut self, _cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(self, _cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         unimplemented!("Not supported")
     }
+}
+
+#[derive(AsChangeset)]
+#[diesel(table_name = key_manager_states)]
+pub struct KeyManagerStateUpdateSql {
+    branch_seed: Option<String>,
+    primary_key_index: Option<Vec<u8>>,
 }

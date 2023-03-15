@@ -315,7 +315,6 @@ impl Display for DiscoveryParams {
 
 #[derive(Debug, Default, Clone)]
 pub struct DhtNetworkDiscoveryRoundInfo {
-    pub num_new_neighbours: usize,
     pub num_new_peers: usize,
     pub num_duplicate_peers: usize,
     pub num_succeeded: usize,
@@ -325,10 +324,6 @@ pub struct DhtNetworkDiscoveryRoundInfo {
 impl DhtNetworkDiscoveryRoundInfo {
     pub fn has_new_peers(&self) -> bool {
         self.num_new_peers > 0
-    }
-
-    pub fn has_new_neighbours(&self) -> bool {
-        self.num_new_neighbours > 0
     }
 
     /// Returns true if the round succeeded (i.e. at least one sync peer was contacted and succeeded in the protocol),
@@ -342,10 +337,9 @@ impl Display for DhtNetworkDiscoveryRoundInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Synced {}/{}, num_new_neighbours = {}, num_new_peers = {}, num_duplicate_peers = {}",
+            "Synced {}/{}, num_new_peers = {}, num_duplicate_peers = {}",
             self.num_succeeded,
             self.sync_peers.len(),
-            self.num_new_neighbours,
             self.num_new_peers,
             self.num_duplicate_peers,
         )

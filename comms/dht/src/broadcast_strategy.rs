@@ -150,8 +150,8 @@ mod test {
 
     #[test]
     fn is_direct() {
-        assert!(BroadcastStrategy::DirectPublicKey(Box::new(CommsPublicKey::default())).is_direct());
-        assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default())).is_direct());
+        assert!(BroadcastStrategy::DirectPublicKey(Box::default()).is_direct());
+        assert!(BroadcastStrategy::DirectNodeId(Box::default()).is_direct());
         assert!(!BroadcastStrategy::Broadcast(Default::default()).is_direct());
         assert!(!BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),);
         assert!(!BroadcastStrategy::Flood(Default::default()).is_direct());
@@ -166,10 +166,10 @@ mod test {
 
     #[test]
     fn direct_public_key() {
-        assert!(BroadcastStrategy::DirectPublicKey(Box::new(CommsPublicKey::default()))
+        assert!(BroadcastStrategy::DirectPublicKey(Box::default())
             .direct_public_key()
             .is_some());
-        assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default()))
+        assert!(BroadcastStrategy::DirectNodeId(Box::default())
             .direct_public_key()
             .is_none());
         assert!(BroadcastStrategy::Broadcast(Default::default(),)
@@ -190,10 +190,10 @@ mod test {
 
     #[test]
     fn direct_node_id() {
-        assert!(BroadcastStrategy::DirectPublicKey(Box::new(CommsPublicKey::default()))
+        assert!(BroadcastStrategy::DirectPublicKey(Box::default())
             .direct_node_id()
             .is_none());
-        assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default()))
+        assert!(BroadcastStrategy::DirectNodeId(Box::default())
             .direct_node_id()
             .is_some());
         assert!(BroadcastStrategy::Broadcast(Default::default(),)

@@ -39,7 +39,6 @@ use crate::{
         PeerConnection,
     },
     peer_manager::NodeId,
-    runtime::task,
 };
 
 pub fn create_connection_manager_mock() -> (ConnectionManagerRequester, ConnectionManagerMock) {
@@ -118,7 +117,7 @@ impl ConnectionManagerMock {
     }
 
     pub fn spawn(self) {
-        task::spawn(Self::run(self));
+        tokio::spawn(Self::run(self));
     }
 
     pub async fn run(mut self) {
@@ -133,7 +132,7 @@ impl ConnectionManagerMock {
         self.state.add_call(format!("{:?}", req)).await;
         match req {
             DialPeer { node_id, mut reply_tx } => {
-                // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
+                // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 let result = self
                     .state
                     .active_conns

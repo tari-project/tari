@@ -501,7 +501,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
             ),
 
-            initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
+            initial_sync_achieved: status_watch.borrow().bootstrapped,
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
@@ -912,10 +912,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
-        let state: tari_rpc::BaseNodeState = (&(*status_watch.borrow()).state_info).into();
+        let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
-            initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
+            initial_sync_achieved: status_watch.borrow().bootstrapped,
             base_node_state: state.into(),
         };
 
@@ -1357,7 +1357,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let identity = self.comms.node_identity_ref();
         Ok(Response::new(tari_rpc::NodeIdentity {
             public_key: identity.public_key().to_vec(),
-            public_address: identity.public_address().to_string(),
+            public_addresses: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
             node_id: identity.node_id().to_vec(),
         }))
     }
@@ -1440,8 +1440,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let response = tari_rpc::MempoolStatsResponse {
-            unconfirmed_txs: mempool_stats.unconfirmed_txs as u64,
-            reorg_txs: mempool_stats.reorg_txs as u64,
+            unconfirmed_txs: mempool_stats.unconfirmed_txs,
+            reorg_txs: mempool_stats.reorg_txs,
             unconfirmed_weight: mempool_stats.unconfirmed_weight,
         };
 

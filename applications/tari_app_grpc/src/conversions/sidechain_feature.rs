@@ -28,6 +28,7 @@ use tari_core::{
     transactions::transaction_components::{
         BuildInfo,
         CodeTemplateRegistration,
+        ConfidentialOutputData,
         SideChainFeature,
         TemplateType,
         ValidatorNodeRegistration,
@@ -56,6 +57,9 @@ impl From<SideChainFeature> for grpc::side_chain_feature::SideChainFeature {
             SideChainFeature::TemplateRegistration(template_reg) => {
                 grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
+            SideChainFeature::ConfidentialOutput(output_data) => {
+                grpc::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data.into())
+            },
         }
     }
 }
@@ -70,6 +74,9 @@ impl TryFrom<grpc::side_chain_feature::SideChainFeature> for SideChainFeature {
             },
             grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
                 Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+            },
+            grpc::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data) => {
+                Ok(SideChainFeature::ConfidentialOutput(output_data.try_into()?))
             },
         }
     }
@@ -140,6 +147,25 @@ impl From<CodeTemplateRegistration> for grpc::TemplateRegistration {
             build_info: Some(value.build_info.into()),
             binary_sha: value.binary_sha.to_vec(),
             binary_url: value.binary_url.to_string(),
+        }
+    }
+}
+
+// -------------------------------- ConfidentialOutputData -------------------------------- //
+impl TryFrom<grpc::ConfidentialOutputData> for ConfidentialOutputData {
+    type Error = String;
+
+    fn try_from(value: grpc::ConfidentialOutputData) -> Result<Self, Self::Error> {
+        Ok(ConfidentialOutputData {
+            claim_public_key: PublicKey::from_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+        })
+    }
+}
+
+impl From<ConfidentialOutputData> for grpc::ConfidentialOutputData {
+    fn from(value: ConfidentialOutputData) -> Self {
+        Self {
+            claim_public_key: value.claim_public_key.to_vec(),
         }
     }
 }

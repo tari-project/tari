@@ -64,7 +64,7 @@ use tari_core::{
         rpc::BaseNodeWalletRpcServer,
     },
     blocks::BlockHeader,
-    consensus::ConsensusConstantsBuilder,
+    consensus::{ConsensusConstantsBuilder, ConsensusManager},
     covenants::Covenant,
     proto::{
         base_node as base_node_proto,
@@ -98,10 +98,10 @@ use tari_crypto::{
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::random;
+use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_utilities::SafePassword;
 use tari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -154,13 +154,14 @@ use tokio::{
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
 };
 async fn setup_transaction_service<P: AsRef<Path>>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     db_connection: WalletDbConnection,
     database_path: P,
@@ -225,6 +226,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             subscription_factory,
             ts_backend,
             wallet_identity,
+            consensus_manager,
             factories,
             db.clone(),
         ))
@@ -316,6 +318,7 @@ async fn setup_transaction_service_no_comms(
     wallet_connectivity_service_mock.set_base_node(node_identity.to_peer());
     wallet_connectivity_service_mock.base_node_changed().await;
 
+    let consensus_manager = ConsensusManager::builder(Network::Weatherwax).build();
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
 
     let shutdown = Shutdown::new();
@@ -387,6 +390,7 @@ async fn setup_transaction_service_no_comms(
         wallet_connectivity_service_mock.clone(),
         event_publisher,
         wallet_identity,
+        consensus_manager,
         factories,
         shutdown.to_signal(),
         base_node_service_handle,
@@ -463,8 +467,10 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn manage_single_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -501,6 +507,7 @@ async fn manage_single_transaction() {
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         database_path.clone(),
@@ -516,6 +523,7 @@ async fn manage_single_transaction() {
     let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity) = setup_transaction_service(
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
+        consensus_manager,
         factories.clone(),
         bob_connection,
         database_path,
@@ -534,7 +542,7 @@ async fn manage_single_transaction() {
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     assert!(alice_ts
         .send_transaction(
             bob_address.clone(),
@@ -567,7 +575,7 @@ async fn manage_single_transaction() {
     loop {
         tokio::select! {
             _event = alice_event_stream.recv() => {
-                println!("alice: {:?}", &*_event.as_ref().unwrap());
+                println!("alice: {:?}", _event.as_ref().unwrap());
                 count+=1;
                 if count>=2 {
                     break;
@@ -611,6 +619,8 @@ async fn manage_single_transaction() {
 
 #[tokio::test]
 async fn single_transaction_to_self() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -640,6 +650,7 @@ async fn single_transaction_to_self() {
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
+        consensus_manager,
         factories.clone(),
         db_connection,
         database_path,
@@ -654,7 +665,7 @@ async fn single_transaction_to_self() {
     alice_oms.add_rewindable_output(uo1, None, None).await.unwrap();
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = 10000.into();
-    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
+    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -682,6 +693,8 @@ async fn single_transaction_to_self() {
 
 #[tokio::test]
 async fn send_one_sided_transaction_to_other() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -719,6 +732,7 @@ async fn send_one_sided_transaction_to_other() {
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
+        consensus_manager,
         factories.clone(),
         db_connection,
         database_path,
@@ -785,6 +799,8 @@ async fn send_one_sided_transaction_to_other() {
 
 #[tokio::test]
 async fn recover_one_sided_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -825,6 +841,7 @@ async fn recover_one_sided_transaction() {
     let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         database_path,
@@ -836,6 +853,7 @@ async fn recover_one_sided_transaction() {
     let (_bob_ts, mut bob_oms, _bob_comms, _bob_connectivity) = setup_transaction_service(
         bob_node_identity.clone(),
         vec![],
+        consensus_manager,
         factories.clone(),
         bob_connection,
         database_path2,
@@ -843,7 +861,7 @@ async fn recover_one_sided_transaction() {
         shutdown.to_signal(),
     )
     .await;
-    let script = script!(PushPubKey(Box::new(bob_node_identity.public_key().clone())));
+    let script = one_sided_payment_script(bob_node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake256>().unwrap().to_vec(),
         private_key: bob_node_identity.secret_key().clone(),
@@ -862,7 +880,7 @@ async fn recover_one_sided_transaction() {
     let message = "".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
             bob_address,
@@ -896,6 +914,8 @@ async fn recover_one_sided_transaction() {
 
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -930,6 +950,7 @@ async fn test_htlc_send_and_claim() {
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![],
+        consensus_manager,
         factories.clone(),
         db_connection,
         database_path,
@@ -1022,6 +1043,8 @@ async fn test_htlc_send_and_claim() {
 
 #[tokio::test]
 async fn send_one_sided_transaction_to_self() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1051,6 +1074,7 @@ async fn send_one_sided_transaction_to_self() {
     let (alice_ts, alice_oms, _alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![],
+        consensus_manager,
         factories.clone(),
         alice_connection,
         database_path,
@@ -1067,7 +1091,7 @@ async fn send_one_sided_transaction_to_self() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
     let mut alice_ts_clone = alice_ts;
-    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
+    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
     match alice_ts_clone
         .send_one_sided_transaction(
             alice_address,
@@ -1088,8 +1112,10 @@ async fn send_one_sided_transaction_to_self() {
     };
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn manage_multiple_transactions() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1132,6 +1158,7 @@ async fn manage_multiple_transactions() {
     let (mut alice_ts, mut alice_oms, alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity.clone(),
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         database_path.clone(),
@@ -1147,6 +1174,7 @@ async fn manage_multiple_transactions() {
     let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity) = setup_transaction_service(
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
+        consensus_manager.clone(),
         factories.clone(),
         bob_connection,
         database_path.clone(),
@@ -1160,6 +1188,7 @@ async fn manage_multiple_transactions() {
     let (mut carol_ts, mut carol_oms, carol_comms, _carol_connectivity) = setup_transaction_service(
         carol_node_identity.clone(),
         vec![alice_node_identity.clone()],
+        consensus_manager,
         factories.clone(),
         carol_connection,
         database_path,
@@ -1364,8 +1393,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
 
-    let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment).await;
 
     alice_ts_interface
@@ -1431,29 +1458,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         ))
         .await
         .unwrap();
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-
-    let mut errors = 0;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                if let TransactionEvent::Error(s) = &*event.unwrap() {
-                    if s == &"TransactionProtocolError(TransactionBuildError(InvalidSignatureError(\"Verifying kernel signature\")))".to_string()                         {
-                        errors+=1;
-                    }
-                    if errors >= 1 {
-                        break;
-                    }
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(errors >= 1);
 }
 
 #[tokio::test]
@@ -1527,7 +1531,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .unwrap();
 
     stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
-    stp.finalize(&factories, None, u64::MAX).unwrap();
+    stp.finalize().unwrap();
     let tx = stp.get_transaction().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -1641,7 +1645,7 @@ async fn finalize_tx_with_missing_output() {
         .unwrap();
 
     stp.add_single_recipient_info(recipient_reply.clone()).unwrap();
-    stp.finalize(&factories, None, u64::MAX).unwrap();
+    stp.finalize().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id.as_u64(),
@@ -1691,10 +1695,12 @@ async fn finalize_tx_with_missing_output() {
         .is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn discovery_async_return_test() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path();
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
 
     // Alice's parameters
@@ -1731,6 +1737,7 @@ async fn discovery_async_return_test() {
     let (_carol_ts, _carol_oms, carol_comms, _carol_connectivity) = setup_transaction_service(
         carol_node_identity.clone(),
         vec![],
+        consensus_manager.clone(),
         factories.clone(),
         carol_connection,
         db_folder.join("carol"),
@@ -1744,6 +1751,7 @@ async fn discovery_async_return_test() {
     let (mut alice_ts, mut alice_oms, alice_comms, _alice_connectivity) = setup_transaction_service(
         alice_node_identity,
         vec![carol_node_identity.clone()],
+        consensus_manager,
         factories.clone(),
         alice_connection,
         db_folder.join("alice"),
@@ -1763,7 +1771,7 @@ async fn discovery_async_return_test() {
     let initial_balance = alice_oms.get_balance().await.unwrap();
 
     let value_a_to_c_1 = MicroTari::from(14000);
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -1801,7 +1809,7 @@ async fn discovery_async_return_test() {
     assert_eq!(found_txid, tx_id);
     assert!(!is_direct_send);
 
-    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), Network::LocalNet);
+    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), network);
     let tx_id2 = alice_ts
         .send_transaction(
             carol_address,
@@ -2915,6 +2923,7 @@ async fn test_tx_direct_send_behaviour() {
 
 #[tokio::test]
 async fn test_restarting_transaction_protocols() {
+    let network = Network::LocalNet;
     let factories = CryptoFactories::default();
     let (alice_connection, _temp_dir) = make_wallet_database_connection(None);
 
@@ -2989,13 +2998,13 @@ async fn test_restarting_transaction_protocols() {
 
     bob_stp.add_single_recipient_info(alice_reply.clone()).unwrap();
 
-    match bob_stp.finalize(&factories, None, u64::MAX) {
+    match bob_stp.finalize() {
         Ok(_) => (),
         Err(e) => panic!("Should be able to finalize tx: {}", e),
     };
     let tx = bob_stp.get_transaction().unwrap().clone();
 
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
     let inbound_tx = InboundTransaction {
         tx_id,
         source_address: bob_address,
@@ -3017,7 +3026,7 @@ async fn test_restarting_transaction_protocols() {
         )))
         .unwrap();
 
-    let alice_address = TariAddress::new(alice_identity.public_key().clone(), Network::LocalNet);
+    let alice_address = TariAddress::new(alice_identity.public_key().clone(), network);
     let outbound_tx = OutboundTransaction {
         tx_id,
         destination_address: alice_address,
@@ -4368,11 +4377,12 @@ async fn test_resend_on_startup() {
         .restart_broadcast_protocols()
         .await
         .is_ok());
-    assert!(alice_ts_interface
+
+    alice_ts_interface
         .transaction_service_handle
         .restart_transaction_protocols()
         .await
-        .is_ok());
+        .unwrap();
 
     // Check that if the cooldown is not done that a message will not be sent.
     assert!(alice_ts_interface

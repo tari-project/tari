@@ -30,7 +30,7 @@ use tari_utilities::{ByteArray, Hidden};
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{models::DbUnblindedOutput, sqlite_db::OutputSql, OutputStatus},
+        storage::{models::DbUnblindedOutput, OutputStatus},
     },
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
@@ -40,7 +40,7 @@ use crate::{
 /// equivalent datatypes for the members.
 #[derive(Clone, Derivative, Insertable, PartialEq)]
 #[derivative(Debug)]
-#[table_name = "outputs"]
+#[diesel(table_name = outputs)]
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
     #[derivative(Debug = "ignore")]
@@ -82,7 +82,7 @@ impl NewOutputSql {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.unblinded_output.covenant, &mut covenant)?;
 
-        let mut output = Self {
+        let output = Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
@@ -117,7 +117,7 @@ impl NewOutputSql {
             source: output.source as i32,
         };
 
-        output
+        let output = output
             .encrypt(cipher)
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
 
@@ -125,7 +125,7 @@ impl NewOutputSql {
     }
 
     /// Write this struct to the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
@@ -137,7 +137,7 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()].concat()
     }
 
-    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.spending_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("spending_key"),
@@ -147,49 +147,18 @@ impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
         self.script_private_key = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("script_private_key"),
-            Hidden::hide(self.script_private_key.clone()),
+            Hidden::hide(self.script_private_key),
         )?;
 
-        Ok(())
+        Ok(self)
     }
 
-    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.spending_key = decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), &self.spending_key)?;
 
         self.script_private_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("script_private_key"), &self.script_private_key)?;
 
-        Ok(())
-    }
-}
-
-impl From<OutputSql> for NewOutputSql {
-    fn from(o: OutputSql) -> Self {
-        Self {
-            commitment: o.commitment,
-            spending_key: o.spending_key,
-            value: o.value,
-            output_type: o.output_type,
-            maturity: o.maturity,
-            status: o.status,
-            hash: o.hash,
-            script: o.script,
-            input_data: o.input_data,
-            script_private_key: o.script_private_key,
-            coinbase_extra: o.coinbase_extra,
-            sender_offset_public_key: o.sender_offset_public_key,
-            metadata_signature_ephemeral_commitment: o.metadata_signature_ephemeral_commitment,
-            metadata_signature_ephemeral_pubkey: o.metadata_signature_ephemeral_pubkey,
-            metadata_signature_u_a: o.metadata_signature_u_a,
-            metadata_signature_u_x: o.metadata_signature_u_x,
-            metadata_signature_u_y: o.metadata_signature_u_y,
-            received_in_tx_id: o.received_in_tx_id,
-            coinbase_block_height: o.coinbase_block_height,
-            features_json: o.features_json,
-            covenant: o.covenant,
-            encrypted_value: o.encrypted_value,
-            minimum_value_promise: o.minimum_value_promise,
-            source: 0,
-        }
+        Ok(self)
     }
 }

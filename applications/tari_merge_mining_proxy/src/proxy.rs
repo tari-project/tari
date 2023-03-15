@@ -250,7 +250,7 @@ impl InnerService {
             debug!(
                 target: LOG_TARGET,
                 "Tari Hash found in Monero block: {}",
-                hex::encode(&hash)
+                hex::encode(hash)
             );
 
             let mut block_data = match self.block_templates.get(&hash).await {
@@ -259,7 +259,7 @@ impl InnerService {
                     info!(
                         target: LOG_TARGET,
                         "Block `{}` submitted but no matching block template was found, possible duplicate submission",
-                        hex::encode(&hash)
+                        hex::encode(hash)
                     );
                     continue;
                 },

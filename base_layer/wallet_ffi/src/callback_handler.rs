@@ -40,10 +40,10 @@ use std::{ops::Deref, sync::Arc};
 use log::*;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
+use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     connectivity_service::OnlineStatus,
-    contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,

@@ -20,38 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    cmp::max,
-    convert::TryInto,
+    cmp::{max, min},
     fmt::{Display, Error, Formatter},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlindingFactor,
-    Commitment,
-    CommitmentFactory,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
-};
-use tari_script::ScriptContext;
+use tari_common_types::types::BlindingFactor;
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
+use super::transaction_components::OutputFeatures;
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroTari,
     transaction_components::{
-        transaction_output::batch_verify_range_proofs,
         KernelFeatures,
-        KernelSum,
         OutputType,
         Transaction,
         TransactionError,
@@ -291,12 +275,16 @@ impl AggregateBody {
                 coinbase_utxo = Some(utxo.clone());
             }
         }
-        if coinbase_counter != 1 {
+        if coinbase_counter > 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbase);
+        }
+
+        if coinbase_counter == 0 {
+            return Err(TransactionError::NoCoinbase);
         }
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
@@ -356,154 +344,8 @@ impl AggregateBody {
         Ok(())
     }
 
-    /// Validate this transaction by checking the following:
-    /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
-    /// 1. The signature signs the canonical message with the private excess
-    /// 1. Range proofs of the outputs are valid
-    ///
-    /// This function does NOT check that inputs come from the UTXO set
-    /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
-    /// for a transaction
-    pub fn validate_internal_consistency(
-        &self,
-        tx_offset: &BlindingFactor,
-        script_offset: &BlindingFactor,
-        bypass_range_proof_verification: bool,
-        total_reward: MicroTari,
-        factories: &CryptoFactories,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), TransactionError> {
-        self.verify_kernel_signatures()?;
-
-        let total_offset = factories.commitment.commit_value(tx_offset, total_reward.0);
-        self.validate_kernel_sum(total_offset, &factories.commitment)?;
-
-        if !bypass_range_proof_verification {
-            self.validate_range_proofs(&factories.range_proof)?;
-        }
-        self.verify_metadata_signatures()?;
-
-        let script_offset_g = PublicKey::from_secret_key(script_offset);
-        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)?;
-        self.validate_covenants(height)?;
-        Ok(())
-    }
-
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
         (self.inputs, self.outputs, self.kernels)
-    }
-
-    /// Calculate the sum of the outputs - inputs
-    fn sum_commitments(&self) -> Result<Commitment, TransactionError> {
-        let sum_inputs = &self
-            .inputs
-            .iter()
-            .map(|i| i.commitment())
-            .collect::<Result<Vec<&Commitment>, _>>()?
-            .into_iter()
-            .sum::<Commitment>();
-        let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
-        Ok(sum_outputs - sum_inputs)
-    }
-
-    /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-    fn sum_kernels(&self, offset_with_fee: PedersenCommitment) -> KernelSum {
-        // Sum all kernel excesses and fees
-        self.kernels.iter().fold(
-            KernelSum {
-                fees: MicroTari(0),
-                sum: offset_with_fee,
-            },
-            |acc, val| KernelSum {
-                fees: acc.fees + val.fee,
-                sum: &acc.sum + &val.excess,
-            },
-        )
-    }
-
-    /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    ///
-    /// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
-    /// block balances, or zero for transaction balances)
-    fn validate_kernel_sum(
-        &self,
-        offset_and_reward: Commitment,
-        factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking kernel total");
-        let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
-        let sum_io = self.sum_commitments()?;
-        trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
-        let fees = factory.commit_value(&PrivateKey::default(), fees.into());
-        trace!(
-            target: LOG_TARGET,
-            "Comparing sum.  excess:{} == sum {} + fees {}",
-            excess.to_hex(),
-            sum_io.to_hex(),
-            fees.to_hex()
-        );
-        if excess != &sum_io + &fees {
-            return Err(TransactionError::ValidationError(
-                "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// this will validate the script offset of the aggregate body.
-    fn validate_script_offset(
-        &self,
-        script_offset: PublicKey,
-        factory: &CommitmentFactory,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking script offset");
-        // lets count up the input script public keys
-        let mut input_keys = PublicKey::default();
-        let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
-        for input in &self.inputs {
-            let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
-            input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
-        }
-
-        // Now lets gather the output public keys and hashes.
-        let mut output_keys = PublicKey::default();
-        for output in &self.outputs {
-            // We should not count the coinbase tx here
-            if !output.is_coinbase() {
-                output_keys = output_keys + output.sender_offset_public_key.clone();
-            }
-        }
-        let lhs = input_keys - output_keys;
-        if lhs != script_offset {
-            return Err(TransactionError::ScriptOffset);
-        }
-        Ok(())
-    }
-
-    fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
-        for input in &self.inputs {
-            input.covenant()?.execute(height, input, &self.outputs)?;
-        }
-        Ok(())
-    }
-
-    fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking range proofs");
-        let outputs = self.outputs.iter().collect::<Vec<_>>();
-        batch_verify_range_proofs(range_proof_service, &outputs)?;
-        Ok(())
-    }
-
-    fn verify_metadata_signatures(&self) -> Result<(), TransactionError> {
-        trace!(target: LOG_TARGET, "Checking sender signatures");
-        for o in &self.outputs {
-            o.verify_metadata_signature()?;
-        }
-        Ok(())
     }
 
     /// Returns the weight in grams of a body
@@ -529,10 +371,48 @@ impl AggregateBody {
         )
     }
 
+    /// Returns the minimum maturity of the input UTXOs
+    pub fn min_input_maturity(&self) -> u64 {
+        self.inputs().iter().fold(u64::MAX, |min_maturity, input| {
+            min(
+                min_maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures {
+                        maturity: u64::MAX,
+                        ..Default::default()
+                    })
+                    .maturity,
+            )
+        })
+    }
+
+    /// Returns the maximum maturity of the input UTXOs
+    pub fn max_input_maturity(&self) -> u64 {
+        self.inputs().iter().fold(0, |max_maturity, input| {
+            max(
+                max_maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures {
+                        maturity: 0,
+                        ..Default::default()
+                    })
+                    .maturity,
+            )
+        })
+    }
+
     pub fn max_kernel_timelock(&self) -> u64 {
         self.kernels()
             .iter()
             .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
+
+    /// Returns the height of the minimum height where the body is spendable. This is calculated from the
+    /// kernel lock_heights and the maturity of the input UTXOs.
+    pub fn min_spendable_height(&self) -> u64 {
+        max(self.max_kernel_timelock(), self.max_input_maturity())
     }
 
     /// Return a cloned version of self with TransactionInputs in their compact form

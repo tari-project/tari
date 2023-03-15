@@ -4,7 +4,7 @@ name: Build Matrix of Binaries
 'on':
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - 'v[0-9]+.[0-9]+.[0-9]*'
     branches:
       - build-*
   schedule:
@@ -16,16 +16,16 @@ name: Build Matrix of Binaries
         required: true
         default: "development-tag"
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   TBN_FILENAME: "tari_suite"
   TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
-  toolchain: nightly-2022-05-01
+  toolchain: nightly-2022-11-03
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   matrix-prep:

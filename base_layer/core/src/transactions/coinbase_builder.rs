@@ -292,7 +292,7 @@ impl CoinbaseBuilder {
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
-            .build(&self.factories, None, height)
+            .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         Ok((tx, unblinded_output))
     }
@@ -323,6 +323,7 @@ mod test {
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
+        validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
     };
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
@@ -567,6 +568,7 @@ mod test {
 
         tx.body.add_output(coinbase2);
         tx.body.add_kernel(coinbase_kernel2);
+        tx.body.sort();
 
         // lets add duplciate coinbase kernel
         let mut coinbase2 = tx2.body.outputs()[0].clone();
@@ -574,6 +576,8 @@ mod test {
         let coinbase_kernel2 = tx2.body.kernels()[0].clone();
         tx_kernel_test.body.add_output(coinbase2);
         tx_kernel_test.body.add_kernel(coinbase_kernel2);
+
+        tx_kernel_test.body.sort();
 
         // test catches that coinbase count on the utxo is wrong
         assert!(matches!(
@@ -596,13 +600,13 @@ mod test {
             Err(TransactionError::MoreThanOneCoinbase)
         ));
         // testing that "block" is still valid
-        tx.body
-            .validate_internal_consistency(
+        let body_validator = AggregateBodyInternalConsistencyValidator::new(false, rules, factories);
+        body_validator
+            .validate(
+                tx.body(),
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
-                false,
-                block_reward,
-                &factories,
+                Some(block_reward),
                 None,
                 u64::MAX,
             )

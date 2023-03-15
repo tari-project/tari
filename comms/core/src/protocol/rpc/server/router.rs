@@ -50,7 +50,6 @@ use crate::{
         ProtocolId,
         ProtocolNotificationRx,
     },
-    runtime::task,
     Bytes,
     Substream,
 };
@@ -211,7 +210,7 @@ where
         let (proto_notif_tx, proto_notif_rx) = mpsc::channel(20);
         context.add_protocol(&self.protocol_names, &proto_notif_tx);
         let rpc_context = RpcCommsBackend::new(context.peer_manager(), context.connectivity());
-        task::spawn(self.serve(proto_notif_rx, rpc_context));
+        tokio::spawn(self.serve(proto_notif_rx, rpc_context));
         Ok(())
     }
 }
@@ -278,7 +277,6 @@ mod test {
     use tower::util::BoxService;
 
     use super::*;
-    use crate::runtime;
 
     #[derive(Clone)]
     struct HelloService;
@@ -330,7 +328,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn find_route() {
         let server = RpcServer::new();
         let mut router = Router::new(server, HelloService).add_service(GoodbyeService);

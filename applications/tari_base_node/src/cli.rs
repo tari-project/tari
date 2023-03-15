@@ -47,6 +47,8 @@ pub struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<Network>,
+    #[clap(long, alias = "profile")]
+    pub profile_with_tokio_console: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

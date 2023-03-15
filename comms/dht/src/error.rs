@@ -22,7 +22,7 @@
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum DhtEncryptError {
     #[error("Message body invalid")]
     InvalidMessageBody,

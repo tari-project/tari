@@ -259,8 +259,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use tari_comms::{message::MessageExt, runtime, runtime::task, wrap_in_envelope_body};
-    use tokio::sync::mpsc;
+    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tokio::{sync::mpsc, task};
 
     use super::*;
     use crate::{
@@ -269,7 +269,7 @@ mod test {
         test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decryption_succeeded() {
         let spy = service_spy();
         let (oms_tx, _) = mpsc::channel(1);
@@ -288,7 +288,7 @@ mod test {
         assert!(spy.is_called());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decryption_failed() {
         let spy = service_spy();
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);

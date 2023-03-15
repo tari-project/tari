@@ -28,6 +28,7 @@ use tari_common::DomainDigest;
 
 use crate::{
     backend::ArrayLike,
+    common::LeafIndex,
     error::MerkleMountainRangeError,
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     merkle_checkpoint::MerkleCheckPoint,
@@ -209,7 +210,7 @@ where
 
     /// Returns the hash of the leaf index provided, as well as its deletion status. The node has been marked for
     /// deletion if the boolean value is true.
-    pub fn fetch_mmr_node(&self, leaf_index: u32) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
+    pub fn fetch_mmr_node(&self, leaf_index: LeafIndex) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
         let (base_hash, base_deleted) = self.base_mmr.get_leaf_status(leaf_index)?;
         let (curr_hash, curr_deleted) = self.curr_mmr.get_leaf_status(leaf_index)?;
         if let Some(base_hash) = base_hash {

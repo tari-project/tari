@@ -106,9 +106,9 @@ impl ContactsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Alias"), Some(25), column0_items)
+            .add_column(Some("Alias"), Some(23), column0_items)
             .add_column(None, Some(1), Vec::new())
-            .add_column(Some("Tari Address"), Some(64), column1_items)
+            .add_column(Some("Tari Address"), Some(66), column1_items)
             .add_column(None, Some(1), Vec::new())
             .add_column(Some("Emoji ID"), Some(14), column2_items)
             .add_column(None, Some(1), Vec::new())
@@ -285,6 +285,10 @@ impl<B: Backend> Component<B> for ContactsTab {
         self.draw_contacts(f, area, app_state);
         if self.show_edit_contact {
             self.draw_edit_contact(f, area, app_state);
+        }
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
         }
 
         match self.confirmation_dialog {

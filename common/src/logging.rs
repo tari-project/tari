@@ -21,12 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{fs, fs::File, io::Write, path::Path};
+use std::{
+    fs,
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
+
+use log4rs::config::RawConfig;
 
 use crate::ConfigError;
 
 /// Set up application-level logging using the Log4rs configuration file specified in
-pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), ConfigError> {
+pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")
@@ -43,8 +50,26 @@ pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), Confi
             .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
     }
 
-    log4rs::init_file(config_file, Default::default())
-        .map_err(|e| ConfigError::new("Could not initialize logging", Some(e.to_string())))
+    let mut file =
+        File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
+    let mut contents = String::new();
+
+    file.read_to_string(&mut contents)
+        .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
+
+    let replace_str = base_path
+        .to_str()
+        .expect("Could not replace {{log_dir}} variable from the log4rs config")
+        // log4rs requires the path to be in a unix format regardless of the system it's running on
+        .replace("\\", "/");
+
+    let contents = contents.replace("{{log_dir}}", &replace_str);
+
+    let config: RawConfig =
+        serde_yaml::from_str(&contents).expect("Could not parse the contents of the log file as yaml");
+    log4rs::init_raw_config(config).expect("Could not initialize logging");
+
+    Ok(())
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,

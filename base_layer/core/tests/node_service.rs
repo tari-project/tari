@@ -38,7 +38,7 @@ use tari_core::{
     blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{schema_to_transaction, spend_utxos},
@@ -47,9 +47,10 @@ use tari_core::{
     },
     txn_schema,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        header_validator::HeaderValidator,
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
         mocks::MockValidator,
+        DifficultyCalculator,
     },
 };
 use tari_test_utils::unpack_enum;
@@ -60,7 +61,7 @@ use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
 mod helpers;
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn propagate_and_forward_many_valid_blocks() {
     let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
@@ -192,7 +193,7 @@ async fn propagate_and_forward_many_valid_blocks() {
 }
 
 static EMISSION: [u64; 2] = [10, 10];
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn propagate_and_forward_invalid_block_hash() {
     // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
     // to provide the block and so Bob will not propagate the hash further to Carol.
@@ -297,7 +298,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     carol_node.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block() {
     let temp_dir = tempdir().unwrap();
@@ -322,7 +323,7 @@ async fn propagate_and_forward_invalid_block() {
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
+    let stateless_block_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
 
     let mock_validator = MockValidator::new(false);
     let (mut dan_node, rules) = BaseNodeBuilder::new(network.into())
@@ -499,12 +500,13 @@ async fn local_get_new_block_with_zero_conf() {
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::new(rules.clone()),
-            HeaderValidator::new(rules.clone()),
-            OrphanBlockValidator::new(rules, true, factories.clone()),
+            BlockBodyFullValidator::new(rules.clone(), true),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+            BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;
@@ -577,12 +579,13 @@ async fn local_get_new_block_with_combined_transaction() {
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::new(rules.clone()),
-            HeaderValidator::new(rules.clone()),
-            OrphanBlockValidator::new(rules, true, factories.clone()),
+            BlockBodyFullValidator::new(rules.clone(), true),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+            BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;

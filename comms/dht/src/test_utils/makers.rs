@@ -24,7 +24,7 @@ use std::{convert::TryInto, sync::Arc};
 use rand::rngs::OsRng;
 use tari_comms::{
     message::{InboundMessage, MessageExt, MessageTag},
-    multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,
     types::{CommsDHKE, CommsDatabase, CommsPublicKey, CommsSecretKey},
@@ -139,7 +139,7 @@ pub fn make_dht_inbound_message<T: prost::Message>(
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
@@ -176,7 +176,7 @@ pub fn make_dht_inbound_message_raw(
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

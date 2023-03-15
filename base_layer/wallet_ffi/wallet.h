@@ -68,10 +68,6 @@ struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
 
 struct CompletedTransaction;
 
-struct Contact;
-
-struct ContactsLivenessData;
-
 struct Covenant;
 
 struct EmojiSet;
@@ -302,9 +298,9 @@ typedef struct Covenant TariCovenant;
 
 typedef struct EncryptedValue TariEncryptedValue;
 
-typedef struct Contact TariContact;
+typedef Contact TariContact;
 
-typedef struct ContactsLivenessData TariContactsLivenessData;
+typedef ContactsLivenessData TariContactsLivenessData;
 
 typedef struct CompletedTransaction TariCompletedTransaction;
 
@@ -839,7 +835,8 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * transaction is null
  *
  * # Safety
- * None
+ *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ * prevent a memory leak
  */
 TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
                                                   TariPrivateKey *spending_key,
@@ -868,6 +865,41 @@ TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
  * None
  */
 void tari_unblinded_output_destroy(TariUnblindedOutput *output);
+
+/**
+ * returns the TariUnblindedOutput as a json string
+ *
+ * ## Arguments
+ * `output` - The pointer to a TariUnblindedOutput
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+ * TariUnblindedOutput is null or the position is invalid
+ *
+ * # Safety
+ *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ * prevent a memory leak
+ */
+char *tari_unblinded_output_to_json(TariUnblindedOutput *output,
+                                    int *error_out);
+
+/**
+ * Creates a TariUnblindedOutput from a char array
+ *
+ * ## Arguments
+ * `output_json` - The pointer to a char array which is json of the TariUnblindedOutput
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariUnblindedOutput` - Returns a pointer to a TariUnblindedOutput. Note that it returns ptr::null_mut()
+ * if key is null or if there was an error creating the TariUnblindedOutput from key
+ *
+ * # Safety
+ * The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+ */
+TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_json,
+                                                            int *error_out);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -907,6 +939,26 @@ unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
 TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outputs,
                                               unsigned int position,
                                               int *error_out);
+
+/**
+ * Gets a TariUnblindedOutput from TariUnblindedOutputs at position
+ *
+ * ## Arguments
+ * `outputs` - The pointer to a TariUnblindedOutputs
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
+ * TariUnblindedOutputs is null or position is invalid
+ *
+ * # Safety
+ * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+ */
+unsigned long long *unblinded_outputs_received_tx_id_get_at(struct TariUnblindedOutputs *outputs,
+                                                            unsigned int position,
+                                                            int *error_out);
 
 /**
  * Frees memory for a TariUnblindedOutputs
@@ -1312,6 +1364,7 @@ void seed_words_destroy(struct TariSeedWords *seed_words);
  */
 TariContact *contact_create(const char *alias,
                             TariWalletAddress *address,
+                            bool favourite,
                             int *error_out);
 
 /**
@@ -1331,6 +1384,24 @@ TariContact *contact_create(const char *alias,
  */
 char *contact_get_alias(TariContact *contact,
                         int *error_out);
+
+/**
+ * Gets the favourite status of the TariContact
+ *
+ * ## Arguments
+ * `contact` - The pointer to a TariContact
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
+ * null as well.
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+bool contact_get_favourite(TariContact *contact,
+                           int *error_out);
 
 /**
  * Gets the TariWalletAddress of the TariContact
@@ -1937,6 +2008,41 @@ int completed_transaction_get_cancellation_reason(TariCompletedTransaction *tx,
                                                   int *error_out);
 
 /**
+ * returns the TariCompletedTransaction as a json string
+ *
+ * ## Arguments
+ * `tx` - The pointer to a TariCompletedTransaction
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+ * TariCompletedTransaction is null or the position is invalid
+ *
+ * # Safety
+ *  The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+ * prevent a memory leak
+ */
+char *tari_completed_transaction_to_json(TariCompletedTransaction *tx,
+                                         int *error_out);
+
+/**
+ * Creates a TariUnblindedOutput from a char array
+ *
+ * ## Arguments
+ * `tx_json` - The pointer to a char array which is json of the TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns
+ * ptr::null_mut() if key is null or if there was an error creating the TariCompletedTransaction from key
+ *
+ * # Safety
+ * The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+ */
+TariCompletedTransaction *create_tari_completed_transaction_from_json(const char *tx_json,
+                                                                      int *error_out);
+
+/**
  * Frees memory for a TariCompletedTransaction
  *
  * ## Arguments
@@ -2387,7 +2493,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * `database_path` - The database path char array pointer which. This is the folder path where the
  * database files will be created and the application has write access to
  * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
- * `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet
+ * `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet, stagenet
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -2436,6 +2542,40 @@ void comms_config_destroy(TariCommsConfig *wc);
  */
 struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet,
                                                         int *error_out);
+
+/**
+ * Gets the length of the public keys vector
+ *
+ * ## Arguments
+ * `public_keys` - Pointer to TariPublicKeys
+ *
+ * ## Returns
+ * `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys, int *error_out);
+
+/**
+ * Gets a ByteVector at position in a EmojiSet
+ *
+ * ## Arguments
+ * `public_keys` - The pointer to a TariPublicKeys
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
+ */
+TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
+                                  unsigned int position,
+                                  int *error_out);
 
 /**
  * Creates a TariWallet

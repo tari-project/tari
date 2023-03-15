@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod v5;
-mod v6;
 mod v7;
 
 use log::*;
@@ -33,7 +31,7 @@ pub(super) const MIGRATION_VERSION_KEY: u64 = u64::MAX;
 
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
     // Add migrations here in version order
-    let migrations = vec![v5::Migration.boxed(), v6::Migration.boxed(), v7::Migration.boxed()];
+    let migrations = vec![v7::Migration.boxed()];
     if migrations.is_empty() {
         return Ok(());
     }

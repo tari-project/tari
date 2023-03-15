@@ -21,7 +21,7 @@ appenders:
   # An appender named "proxy" that writes to a file with a custom pattern encoder
   proxy:
     kind: rolling_file
-    path: "log/proxy/proxy.log"
+    path: "{{log_dir}}/log/proxy/proxy.log"
     policy:
       kind: compound
       trigger:
@@ -31,7 +31,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 50
-        pattern: "log/proxy/proxy.{}.log"
+        pattern: "{{log_dir}}/log/proxy/proxy.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 

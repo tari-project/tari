@@ -77,7 +77,6 @@ use crate::{
         },
         ProtocolId,
     },
-    runtime::task,
     stream_id,
     stream_id::StreamId,
 };
@@ -112,7 +111,7 @@ impl RpcClient {
         let connector = ClientConnector::new(request_tx, last_request_latency_rx, shutdown);
         let (ready_tx, ready_rx) = oneshot::channel();
         let tracing_id = tracing::Span::current().id();
-        task::spawn({
+        tokio::spawn({
             let span = span!(Level::TRACE, "start_rpc_worker");
             span.follows_from(tracing_id);
 

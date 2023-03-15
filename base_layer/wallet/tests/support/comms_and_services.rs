@@ -24,9 +24,8 @@ use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
     message::MessageTag,
-    multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    transports::MemoryTransport,
     types::CommsPublicKey,
     CommsNode,
 };
@@ -37,11 +36,6 @@ use tari_p2p::{
     initialization::initialize_local_test_comms,
 };
 use tari_shutdown::ShutdownSignal;
-
-pub fn get_next_memory_address() -> Multiaddr {
-    let port = MemoryTransport::acquire_next_memsocket_port();
-    format!("/memory/{}", port).parse().unwrap()
-}
 
 pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
@@ -70,7 +64,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     let peer_source = Peer::new(
         public_key.clone(),
         NodeId::from_key(public_key),
-        Vec::<Multiaddr>::new().into(),
+        MultiaddressesWithStats::empty(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         Default::default(),

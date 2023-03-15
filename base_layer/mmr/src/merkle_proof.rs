@@ -31,7 +31,7 @@ use thiserror::Error;
 
 use crate::{
     backend::ArrayLike,
-    common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
+    common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index, LeafIndex},
     error::MerkleMountainRangeError,
     serde_support,
     Hash,
@@ -60,13 +60,13 @@ pub enum MerkleProofError {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, PartialOrd, Ord, Default)]
 pub struct MerkleProof {
     /// The size of the MMR at the time the proof was created.
-    mmr_size: usize,
+    pub mmr_size: usize,
     /// The sibling path from the leaf up to the final sibling hashing to the local root.
     #[serde(with = "serde_support::hash")]
-    path: Vec<Hash>,
+    pub path: Vec<Hash>,
     /// The set of MMR peaks, not including the local peak for the candidate node
     #[serde(with = "serde_support::hash")]
-    peaks: Vec<Hash>,
+    pub peaks: Vec<Hash>,
 }
 
 impl MerkleProof {
@@ -78,7 +78,7 @@ impl MerkleProof {
     /// See [MerkleProof::for_node] for more details on how the proof is constructed.
     pub fn for_leaf_node<D, B>(
         mmr: &MerkleMountainRange<D, B>,
-        leaf_index: usize,
+        leaf_index: LeafIndex,
     ) -> Result<MerkleProof, MerkleProofError>
     where
         D: Digest + DomainDigest,
@@ -137,7 +137,7 @@ impl MerkleProof {
 
         // Get the peaks of the merkle trees, which are bagged together to form the root
         // For the proof, we must leave out the local root for the candidate node
-        let peaks = find_peaks(mmr_size);
+        let peaks = find_peaks(mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         let mut peak_hashes = Vec::with_capacity(peaks.len() - 1);
         for peak_index in peaks {
             if peak_index != peak_pos {
@@ -159,7 +159,7 @@ impl MerkleProof {
         &self,
         root: &HashSlice,
         hash: &HashSlice,
-        leaf_index: usize,
+        leaf_index: LeafIndex,
     ) -> Result<(), MerkleProofError> {
         let pos = node_index(leaf_index);
         self.verify::<D>(root, hash, pos)
@@ -174,7 +174,7 @@ impl MerkleProof {
     ) -> Result<(), MerkleProofError> {
         let mut proof = self.clone();
         // calculate the peaks once as these are based on overall MMR size (and will not change)
-        let peaks = find_peaks(self.mmr_size);
+        let peaks = find_peaks(self.mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         proof.verify_consume::<D>(root, hash, pos, &peaks)
     }
 

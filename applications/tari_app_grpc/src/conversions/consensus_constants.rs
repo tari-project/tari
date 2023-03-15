@@ -125,8 +125,15 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max_randomx_seed_height: cc.max_randomx_seed_height(),
             output_version_range: Some(output_version_range),
             permitted_output_types,
-            validator_node_validity_period: cc.validator_node_validity_period().as_u64(),
+            validator_node_validity_period: cc.validator_node_validity_period_epochs().as_u64(),
             epoch_length: cc.epoch_length(),
+            validator_node_registration_min_deposit_amount: cc
+                .validator_node_registration_min_deposit_amount()
+                .as_u64(),
+            validator_node_registration_min_lock_height: cc.validator_node_registration_min_lock_height(),
+            validator_node_registration_shuffle_interval_epoch: cc
+                .validator_node_registration_shuffle_interval()
+                .as_u64(),
         }
     }
 }

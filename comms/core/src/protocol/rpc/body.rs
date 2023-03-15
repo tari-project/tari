@@ -302,9 +302,9 @@ mod test {
     use futures::{stream, StreamExt};
     use prost::Message;
 
-    use crate::{message::MessageExt, protocol::rpc::body::Body, runtime};
+    use crate::{message::MessageExt, protocol::rpc::body::Body};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn single_body() {
         let mut body = Body::single(123u32.to_encoded_bytes());
         let bytes = body.next().await.unwrap().unwrap();
@@ -312,7 +312,7 @@ mod test {
         assert_eq!(u32::decode(bytes).unwrap(), 123u32);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn streaming_body() {
         let body = Body::streaming(stream::repeat(Bytes::new()).map(Ok).take(10));
         let body = body.collect::<Vec<_>>().await;

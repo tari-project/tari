@@ -488,28 +488,26 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Change script", &self.private_nonce, &mut message);
-        Self::check_value("Change input data", &self.private_nonce, &mut message);
-        Self::check_value("Change script private key", &self.private_nonce, &mut message);
+        Self::check_value("Missing private nonce", &self.private_nonce, &mut message);
 
         if !message.is_empty() {
             return self.build_err(&message.join(","));
         }
         if !self.amounts.is_full() {
             let size = self.amounts.size();
-            return self.build_err(&*format!("Missing all {} amounts", size));
+            return self.build_err(&format!("Missing all {} amounts", size));
         }
         if !self.recipient_sender_offset_private_keys.is_full() {
             let size = self.recipient_sender_offset_private_keys.size();
-            return self.build_err(&*format!("Missing {} recipient script offset private key/s", size));
+            return self.build_err(&format!("Missing {} recipient script offset private key/s", size));
         }
         if !self.private_commitment_nonces.is_full() {
             let size = self.private_commitment_nonces.size();
-            return self.build_err(&*format!("Missing {} private commitment nonce/s", size));
+            return self.build_err(&format!("Missing {} private commitment nonce/s", size));
         }
         if !self.recipient_scripts.is_full() {
             let size = self.recipient_scripts.size();
-            return self.build_err(&*format!("Missing all {} recipient scripts", size));
+            return self.build_err(&format!("Missing all {} recipient scripts", size));
         }
         if self.inputs.is_empty() {
             return self.build_err("A transaction cannot have zero inputs");
@@ -731,8 +729,7 @@ mod test {
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
-             private key"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing private nonce"
         );
 
         let mut builder = err.builder;

@@ -49,7 +49,6 @@ use crate::{
         ProtocolEvent,
         ProtocolNotification,
     },
-    runtime::task,
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
@@ -281,7 +280,7 @@ impl MessagingProtocol {
     ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let outbound_messaging = OutboundMessaging::new(connectivity, events_tx, msg_rx, retry_queue_tx, peer_node_id);
-        task::spawn(outbound_messaging.run());
+        tokio::spawn(outbound_messaging.run());
         msg_tx
     }
 
@@ -295,7 +294,7 @@ impl MessagingProtocol {
             RATE_LIMIT_CAPACITY,
             RATE_LIMIT_RESTOCK_INTERVAL,
         );
-        task::spawn(inbound_messaging.run(substream));
+        tokio::spawn(inbound_messaging.run(substream));
     }
 
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {

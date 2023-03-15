@@ -49,17 +49,17 @@ const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
 pub fn setup_node_identity<P: AsRef<Path>>(
     identity_file: P,
-    public_address: Option<&Multiaddr>,
+    public_addresses: Vec<Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     match load_node_identity(&identity_file) {
-        Ok(id) => match public_address {
-            Some(public_address) => {
-                id.set_public_address(public_address.clone());
-                Ok(Arc::new(id))
-            },
-            None => Ok(Arc::new(id)),
+        Ok(mut id) => {
+            id.set_peer_features(peer_features);
+            for public_address in public_addresses {
+                id.add_public_address(public_address.clone());
+            }
+            Ok(Arc::new(id))
         },
         Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
             ExitCode::ConfigError,
@@ -93,11 +93,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
-            match create_new_node_identity(
-                &identity_file,
-                public_address.cloned().unwrap_or_else(Multiaddr::empty),
-                peer_features,
-            ) {
+            match create_new_node_identity(&identity_file, public_addresses, peer_features) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -156,10 +152,10 @@ fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityE
 /// Result containing the node identity, string will indicate reason on error
 fn create_new_node_identity<P: AsRef<Path>>(
     path: P,
-    public_addr: Multiaddr,
+    public_addresses: Vec<Multiaddr>,
     features: PeerFeatures,
 ) -> Result<NodeIdentity, IdentityError> {
-    let node_identity = NodeIdentity::random(&mut OsRng, public_addr, features);
+    let node_identity = NodeIdentity::random_multiple_addresses(&mut OsRng, public_addresses, features);
     save_as_json(&path, &node_identity)?;
     Ok(node_identity)
 }

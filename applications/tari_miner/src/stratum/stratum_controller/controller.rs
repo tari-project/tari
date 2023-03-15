@@ -29,13 +29,13 @@ use tari_app_grpc::tari_rpc::BlockHeader;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    display_report,
     miner::Miner,
+    run_miner::display_report,
     stratum::{error::Error, stratum_types as types},
 };
 
-pub const LOG_TARGET: &str = "tari_miner::miner::stratum::controller";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::stratum::controller";
+pub const LOG_TARGET: &str = "tari::miner::stratum::controller";
+pub const LOG_TARGET_FILE: &str = "tari::logging::miner::stratum::controller";
 
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,

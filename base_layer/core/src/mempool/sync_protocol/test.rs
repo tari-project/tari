@@ -121,7 +121,7 @@ async fn empty_set() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn.into()));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -149,7 +149,7 @@ async fn synchronise() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn.into()));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -180,7 +180,7 @@ async fn duplicate_set() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn.into()));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
@@ -282,7 +282,7 @@ async fn responder_messages() {
         create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
-    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn));
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn.into()));
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let mut framed = framing::canonical(substream, MAX_FRAME_SIZE);

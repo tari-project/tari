@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_key_manager::error::KeyManagerError as KMError;
 use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -81,4 +82,6 @@ pub enum KeyManagerStorageError {
     HexError(#[from] HexError),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
+    #[error("Db error: `{0}`")]
+    SqliteStorageError(#[from] SqliteStorageError),
 }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{cmp, sync::Arc};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
@@ -30,7 +30,7 @@ use tari_test_utils::unpack_enum;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::DbTransaction,
+    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
@@ -42,21 +42,12 @@ use crate::{
         CryptoFactories,
     },
     tx,
-    validation::{
-        header_iter::HeaderIter,
-        header_validator::HeaderValidator,
-        transaction_validators::TxInternalConsistencyValidator,
-        ChainBalanceValidator,
-        DifficultyCalculator,
-        FinalHorizonStateValidation,
-        HeaderValidation,
-        MempoolTransactionValidation,
-        ValidationError,
-    },
+    validation::{ChainBalanceValidator, DifficultyCalculator, FinalHorizonStateValidation, ValidationError},
 };
 
 mod header_validators {
     use super::*;
+    use crate::validation::{header::HeaderFullValidator, HeaderChainLinkedValidator};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -115,12 +106,11 @@ mod header_validators {
 
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
 
-        let validator = HeaderValidator::new(consensus_manager.clone());
-
-        let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
         let err = validator
-            .validate(&*db.db_read_access().unwrap(), &header, &difficulty_calculator)
+            .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX
@@ -422,33 +412,105 @@ fn chain_balance_validation_burned() {
 
 mod transaction_validator {
     use super::*;
-    use crate::transactions::transaction_components::TransactionError;
+    use crate::{
+        transactions::transaction_components::TransactionError,
+        validation::transaction::TransactionInternalConsistencyValidator,
+    };
 
     #[test]
     fn it_rejects_coinbase_outputs() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-        let db = create_store_with_consensus(consensus_manager);
+        let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate(&tx).unwrap_err();
+        let tip = db.get_chain_metadata().unwrap();
+        let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
     }
 
     #[test]
     fn coinbase_extra_must_be_empty() {
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-        let db = create_store_with_consensus(consensus_manager);
+        let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
-        let err = validator.validate(&tx).unwrap_err();
+        let tip = db.get_chain_metadata().unwrap();
+        let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         assert!(matches!(
             err,
             ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)
         ));
+    }
+}
+
+// TODO: This is probably generally useful and should be included in the BlockchainDatabase
+/// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
+/// for a low memory footprint. The chunk buffer is allocated once and reused.
+pub struct HeaderIter<'a, B> {
+    chunk: Vec<BlockHeader>,
+    chunk_size: usize,
+    cursor: usize,
+    is_error: bool,
+    height: u64,
+    db: &'a BlockchainDatabase<B>,
+}
+
+impl<'a, B> HeaderIter<'a, B> {
+    #[allow(dead_code)]
+    pub fn new(db: &'a BlockchainDatabase<B>, height: u64, chunk_size: usize) -> Self {
+        Self {
+            db,
+            chunk_size,
+            cursor: 0,
+            is_error: false,
+            height,
+            chunk: Vec::with_capacity(chunk_size),
+        }
+    }
+
+    fn get_next_chunk(&self) -> (u64, u64) {
+        #[allow(clippy::cast_possible_truncation)]
+        let upper_bound = cmp::min(self.cursor + self.chunk_size, self.height as usize);
+        (self.cursor as u64, upper_bound as u64)
+    }
+}
+
+impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
+    type Item = Result<BlockHeader, ChainStorageError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_error {
+            return None;
+        }
+
+        if self.chunk.is_empty() {
+            let (start, end) = self.get_next_chunk();
+            // We're done: No more block headers to fetch
+            if start > end {
+                return None;
+            }
+
+            match self.db.fetch_headers(start..=end) {
+                Ok(headers) => {
+                    if headers.is_empty() {
+                        return None;
+                    }
+                    self.cursor += headers.len();
+                    self.chunk.extend(headers);
+                },
+                Err(err) => {
+                    // On the next call, the iterator will end
+                    self.is_error = true;
+                    return Some(Err(err));
+                },
+            }
+        }
+
+        Some(Ok(self.chunk.remove(0)))
     }
 }

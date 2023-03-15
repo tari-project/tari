@@ -35,7 +35,7 @@ pub fn create_salted_hashed_password(password: &[u8]) -> argon2::password_hash::
     // Use the recommended OWASP parameters, which are not the default:
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
     let params = argon2::Params::new(
-        37 * 1024, // m-cost: 37 MiB, converted to KiB
+        46 * 1024, // m-cost: 46 MiB, converted to KiB
         1,         // t-cost
         1,         // p-cost
         None,      // output length: default

@@ -51,10 +51,10 @@ impl DhtDatabase {
 
     /// Get the raw bytes for the given key, or None if that value has not been set.
     pub fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
-        let conn = self.connection.get_pooled_connection()?;
+        let mut conn = self.connection.get_pooled_connection()?;
         dht_metadata::table
             .filter(dht_metadata::key.eq(key.to_string()))
-            .first(&conn)
+            .first(&mut conn)
             .map(|rec: DhtMetadataEntry| Some(rec.value))
             .or_else(|err| match err {
                 diesel::result::Error::NotFound => Ok(None),
@@ -70,13 +70,13 @@ impl DhtDatabase {
 
     /// Set the raw bytes for the given key
     pub fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
-        let conn = self.connection.get_pooled_connection()?;
+        let mut conn = self.connection.get_pooled_connection()?;
         diesel::replace_into(dht_metadata::table)
             .values(NewDhtMetadataEntry {
                 key: key.to_string(),
                 value,
             })
-            .execute(&conn)
+            .execute(&mut conn)
             .map(|_| ())
             .map_err(Into::into)
     }

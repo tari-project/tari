@@ -219,7 +219,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         );
 
         let service = self.next_service.ready_oneshot().await?;
-        return service.oneshot(message).await;
+        service.oneshot(message).await
     }
 
     async fn get_storage_priority(&self, message: &DecryptedDhtMessage) -> SafResult<Option<StoredMessagePriority>> {
@@ -453,7 +453,7 @@ mod test {
     use std::time::Duration;
 
     use chrono::Utc;
-    use tari_comms::{runtime, wrap_in_envelope_body};
+    use tari_comms::wrap_in_envelope_body;
     use tari_test_utils::async_assert_eventually;
     use tari_utilities::hex::Hex;
 
@@ -470,7 +470,7 @@ mod test {
         },
     };
 
-    #[runtime::test]
+    #[tokio::test]
     async fn cleartext_message_no_origin() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -496,7 +496,7 @@ mod test {
         assert_eq!(messages.len(), 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decryption_succeeded_no_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -526,7 +526,7 @@ mod test {
         assert_eq!(mock_state.call_count(), 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decryption_failed_should_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();
@@ -567,7 +567,7 @@ mod test {
         assert!(duration.num_seconds() <= 5);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn decryption_failed_banned_peer() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();

@@ -29,6 +29,7 @@ use std::{
 
 use chrono::NaiveDateTime;
 use tari_common_types::{
+    burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{PublicKey, Signature},
@@ -86,6 +87,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+        claim_public_key: Option<PublicKey>,
     },
     RegisterValidatorNode {
         amount: MicroTari,
@@ -235,6 +237,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    BurntTransactionSent { tx_id: TxId, proof: Box<BurntProof> },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -519,7 +522,8 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError> {
+        claim_public_key: Option<PublicKey>,
+    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -527,10 +531,11 @@ impl TransactionServiceHandle {
                 selection_criteria,
                 fee_per_gram,
                 message,
+                claim_public_key,
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, *proof)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

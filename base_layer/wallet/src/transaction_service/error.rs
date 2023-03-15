@@ -23,6 +23,7 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_common_types::{
     tari_address::TariAddressError,
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
@@ -34,6 +35,7 @@ use tari_core::transactions::{
     transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
+use tari_crypto::signatures::CommitmentSignatureError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
@@ -178,6 +180,8 @@ pub enum TransactionServiceError {
     EncryptionError(#[from] EncryptionError),
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Commitment signature error: {0}")]
+    CommitmentSignatureError(#[from] CommitmentSignatureError),
 }
 
 #[derive(Debug, Error)]
@@ -240,6 +244,8 @@ pub enum TransactionStorageError {
     TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
+    #[error("Db error: `{0}`")]
+    SqliteStorageError(#[from] SqliteStorageError),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

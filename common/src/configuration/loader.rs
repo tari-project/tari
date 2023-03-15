@@ -255,7 +255,10 @@ pub trait ConfigLoader: ConfigPath + Sized {
 /// config.set("my_node.goodbye_message", "see you later");
 /// let my_config = MyNodeConfig::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
-/// assert_eq!(my_config.welcome_message, MyNodeConfig::default().welcome_message);
+/// assert_eq!(
+///     my_config.welcome_message,
+///     MyNodeConfig::default().welcome_message
+/// );
 /// ```
 pub trait DefaultConfigLoader: ConfigPath + Sized {
     /// Try to load configuration from supplied Config by `main_key_prefix()`

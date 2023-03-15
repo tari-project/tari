@@ -29,6 +29,7 @@ message SideChainFeature {
     oneof side_chain_feature {
         ValidatorNodeRegistration validator_node_registration = 1;
         TemplateRegistration template_registration = 2;
+        ConfidentialOutputData confidential_output = 3;
     }
 }
 
@@ -46,6 +47,10 @@ message TemplateRegistration {
     BuildInfo build_info = 6;
     bytes binary_sha = 7;
     string binary_url = 8;
+}
+
+message ConfidentialOutputData {
+    bytes claim_public_key = 1;
 }
 
 message TemplateType {

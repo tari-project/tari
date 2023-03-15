@@ -78,7 +78,7 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         mocks::MockValidator,
         DifficultyCalculator,
     },
@@ -136,9 +136,9 @@ pub fn create_store_with_consensus_and_validators_and_config(
 pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        BodyOnlyValidator::new(rules.clone()),
+        BlockBodyFullValidator::new(rules.clone(), true),
         MockValidator::new(true),
-        OrphanBlockValidator::new(rules.clone(), false, factories),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
@@ -271,13 +271,6 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_kernels_in_block(header_hash)
-    }
-
-    fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_kernel_by_excess(excess)
     }
 
     fn fetch_kernel_by_excess_sig(

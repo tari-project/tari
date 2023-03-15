@@ -39,6 +39,7 @@ use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
+    burnt_proof::BurntProof,
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
@@ -134,9 +135,15 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroTari,
     message: String,
-) -> Result<TxId, CommandError> {
+) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
-        .burn_tari(amount, UtxoSelectionCriteria::default(), fee_per_gram * uT, message)
+        .burn_tari(
+            amount,
+            UtxoSelectionCriteria::default(),
+            fee_per_gram * uT,
+            message,
+            None,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -266,7 +273,7 @@ pub async fn coin_split(
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
     let (tx_id, tx, amount) = output_service
-        .create_coin_split(vec![], amount_per_split, num_splits as usize, fee_per_gram)
+        .create_coin_split(vec![], amount_per_split, num_splits, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)
@@ -437,7 +444,9 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone()).await,
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone())
+                            .await
+                            .map(|(tx_id, _)| tx_id),
                     };
                     let submit_time = Instant::now();
 
@@ -655,8 +664,16 @@ pub async fn command_runner(
                 )
                 .await
                 {
-                    Ok(tx_id) => {
+                    Ok((tx_id, proof)) => {
                         debug!(target: LOG_TARGET, "burn tari concluded with tx_id {}", tx_id);
+                        println!("Burnt {} Tari in tx_id: {}", args.amount, tx_id);
+                        println!("The following can be used to claim the burnt funds:");
+                        println!();
+                        // TODO: Define and use a standard format (e.g. json w/ base64)
+                        println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
+                        println!("commitment: {}", proof.commitment.as_public_key());
+                        println!("ownership_proof: {:?}", proof.ownership_proof);
+                        println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("BurnTari error! {}", e),
@@ -765,6 +782,7 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
+                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.unblinded_output).collect();
                     let count = utxos.len();
                     let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
                     if let Some(file) = args.output_file {
@@ -801,6 +819,7 @@ pub async fn command_runner(
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
+                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.unblinded_output).collect();
                     let count = utxos.len();
                     let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                     let sum: MicroTari = values.iter().sum();
@@ -1036,14 +1055,15 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
+        r##""index","version","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{},"{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
+            utxo.version.as_u8(),
             utxo.value.0,
             utxo.spending_key.to_hex(),
             utxo.as_transaction_input(&factory)?

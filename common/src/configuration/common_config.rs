@@ -30,7 +30,7 @@ use crate::SubConfigPath;
 #[serde(deny_unknown_fields)]
 pub struct CommonConfig {
     override_from: Option<String>,
-    base_path: PathBuf,
+    pub base_path: PathBuf,
 }
 
 impl Default for CommonConfig {

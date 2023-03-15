@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PublicKey},
+    types::{Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -53,7 +53,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{KnownOneSidedPaymentScript, SpendingPriority},
+        models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -141,6 +141,8 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
+    GetNextSpendAndScriptKeys,
+    GetRewindData,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -233,6 +235,8 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
+            GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
+            GetRewindData => write!(f, "GetRewindData"),
         }
     }
 }
@@ -252,7 +256,7 @@ pub enum OutputManagerResponse {
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),
-    UnspentOutputs(Vec<UnblindedOutput>),
+    UnspentOutputs(Vec<DbUnblindedOutput>),
     Outputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
     BaseNodePublicKeySet,
@@ -264,13 +268,23 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
-    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
+    CreateOutputWithFeatures {
+        output: Box<UnblindedOutputBuilder>,
+    },
+    CreatePayToSelfWithOutputs {
+        transaction: Box<Transaction>,
+        tx_id: TxId,
+    },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroTari>, MicroTari)),
+    NextSpendAndScriptKeys {
+        spend_key: PrivateKey,
+        script_key: PrivateKey,
+    },
+    RewindData(RewindData),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -625,7 +639,7 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -895,6 +909,24 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_next_spend_and_script_keys(&mut self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetNextSpendAndScriptKeys)
+            .await??
+        {
+            OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key } => Ok((spend_key, script_key)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_rewind_data(&mut self) -> Result<RewindData, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetRewindData).await?? {
+            OutputManagerResponse::RewindData(rewind_data) => Ok(rewind_data),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -25,13 +25,27 @@ message GetPeersRequest {
 
 // GET peers response
 message GetPeersResponse {
-  Peer peer = 1;
+  PeerInfo peer = 1;
 }
 
 // Minimal peer information
-message Peer {
+message PeerInfo {
   bytes public_key = 1;
-  repeated string addresses = 2;
+  repeated PeerInfoAddress addresses = 2;
   uint64 peer_features = 3;
-  tari.dht.common.IdentitySignature identity_signature = 4;
+  repeated bytes supported_protocols = 4;
+  // Note: not part of the signature
+  string user_agent = 5;
+
+}
+
+message PeerInfoAddress {
+  bytes address = 1;
+  PeerIdentityClaim peer_identity_claim = 2;
+}
+
+message PeerIdentityClaim {
+  repeated bytes addresses = 1;
+  uint64 peer_features = 2;
+  tari.dht.common.IdentitySignature identity_signature = 3;
 }

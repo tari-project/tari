@@ -14,7 +14,6 @@ appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
     kind: console
-
     encoder:
       pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
@@ -24,7 +23,7 @@ appenders:
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
-    path: "log/base-node/network.log"
+    path: "{{log_dir}}/log/base_node/network.log"
     policy:
       kind: compound
       trigger:
@@ -34,13 +33,13 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/network.{}.log"
+        pattern: "{{log_dir}}/log/base_node/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
   # An appender named "network" that writes to a file with a custom pattern encoder
   message_logging:
     kind: rolling_file
-    path: "log/base-node/messages.log"
+    path: "{{log_dir}}/log/base_node/messages.log"
     policy:
       kind: compound
       trigger:
@@ -50,7 +49,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/messages.{}.log"
+        pattern: "{{log_dir}}/log/base_node/messages.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
 
@@ -58,7 +57,7 @@ appenders:
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: rolling_file
-    path: "log/base-node/base_layer.log"
+    path: "{{log_dir}}/log/base_node/base_layer.log"
     policy:
       kind: compound
       trigger:
@@ -68,14 +67,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/base_layer.{}.log"
+        pattern: "{{log_dir}}/log/base_node/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m} // {f}:{L}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
-    path: "log/base-node/other.log"
+    path: "{{log_dir}}/log/base_node/other.log"
     policy:
       kind: compound
       trigger:
@@ -85,7 +84,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/other.{}.log"
+        pattern: "{{log_dir}}/log/base_node/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
 
@@ -98,7 +97,7 @@ root:
 loggers:
   # Route log events common to every application to all appenders
   tari::application:
-    level: info
+    level: debug
     appenders:
       - base_layer
       - network
@@ -107,17 +106,17 @@ loggers:
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: info
+    level: debug
     appenders:
       - base_layer
   tari:
-    level: info
+    level: debug
     appenders:
       - base_layer
 
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
-    level: info
+    level: debug
     appenders:
       - base_layer
   # Route log events sent to the "comms" logger to the "network" appender

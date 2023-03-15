@@ -304,7 +304,6 @@ where
         }
 
         let len_peers = selected_peers.len();
-        debug!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
         for peer in selected_peers {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
@@ -369,7 +368,7 @@ mod test {
     use rand::rngs::OsRng;
     use tari_comms::{
         message::MessageTag,
-        multiaddr::Multiaddr,
+        net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,
     };
@@ -488,7 +487,7 @@ mod test {
         let source_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk),
-            Vec::<Multiaddr>::new().into(),
+            MultiaddressesWithStats::empty(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),

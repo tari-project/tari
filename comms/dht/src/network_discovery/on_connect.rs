@@ -37,9 +37,9 @@ use crate::{
     peer_validator::PeerValidator,
     proto::rpc::GetPeersRequest,
     rpc,
+    rpc::PeerInfo,
     DhtConfig,
 };
-
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 const NUM_FETCH_PEERS: u32 = 1000;
 
@@ -81,7 +81,7 @@ impl OnConnect {
                         conn.peer_node_id()
                     );
 
-                    match self.sync_peers(conn.clone()).await {
+                    match self.sync_peers(*conn.clone()).await {
                         Ok(_) => continue,
                         Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
                             warn!(target: LOG_TARGET, "{}. Banning peer.", err);
@@ -135,12 +135,11 @@ impl OnConnect {
 
         let sync_peer = conn.peer_node_id();
         let mut num_added = 0;
-        let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
         while let Some(resp) = peer_stream.next().await {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
                     Some(peer) => {
-                        if peer_validator.validate_and_add_peer(peer).await? {
+                        if self.validate_and_add_peer(peer).await? {
                             num_added += 1;
                         }
                     },
@@ -161,8 +160,6 @@ impl OnConnect {
         if num_added > 0 {
             self.context
                 .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
-                    // TODO: num_new_neighbours could be incorrect here
-                    num_new_neighbours: 0,
                     num_new_peers: num_added,
                     num_duplicate_peers: 0,
                     num_succeeded: num_added,
@@ -171,6 +168,13 @@ impl OnConnect {
         }
 
         Ok(())
+    }
+
+    // Returns true if the peer was added
+    async fn validate_and_add_peer(&self, peer: PeerInfo) -> Result<bool, NetworkDiscoveryError> {
+        let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
+
+        Ok(peer_validator.validate_and_add_peer(peer).await?)
     }
 
     #[inline]

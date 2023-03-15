@@ -33,7 +33,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Insertable, Default)]
-#[table_name = "stored_messages"]
+#[diesel(table_name = stored_messages)]
 pub struct NewStoredMessage {
     pub version: i32,
     pub origin_pubkey: Option<String>,

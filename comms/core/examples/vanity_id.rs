@@ -32,7 +32,10 @@ use std::{
 use anyhow::anyhow;
 use multiaddr::Multiaddr;
 use rand::rngs::OsRng;
-use tari_comms::{peer_manager::NodeId, NodeIdentity};
+use tari_comms::{
+    peer_manager::{NodeId, PeerFeatures},
+    NodeIdentity,
+};
 use tari_crypto::{
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
@@ -109,7 +112,11 @@ fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Res
 
         if node_id_hex[0..prefix.len()] == *prefix {
             if tx
-                .try_send(NodeIdentity::new(k, Multiaddr::empty(), Default::default()))
+                .try_send(NodeIdentity::new(
+                    k,
+                    vec![Multiaddr::empty()],
+                    PeerFeatures::COMMUNICATION_NODE,
+                ))
                 .is_err()
             {
                 eprintln!("Failed to send");

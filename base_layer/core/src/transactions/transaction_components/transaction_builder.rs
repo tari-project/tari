@@ -23,13 +23,12 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::{BlindingFactor, HashOutput};
+use tari_common_types::types::BlindingFactor;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::MicroTari,
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    CryptoFactories,
 };
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
@@ -94,16 +93,11 @@ impl TransactionBuilder {
     }
 
     /// Build the transaction.
-    pub fn build(
-        self,
-        factories: &CryptoFactories,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<Transaction, TransactionError> {
+    pub fn build(self) -> Result<Transaction, TransactionError> {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
-            let tx = Transaction::new(i, o, k, offset, script_offset);
-            tx.validate_internal_consistency(true, factories, self.reward, prev_header, height)?;
+            let mut tx = Transaction::new(i, o, k, offset, script_offset);
+            tx.body.sort();
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(

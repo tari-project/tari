@@ -103,6 +103,8 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
     match app_type {
         ApplicationType::BaseNode => match network {
             Network::MainNet => 18102u16,
+            Network::StageNet => 18172u16,
+            Network::NextNet => 18182u16,
             Network::Weatherwax => 18112,
             Network::Dibbler => 18122,
             Network::Esmeralda => 18142,
@@ -112,6 +114,8 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
         },
         ApplicationType::ConsoleWallet => match network {
             Network::MainNet => 18103u16,
+            Network::StageNet => 18173u16,
+            Network::NextNet => 18183u16,
             Network::Weatherwax => 18113,
             Network::Dibbler => 18123,
             Network::Esmeralda => 18143,

@@ -38,7 +38,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::transaction_components::Transaction,
-    validation::MempoolTransactionValidation,
+    validation::TransactionValidator,
 };
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
@@ -51,11 +51,7 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(
-        config: MempoolConfig,
-        rules: ConsensusManager,
-        validator: Box<dyn MempoolTransactionValidation>,
-    ) -> Self {
+    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
         }
@@ -164,7 +160,7 @@ impl Mempool {
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-            callback(&*lock)
+            callback(&lock)
         })
         .await?
     }
@@ -177,7 +173,7 @@ impl Mempool {
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
-            callback(&mut *lock)
+            callback(&mut lock)
         })
         .await?
     }

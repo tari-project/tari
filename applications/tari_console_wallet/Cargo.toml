@@ -1,13 +1,13 @@
 [package]
 name = "tari_console_wallet"
-version = "0.43.2"
+version = "0.49.0-pre.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
 tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.8" }
 tari_common = { path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_comms = { path = "../../comms/core" }
@@ -20,14 +20,14 @@ tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.10" }
 tari_script = { path = "../../infrastructure/tari_script" }
+tari_contacts = { path = "../../base_layer/contacts" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 #console-subscriber = "0.1.3"
 #tokio = { version = "1.20", features = ["signal", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { version = "1.20", default-features = false, features = ["signal", "sync"] }
+tokio = { version = "1.23", default-features = false, features = ["signal", "sync"] }
 
-base64 = "0.13.0"
 bitflags = "1.2.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.1.1", features = ["derive", "env"] }
@@ -48,10 +48,10 @@ strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
 tonic = "0.6.2"
-tracing = "0.1.26"
 unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
 zeroize = "1"
+zxcvbn = "2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
@@ -67,3 +67,5 @@ features = ["crossterm"]
 avx2 = ["tari_core/avx2", "tari_crypto/simd_backend", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
 libtor = ["tari_libtor"]
 
+[package.metadata.cargo-machete]
+ignored = ["strum"]

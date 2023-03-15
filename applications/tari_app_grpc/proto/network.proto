@@ -27,7 +27,7 @@ import "google/protobuf/timestamp.proto";
 
 message NodeIdentity {
     bytes public_key = 1;
-    string public_address = 2;
+    repeated string public_addresses = 2;
     bytes node_id = 3;
 }
 
@@ -47,8 +47,6 @@ message Peer{
     google.protobuf.Timestamp offline_at = 8;
     /// Features supported by the peer
     uint64 features = 9;
-    /// Connection statics for the peer
-    google.protobuf.Timestamp last_connected_at = 10;    /// Protocols supported by the peer. This should not be considered a definitive list of supported protocols and is
     /// used as information for more efficient protocol negotiation.
     repeated bytes supported_protocols = 11;
     /// User agent advertised by the peer
@@ -77,7 +75,6 @@ message Address{
     bytes address =1;
     string last_seen = 2;
     uint32 connection_attempts = 3;
-    uint32 rejected_message_count = 4;
     uint64 avg_latency = 5;
 }
 

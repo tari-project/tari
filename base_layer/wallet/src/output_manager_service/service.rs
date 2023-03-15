@@ -68,7 +68,7 @@ use tari_crypto::{
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -97,9 +97,12 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::WalletHasher,
-    WalletOutputEncryptionKeysDomainHasher,
-    WalletOutputRewindKeysDomainHasher,
+    util::one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_rewind_key,
+        stealth_address_script_spending_key,
+    },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -351,7 +354,7 @@ where
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
+                let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
             OutputManagerRequest::GetOutputsBy(q) => {
@@ -466,6 +469,13 @@ where
             OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
                 let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
+            },
+            OutputManagerRequest::GetNextSpendAndScriptKeys => {
+                let (spend_key, script_key) = self.get_spend_and_script_keys().await?;
+                Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
+            },
+            OutputManagerRequest::GetRewindData => {
+                Ok(OutputManagerResponse::RewindData(self.resources.rewind_data.clone()))
             },
         }
     }
@@ -650,6 +660,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -688,6 +700,8 @@ where
             spend_priority,
             None,
             OutputSource::default(),
+            tx_id,
+            None,
         )?;
         debug!(
             target: LOG_TARGET,
@@ -728,6 +742,8 @@ where
             &self.resources.factories,
             spend_priority,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
@@ -844,6 +860,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(single_round_sender_data.tx_id),
+            None,
         )?;
 
         self.resources
@@ -1014,13 +1032,14 @@ where
 
         if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
-            builder.with_change_script(
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-            );
+            builder
+                .with_change_secret(spending_key)
+                .with_rewindable_outputs(self.resources.rewind_data.clone())
+                .with_change_script(
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                );
         }
 
         let stp = builder
@@ -1046,6 +1065,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -1110,6 +1131,8 @@ where
             None,
             None,
             OutputSource::Coinbase,
+            Some(tx_id),
+            None,
         )?;
 
         // If there is no existing output available, we store the one we produced.
@@ -1203,13 +1226,15 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?)
         }
 
         let mut stp = builder
             .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
+        let tx_id = stp.get_tx_id()?;
         if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
@@ -1218,14 +1243,15 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
-        let tx_id = stp.get_tx_id()?;
 
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(&self.resources.factories, None, u64::MAX)?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1325,6 +1351,8 @@ where
             None,
             None,
             OutputSource::default(),
+            Some(tx_id),
+            None,
         )?;
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
@@ -1343,7 +1371,6 @@ where
             );
         }
 
-        let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
                 &self.resources.factories,
@@ -1365,6 +1392,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?;
             outputs.push(change_output);
         }
@@ -1380,7 +1409,7 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize()?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1820,6 +1849,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -1860,11 +1891,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
@@ -2039,6 +2066,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                None,
+                None,
             )?;
 
             tx_builder
@@ -2097,6 +2126,8 @@ where
                 None,
                 None,
                 OutputSource::default(),
+                Some(tx_id),
+                None,
             )?);
         }
 
@@ -2113,11 +2144,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         let value = if has_leftover_change {
             total_split_amount
@@ -2246,6 +2273,8 @@ where
             None,
             None,
             OutputSource::default(),
+            None,
+            None,
         )?;
 
         tx_builder
@@ -2283,11 +2312,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize(
-            &self.resources.factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize()?;
 
         Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
@@ -2385,7 +2410,6 @@ where
                     script_private_key,
                 );
 
-                let factories = CryptoFactories::default();
                 let mut stp = builder
                     .build(
                         &self.resources.factories,
@@ -2408,6 +2432,8 @@ where
                     None,
                     None,
                     OutputSource::AtomicSwap,
+                    Some(tx_id),
+                    None,
                 )?;
                 outputs.push(change_output);
 
@@ -2416,7 +2442,7 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+                stp.finalize()?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2473,7 +2499,6 @@ where
             script_private_key,
         );
 
-        let factories = CryptoFactories::default();
         let mut stp = builder
             .build(
                 &self.resources.factories,
@@ -2495,6 +2520,8 @@ where
             None,
             None,
             OutputSource::Refund,
+            Some(tx_id),
+            None,
         )?;
         outputs.push(change_output);
 
@@ -2502,7 +2529,7 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
+        stp.finalize()?;
 
         let tx = stp.take_transaction()?;
 
@@ -2578,16 +2605,13 @@ where
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_bytes(
-                        WalletHasher::new_with_label("stealth_address")
-                            .chain(CommsDHKE::new(&wallet_sk, nonce.as_ref()).as_bytes())
-                            .finalize()
-                            .as_ref(),
-                    )
-                    .unwrap();
+                    let stealth_address_hasher = diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref());
+                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
 
                     // matching spending (public) keys
-                    if &(PublicKey::from_secret_key(&stealth_address_offset) + wallet_pk) != scanned_pk.as_ref() {
+                    let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, wallet_pk);
+                    if &script_spending_key != scanned_pk.as_ref() {
                         continue;
                     }
 
@@ -2645,6 +2669,7 @@ where
                         output.minimum_value_promise,
                     );
 
+                    let tx_id = TxId::new_random();
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                         rewound_output.clone(),
                         &self.resources.factories,
@@ -2655,10 +2680,11 @@ where
                         None,
                         Some(&output.proof),
                         output_source,
+                        Some(tx_id),
+                        None,
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    let tx_id = TxId::new_random();
 
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                         Ok(_) => {
@@ -2731,26 +2757,6 @@ impl fmt::Display for Balance {
         writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
-}
-
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
 }
 
 #[derive(Debug, Clone)]
