@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::PublicKey;
-use tari_crypto::{hash::blake2::Blake256, hasher};
+use tari_core::consensus::DomainSeparatedConsensusHasher;
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hasher};
 
 use crate::error::WalletError;
 
@@ -34,11 +35,10 @@ pub(crate) trait PersistentKeyManager {
 
 hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1, wallet_hasher);
 
-// Hasher used in the DAN to derive masks and encrypted value keys
-hasher!(
-    Blake256,
-    ConfidentialOutputHasher,
+hash_domain!(
+    ConfidentialOutputHashDomain,
     "com.tari.layer_two.confidential_output",
-    1,
-    confidentia_output_hasher
+    1
 );
+/// Hasher used in the DAN to derive masks and encrypted value keys
+pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;

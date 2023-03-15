@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{Commitment, PrivateKey, PublicKey};
 use tari_comms::types::CommsDHKE;
 use tari_utilities::ByteArray;
 
@@ -31,19 +31,18 @@ pub fn derive_diffie_hellman_burn_claim_spend_key(
     private_key: &PrivateKey,
     claim_public_key: &PublicKey,
 ) -> PrivateKey {
-    let hash = ConfidentialOutputHasher::new_with_label("spend_key")
-        .chain(CommsDHKE::new(private_key, claim_public_key).as_bytes())
+    let private_key = PrivateKey::from_bytes(CommsDHKE::new(private_key, claim_public_key).as_bytes()).unwrap();
+    let hash = ConfidentialOutputHasher::new("spend_key")
+        .chain(&private_key)
         .finalize();
     PrivateKey::from_bytes(hash.as_ref()).expect("'DomainSeparatedHash<Blake256>' has correct size")
 }
 
 /// Derives a shared DH value encryption key for a burnt output using a claim public key
-pub fn derive_diffie_hellman_burn_claim_encryption_key(
-    private_key: &PrivateKey,
-    claim_public_key: &PublicKey,
-) -> PrivateKey {
-    let hash = ConfidentialOutputHasher::new_with_label("encryption_key")
-        .chain(CommsDHKE::new(private_key, claim_public_key).as_bytes())
+pub fn derive_burn_claim_encryption_key(private_key: &PrivateKey, commitment: &Commitment) -> PrivateKey {
+    let hash = ConfidentialOutputHasher::new("encryption_key")
+        .chain(private_key)
+        .chain(commitment)
         .finalize();
     PrivateKey::from_bytes(hash.as_ref()).expect("'DomainSeparatedHash<Blake256>' has correct size")
 }
