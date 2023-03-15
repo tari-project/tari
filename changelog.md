@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.1](https://github.com/tari-project/tari/compare/v0.49.0-pre.0...v0.49.0-pre.1) (2023-03-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wallet:** ensure burn shared keys and hashes match dan layer (#5245)
+* add claim public key to OutputFeatures (#5239)
+* reset esmeralda (#5247)
+
+### Features
+
+* add claim public key to OutputFeatures ([#5239](https://github.com/tari-project/tari/issues/5239)) ([3e7d82c](https://github.com/tari-project/tari/commit/3e7d82c440b162cc5a7e3e97b1fb18acdc6dd681))
+* reset esmeralda ([#5247](https://github.com/tari-project/tari/issues/5247)) ([aa2a3ad](https://github.com/tari-project/tari/commit/aa2a3ad5910312642c8652996942993cf6b9df52))
+
+
+### Bug Fixes
+
+* added transaction revalidation to the wallet startup sequence [#5227](https://github.com/tari-project/tari/issues/5227) ([#5246](https://github.com/tari-project/tari/issues/5246)) ([7b4e2d2](https://github.com/tari-project/tari/commit/7b4e2d2cd41c3173c9471ed987a43ae0978afd57))
+* immediately fail to compile on 32-bit systems ([#5237](https://github.com/tari-project/tari/issues/5237)) ([76aeed7](https://github.com/tari-project/tari/commit/76aeed79ae0774bfb4cd94f9f27093394808bae1))
+* **wallet:** correct change checks in transaction builder ([#5235](https://github.com/tari-project/tari/issues/5235)) ([768a0cf](https://github.com/tari-project/tari/commit/768a0cf310aaf20cc5697eaea32c824f812bc233))
+* **wallet:** ensure burn shared keys and hashes match dan layer ([#5245](https://github.com/tari-project/tari/issues/5245)) ([024ce64](https://github.com/tari-project/tari/commit/024ce64843d282981efb366a3a1a5be36c0fb21d))
+* windows path format in log4rs files ([#5234](https://github.com/tari-project/tari/issues/5234)) ([acfecfb](https://github.com/tari-project/tari/commit/acfecfb0b52868bdfbee9accb4d03b8a4a59d90b))
+
 ## [0.49.0-pre.0](https://github.com/tari-project/tari/compare/v0.48.0-pre.1...v0.49.0-pre.0) (2023-03-10)
 
 
