@@ -68,6 +68,10 @@ struct CommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
 
 struct CompletedTransaction;
 
+struct Contact;
+
+struct ContactsLivenessData;
+
 struct Covenant;
 
 struct EmojiSet;
@@ -298,9 +302,9 @@ typedef struct Covenant TariCovenant;
 
 typedef struct EncryptedValue TariEncryptedValue;
 
-typedef Contact TariContact;
+typedef struct Contact TariContact;
 
-typedef ContactsLivenessData TariContactsLivenessData;
+typedef struct ContactsLivenessData TariContactsLivenessData;
 
 typedef struct CompletedTransaction TariCompletedTransaction;
 
