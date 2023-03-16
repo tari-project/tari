@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.2](https://github.com/tari-project/tari/compare/v0.49.0-pre.1...v0.49.0-pre.2) (2023-03-16)
+
+
+### Bug Fixes
+
+* ffi hot fix ([#5251](https://github.com/tari-project/tari/issues/5251)) ([9533e40](https://github.com/tari-project/tari/commit/9533e4017f1229f6de31966a9d5f19ea906117f3))
+
 ## [0.49.0-pre.1](https://github.com/tari-project/tari/compare/v0.49.0-pre.0...v0.49.0-pre.1) (2023-03-15)
 
 
