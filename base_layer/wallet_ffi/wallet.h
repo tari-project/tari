@@ -33,6 +33,8 @@ enum TariUtxoSort {
  */
 struct Balance;
 
+struct BaseNodeState;
+
 struct ByteVector;
 
 /**
@@ -2698,6 +2700,7 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  void (*callback_transaction_validation_complete)(uint64_t, uint64_t),
                                  void (*callback_saf_messages_received)(void),
                                  void (*callback_connectivity_status)(uint64_t),
+                                 void (*callback_base_node_state)(struct BaseNodeState*),
                                  bool *recovery_in_progress,
                                  int *error_out);
 

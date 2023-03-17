@@ -35,6 +35,7 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
+        base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
         connectivity_service::OnlineStatus,
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
@@ -84,6 +85,7 @@ mod test {
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
         pub connectivity_status_callback_called: u64,
+        pub base_node_state_changed_callback_invoked: bool,
     }
 
     impl CallbackState {
@@ -112,6 +114,7 @@ mod test {
                 tx_cancellation_callback_called_outbound: false,
                 saf_messages_received: false,
                 connectivity_status_callback_called: 0,
+                base_node_state_changed_callback_invoked: false,
             }
         }
     }
@@ -243,6 +246,13 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.connectivity_status_callback_called += status + 1;
         drop(lock);
+    }
+
+    unsafe extern "C" fn base_node_state_changed_callback(state: *mut BaseNodeState) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.base_node_state_changed_callback_invoked = true;
+        drop(lock);
+        drop(Box::from_raw(state))
     }
 
     #[test]
@@ -408,6 +418,7 @@ mod test {
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 
+        let (base_node_event_sender, base_node_event_receiver) = broadcast::channel(20);
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
@@ -442,6 +453,7 @@ mod test {
 
         let callback_handler = CallbackHandler::new(
             db,
+            base_node_event_receiver,
             transaction_event_receiver,
             oms_event_receiver,
             oms_handle,
@@ -466,14 +478,31 @@ mod test {
             transaction_validation_complete_callback,
             saf_messages_received_callback,
             connectivity_status_callback,
+            base_node_state_changed_callback,
         );
 
         runtime.spawn(callback_handler.start());
-        let mut callback_balance_updated = 0;
+
+        base_node_event_sender
+            .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
+            .unwrap();
+
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            let lock = CALLBACK_STATE.lock().unwrap();
+
+            if lock.base_node_state_changed_callback_invoked {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
 
         // The balance updated callback is bundled with other callbacks and will only fire if the balance actually
         // changed from an initial zero balance.
         // Balance updated should be detected with following event, total = 1 times
+        let mut callback_balance_updated = 0;
+
         transaction_event_sender
             .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64.into())))
             .unwrap();
