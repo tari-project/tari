@@ -1473,7 +1473,7 @@ where
             selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
         }
 
-        warn!(
+        debug!(
             target: LOG_TARGET,
             "select_utxos selection criteria: {}", selection_criteria
         );
