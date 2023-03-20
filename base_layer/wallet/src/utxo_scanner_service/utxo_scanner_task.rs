@@ -405,7 +405,7 @@ where
         }
 
         if let Some(sb) = found_scanned_block {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Last scanned block found at height {} (Header Hash: {})",
                 sb.height,
