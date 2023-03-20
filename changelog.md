@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.3](https://github.com/tari-project/tari/compare/v0.49.0-pre.2...v0.49.0-pre.3) (2023-03-20)
+
+
+### Bug Fixes
+
+* reduce warn log to debug in utxo scanner ([#5256](https://github.com/tari-project/tari/issues/5256)) ([3946641](https://github.com/tari-project/tari/commit/394664177dcbd05fdd43d54b3bd9f77bc52ecd88))
+* wallet sending local address out to network ([#5258](https://github.com/tari-project/tari/issues/5258)) ([6bfa6f9](https://github.com/tari-project/tari/commit/6bfa6f9fecdd594386ef07169d0e68777b3becd5))
+
 ## [0.49.0-pre.2](https://github.com/tari-project/tari/compare/v0.49.0-pre.1...v0.49.0-pre.2) (2023-03-16)
 
 
