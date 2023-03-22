@@ -149,7 +149,7 @@ use tari_wallet::{
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::initialize_sqlite_database_backends,
+        sqlite_utilities::{get_last_network_and_version, initialize_sqlite_database_backends},
     },
     transaction_service::{
         config::TransactionServiceConfig,
@@ -159,6 +159,7 @@ use tari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
+    types::AppMetadata,
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
@@ -170,6 +171,7 @@ use zeroize::Zeroize;
 
 use crate::{
     callback_handler::CallbackHandler,
+    consts::{APP_AUTHOR, APP_VERSION, APP_VERSION_NUMBER},
     enums::SeedWordPushResult,
     error::{InterfaceError, TransactionError},
     tasks::recovery_event_monitoring,
@@ -242,6 +244,13 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TariNetworkAndVersion {
+    network: String,
+    version: String,
 }
 
 #[derive(Debug)]
@@ -5367,6 +5376,12 @@ pub unsafe extern "C" fn wallet_create(
     let auto_update = AutoUpdateConfig::default();
     let consensus_manager = ConsensusManager::builder(network).build();
 
+    let app_metadata = AppMetadata {
+        version: APP_VERSION.to_string(),
+        version_number: APP_VERSION_NUMBER.to_string(),
+        author: APP_AUTHOR.to_string(),
+    };
+
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
@@ -5382,6 +5397,7 @@ pub unsafe extern "C" fn wallet_create(
         key_manager_backend,
         shutdown.to_signal(),
         master_seed,
+        Some(app_metadata),
     ));
 
     match w {
@@ -5443,6 +5459,39 @@ pub unsafe extern "C" fn wallet_create(
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
+        },
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_network_and_version(
+    config: *mut TariCommsConfig,
+    error_out: *mut c_int,
+) -> *mut TariNetworkAndVersion {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if config.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let sql_database_path = (*config)
+        .datastore_path
+        .join((*config).peer_database_name.clone())
+        .with_extension("sqlite3");
+
+    debug!(
+        target: LOG_TARGET,
+        "Obtaining the network and client version that last ran"
+    );
+
+    match get_last_network_and_version(sql_database_path) {
+        Ok((network, version)) => Box::into_raw(Box::new(TariNetworkAndVersion { network, version })),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
         },
     }
 }
@@ -10344,6 +10393,94 @@ mod test {
             destroy_tari_vector(outputs);
             destroy_tari_vector(commitments);
             destroy_tari_coin_preview(preview);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_config_destroy(transport_config_alice);
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::needless_collect)]
+    fn test_wallet_get_network_and_version() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_config_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                passphrase,
+                ptr::null(),
+                network_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            (1..=5).for_each(|i| {
+                (*alice_wallet)
+                    .runtime
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
+                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
+                        None,
+                    ))
+                    .unwrap();
+            });
+
+            // obtaining network and version
+            let network_and_version = wallet_get_network_and_version(alice_config, &mut error as *mut c_int);
+
+            println!("{:#?}", *(network_and_version));
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);

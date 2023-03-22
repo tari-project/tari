@@ -153,6 +153,8 @@ struct RistrettoPublicKey;
  */
 struct RistrettoSecretKey;
 
+struct String;
+
 struct TariAddress;
 
 struct TariCompletedTransactions;
@@ -319,6 +321,11 @@ typedef struct TransportConfig TariTransportConfig;
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
+
+struct TariNetworkAndVersion {
+  struct String network;
+  struct String version;
+};
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
@@ -2700,6 +2707,9 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  void (*callback_connectivity_status)(uint64_t),
                                  bool *recovery_in_progress,
                                  int *error_out);
+
+struct TariNetworkAndVersion *wallet_get_network_and_version(TariCommsConfig *config,
+                                                             int *error_out);
 
 /**
  * Retrieves the balance from a wallet
