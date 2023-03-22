@@ -94,9 +94,9 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{NodeIdentity, PeerFeatures},
+    peer_manager::NodeIdentity,
     transports::MemoryTransport,
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_contacts::contacts_service::storage::database::Contact;
@@ -4769,15 +4769,15 @@ pub unsafe extern "C" fn comms_config_create(
 
     match public_address {
         Ok(public_address) => {
-            let node_identity = NodeIdentity::new(
-                CommsSecretKey::default(),
-                vec![public_address],
-                PeerFeatures::COMMUNICATION_CLIENT,
-            );
+            let addresses = if (*transport).transport_type == TransportType::Tor {
+                vec![]
+            } else {
+                vec![public_address]
+            };
 
             let config = TariCommsConfig {
                 override_from: None,
-                public_addresses: vec![node_identity.first_public_address()],
+                public_addresses: addresses,
                 transport: (*transport).clone(),
                 auxiliary_tcp_listener_address: None,
                 datastore_path,
@@ -5290,13 +5290,17 @@ pub unsafe extern "C" fn wallet_create(
 
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
         let node_addresses = if comms_config.public_addresses.is_empty() {
-            vec![match wallet_database.get_node_address()? {
-                Some(addr) => addr,
-                None => Multiaddr::empty(),
-            }]
+            match wallet_database.get_node_address()? {
+                Some(addr) => vec![addr],
+                None => vec![],
+            }
         } else {
             comms_config.public_addresses.clone()
         };
+        debug!(target: LOG_TARGET, "We have the following addresses");
+        for address in &node_addresses {
+            debug!(target: LOG_TARGET, "Address: {}", address);
+        }
         let identity_sig = wallet_database.get_comms_identity_signature()?;
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
@@ -8418,6 +8422,7 @@ mod test {
     use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
+    use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
         transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
