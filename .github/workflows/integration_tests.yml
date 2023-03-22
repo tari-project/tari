@@ -7,6 +7,7 @@ name: Integration tests
       - opened
       - reopened
       - synchronize
+  merge_group:    
   push:
     paths-ignore:
       - '**/*.md'

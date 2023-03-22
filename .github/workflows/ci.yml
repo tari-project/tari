@@ -13,6 +13,7 @@ name: CI
       - opened
       - reopened
       - synchronize
+  merge_group:    
 
 env:
   toolchain: nightly-2022-11-03

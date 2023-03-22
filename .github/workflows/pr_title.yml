@@ -10,6 +10,7 @@ name: PR
       - reopened
       - edited
       - synchronize
+  merge_group:    
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
