@@ -5463,6 +5463,19 @@ pub unsafe extern "C" fn wallet_create(
     }
 }
 
+/// Retrieves the network and version of an app that last accessed the wallet database
+///
+/// ## Arguments
+/// `config` - The TariCommsConfig pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `*mut TariNetworkAndVersion` - Returns the pointer to the TariNetworkAndVersion that contains the network and
+/// version
+///
+/// # Safety
+/// The ```network_and_version_destroy``` method must be called when finished with a TariNetworkAndVersion to prevent a
+/// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_network_and_version(
     config: *mut TariCommsConfig,
@@ -5491,8 +5504,25 @@ pub unsafe extern "C" fn wallet_get_network_and_version(
         Err(e) => {
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            ptr::null_mut()
         },
+    }
+}
+
+/// Frees memory for a TariNetworkAndVersion
+///
+/// ## Arguments
+/// `balance` - The pointer to a TariNetworkAndVersion
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn network_and_version_destroy(network_and_version: *mut TariNetworkAndVersion) {
+    if !network_and_version.is_null() {
+        drop(Box::from_raw(network_and_version))
     }
 }
 

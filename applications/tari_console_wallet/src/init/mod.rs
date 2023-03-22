@@ -360,6 +360,7 @@ pub async fn init_wallet(
         key_manager_backend,
         shutdown_signal,
         master_seed,
+        None,
     )
     .await
     .map_err(|e| match e {

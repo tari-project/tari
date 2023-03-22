@@ -2708,8 +2708,37 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  bool *recovery_in_progress,
                                  int *error_out);
 
+/**
+ * Retrieves the network and version of an app that last accessed the wallet database
+ *
+ * ## Arguments
+ * `config` - The TariCommsConfig pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `*mut TariNetworkAndVersion` - Returns the pointer to the TariNetworkAndVersion that contains the network and
+ * version
+ *
+ * # Safety
+ * The ```network_and_version_destroy``` method must be called when finished with a TariNetworkAndVersion to prevent a
+ * memory leak
+ */
 struct TariNetworkAndVersion *wallet_get_network_and_version(TariCommsConfig *config,
                                                              int *error_out);
+
+/**
+ * Frees memory for a TariNetworkAndVersion
+ *
+ * ## Arguments
+ * `balance` - The pointer to a TariNetworkAndVersion
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void network_and_version_destroy(struct TariNetworkAndVersion *network_and_version);
 
 /**
  * Retrieves the balance from a wallet
