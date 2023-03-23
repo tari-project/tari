@@ -50,6 +50,8 @@ pub enum OutputType {
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
+    /// Care should be taken with burning as we dont limit the burns to only side_chain features but any output can be
+    /// burned to keep it open for use by as many application as possible.
     Burn = 2,
     /// Output defines a validator node registration
     ValidatorNodeRegistration = 3,

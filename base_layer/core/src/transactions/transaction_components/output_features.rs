@@ -101,6 +101,8 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output
+    /// Care should be taken with burning as we dont limit the burns to only side_chain features but any output can be
+    /// burned to keep it open for use by as many application as possible.
     pub fn create_burn_output() -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
