@@ -52,7 +52,7 @@ use crate::{
             OutputSource,
         },
     },
-    util::burn_proof::derive_diffie_hellman_burn_claim_encryption_key,
+    util::burn_proof::derive_burn_claim_encryption_key,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
@@ -229,15 +229,20 @@ where
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
-        let Some(confidential_data) = output.features.sidechain_feature.as_ref().and_then(|f| f.confidential_output_data()) else {
+        if output
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.confidential_output_data())
+            .is_none()
+        {
             return self.attempt_standard_output_recovery(output);
         };
 
         let blinding_factor =
             output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
 
-        let shard_encryption_key =
-            derive_diffie_hellman_burn_claim_encryption_key(&blinding_factor, &confidential_data.claim_public_key);
+        let shard_encryption_key = derive_burn_claim_encryption_key(&blinding_factor, &output.commitment);
 
         let committed_value =
             EncryptedValue::decrypt_value(&shard_encryption_key, &output.commitment, &output.encrypted_value);
