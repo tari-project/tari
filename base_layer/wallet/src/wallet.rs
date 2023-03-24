@@ -82,6 +82,7 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
+    consts,
     error::{WalletError, WalletStorageError},
     key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
@@ -99,7 +100,7 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
-    types::{AppMetadata, KeyDigest},
+    types::KeyDigest,
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
@@ -156,7 +157,6 @@ where
         key_manager_backend: X,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
-        app_metadata: Option<AppMetadata>,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
@@ -280,13 +280,11 @@ where
             wallet_database.set_comms_identity_signature(identity_sig)?;
         }
 
-        if let Some(app_metadata) = app_metadata {
-            // storing current network and version
-            if let Err(e) =
-                wallet_database.set_last_network_and_version(config.network.to_string(), app_metadata.version_number)
-            {
-                warn!("failed to store network and version: {:#?}", e);
-            }
+        // storing current network and version
+        if let Err(e) = wallet_database
+            .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
+        {
+            warn!("failed to store network and version: {:#?}", e);
         }
 
         Ok(Self {

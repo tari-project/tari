@@ -153,8 +153,6 @@ struct RistrettoPublicKey;
  */
 struct RistrettoSecretKey;
 
-struct String;
-
 struct TariAddress;
 
 struct TariCompletedTransactions;
@@ -321,11 +319,6 @@ typedef struct TransportConfig TariTransportConfig;
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
-
-struct TariNetworkAndVersion {
-  struct String network;
-  struct String version;
-};
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
@@ -2709,36 +2702,36 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  int *error_out);
 
 /**
- * Retrieves the network and version of an app that last accessed the wallet database
+ * Retrieves the version of an app that last accessed the wallet database
  *
  * ## Arguments
  * `config` - The TariCommsConfig pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  * ## Returns
- * `*mut TariNetworkAndVersion` - Returns the pointer to the TariNetworkAndVersion that contains the network and
- * version
+ * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
  *
  * # Safety
- * The ```network_and_version_destroy``` method must be called when finished with a TariNetworkAndVersion to prevent a
- * memory leak
+ * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-struct TariNetworkAndVersion *wallet_get_network_and_version(TariCommsConfig *config,
-                                                             int *error_out);
+char *wallet_get_last_version(TariCommsConfig *config,
+                              int *error_out);
 
 /**
- * Frees memory for a TariNetworkAndVersion
+ * Retrieves the network of an app that last accessed the wallet database
  *
  * ## Arguments
- * `balance` - The pointer to a TariNetworkAndVersion
- *
+ * `config` - The TariCommsConfig pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
  * ## Returns
- * `()` - Does not return a value, equivalent to void in C
+ * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
  *
  * # Safety
- * None
+ * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-void network_and_version_destroy(struct TariNetworkAndVersion *network_and_version);
+char *wallet_get_last_network(TariCommsConfig *config,
+                              int *error_out);
 
 /**
  * Retrieves the balance from a wallet

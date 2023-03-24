@@ -149,7 +149,7 @@ use tari_wallet::{
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{get_last_network_and_version, initialize_sqlite_database_backends},
+        sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
     },
     transaction_service::{
         config::TransactionServiceConfig,
@@ -159,7 +159,6 @@ use tari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
-    types::AppMetadata,
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
@@ -171,7 +170,6 @@ use zeroize::Zeroize;
 
 use crate::{
     callback_handler::CallbackHandler,
-    consts::{APP_AUTHOR, APP_VERSION, APP_VERSION_NUMBER},
     enums::SeedWordPushResult,
     error::{InterfaceError, TransactionError},
     tasks::recovery_event_monitoring,
@@ -244,13 +242,6 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
-}
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct TariNetworkAndVersion {
-    network: String,
-    version: String,
 }
 
 #[derive(Debug)]
@@ -5376,12 +5367,6 @@ pub unsafe extern "C" fn wallet_create(
     let auto_update = AutoUpdateConfig::default();
     let consensus_manager = ConsensusManager::builder(network).build();
 
-    let app_metadata = AppMetadata {
-        version: APP_VERSION.to_string(),
-        version_number: APP_VERSION_NUMBER.to_string(),
-        author: APP_AUTHOR.to_string(),
-    };
-
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
@@ -5397,7 +5382,6 @@ pub unsafe extern "C" fn wallet_create(
         key_manager_backend,
         shutdown.to_signal(),
         master_seed,
-        Some(app_metadata),
     ));
 
     match w {
@@ -5463,24 +5447,19 @@ pub unsafe extern "C" fn wallet_create(
     }
 }
 
-/// Retrieves the network and version of an app that last accessed the wallet database
+/// Retrieves the version of an app that last accessed the wallet database
 ///
 /// ## Arguments
 /// `config` - The TariCommsConfig pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// ## Returns
-/// `*mut TariNetworkAndVersion` - Returns the pointer to the TariNetworkAndVersion that contains the network and
-/// version
+/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
 ///
 /// # Safety
-/// The ```network_and_version_destroy``` method must be called when finished with a TariNetworkAndVersion to prevent a
-/// memory leak
+/// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_network_and_version(
-    config: *mut TariCommsConfig,
-    error_out: *mut c_int,
-) -> *mut TariNetworkAndVersion {
+pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
@@ -5494,13 +5473,14 @@ pub unsafe extern "C" fn wallet_get_network_and_version(
         .join((*config).peer_database_name.clone())
         .with_extension("sqlite3");
 
-    debug!(
-        target: LOG_TARGET,
-        "Obtaining the network and client version that last ran"
-    );
+    debug!(target: LOG_TARGET, "Obtaining the version of the last client run");
 
-    match get_last_network_and_version(sql_database_path) {
-        Ok((network, version)) => Box::into_raw(Box::new(TariNetworkAndVersion { network, version })),
+    match get_last_version(sql_database_path) {
+        Ok(None) => ptr::null_mut(),
+        Ok(Some(version)) => {
+            let version = CString::new(version).expect("failed to initialize CString");
+            version.into_raw()
+        },
         Err(e) => {
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -5509,20 +5489,45 @@ pub unsafe extern "C" fn wallet_get_network_and_version(
     }
 }
 
-/// Frees memory for a TariNetworkAndVersion
+/// Retrieves the network of an app that last accessed the wallet database
 ///
 /// ## Arguments
-/// `balance` - The pointer to a TariNetworkAndVersion
-///
+/// `config` - The TariCommsConfig pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 /// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
+/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
 ///
 /// # Safety
-/// None
+/// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn network_and_version_destroy(network_and_version: *mut TariNetworkAndVersion) {
-    if !network_and_version.is_null() {
-        drop(Box::from_raw(network_and_version))
+pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if config.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let sql_database_path = (*config)
+        .datastore_path
+        .join((*config).peer_database_name.clone())
+        .with_extension("sqlite3");
+
+    debug!(target: LOG_TARGET, "Obtaining the network of the last client run");
+
+    match get_last_network(sql_database_path) {
+        Ok(None) => ptr::null_mut(),
+        Ok(Some(network)) => {
+            let network = CString::new(network).expect("failed to initialize CString");
+            network.into_raw()
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -10508,11 +10513,9 @@ mod test {
             });
 
             // obtaining network and version
-            let network_and_version = wallet_get_network_and_version(alice_config, &mut error as *mut c_int);
+            let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
+            let _ = wallet_get_last_network(alice_config, &mut error as *mut c_int);
 
-            println!("{:#?}", *(network_and_version));
-
-            string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);

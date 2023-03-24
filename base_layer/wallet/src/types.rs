@@ -42,10 +42,3 @@ hash_domain!(
 );
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;
-
-#[derive(Debug, Clone)]
-pub struct AppMetadata {
-    pub version: String,
-    pub version_number: String,
-    pub author: String,
-}

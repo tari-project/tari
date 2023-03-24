@@ -196,7 +196,6 @@ async fn create_wallet(
         key_manager_backend,
         shutdown_signal,
         master_seed,
-        None,
     )
     .await
 }
@@ -716,7 +715,6 @@ async fn test_import_utxo() {
         KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
-        None,
     )
     .await
     .unwrap();

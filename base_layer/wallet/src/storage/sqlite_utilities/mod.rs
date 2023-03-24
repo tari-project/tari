@@ -146,7 +146,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     ))
 }
 
-pub fn get_last_network_and_version<P: AsRef<Path>>(db_path: P) -> Result<(String, String), WalletStorageError> {
+pub fn get_last_version<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, WalletStorageError> {
     let path_str = db_path
         .as_ref()
         .to_str()
@@ -155,15 +155,17 @@ pub fn get_last_network_and_version<P: AsRef<Path>>(db_path: P) -> Result<(Strin
     let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
     pool.create_pool()?;
 
-    let network = match WalletSettingSql::get(&DbKey::LastAccessedNetwork, pool.get_pooled_connection()?.deref_mut())? {
-        None => "n/a".to_string(),
-        Some(network) => network,
-    };
+    WalletSettingSql::get(&DbKey::LastAccessedVersion, pool.get_pooled_connection()?.deref_mut())
+}
 
-    let version = match WalletSettingSql::get(&DbKey::LastAccessedVersion, pool.get_pooled_connection()?.deref_mut())? {
-        None => "n/a".to_string(),
-        Some(version) => version,
-    };
+pub fn get_last_network<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, WalletStorageError> {
+    let path_str = db_path
+        .as_ref()
+        .to_str()
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    Ok((network, version))
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
+    pool.create_pool()?;
+
+    WalletSettingSql::get(&DbKey::LastAccessedNetwork, pool.get_pooled_connection()?.deref_mut())
 }
