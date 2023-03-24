@@ -5473,7 +5473,6 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
         .join((*config).peer_database_name.clone())
         .with_extension("sqlite3");
 
-    debug!(target: LOG_TARGET, "Obtaining the version of the last client run");
 
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
