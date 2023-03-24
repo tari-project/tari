@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.4](https://github.com/tari-project/tari/compare/v0.49.0-pre.3...v0.49.0-pre.4) (2023-03-24)
+
+
+### Features
+
+* added FFI function `wallet_get_network_and_version` [#5252](https://github.com/tari-project/tari/issues/5252) ([#5263](https://github.com/tari-project/tari/issues/5263)) ([4b09b59](https://github.com/tari-project/tari/commit/4b09b59ce0cbc7e5c270c4c06a671c2fcff18bfc))
+
 ## [0.49.0-pre.3](https://github.com/tari-project/tari/compare/v0.49.0-pre.2...v0.49.0-pre.3) (2023-03-20)
 
 
