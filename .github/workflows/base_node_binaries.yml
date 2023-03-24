@@ -376,10 +376,11 @@ jobs:
       - name: Prep miner for upload
         shell: bash
         run: |
-          cp -v "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}" \
-            "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
-          ${SHARUN} "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
-            >> "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          cd "${{ github.workspace }}${{ env.TBN_DIST }}"
+          cp -v "tari_miner${{ env.TBN_EXT}}" \
+            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
