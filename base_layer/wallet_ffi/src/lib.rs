@@ -5513,8 +5513,6 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
         .datastore_path
         .join((*config).peer_database_name.clone())
         .with_extension("sqlite3");
-
-
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
