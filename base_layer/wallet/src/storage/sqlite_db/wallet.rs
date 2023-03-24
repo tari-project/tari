@@ -414,7 +414,14 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::CommsIdentitySignature, identity_sig.to_bytes().to_hex())
                     .set(&mut conn)?;
             },
+            DbKeyValuePair::NetworkAndVersion((network, version)) => {
+                kvp_text = "NetworkAndVersion";
+
+                WalletSettingSql::new(DbKey::LastAccessedNetwork, network).set(&mut conn)?;
+                WalletSettingSql::new(DbKey::LastAccessedVersion, version).set(&mut conn)?;
+            },
         }
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -452,7 +459,9 @@ impl WalletSqliteDatabase {
             DbKey::SecondaryKeySalt |
             DbKey::SecondaryKeyHash |
             DbKey::WalletBirthday |
-            DbKey::CommsIdentitySignature => {
+            DbKey::CommsIdentitySignature |
+            DbKey::LastAccessedNetwork |
+            DbKey::LastAccessedVersion => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
         };
@@ -499,6 +508,8 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::SecondaryKeySalt => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeySalt),
             DbKey::SecondaryKeyHash => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeyHash),
             DbKey::WalletBirthday => WalletSettingSql::get(key, &mut conn)?.map(DbValue::WalletBirthday),
+            DbKey::LastAccessedNetwork => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedNetwork),
+            DbKey::LastAccessedVersion => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedVersion),
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &mut conn)?
                 .and_then(|s| from_hex(&s).ok())
                 .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())

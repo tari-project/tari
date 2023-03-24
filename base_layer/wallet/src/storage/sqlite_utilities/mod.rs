@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, path::Path, time::Duration};
+use std::{fs::File, ops::DerefMut, path::Path, time::Duration};
 
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
@@ -34,7 +34,10 @@ use crate::{
     error::WalletStorageError,
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::wallet::WalletSqliteDatabase,
+    storage::{
+        database::DbKey,
+        sqlite_db::wallet::{WalletSettingSql, WalletSqliteDatabase},
+    },
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 
@@ -141,4 +144,28 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
         contacts_backend,
         key_manager_backend,
     ))
+}
+
+pub fn get_last_version<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, WalletStorageError> {
+    let path_str = db_path
+        .as_ref()
+        .to_str()
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
+
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
+    pool.create_pool()?;
+
+    WalletSettingSql::get(&DbKey::LastAccessedVersion, pool.get_pooled_connection()?.deref_mut())
+}
+
+pub fn get_last_network<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, WalletStorageError> {
+    let path_str = db_path
+        .as_ref()
+        .to_str()
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
+
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
+    pool.create_pool()?;
+
+    WalletSettingSql::get(&DbKey::LastAccessedNetwork, pool.get_pooled_connection()?.deref_mut())
 }
