@@ -17,9 +17,11 @@ Only the first four applications will be discussed in this README (see [wallet-a
 ### Versions
 For  the recommended versions, for more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
 
-| Network       | StageNet | NextNet | Develpment |
-|---------------|----------|---------|---------|
-| Version       | 0.45.0   | 0.48.0-rc.2 | 0.49.0-pre.4|
+| Network  | Version      | 
+|----------|--------------|
+| Stagenet | 0.45.0       |
+| NextNet  | 0.48.0-rc.2  |
+| Develpment | 0.49.0-pre.4 |
 
 ### Download
 
