@@ -38,10 +38,11 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventReceiver},
@@ -61,6 +62,8 @@ use tari_wallet::{
     },
 };
 use tokio::sync::{broadcast, watch};
+
+use crate::{ByteVector, TariBaseNodeState};
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -83,7 +86,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
-    callback_base_node_state: unsafe extern "C" fn(*mut BaseNodeState),
+    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     db: TransactionDatabase<TBackend>,
     base_node_service_event_stream: BaseNodeEventReceiver,
     transaction_service_event_stream: TransactionEventReceiver,
@@ -128,7 +131,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
-        callback_base_node_state: unsafe extern "C" fn(*mut BaseNodeState),
+        callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     ) -> Self {
         info!(
             target: LOG_TARGET,
@@ -649,6 +652,41 @@ where TBackend: TransactionBackend + 'static
 
     fn base_node_state_changed(&mut self, state: BaseNodeState) {
         debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
+
+        let state = match state.chain_metadata {
+            None => TariBaseNodeState {
+                node_id: state.node_id,
+                height_of_longest_chain: 0,
+                best_block: ByteVector(BlockHash::zero().to_vec()),
+                best_block_timestamp: 0,
+                pruning_horizon: 0,
+                pruned_height: 0,
+                accumulated_difficulty: 0,
+                is_node_synced: false,
+                updated_at: 0,
+                latency: 0,
+            },
+
+            Some(chain_metadata) => {
+                let best_block = ByteVector(chain_metadata.best_block().to_vec());
+
+                TariBaseNodeState {
+                    node_id: state.node_id,
+                    height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                    best_block,
+                    best_block_timestamp: chain_metadata.timestamp(),
+                    pruning_horizon: chain_metadata.pruning_horizon(),
+                    pruned_height: chain_metadata.pruned_height(),
+                    accumulated_difficulty: chain_metadata.accumulated_difficulty(),
+                    is_node_synced: state.is_synced.unwrap_or(false),
+                    updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
+                    latency: state.latency.map(|d| d.as_micros() as u64).unwrap_or(0),
+                }
+            },
+        };
+
+        println!("{:#?}", state);
+
         unsafe {
             (self.callback_base_node_state)(Box::into_raw(Box::new(state)));
         }

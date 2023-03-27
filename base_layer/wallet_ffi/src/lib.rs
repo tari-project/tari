@@ -135,7 +135,6 @@ use tari_utilities::{
     SafePassword,
 };
 use tari_wallet::{
-    base_node_service::service::BaseNodeState,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -243,6 +242,40 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TariBaseNodeState {
+    /// The ID of the base node this wallet is connected to
+    pub node_id: Option<TariNodeId>,
+
+    /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
+    pub height_of_longest_chain: u64,
+
+    /// The block hash of the current tip of the longest valid chain
+    pub best_block: ByteVector,
+
+    /// Timestamp of the tip block in the longest valid chain
+    pub best_block_timestamp: u64,
+
+    /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
+    /// pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
+    /// was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
+    /// are preserved from genesis (i.e. the database is in full archival mode).
+    pub pruning_horizon: u64,
+
+    /// The height of the pruning horizon. This indicates from what height a full block can be provided
+    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// provided. Archival nodes wil always have an `pruned_height` of zero.
+    pub pruned_height: u64,
+
+    /// The total accumulated proof of work of the longest chain
+    pub accumulated_difficulty: u128,
+
+    pub is_node_synced: bool,
+    pub updated_at: u64,
+    pub latency: u64,
 }
 
 #[derive(Debug)]
@@ -5173,7 +5206,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
-    callback_base_node_state: unsafe extern "C" fn(*mut BaseNodeState),
+    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
@@ -8748,7 +8781,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn base_node_state_callback(_state: *mut BaseNodeState) {
+    unsafe extern "C" fn base_node_state_callback(_state: *mut TariBaseNodeState) {
         // assert!(true); //optimized out by compiler
     }
 

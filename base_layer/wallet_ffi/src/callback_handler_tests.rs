@@ -7,7 +7,7 @@ mod test {
         mem::size_of,
         sync::{Arc, Mutex},
         thread,
-        time::Duration,
+        time::{Duration, SystemTime},
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -15,10 +15,12 @@ mod test {
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
+        chain_metadata::ChainMetadata,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
+    use tari_comms::peer_manager::NodeId;
     use tari_comms_dht::event::DhtEvent;
     use tari_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},
@@ -57,7 +59,11 @@ mod test {
         time::Instant,
     };
 
-    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
+    use crate::{
+        callback_handler::CallbackHandler,
+        output_manager_service_mock::MockOutputManagerService,
+        TariBaseNodeState,
+    };
 
     #[derive(Debug)]
     #[allow(clippy::struct_excessive_bools)]
@@ -248,7 +254,7 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn base_node_state_changed_callback(state: *mut BaseNodeState) {
+    unsafe extern "C" fn base_node_state_changed_callback(state: *mut TariBaseNodeState) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.base_node_state_changed_callback_invoked = true;
         drop(lock);
@@ -483,8 +489,27 @@ mod test {
 
         runtime.spawn(callback_handler.start());
 
+        let ts_now = NaiveDateTime::from_timestamp_millis(
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64,
+        )
+        .unwrap();
+
+        let chain_metadata = ChainMetadata::new(1, Default::default(), 0, 0, 123, ts_now.timestamp_millis() as u64);
+
         base_node_event_sender
-            .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
+            .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
+                node_id: Some(NodeId::new()),
+                chain_metadata: Some(chain_metadata),
+                is_synced: Some(true),
+                updated: Some(NaiveDateTime::from_timestamp_millis(
+                    ts_now.timestamp_millis() - (60 * 1000),
+                ))
+                .unwrap(),
+                latency: Some(Duration::from_micros(500)),
+            })))
             .unwrap();
 
         let start = Instant::now();
@@ -497,6 +522,7 @@ mod test {
 
             thread::sleep(Duration::from_millis(100));
         }
+        assert!(CALLBACK_STATE.lock().unwrap().base_node_state_changed_callback_invoked);
 
         // The balance updated callback is bundled with other callbacks and will only fire if the balance actually
         // changed from an initial zero balance.
