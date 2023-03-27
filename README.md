@@ -14,6 +14,13 @@ Only the first four applications will be discussed in this README (see [wallet-a
 
 ## Installing using binaries
 
+### Versions
+For  the recommended versions, for more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
+
+| Network       | StageNet | NextNet | Develpment |
+|---------------|----------|---------|---------|
+| Version       | 0.45.0   | 0.48.0-rc.2 | 0.49.0-pre.4|
+
 ### Download
 
 [Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
