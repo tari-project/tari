@@ -15,13 +15,15 @@ Only the first four applications will be discussed in this README (see [wallet-a
 ## Installing using binaries
 
 ### Versions
-For  the recommended versions, for more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
+The recommended running versions of each network are:
 
 | Network  | Version      | 
 |----------|--------------|
 | Stagenet | 0.45.0       |
 | Nextnet  | 0.48.0-rc.2  |
 | Development | 0.49.0-pre.4 |
+
+For more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
 
 ### Download
 
