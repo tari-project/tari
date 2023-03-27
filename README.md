@@ -20,7 +20,7 @@ For  the recommended versions, for more detail about versioning see [Release Ide
 | Network  | Version      | 
 |----------|--------------|
 | Stagenet | 0.45.0       |
-| NextNet  | 0.48.0-rc.2  |
+| Nextnet  | 0.48.0-rc.2  |
 | Development | 0.49.0-pre.4 |
 
 ### Download
