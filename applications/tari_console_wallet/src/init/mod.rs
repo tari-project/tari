@@ -78,6 +78,69 @@ pub enum WalletBoot {
     Recovery,
 }
 
+/// Get and confirm a passphrase from the user, with feedback
+/// This is intended to be used for new or changed passphrases
+///
+/// You must provide the initial and confirmation prompts to pass to the user
+///
+/// We do several things:
+/// - Prompt the user for a passphrase
+/// - Have the user confirm the passphrase
+/// - Score the passphrase
+/// - If the passphrase is weak (or empty), give feedback and ask the user what to do:
+///   - Proceed with the weak (or empty) passphrase
+///   - Choose a better passphrase
+///   - Cancel the operation
+///
+/// If the passphrase and confirmation don't match, or if the user cancels, returns an error
+/// Otherwise, returns the passphrase as a `SafePassword`
+fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitError> {
+    // We may need to prompt for a passphrase multiple times
+    loop {
+        // Prompt the user for a passphrase and confirm it
+        let passphrase = prompt_password(prompt)?;
+        let confirmed = prompt_password(confirm)?;
+        if passphrase.reveal() != confirmed.reveal() {
+            return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
+        }
+
+        // Score the passphrase and provide feedback
+        let weak = display_password_feedback(&passphrase);
+
+        // If the passphrase is weak, see if the user wishes to change it
+        if weak {
+            println!("What would you like to do?");
+            println!("  1. Choose a different passphrase");
+            println!("  2. Use this passphrase");
+            println!("  3. I changed my mind; cancel this operation");
+
+            let mut input = "".to_string();
+            std::io::stdin().read_line(&mut input);
+
+            match input.trim() {
+                // Choose a different passphrase
+                "1" => {
+                    continue;
+                },
+                // Use this passphrase
+                "2" => {
+                    return Ok(passphrase);
+                },
+                // By default, we cancel to be safe
+                _ => {
+                    return Err(ExitError::new(
+                        ExitCode::InputError,
+                        "Canceling with unchanged passphrase!",
+                    ));
+                },
+            }
+        } else {
+            // The passphrase is fine, so return it
+            return Ok(passphrase);
+        }
+    }
+}
+
 /// Get feedback, if available, for a weak passphrase
 fn get_password_feedback(passphrase: &SafePassword) -> Option<Vec<String>> {
     std::str::from_utf8(passphrase.reveal())
@@ -88,18 +151,21 @@ fn get_password_feedback(passphrase: &SafePassword) -> Option<Vec<String>> {
         .map(|suggestion| suggestion.into_iter().map(|item| item.to_string()).collect())
 }
 
-// Display password feedback to the user
-fn display_password_feedback(passphrase: &SafePassword) {
+/// Display passphrase feedback to the user
+///
+/// Returns `true` if and only if the passphrase is weak
+fn display_password_feedback(passphrase: &SafePassword) -> bool {
     if passphrase.reveal().is_empty() {
         // The passphrase is empty, which the scoring library doesn't handle
-        println!("However, an empty password puts your wallet at risk against an attacker with access to this device.");
+        println!("An empty password puts your wallet at risk against an attacker with access to this device.");
         println!("Use this only if you are sure that your device is safe from prying eyes!");
         println!();
+
+        true
     } else if let Some(feedback) = get_password_feedback(passphrase) {
         // The scoring library provided feedback
         println!(
-            "However, the password you chose is weak; a determined attacker with access to your device may be able to \
-             guess it."
+            "The password you chose is weak; a determined attacker with access to your device may be able to guess it."
         );
         println!("You may want to consider changing it to a stronger one.");
         println!("Here are some suggestions:");
@@ -107,8 +173,11 @@ fn display_password_feedback(passphrase: &SafePassword) {
             println!("- {}", suggestion);
         }
         println!();
+
+        true
     } else {
-        // There is no feedback to provide
+        // The Force is strong with this one
+        false
     }
 }
 
@@ -162,17 +231,8 @@ pub async fn change_password(
     )
     .await?;
 
-    let new = prompt_password("New wallet password: ")?;
-    let confirmed = prompt_password("Confirm new password: ")?;
-
-    if new.reveal() != confirmed.reveal() {
-        return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
-    }
-
-    println!("Passwords match.");
-
-    // If the passphrase is weak, let the user know
-    display_password_feedback(&new);
+    // Get a new passphrase
+    let new = get_new_passphrase("New wallet passphrase: ", "Confirm new passphrase: ")?;
 
     // Use the existing and new passphrases to attempt to change the wallet passphrase
     wallet.db.change_passphrase(&existing, &new).map_err(|e| match e {
@@ -655,24 +715,13 @@ pub(crate) fn boot_with_password(
 
     let password = match boot_mode {
         WalletBoot::New => {
-            debug!(target: LOG_TARGET, "Prompting for password.");
-            let password = prompt_password("Create wallet password: ")?;
-            let confirmed = prompt_password("Confirm wallet password: ")?;
-
-            if password.reveal() != confirmed.reveal() {
-                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
-            }
-
-            println!("Passwords match.");
-
-            // If the passphrase is weak, let the user know
-            display_password_feedback(&password);
-
-            password
+            // Get a new passphrase
+            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+            get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
         WalletBoot::Existing | WalletBoot::Recovery => {
-            debug!(target: LOG_TARGET, "Prompting for password.");
-            prompt_password("Enter wallet password: ")?
+            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+            prompt_password("Enter wallet passphrase: ")?
         },
     };
 
