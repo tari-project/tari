@@ -117,7 +117,9 @@ where
     }
 
     /// Returns a merkle(ish) root for this merkle set.
-    ///
+    /// 
+    /// You _must_ have run `compress()` on this MMR if any deletions were made, or the root may be incorrect.
+    /// 
     /// The root is calculated by concatenating the MMR merkle root with the compressed serialisation of the bitmap
     /// and then hashing the result.
     pub fn get_merkle_root(&self) -> Result<Hash, MerkleMountainRangeError> {

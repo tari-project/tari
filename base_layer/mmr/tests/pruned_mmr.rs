@@ -87,19 +87,23 @@ fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
 /// result of `calculate_pruned_mmr_root`
 #[test]
 pub fn calculate_pruned_mmr_roots() {
+    // Check that the root changes with nontrivial additions and deletions
     let (src_size, additions, deletions) = get_changes();
     let mut src = create_mutable_mmr(src_size);
     let src_root = src.get_merkle_root().expect("Did not get source root");
     let root =
         calculate_pruned_mmr_root(&src, additions.clone(), deletions.clone()).expect("Did not calculate new root");
     assert_ne!(src_root, root);
-    // Double check
+
+    // To check the pruned root computation, manually apply the additions and deletions
+    // We need to compress the deletion bitmap, but as an extra check, we don't apply pruning
     additions.into_iter().for_each(|h| {
         src.push(h).unwrap();
     });
     deletions.iter().for_each(|i| {
         src.delete(*i);
     });
+    src.compress();
     let new_root = src.get_merkle_root().expect("Did not calculate new root");
     assert_eq!(root, new_root);
 }
