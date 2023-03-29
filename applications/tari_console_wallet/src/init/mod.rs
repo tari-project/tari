@@ -109,21 +109,21 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
 
         // If the passphrase is weak, see if the user wishes to change it
         if weak {
-            println!("What would you like to do?");
-            println!("  1. Choose a different passphrase");
-            println!("  2. Use this passphrase");
-            println!("  3. I changed my mind; cancel this operation");
+            println!("Would you like to choose a different passphrase?");
+            println!("  y/Y: Yes, choose a different passphrase");
+            println!("  n/N: No, use this passphrase");
+            println!("  Enter anything else if you changed your mind and want to cancel");
 
             let mut input = "".to_string();
             std::io::stdin().read_line(&mut input);
 
-            match input.trim() {
+            match input.trim().to_lowercase().as_str() {
                 // Choose a different passphrase
-                "1" => {
+                "y" => {
                     continue;
                 },
                 // Use this passphrase
-                "2" => {
+                "n" => {
                     return Ok(passphrase);
                 },
                 // By default, we cancel to be safe
@@ -157,6 +157,7 @@ fn get_password_feedback(passphrase: &SafePassword) -> Option<Vec<String>> {
 fn display_password_feedback(passphrase: &SafePassword) -> bool {
     if passphrase.reveal().is_empty() {
         // The passphrase is empty, which the scoring library doesn't handle
+        println!();
         println!("An empty password puts your wallet at risk against an attacker with access to this device.");
         println!("Use this only if you are sure that your device is safe from prying eyes!");
         println!();
@@ -164,6 +165,7 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
         true
     } else if let Some(feedback) = get_password_feedback(passphrase) {
         // The scoring library provided feedback
+        println!();
         println!(
             "The password you chose is weak; a determined attacker with access to your device may be able to guess it."
         );
