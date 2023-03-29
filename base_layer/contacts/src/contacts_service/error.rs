@@ -23,6 +23,7 @@
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::connectivity::ConnectivityError;
+use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -44,6 +45,8 @@ pub enum ContactsServiceError {
     LivenessError(#[from] LivenessError),
     #[error("ConnectivityError error: `{0}`")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Outbound comms error: `{0}`")]
+    OutboundCommsError(#[from] DhtOutboundError),
 }
 
 #[derive(Debug, Error)]

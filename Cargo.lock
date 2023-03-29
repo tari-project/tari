@@ -5252,6 +5252,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_chat_client"
+version = "0.48.0-pre.1"
+dependencies = [
+ "anyhow",
+ "diesel",
+ "lmdb-zero",
+ "tari_common_sqlite",
+ "tari_common_types",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_contacts",
+ "tari_p2p",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_storage",
+ "tari_test_utils",
+]
+
+[[package]]
 name = "tari_common"
 version = "0.50.0-pre.0"
 dependencies = [
@@ -5475,8 +5494,10 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "futures 0.3.26",
- "libsqlite3-sys",
  "log",
+ "num-derive",
+ "num-traits",
+ "prost 0.9.0",
  "rand 0.7.3",
  "tari_common",
  "tari_common_sqlite",
@@ -5616,11 +5637,14 @@ dependencies = [
  "tari_app_utilities",
  "tari_base_node",
  "tari_base_node_grpc_client",
+ "tari_chat_client",
  "tari_common",
+ "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_console_wallet",
+ "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_merge_mining_proxy",

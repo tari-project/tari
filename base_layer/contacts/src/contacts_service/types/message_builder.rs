@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,6 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod database;
-pub mod sqlite_db;
-pub mod types;
+use tari_common_types::tari_address::TariAddress;
+
+use crate::contacts_service::types::Message;
+
+#[derive(Clone, Debug, Default)]
+pub struct MessageBuilder {
+    inner: Message,
+}
+
+impl MessageBuilder {
+    pub fn new() -> Self {
+        Self {
+            inner: Message::default(),
+        }
+    }
+
+    pub fn address(&self, address: TariAddress) -> Self {
+        Self {
+            inner: Message {
+                address,
+                ..self.inner.clone()
+            },
+        }
+    }
+
+    pub fn message(&self, body: String) -> Self {
+        let body = body.into_bytes();
+        Self {
+            inner: Message {
+                body,
+                ..self.inner.clone()
+            },
+        }
+    }
+
+    pub fn build(&self) -> Message {
+        self.inner.clone()
+    }
+}

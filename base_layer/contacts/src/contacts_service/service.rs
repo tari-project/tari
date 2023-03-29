@@ -30,20 +30,37 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
-use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    peer_manager::NodeId,
+};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, Dht};
+use tari_p2p::{
+    comms_connector::SubscriptionFactory,
+    domain_message::DomainMessage,
+    services::{
+        liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
+        utils::{map_decode, ok_or_skip_result},
+    },
+    tari_message::TariMessageType,
+};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceRequest, ContactsServiceResponse},
-    storage::database::{Contact, ContactsBackend, ContactsDatabase},
+    proto,
+    storage::database::{ContactsBackend, ContactsDatabase},
+    types::{Contact, Message},
 };
 
 const LOG_TARGET: &str = "contacts::contacts_service";
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
+pub const SUBSCRIPTION_LABEL: &str = "Chat";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContactMessageType {
@@ -91,6 +108,8 @@ where T: ContactsBackend + 'static
     liveness: LivenessHandle,
     liveness_data: Vec<ContactsLivenessData>,
     connectivity: ConnectivityRequester,
+    dht: Dht,
+    subscription_factory: Arc<SubscriptionFactory>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
     number_of_rounds_no_pings: u16,
     contacts_auto_ping_interval: Duration,
@@ -109,6 +128,8 @@ where T: ContactsBackend + 'static
         shutdown_signal: ShutdownSignal,
         liveness: LivenessHandle,
         connectivity: ConnectivityRequester,
+        dht: Dht,
+        subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
         contacts_auto_ping_interval: Duration,
         contacts_online_ping_window: usize,
@@ -120,6 +141,8 @@ where T: ContactsBackend + 'static
             liveness,
             liveness_data: Vec::new(),
             connectivity,
+            dht,
+            subscription_factory,
             event_publisher,
             number_of_rounds_no_pings: 0,
             contacts_auto_ping_interval,
@@ -141,6 +164,13 @@ where T: ContactsBackend + 'static
         let connectivity_events = self.connectivity.get_event_subscription();
         pin_mut!(connectivity_events);
 
+        let chat_messages = self
+            .subscription_factory
+            .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
+            .map(map_decode::<proto::Message>)
+            .filter_map(ok_or_skip_result);
+        pin_mut!(chat_messages);
+
         let shutdown = self
             .shutdown_signal
             .take()
@@ -156,6 +186,13 @@ where T: ContactsBackend + 'static
         debug!(target: LOG_TARGET, "Contacts Service started");
         loop {
             tokio::select! {
+                // Incoming chat messages
+                Some(msg) = chat_messages.next() => {
+                    if let Err(err) = self.handle_incoming_message(msg).await {
+                        warn!(target: LOG_TARGET, "Failed to handle incoming chat message: {}", err);
+                    }
+                },
+
                 Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
@@ -177,7 +214,7 @@ where T: ContactsBackend + 'static
 
                 Ok(event) = connectivity_events.recv() => {
                     self.handle_connectivity_event(event);
-                }
+                },
 
                 _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Contacts service shutting down because it received the shutdown signal");
@@ -231,6 +268,39 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetContactOnlineStatus(contact) => {
                 let result = self.get_online_status(&contact).await;
                 Ok(result.map(ContactsServiceResponse::OnlineStatus)?)
+            },
+            ContactsServiceRequest::GetMessages(pk, _x, _y) => {
+                let result = self.db.get_messages(pk);
+                Ok(result.map(ContactsServiceResponse::Messages)?)
+            },
+            ContactsServiceRequest::SendMessage(address, mut message) => {
+                let contact = Contact::from(&address);
+                let ob_message = OutboundDomainMessage::from(message.clone());
+
+                match self.get_online_status(&contact).await {
+                    Ok(ContactOnlineStatus::Online) => {
+                        let mut comms_outbound = self.dht.outbound_requester();
+                        comms_outbound
+                            .send_direct_node_id(
+                                NodeId::from_key(address.public_key()),
+                                ob_message,
+                                "Contacts Service - Chat Messaging".to_string(),
+                            )
+                            .await?;
+                    },
+                    Err(e) => return Err(e),
+                    _ => {
+                        let mut comms_outbound = self.dht.outbound_requester();
+                        comms_outbound
+                            .closest_broadcast(address.public_key().clone(), Default::default(), vec![], ob_message)
+                            .await?;
+                    },
+                }
+
+                message.stored_at = Utc::now().naive_utc().timestamp_millis() as u64;
+                self.db.save_message(message)?;
+
+                Ok(ContactsServiceResponse::MessageSent)
             },
         }
     }
@@ -301,6 +371,31 @@ where T: ContactsBackend + 'static
             },
         }
 
+        Ok(())
+    }
+
+    async fn handle_incoming_message(
+        &mut self,
+        msg: DomainMessage<crate::contacts_service::proto::Message>,
+    ) -> Result<(), ContactsServiceError> {
+        let DomainMessage::<_> {
+            source_peer,
+            dht_header,
+            inner: msg,
+            ..
+        } = msg;
+        let _node_id = source_peer.node_id;
+        let source_public_key = source_peer.public_key;
+        let _message_tag = dht_header.message_tag;
+
+        let message = Message::from(msg.clone());
+        let message = Message {
+            address: TariAddress::from_public_key(&source_public_key, message.address.network()),
+            stored_at: Utc::now().naive_utc().timestamp_millis() as u64,
+            ..msg.into()
+        };
+
+        self.db.save_message(message).expect("Couldn't save the message");
         Ok(())
     }
 
