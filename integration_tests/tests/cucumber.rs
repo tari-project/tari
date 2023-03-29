@@ -38,18 +38,19 @@ use cucumber::{event::ScenarioFinished, gherkin::Scenario, given, then, when, Wo
 use futures::StreamExt;
 use indexmap::IndexMap;
 use log::*;
-use rand::Rng;
+use rand::{rngs::OsRng, Rng};
 use serde_json::Value;
 use tari_app_grpc::tari_rpc::{self as grpc};
 use tari_app_utilities::utilities::UniPublicKey;
 use tari_base_node::BaseNodeConfig;
 use tari_base_node_grpc_client::grpc::{GetBlocksRequest, ListHeadersRequest};
+use tari_chat_client::Client;
 use tari_common::{configuration::Network, initialize_logging};
 use tari_common_types::{
     tari_address::TariAddress,
     types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_comms::multiaddr::Multiaddr;
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_console_wallet::{
     BurnTariArgs,
     CliCommands,
@@ -100,8 +101,9 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 
 use crate::utils::{
-    base_node_process::{spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
+    base_node_process::{get_base_dir, spawn_base_node, spawn_base_node_with_config, BaseNodeProcess},
     get_peer_addresses,
+    get_port,
     merge_mining_proxy::{register_merge_mining_proxy_process, MergeMiningProxyProcess},
     miner::{
         mine_block,
@@ -147,6 +149,7 @@ pub struct TariWorld {
     miners: IndexMap<String, MinerProcess>,
     ffi_wallets: IndexMap<String, WalletFFI>,
     wallets: IndexMap<String, WalletProcess>,
+    chat_clients: IndexMap<String, Client>,
     merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     transactions: IndexMap<String, Transaction>,
     wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -277,10 +280,11 @@ impl TariWorld {
 
     pub async fn after(&mut self, _scenario: &Scenario) {
         self.base_nodes.clear();
-        self.seed_nodes.clear();
-        self.wallets.clear();
+        self.chat_clients.clear();
         self.ffi_wallets.clear();
         self.miners.clear();
+        self.seed_nodes.clear();
+        self.wallets.clear();
     }
 }
 
@@ -4978,6 +4982,53 @@ async fn merge_mining_ask_for_block_header_by_hash(world: &mut TariWorld, mining
         .clone();
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
     world.last_merge_miner_response = merge_miner.get_block_header_by_hash(hash).await;
+}
+
+#[when(expr = "I have a chat client {word} connected to seed node {word}")]
+async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
+    let base_node = world.get_node(&seed_node_name).unwrap();
+
+    let port = get_port(18000..18499).unwrap();
+    let temp_dir_path = get_base_dir()
+        .join("chat_clients")
+        .join(format!("port_{}", port))
+        .join(name.clone());
+    let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+    let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
+
+    let mut client = Client::new(identity, vec![base_node.identity.to_peer()], temp_dir_path);
+    client.initialize().await;
+
+    world.chat_clients.insert(name, client);
+}
+
+#[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
+async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
+    let sender = world.chat_clients.get(&sender).unwrap();
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
+
+    sender.send_message(address, message).await;
+}
+
+#[then(expr = "{word} will have {int} message(s) with {word}")]
+async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let sender = world.chat_clients.get(&sender).unwrap();
+    let address = TariAddress::from_public_key(sender.identity.public_key(), Network::LocalNet);
+
+    let messages = receiver.get_messages(address).await;
+    assert_eq!(messages.len() as u64, message_count)
+}
+
+#[when(expr = "I add {word} as a contact to {word}")]
+async fn add_as_contact(world: &mut TariWorld, receiver: String, sender: String) {
+    let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
+    let sender: &Client = world.chat_clients.get(&sender).unwrap();
+
+    let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
+
+    sender.add_contact(&address).await;
 }
 
 fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
