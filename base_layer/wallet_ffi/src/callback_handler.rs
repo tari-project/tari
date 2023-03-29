@@ -379,7 +379,7 @@ where TBackend: TransactionBackend + 'static
                                     );
                                     self.trigger_contacts_refresh(data.deref().clone());
                                 }
-                                ContactsLivenessEvent::NetworkSilence => {}
+                                ContactsLivenessEvent::NetworkSilence => {},
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
