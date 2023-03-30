@@ -297,7 +297,7 @@ where T: ContactsBackend + 'static
                     },
                 }
 
-                message.stored_at = Utc::now().naive_utc().timestamp_millis() as u64;
+                message.stored_at = Utc::now().naive_utc().timestamp() as u64;
                 self.db.save_message(message)?;
 
                 Ok(ContactsServiceResponse::MessageSent)
@@ -391,7 +391,7 @@ where T: ContactsBackend + 'static
         let message = Message::from(msg.clone());
         let message = Message {
             address: TariAddress::from_public_key(&source_public_key, message.address.network()),
-            stored_at: Utc::now().naive_utc().timestamp_millis() as u64,
+            stored_at: Utc::now().naive_utc().timestamp() as u64,
             ..msg.into()
         };
 
