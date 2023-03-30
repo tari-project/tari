@@ -159,7 +159,7 @@ impl TransactionInput {
         };
     }
 
-    pub fn build_script_challenge(
+    pub fn build_script_signature_challenge(
         version: TransactionInputVersion,
         ephemeral_commitment: &Commitment,
         ephemeral_pubkey: &PublicKey,
@@ -168,15 +168,31 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
     ) -> [u8; 32] {
+        let message = TransactionInput::build_script_signature_message(version, script, input_data, commitment);
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
                     .chain(&version)
                     .chain(ephemeral_commitment)
                     .chain(ephemeral_pubkey)
+                    .chain(script_public_key)
+                    .chain(&message)
+                    .finalize()
+            },
+        }
+    }
+
+    pub fn build_script_signature_message(
+        version: TransactionInputVersion,
+        script: &TariScript,
+        input_data: &ExecutionStack,
+        commitment: &Commitment,
+    ) -> [u8; 32] {
+        match version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
+                DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_message")
                     .chain(script)
                     .chain(input_data)
-                    .chain(script_public_key)
                     .chain(commitment)
                     .finalize()
             },
@@ -295,7 +311,7 @@ impl TransactionInput {
                 ref commitment,
                 ..
             } => {
-                let challenge = TransactionInput::build_script_challenge(
+                let challenge = TransactionInput::build_script_signature_challenge(
                     self.version,
                     self.script_signature.ephemeral_commitment(),
                     self.script_signature.ephemeral_pubkey(),

@@ -129,7 +129,8 @@ impl TransactionKernel {
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
         let r = self.excess_sig.get_public_nonce();
-        let c = TransactionKernel::build_kernel_challenge(
+        let c = TransactionKernel::build_kernel_signature_challenge(
+            &self.version,
             r,
             excess,
             self.fee,
@@ -157,11 +158,13 @@ impl TransactionKernel {
     /// This is a helper fuction for build kernel challange that does not take in the individual fields,
     /// but rather takes in the TransactionMetadata object.
     pub fn build_kernel_challenge_from_tx_meta(
+        version: &TransactionKernelVersion,
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
         tx_meta: &TransactionMetadata,
     ) -> [u8; 32] {
-        TransactionKernel::build_kernel_challenge(
+        TransactionKernel::build_kernel_signature_challenge(
+            version,
             sum_public_nonces,
             total_excess,
             tx_meta.fee,
@@ -178,7 +181,8 @@ impl TransactionKernel {
     ///  Lock height
     ///  Features of the kernel
     ///  Burn commitment if present
-    pub fn build_kernel_challenge(
+    pub fn build_kernel_signature_challenge(
+        version: &TransactionKernelVersion,
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
         fee: MicroTari,
@@ -186,14 +190,34 @@ impl TransactionKernel {
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
+        let message =
+            TransactionKernel::build_kernel_signature_message(version, fee, lock_height, features, burn_commitment);
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
+            .chain(&version)
             .chain(sum_public_nonces)
             .chain(total_excess)
+            .chain(&message);
+        match version {
+            TransactionKernelVersion::V0 => common.finalize(),
+        }
+    }
+
+    /// Helper function to create the message of the challenge
+    pub fn build_kernel_signature_message(
+        version: &TransactionKernelVersion,
+        fee: MicroTari,
+        lock_height: u64,
+        features: &KernelFeatures,
+        burn_commitment: &Option<Commitment>,
+    ) -> [u8; 32] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_message")
             .chain(&fee)
             .chain(&lock_height)
             .chain(features)
-            .chain(burn_commitment)
-            .finalize()
+            .chain(burn_commitment);
+        match version {
+            TransactionKernelVersion::V0 => common.finalize(),
+        }
     }
 }
 
