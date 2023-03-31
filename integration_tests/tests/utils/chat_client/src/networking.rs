@@ -81,6 +81,7 @@ pub async fn start(
         transport: transport_config.clone(),
         allow_test_addresses: true,
         public_addresses: vec![node_identity.first_public_address()],
+        user_agent: format!("tari/chat-client/0.0.1"),
         ..P2pConfig::default()
     };
     config.set_base_path(base_path.clone());

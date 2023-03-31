@@ -390,24 +390,19 @@ where T: ContactsBackend + 'static
         &mut self,
         msg: DomainMessage<crate::contacts_service::proto::Message>,
     ) -> Result<(), ContactsServiceError> {
-        let DomainMessage::<_> {
-            source_peer,
-            dht_header,
-            inner: msg,
-            ..
-        } = msg;
-        let _node_id = source_peer.node_id;
-        let source_public_key = source_peer.public_key;
-        let _message_tag = dht_header.message_tag;
+        if let Some(source_public_key) = msg.authenticated_origin {
+            let DomainMessage::<_> { inner: msg, .. } = msg;
 
-        let message = Message::from(msg.clone());
-        let message = Message {
-            address: TariAddress::from_public_key(&source_public_key, message.address.network()),
-            stored_at: Utc::now().naive_utc().timestamp() as u64,
-            ..msg.into()
-        };
+            let message = Message::from(msg.clone());
+            let message = Message {
+                address: TariAddress::from_public_key(&source_public_key, message.address.network()),
+                stored_at: Utc::now().naive_utc().timestamp() as u64,
+                ..msg.into()
+            };
 
-        self.db.save_message(message).expect("Couldn't save the message");
+            self.db.save_message(message).expect("Couldn't save the message");
+        }
+
         Ok(())
     }
 
