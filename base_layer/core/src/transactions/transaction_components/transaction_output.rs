@@ -291,14 +291,41 @@ impl TransactionOutput {
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
+        // We build the message separately to help with hardware wallet support. This reduces the amount of data that
+        // needs to be transferred in order to sign the signature.
+        let message = TransactionOutput::build_metadata_signature_message(
+            version,
+            script,
+            features,
+            covenant,
+            encrypted_value,
+            minimum_value_promise,
+        );
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
-            .chain(&version)
             .chain(ephemeral_pubkey)
             .chain(ephemeral_commitment)
-            .chain(script)
-            .chain(features)
             .chain(sender_offset_public_key)
             .chain(commitment)
+            .chain(&message);
+        match version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+        }
+    }
+
+    /// Convenience function to create the entire metadata signature message for the challenge. This contains all data
+    /// outside of the signing keys and nonces.
+    pub fn build_metadata_signature_message(
+        version: TransactionOutputVersion,
+        script: &TariScript,
+        features: &OutputFeatures,
+        covenant: &Covenant,
+        encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
+    ) -> [u8; 32] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
+            .chain(&version)
+            .chain(script)
+            .chain(features)
             .chain(covenant)
             .chain(encrypted_value)
             .chain(&minimum_value_promise);
