@@ -34,24 +34,27 @@ use tari_contacts::contacts_service::{
     service::ContactOnlineStatus,
     types::{Message, MessageBuilder},
 };
+use tari_p2p::Network;
 use tari_shutdown::Shutdown;
 
 use crate::{database, networking};
 
 #[derive(Clone)]
 pub struct Client {
-    pub identity: Arc<NodeIdentity>,
     pub base_dir: PathBuf,
+    pub contacts: Option<ContactsServiceHandle>,
+    pub identity: Arc<NodeIdentity>,
+    pub network: Network,
     pub seed_peers: Vec<Peer>,
     pub shutdown: Shutdown,
-    pub contacts: Option<ContactsServiceHandle>,
 }
 
 impl Debug for Client {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
-            .field("identity", &self.identity)
             .field("base_dir", &self.base_dir)
+            .field("identity", &self.identity)
+            .field("network", &self.network)
             .field("seed_peers", &self.seed_peers)
             .field("shutdown", &self.shutdown)
             .finish()
@@ -65,13 +68,14 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn new(identity: NodeIdentity, seed_peers: Vec<Peer>, base_dir: PathBuf) -> Self {
+    pub fn new(identity: NodeIdentity, seed_peers: Vec<Peer>, base_dir: PathBuf, network: Network) -> Self {
         Self {
             identity: Arc::new(identity),
             base_dir,
             seed_peers,
             shutdown: Shutdown::new(),
             contacts: None,
+            network,
         }
     }
 
@@ -131,6 +135,7 @@ impl Client {
             self.identity.clone(),
             self.base_dir.clone(),
             self.seed_peers.clone(),
+            self.network,
             db,
             signal,
         )

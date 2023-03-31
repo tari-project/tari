@@ -4997,7 +4997,12 @@ async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String,
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
 
-    let mut client = Client::new(identity, vec![base_node.identity.to_peer()], temp_dir_path);
+    let mut client = Client::new(
+        identity,
+        vec![base_node.identity.to_peer()],
+        temp_dir_path,
+        Network::LocalNet,
+    );
     client.initialize().await;
 
     world.chat_clients.insert(name, client);
@@ -5013,7 +5018,7 @@ async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
 
-    let mut client = Client::new(identity, vec![], temp_dir_path);
+    let mut client = Client::new(identity, vec![], temp_dir_path, Network::LocalNet);
     client.initialize().await;
 
     world.chat_clients.insert(name, client);

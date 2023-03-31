@@ -54,6 +54,7 @@ pub async fn start(
     node_identity: Arc<NodeIdentity>,
     base_path: PathBuf,
     seed_peers: Vec<Peer>,
+    network: Network,
     db: DbConnection,
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
@@ -97,7 +98,7 @@ pub async fn start(
         .add_initializer(P2pInitializer::new(
             config,
             seed_config,
-            Network::LocalNet,
+            network,
             node_identity,
             publisher,
         ))
