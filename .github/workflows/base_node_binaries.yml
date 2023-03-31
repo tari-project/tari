@@ -373,11 +373,20 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
+      - name: Prep miner for upload
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}${{ env.TBN_DIST }}"
+          cp -v "tari_miner${{ env.TBN_EXT}}" \
+            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
         with:
           name: tari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
