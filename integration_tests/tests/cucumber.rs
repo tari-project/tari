@@ -62,6 +62,7 @@ use tari_console_wallet::{
     SetBaseNodeArgs,
     WhoisArgs,
 };
+use tari_contacts::contacts_service::service::ContactOnlineStatus;
 use tari_core::{
     blocks::Block,
     consensus::ConsensusManager,
@@ -5002,6 +5003,22 @@ async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String,
     world.chat_clients.insert(name, client);
 }
 
+#[when(expr = "I have a chat client {word} with no peers")]
+async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
+    let port = get_port(18000..18499).unwrap();
+    let temp_dir_path = get_base_dir()
+        .join("chat_clients")
+        .join(format!("port_{}", port))
+        .join(name.clone());
+    let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+    let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
+
+    let mut client = Client::new(identity, vec![], temp_dir_path);
+    client.initialize().await;
+
+    world.chat_clients.insert(name, client);
+}
+
 #[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
 async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
     let sender = world.chat_clients.get(&sender).unwrap();
@@ -5013,12 +5030,27 @@ async fn send_message_to(world: &mut TariWorld, sender: String, message: String,
 
 #[then(expr = "{word} will have {int} message(s) with {word}")]
 async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
-    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
     let address = TariAddress::from_public_key(sender.identity.public_key(), Network::LocalNet);
 
-    let messages = receiver.get_messages(address).await;
-    assert_eq!(messages.len() as u64, message_count)
+    let mut messages = vec![];
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        messages = receiver.get_messages(&address).await;
+
+        if messages.len() as u64 == message_count {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "Receiver {} only received {}/{} messages",
+        receiver.identity.node_id(),
+        messages.len(),
+        message_count
+    )
 }
 
 #[when(expr = "I add {word} as a contact to {word}")]
@@ -5029,6 +5061,24 @@ async fn add_as_contact(world: &mut TariWorld, receiver: String, sender: String)
     let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
 
     sender.add_contact(&address).await;
+}
+
+#[when(expr = "{word} waits for contact {word} to be online")]
+async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, contact: String) {
+    let client: &Client = world.chat_clients.get(&client).unwrap();
+    let contact: &Client = world.chat_clients.get(&contact).unwrap();
+
+    let address = TariAddress::from_public_key(contact.identity.public_key(), Network::LocalNet);
+
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        if ContactOnlineStatus::Online == client.check_online_status(&address).await {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!("Contact {} never came online", contact.identity.node_id(),)
 }
 
 fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {

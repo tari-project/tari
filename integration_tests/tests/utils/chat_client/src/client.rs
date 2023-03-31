@@ -31,6 +31,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::{peer_manager::Peer, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
+    service::ContactOnlineStatus,
     types::{Message, MessageBuilder},
 };
 use tari_shutdown::Shutdown;
@@ -83,6 +84,22 @@ impl Client {
         }
     }
 
+    pub async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            let contact = contacts_service
+                .get_contact(address.clone())
+                .await
+                .expect("Client does not have contact");
+
+            return contacts_service
+                .get_contact_online_status(contact)
+                .await
+                .expect("Failed to get status");
+        }
+
+        ContactOnlineStatus::Offline
+    }
+
     pub async fn send_message(&self, receiver: TariAddress, message: String) {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
@@ -92,11 +109,11 @@ impl Client {
         }
     }
 
-    pub async fn get_messages(&self, sender: TariAddress) -> Vec<Message> {
+    pub async fn get_messages(&self, sender: &TariAddress) -> Vec<Message> {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
             messages = contacts_service
-                .get_messages(sender, 0, 0)
+                .get_messages(sender.clone(), 0, 0)
                 .await
                 .expect("Messages not fetched");
         }
