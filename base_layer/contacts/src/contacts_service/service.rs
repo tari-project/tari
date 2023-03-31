@@ -34,6 +34,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
+    envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, SendMessageParams},
     Dht,
 };
@@ -241,10 +242,10 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::UpsertContact(c) => {
                 self.db.upsert_contact(c.clone())?;
-                self.liveness.check_add_monitored_peer(c.node_id).await?;
+                self.liveness.check_add_monitored_peer(c.node_id.clone()).await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Saved: \nAlias: {}\nAddress: {} ", c.alias, c.address
+                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.node_id
                 );
                 Ok(ContactsServiceResponse::ContactSaved)
             },
@@ -275,15 +276,17 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
-                let contact = Contact::from(&address);
-                self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+                let contact = match self.db.get_contact(address.clone()) {
+                    Ok(contact) => contact,
+                    Err(_) => Contact::from(&address),
+                };
 
                 let ob_message = OutboundDomainMessage::from(message.clone());
                 let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
 
                 match self.get_online_status(&contact).await {
                     Ok(ContactOnlineStatus::Online) => {
-                        println!("SENDING MESSAGE DIRECT");
+                        info!(target: LOG_TARGET, "Chat message being sent directed");
                         let mut comms_outbound = self.dht.outbound_requester();
 
                         comms_outbound
@@ -292,6 +295,7 @@ where T: ContactsBackend + 'static
                                     .with_debug_info(format!("Send direct to {}", &address.public_key()))
                                     .direct_public_key(address.public_key().clone())
                                     .with_encryption(encryption)
+                                    .with_destination(NodeDestination::from(address.public_key().clone()))
                                     .finish(),
                                 ob_message,
                             )

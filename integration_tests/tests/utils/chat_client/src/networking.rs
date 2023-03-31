@@ -29,7 +29,7 @@ pub use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
-use tari_comms_dht::{DhtConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     storage::sqlite_db::ContactsServiceSqliteDatabase,
@@ -76,12 +76,16 @@ pub async fn start(
                 enabled: true,
                 ..NetworkDiscoveryConfig::default()
             },
+            saf: SafConfig {
+                auto_request: true,
+                ..Default::default()
+            },
             ..DhtConfig::default_local_test()
         },
         transport: transport_config.clone(),
         allow_test_addresses: true,
         public_addresses: vec![node_identity.first_public_address()],
-        user_agent: format!("tari/chat-client/0.0.1"),
+        user_agent: "tari/chat-client/0.0.1".to_string(),
         ..P2pConfig::default()
     };
     config.set_base_path(base_path.clone());
