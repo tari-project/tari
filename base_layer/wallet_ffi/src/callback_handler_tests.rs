@@ -61,8 +61,8 @@ mod test {
 
     use crate::{
         callback_handler::CallbackHandler,
+        ffi_basenode_state::TariBaseNodeState,
         output_manager_service_mock::MockOutputManagerService,
-        TariBaseNodeState,
     };
 
     #[derive(Debug)]

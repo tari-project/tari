@@ -68,6 +68,7 @@ use std::{
 
 use chrono::{DateTime, Local};
 use error::LibWalletError;
+use ffi_basenode_state::TariBaseNodeState;
 use itertools::Itertools;
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 use log::{LevelFilter, *};
@@ -180,6 +181,7 @@ mod callback_handler;
 mod callback_handler_tests;
 mod enums;
 mod error;
+mod ffi_basenode_state;
 #[cfg(test)]
 mod output_manager_service_mock;
 mod tasks;
@@ -242,40 +244,6 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
-}
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct TariBaseNodeState {
-    /// The ID of the base node this wallet is connected to
-    pub node_id: Option<TariNodeId>,
-
-    /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
-    pub height_of_longest_chain: u64,
-
-    /// The block hash of the current tip of the longest valid chain
-    pub best_block: ByteVector,
-
-    /// Timestamp of the tip block in the longest valid chain
-    pub best_block_timestamp: u64,
-
-    /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
-    /// pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
-    /// was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
-    /// are preserved from genesis (i.e. the database is in full archival mode).
-    pub pruning_horizon: u64,
-
-    /// The height of the pruning horizon. This indicates from what height a full block can be provided
-    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
-    /// provided. Archival nodes wil always have an `pruned_height` of zero.
-    pub pruned_height: u64,
-
-    /// The total accumulated proof of work of the longest chain
-    pub accumulated_difficulty: u128,
-
-    pub is_node_synced: bool,
-    pub updated_at: u64,
-    pub latency: u64,
 }
 
 #[derive(Debug)]
@@ -10543,6 +10511,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );

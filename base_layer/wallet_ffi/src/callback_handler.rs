@@ -42,7 +42,6 @@ use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::Blo
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventReceiver},
@@ -63,7 +62,7 @@ use tari_wallet::{
 };
 use tokio::sync::{broadcast, watch};
 
-use crate::{ByteVector, TariBaseNodeState};
+use crate::ffi_basenode_state::TariBaseNodeState;
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -657,35 +656,27 @@ where TBackend: TransactionBackend + 'static
             None => TariBaseNodeState {
                 node_id: state.node_id,
                 height_of_longest_chain: 0,
-                best_block: ByteVector(BlockHash::zero().to_vec()),
+                best_block: BlockHash::zero(),
                 best_block_timestamp: 0,
                 pruning_horizon: 0,
                 pruned_height: 0,
-                accumulated_difficulty: 0,
                 is_node_synced: false,
                 updated_at: 0,
                 latency: 0,
             },
 
-            Some(chain_metadata) => {
-                let best_block = ByteVector(chain_metadata.best_block().to_vec());
-
-                TariBaseNodeState {
-                    node_id: state.node_id,
-                    height_of_longest_chain: chain_metadata.height_of_longest_chain(),
-                    best_block,
-                    best_block_timestamp: chain_metadata.timestamp(),
-                    pruning_horizon: chain_metadata.pruning_horizon(),
-                    pruned_height: chain_metadata.pruned_height(),
-                    accumulated_difficulty: chain_metadata.accumulated_difficulty(),
-                    is_node_synced: state.is_synced.unwrap_or(false),
-                    updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
-                    latency: state.latency.map(|d| d.as_micros() as u64).unwrap_or(0),
-                }
+            Some(chain_metadata) => TariBaseNodeState {
+                node_id: state.node_id,
+                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                best_block: *chain_metadata.best_block(),
+                best_block_timestamp: chain_metadata.timestamp(),
+                pruning_horizon: chain_metadata.pruning_horizon(),
+                pruned_height: chain_metadata.pruned_height(),
+                is_node_synced: state.is_synced.unwrap_or(false),
+                updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
+                latency: state.latency.map(|d| d.as_micros() as u64).unwrap_or(0),
             },
         };
-
-        println!("{:#?}", state);
 
         unsafe {
             (self.callback_base_node_state)(Box::into_raw(Box::new(state)));
