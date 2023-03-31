@@ -31,11 +31,12 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    peer_manager::NodeId,
+use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{DhtOutboundError, OutboundEncryption, SendMessageParams},
+    Dht,
 };
-use tari_comms_dht::{domain_message::OutboundDomainMessage, Dht};
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
@@ -275,24 +276,35 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
                 let contact = Contact::from(&address);
+                self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+
                 let ob_message = OutboundDomainMessage::from(message.clone());
+                let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
 
                 match self.get_online_status(&contact).await {
                     Ok(ContactOnlineStatus::Online) => {
+                        println!("SENDING MESSAGE DIRECT");
                         let mut comms_outbound = self.dht.outbound_requester();
+
                         comms_outbound
-                            .send_direct_node_id(
-                                NodeId::from_key(address.public_key()),
+                            .send_message(
+                                SendMessageParams::new()
+                                    .with_debug_info(format!("Send direct to {}", &address.public_key()))
+                                    .direct_public_key(address.public_key().clone())
+                                    .with_encryption(encryption)
+                                    .finish(),
                                 ob_message,
-                                "Contacts Service - Chat Messaging".to_string(),
                             )
-                            .await?;
+                            .await?
+                            .resolve()
+                            .await
+                            .map_err(Into::<DhtOutboundError>::into)?;
                     },
                     Err(e) => return Err(e),
                     _ => {
                         let mut comms_outbound = self.dht.outbound_requester();
                         comms_outbound
-                            .closest_broadcast(address.public_key().clone(), Default::default(), vec![], ob_message)
+                            .closest_broadcast(address.public_key().clone(), encryption, vec![], ob_message)
                             .await?;
                     },
                 }
