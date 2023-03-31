@@ -169,11 +169,12 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
     ) -> [u8; 32] {
+        // We build the message separately to help with hardware wallet support. This reduces the amount of data that
+        // needs to be transferred in order to sign the signature.
         let message = TransactionInput::build_script_signature_message(version, script, input_data);
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
-                    .chain(&version)
                     .chain(ephemeral_commitment)
                     .chain(ephemeral_pubkey)
                     .chain(script_public_key)
@@ -185,7 +186,7 @@ impl TransactionInput {
     }
 
     /// Convenience function to create the entire script signature message for the challenge. This contains all data
-    /// outside of the version, signing keys, nonces.
+    /// outside of the signing keys and nonces.
     pub fn build_script_signature_message(
         version: TransactionInputVersion,
         script: &TariScript,
@@ -194,6 +195,7 @@ impl TransactionInput {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_message")
+                    .chain(&version)
                     .chain(script)
                     .chain(input_data)
                     .finalize()

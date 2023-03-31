@@ -190,10 +190,11 @@ impl TransactionKernel {
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
+        // We build the message separately to help with hardware wallet support. This reduces the amount of data that
+        // needs to be transferred in order to sign the signature.
         let message =
             TransactionKernel::build_kernel_signature_message(version, fee, lock_height, features, burn_commitment);
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
-            .chain(&version)
             .chain(sum_public_nonces)
             .chain(total_excess)
             .chain(&message);
@@ -203,7 +204,7 @@ impl TransactionKernel {
     }
 
     /// Convenience function to create the entire kernel signature message for the challenge. This contains all data
-    /// outside of the version, signing keys, nonces.
+    /// outside of the signing keys and nonces.
     pub fn build_kernel_signature_message(
         version: &TransactionKernelVersion,
         fee: MicroTari,
@@ -212,6 +213,7 @@ impl TransactionKernel {
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_message")
+            .chain(&version)
             .chain(&fee)
             .chain(&lock_height)
             .chain(features)
