@@ -159,6 +159,7 @@ impl TransactionInput {
         };
     }
 
+    /// Convenience function to create the entire script challenge
     pub fn build_script_signature_challenge(
         version: TransactionInputVersion,
         ephemeral_commitment: &Commitment,
@@ -168,7 +169,7 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
     ) -> [u8; 32] {
-        let message = TransactionInput::build_script_signature_message(version, script, input_data, commitment);
+        let message = TransactionInput::build_script_signature_message(version, script, input_data);
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
@@ -176,24 +177,25 @@ impl TransactionInput {
                     .chain(ephemeral_commitment)
                     .chain(ephemeral_pubkey)
                     .chain(script_public_key)
+                    .chain(commitment)
                     .chain(&message)
                     .finalize()
             },
         }
     }
 
+    /// Convenience function to create the entire script signature message for the challenge. This contains all data
+    /// outside of the version, signing keys, nonces.
     pub fn build_script_signature_message(
         version: TransactionInputVersion,
         script: &TariScript,
         input_data: &ExecutionStack,
-        commitment: &Commitment,
     ) -> [u8; 32] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_message")
                     .chain(script)
                     .chain(input_data)
-                    .chain(commitment)
                     .finalize()
             },
         }

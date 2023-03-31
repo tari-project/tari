@@ -202,7 +202,8 @@ impl TransactionKernel {
         }
     }
 
-    /// Helper function to create the message of the challenge
+    /// Convenience function to create the entire kernel signature message for the challenge. This contains all data
+    /// outside of the version, signing keys, nonces.
     pub fn build_kernel_signature_message(
         version: &TransactionKernelVersion,
         fee: MicroTari,

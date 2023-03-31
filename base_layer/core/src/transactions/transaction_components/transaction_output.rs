@@ -311,7 +311,8 @@ impl TransactionOutput {
         }
     }
 
-    /// Convenience function that calculates the message for the metadata commitment signature
+    /// Convenience function to create the entire metadata signature message for the challenge. This contains all data
+    /// outside of the version, signing keys, nonces.
     pub fn build_metadata_signature_message(
         version: TransactionOutputVersion,
         script: &TariScript,
