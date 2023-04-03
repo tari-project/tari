@@ -20,9 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_key_manager::cipher_seed::CipherSeed;
-
-use crate::key_manager_service::KeyManagerMock;
+use crate::{cipher_seed::CipherSeed, key_manager_service::KeyManagerMock};
 
 #[tokio::test]
 async fn get_next_key_test_mock() {

@@ -56,11 +56,11 @@ use tari_core::transactions::{
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_key_manager::key_manager_service::NextKeyResult;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::NextKeyResult,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,

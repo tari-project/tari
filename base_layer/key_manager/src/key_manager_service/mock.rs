@@ -24,21 +24,22 @@ use std::{collections::HashMap, sync::Arc};
 
 use log::*;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 
 use crate::{
+    cipher_seed::CipherSeed,
+    key_manager::KeyManager,
     key_manager_service::{
         error::KeyManagerServiceError,
         interface::NextKeyResult,
         storage::database::KeyManagerState,
         AddResult,
+        KeyDigest,
         KeyManagerInterface,
     },
-    types::KeyDigest,
 };
 
-const LOG_TARGET: &str = "wallet::Key_manager_mock";
+const LOG_TARGET: &str = "key_manager::Key_manager_mock";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 /// Testing Mock for the key manager service

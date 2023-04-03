@@ -30,7 +30,10 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_key_manager::{
+    error::{KeyManagerError, MnemonicError},
+    key_manager_service::KeyManagerServiceError,
+};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -39,7 +42,6 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
-    key_manager_service::KeyManagerServiceError,
     output_manager_service::UtxoSelectionCriteria,
 };
 

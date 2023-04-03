@@ -20,6 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Note: For help in getting started with diesel as well as how to update the tables look here:
+//       http://diesel.rs/guides/getting-started/
+//   - You also need to ensure that you installed diesel with the sqlite feature flag:
+//     - 'cargo install diesel_cli --no-default-features --features sqlite'
+//   - If you updated the tables the following needs to be run from the base_layer/key_manager/ folder:
+//     - 'diesel setup --database-url test.sqlite3'
+//     - 'diesel migration run --database-url test.sqlite3'
+//   - After running this, make sure that the diesel update did not change BigInt to Integer in 'schema.rs' (check for
+//     any unwanted changes)
+
+use tari_crypto::hash::blake2::Blake256;
+
+/// Specify the Hash function used by the key manager
+pub type KeyDigest = Blake256;
+
 mod error;
 pub use error::KeyManagerServiceError;
 

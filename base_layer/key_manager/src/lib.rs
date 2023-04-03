@@ -21,8 +21,10 @@ pub mod cipher_seed;
 pub mod diacritics;
 pub mod error;
 pub mod key_manager;
+pub mod key_manager_service;
 pub mod mnemonic;
 pub mod mnemonic_wordlists;
+pub mod schema;
 //  https://github.com/rustwasm/wasm-bindgen/issues/2774
 #[allow(clippy::unused_unit)]
 #[cfg(feature = "wasm")]

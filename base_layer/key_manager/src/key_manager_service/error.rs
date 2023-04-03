@@ -22,11 +22,12 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_key_manager::error::KeyManagerError as KMError;
 use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
-use crate::error::WalletStorageError;
+use crate::error::KeyManagerError as KMError;
+
+// use crate::error::WalletStorageError;
 /// Error enum for the [KeyManagerService]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerServiceError {
@@ -60,8 +61,8 @@ pub enum KeyManagerStorageError {
     ConversionError { reason: String },
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Wallet storage error: `{0}`")]
-    WalletStorageError(#[from] WalletStorageError),
+    // #[error("Wallet storage error: `{0}`")]
+    // WalletStorageError(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

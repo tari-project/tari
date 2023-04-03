@@ -36,7 +36,10 @@ use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{generic_array::GenericArray, FixedOutput};
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
@@ -62,7 +65,6 @@ use crate::{
         sqlite_db::scanned_blocks::ScannedBlockSql,
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     utxo_scanner_service::service::ScannedBlock,
 };
 
@@ -889,6 +891,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 #[cfg(test)]
 mod test {
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::{
@@ -898,15 +901,11 @@ mod test {
     };
     use tempfile::tempdir;
 
-    use crate::{
-        storage::{
-            database::{DbKey, DbValue, WalletBackend},
-            sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
-            sqlite_utilities::run_migration_and_create_sqlite_connection,
-        },
-        util::encryption::{decrypt_bytes_integral_nonce, Encryptable},
+    use crate::storage::{
+        database::{DbKey, DbValue, WalletBackend},
+        sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-
     #[test]
     fn test_passphrase() {
         // Set up a database

@@ -38,10 +38,10 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::hex::Hex,
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, Opcode};
 
 use crate::{
-    key_manager_service::KeyManagerInterface,
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
         handle::RecoveredOutput,

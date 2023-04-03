@@ -23,16 +23,18 @@
 use std::sync::Arc;
 
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
-use crate::key_manager_service::{
-    error::KeyManagerServiceError,
-    interface::NextKeyResult,
-    storage::database::{KeyManagerBackend, KeyManagerDatabase},
-    AddResult,
-    KeyManagerInner,
-    KeyManagerInterface,
+use crate::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{
+        error::KeyManagerServiceError,
+        interface::NextKeyResult,
+        storage::database::{KeyManagerBackend, KeyManagerDatabase},
+        AddResult,
+        KeyManagerInner,
+        KeyManagerInterface,
+    },
 };
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index

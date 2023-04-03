@@ -62,6 +62,7 @@ use tari_crypto::{
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerHandle, KeyManagerInitializer},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -84,7 +85,6 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     consts,
     error::{WalletError, WalletStorageError},
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -100,7 +100,6 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
-    types::KeyDigest,
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };

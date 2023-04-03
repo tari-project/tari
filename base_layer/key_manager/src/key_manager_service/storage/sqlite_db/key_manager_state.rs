@@ -26,6 +26,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
+use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 use tari_utilities::Hidden;
 
 use crate::{
@@ -34,7 +35,6 @@ use crate::{
         storage::{database::KeyManagerState, sqlite_db::Encryptable},
     },
     schema::key_manager_states,
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
 };
 
 /// Represents a row in the key_manager_states table.

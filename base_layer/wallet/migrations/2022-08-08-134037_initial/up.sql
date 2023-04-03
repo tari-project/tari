@@ -39,13 +39,6 @@ CREATE TABLE inbound_transactions (
     last_send_timestamp DATETIME           NULL
 );
 
-CREATE TABLE key_manager_states (
-    id                INTEGER PRIMARY KEY NOT NULL,
-    branch_seed       TEXT UNIQUE         NOT NULL,
-    primary_key_index BLOB                NOT NULL,
-    timestamp         DATETIME            NOT NULL
-);
-
 CREATE TABLE known_one_sided_payment_scripts (
     script_hash        BLOB PRIMARY KEY NOT NULL,
     private_key        BLOB             NOT NULL,
