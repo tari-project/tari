@@ -1,3 +1,6 @@
+// Copyright 2019. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{
     ffi::{c_int, c_ulonglong},
     ptr,

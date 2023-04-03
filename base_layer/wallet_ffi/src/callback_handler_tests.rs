@@ -519,8 +519,6 @@ mod test {
             if lock.base_node_state_changed_callback_invoked {
                 break;
             }
-
-            thread::sleep(Duration::from_millis(100));
         }
         assert!(CALLBACK_STATE.lock().unwrap().base_node_state_changed_callback_invoked);
 
