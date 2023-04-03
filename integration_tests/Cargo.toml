@@ -45,7 +45,7 @@ tonic = "0.6.2"
 
 
 [dev-dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.8" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.9" }
 
 # FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
 #cucumber = { version = "0.13.0", features = ["default"] }

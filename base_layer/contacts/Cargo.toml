@@ -10,7 +10,7 @@ edition = "2018"
 tari_common = { path = "../../common" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.8" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.9" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
