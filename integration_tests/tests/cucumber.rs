@@ -5058,8 +5058,8 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
     )
 }
 
-#[when(expr = "I add {word} as a contact to {word}")]
-async fn add_as_contact(world: &mut TariWorld, receiver: String, sender: String) {
+#[when(expr = "{word} adds {word} as a contact")]
+async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String) {
     let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
     let sender: &Client = world.chat_clients.get(&sender).unwrap();
 

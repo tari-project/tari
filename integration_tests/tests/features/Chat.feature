@@ -3,7 +3,7 @@
 
 Feature: Chat messaging
 
-  Scenario: A message is propagated between nodes
+  Scenario: A message is propagated between nodes via 3rd party
     Given I have a seed node SEED_A
     When I have a chat client CHAT_A connected to seed node SEED_A
     When I have a chat client CHAT_B connected to seed node SEED_A
@@ -14,7 +14,8 @@ Feature: Chat messaging
     Given I have a seed node SEED_A
     When I have a chat client CHAT_A connected to seed node SEED_A
     When I have a chat client CHAT_B connected to seed node SEED_A
-    When I add CHAT_B as a contact to CHAT_A
+    When CHAT_A adds CHAT_B as a contact
+    When I stop node SEED_A
     When CHAT_A waits for contact CHAT_B to be online
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
@@ -24,6 +25,12 @@ Feature: Chat messaging
     When I have a chat client CHAT_A connected to seed node SEED_A
     When I have a chat client CHAT_B connected to seed node SEED_A
     When I have a chat client CHAT_C connected to seed node SEED_A
+
+    When CHAT_A adds CHAT_B as a contact
+    When CHAT_A adds CHAT_C as a contact
+    When CHAT_B adds CHAT_C as a contact
+    When CHAT_C adds CHAT_B as a contact
+    When I stop node SEED_A
 
     When I use CHAT_A to send a message 'Message 1 from a to b' to CHAT_B
     When I use CHAT_A to send a message 'Message 2 from a to b' to CHAT_B
