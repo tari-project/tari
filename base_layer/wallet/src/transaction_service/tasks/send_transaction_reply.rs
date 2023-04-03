@@ -96,7 +96,7 @@ pub async fn send_transaction_reply_direct(
         .try_into()
         .map_err(TransactionServiceError::ServiceError)?;
     match outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             inbound_transaction.source_address.public_key().clone(),
             OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
             "wallet transaction reply".to_string(),

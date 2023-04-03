@@ -32,12 +32,7 @@ use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
-    outbound::{DhtOutboundError, OutboundEncryption, SendMessageParams},
-    Dht,
-};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
@@ -290,19 +285,13 @@ where T: ContactsBackend + 'static
                         let mut comms_outbound = self.dht.outbound_requester();
 
                         comms_outbound
-                            .send_message(
-                                SendMessageParams::new()
-                                    .with_debug_info(format!("Send direct to {}", &address.public_key()))
-                                    .direct_public_key(address.public_key().clone())
-                                    .with_encryption(encryption)
-                                    .with_destination(NodeDestination::from(address.public_key().clone()))
-                                    .finish(),
+                            .send_direct(
+                                address.public_key().clone(),
                                 ob_message,
+                                encryption,
+                                "contact service messaging".to_string(),
                             )
-                            .await?
-                            .resolve()
-                            .await
-                            .map_err(Into::<DhtOutboundError>::into)?;
+                            .await?;
                     },
                     Err(e) => return Err(e),
                     _ => {
