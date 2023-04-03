@@ -20,37 +20,65 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::{net::TcpListener, ops::Range, time::Duration};
 
-use libc::{c_int, c_void};
+use rand::Rng;
 
-use super::ffi_import;
+use crate::TariWorld;
 
-pub struct TransportConfig {
-    ptr: *mut c_void,
-}
+pub mod base_node_process;
+pub mod chat_client;
+pub mod ffi;
+pub mod merge_mining_proxy;
+pub mod miner;
+pub mod transaction;
+pub mod wallet;
+pub mod wallet_ffi;
+pub mod wallet_process;
 
-impl Drop for TransportConfig {
-    fn drop(&mut self) {
-        unsafe { ffi_import::transport_config_destroy(self.ptr) };
-        self.ptr = null_mut();
-    }
-}
+pub fn get_port(range: Range<u16>) -> Option<u64> {
+    let min = range.clone().min().expect("A minimum possible port number");
+    let max = range.max().expect("A maximum possible port number");
 
-impl TransportConfig {
-    pub fn create_tcp(listener_address: *const i8) -> Self {
-        let ptr;
-        let mut error: c_int = 0;
-        unsafe {
-            ptr = ffi_import::transport_tcp_create(listener_address, &mut error);
-            if error > 0 {
-                println!("transport_tcp_create error {}", error);
-            }
+    loop {
+        let port = rand::thread_rng().gen_range(min, max);
+
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(u64::from(port));
         }
-        Self { ptr }
+    }
+}
+
+pub async fn wait_for_service(port: u64) {
+    // The idea is that if the port is taken it means the service is running.
+    // If it's not taken the port hasn't come up yet
+    let max_tries = 40;
+    let mut attempts = 0;
+
+    loop {
+        if TcpListener::bind(("127.0.0.1", port as u16)).is_err() {
+            return;
+        }
+
+        if attempts >= max_tries {
+            panic!("Service on port {} never started", port);
+        }
+
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        attempts += 1;
+    }
+}
+
+pub async fn get_peer_addresses(world: &TariWorld, peers: &Vec<String>) -> Vec<String> {
+    let mut peer_addresses = vec![];
+    for peer in peers {
+        let peer = world.base_nodes.get(peer.as_str()).unwrap();
+        peer_addresses.push(format!(
+            "{}::{}",
+            peer.identity.public_key(),
+            peer.identity.first_public_address()
+        ));
     }
 
-    pub fn get_ptr(&self) -> *mut c_void {
-        self.ptr
-    }
+    peer_addresses
 }

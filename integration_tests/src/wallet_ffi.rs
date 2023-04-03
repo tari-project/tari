@@ -49,7 +49,7 @@ use super::{
     get_port,
 };
 use crate::{
-    utils::ffi::{self},
+    ffi::{self},
     TariWorld,
 };
 
