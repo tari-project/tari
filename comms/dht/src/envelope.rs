@@ -140,8 +140,6 @@ impl DhtMessageType {
 pub struct DhtMessageHeader {
     pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
-    /// Encoded MessageSignature. Depending on message flags, this may be encrypted. This can refer to the same peer
-    /// that sent the message or another peer if the message is being propagated.
     pub message_signature: Vec<u8>,
     pub ephemeral_public_key: Option<CommsPublicKey>,
     pub message_type: DhtMessageType,
