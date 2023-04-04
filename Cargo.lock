@@ -5149,6 +5149,7 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
+ "tari_features",
  "tari_utilities",
  "thiserror",
  "tokio",

@@ -32,6 +32,16 @@ pub enum Target {
     MainNet,
 }
 
+impl Target {
+    pub const fn as_key_str(&self) -> &'static str {
+        match self {
+            Target::MainNet => "mainnet",
+            Target::NextNet => "nextnet",
+            Target::TestNet => "testnet",
+        }
+    }
+}
+
 impl Display for Target {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -109,6 +119,7 @@ pub fn build_features() {
     println!("cargo:rerun-if-env-changed=TARI_NETWORK");
 
     let target = identify_target();
+    println!("cargo:rustc-cfg=tari_network_{}", target.as_key_str());
     println!("Building for {}", target);
     list_active_features();
     list_removed_features();
