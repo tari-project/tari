@@ -9,7 +9,7 @@ license = "BSD-3-Clause"
 tari_comms = { path = "../../comms/core" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
+tari_utilities = { version = "0.4.10"}
 
 clap = { version = "3.2.0", features = ["derive", "env"] }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
