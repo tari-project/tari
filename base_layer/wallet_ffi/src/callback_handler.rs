@@ -674,7 +674,7 @@ where TBackend: TransactionBackend + 'static
                 pruned_height: chain_metadata.pruned_height(),
                 is_node_synced: state.is_synced.unwrap_or(false),
                 updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
-                latency: state.latency.map(|d| d.as_micros() as u64).unwrap_or(0),
+                latency: state.latency.map(|d| d.as_millis() as u64).unwrap_or(0),
             },
         };
 
