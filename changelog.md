@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.5](https://github.com/tari-project/tari/compare/v0.49.0-pre.4...v0.49.0-pre.5) (2023-04-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* change signature construction to allow better HW support (#5282)
+
+### Features
+
+* change signature construction to allow better HW support ([#5282](https://github.com/tari-project/tari/issues/5282)) ([82d2dcb](https://github.com/tari-project/tari/commit/82d2dcb04ced94f05a0801c5cb97bbebc41ca3e0))
+* improved passphrase flow ([#5279](https://github.com/tari-project/tari/issues/5279)) ([ac21da6](https://github.com/tari-project/tari/commit/ac21da60abec25db14e7201a5f82e15e4f7f2fe0))
+
+
+### Bug Fixes
+
+* ensures mutable MMR bitmaps are compressed ([#5278](https://github.com/tari-project/tari/issues/5278)) ([dfddc66](https://github.com/tari-project/tari/commit/dfddc669e3e1271b098c8b271e13f076ca79b039))
+
 ## [0.49.0-pre.4](https://github.com/tari-project/tari/compare/v0.49.0-pre.3...v0.49.0-pre.4) (2023-03-24)
 
 

@@ -80,8 +80,8 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 }
 
 fn get_stagenet_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block_nextnet in core/tests/helpers/block_builders.rs to generate the required
-    // fields below
+    // Note: Use 'print_new_genesis_block_stagenet' in core/tests/helpers/block_builders.rs to generate the required
+    // fields below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
     let excess_sig = Signature::new(
         PublicKey::from_hex("d87ce1422fc23d82c06b135b52277cebe1025358fdfee4cae2893b25c19b7828").unwrap(),
         PrivateKey::from_hex("3e64e11e3b0b81046b1f4fb56bfcce5f7ff2e86bddbe4ab4f2d13235d7543707").unwrap(),
@@ -122,7 +122,7 @@ fn get_stagenet_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("8 Feb 2023 13:00:00 -0800").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("14 Jun 2023 13:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -174,8 +174,8 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 }
 
 fn get_nextnet_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block_stagenet in core/tests/helpers/block_builders.rs to generate the required
-    // fields below
+    // Note: Use 'print_new_genesis_block_nextnet' in core/tests/helpers/block_builders.rs to generate the required
+    // fields below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
     let excess_sig = Signature::new(
         PublicKey::from_hex("a2e86b76b9a7500c69eab4d2f0827a7e0d39a8e1b8d9c52570d9675b8af00a3a").unwrap(),
         PrivateKey::from_hex("e0f9eef666d03301b21c6b6f03e2e174840f062572c73d2541ca01a35329110b").unwrap(),
@@ -216,7 +216,7 @@ fn get_nextnet_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("24 Feb 2023 12:15:00 +0100").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("14 Apr 2023 13:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -258,31 +258,70 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 pub fn get_igor_genesis_block() -> ChainBlock {
     // lets get the block
-    let block = get_igor_genesis_block_raw();
+    let mut block = get_igor_genesis_block_raw();
 
-    // Use this code to generate the correct header mr fields for igor if the gen block changes.
+    // Add faucet utxos
+    // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    let mut utxos = Vec::new();
+    let file = include_str!("faucets/igor_faucet.json");
+    let mut counter = 1;
+    let lines_count = file.lines().count();
+    for line in file.lines() {
+        if counter < lines_count {
+            let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+            utxos.push(utxo);
+        } else {
+            block.body.add_kernel(serde_json::from_str(line).unwrap());
+            block.header.kernel_mmr_size += 1;
+        }
+        counter += 1;
+    }
+    block.header.output_mmr_size += utxos.len() as u64;
+    block.body.add_outputs(&mut utxos);
+    block.body.sort();
+
+    // // // Use this code if you need to generate new Merkle roots
+    // // // NB: `igor_genesis_sanity_check` must pass
+    //
+    // use std::convert::TryFrom;
     //
     // use croaring::Bitmap;
     //
-    // use crate::{KernelMmr, MutableOutputMmr, WitnessMmr};
+    // use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr, WitnessMmr};
     //
     // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
     //     println!("k: {}", k);
-    //     kernel_mmr.push(k.hash()).unwrap();
+    //     kernel_mmr.push(k.hash().to_vec()).unwrap();
     // }
     //
     // let mut witness_mmr = WitnessMmr::new(Vec::new());
     // let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     //
     // for o in block.body.outputs() {
-    //     witness_mmr.push(o.witness_hash()).unwrap();
-    //     output_mmr.push(o.hash()).unwrap();
+    //     witness_mmr.push(o.witness_hash().to_vec()).unwrap();
+    //     output_mmr.push(o.hash().to_vec()).unwrap();
     // }
+    // let vn_mmr = calculate_validator_node_mr(&[]);
     //
-    // println!("kernel mr: {}", kernel_mmr.get_merkle_root().unwrap().to_hex());
-    // println!("witness mr: {}", witness_mmr.get_merkle_root().unwrap().to_hex());
-    // println!("output mr: {}", output_mmr.get_merkle_root().unwrap().to_hex());
+    // block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
+    // block.header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
+    // block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+    // block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
+    // println!("kernel mr: {}", block.header.kernel_mr.to_hex());
+    // println!("witness mr: {}", block.header.witness_mr.to_hex());
+    // println!("output mr: {}", block.header.output_mr.to_hex());
+    // println!("vn mr: {}", block.header.validator_node_mr.to_hex());
+
+    // Hardcode the Merkle roots once they've been computed above
+    block.header.kernel_mr =
+        FixedHash::from_hex("fe12b384142ae39c1a3b31f033c28e8cee13329c3090d30fb6feb256e352a7c0").unwrap();
+    block.header.witness_mr =
+        FixedHash::from_hex("32293a4022d0e5091a6d7efb532e93edb298b4d15b8c4b519f9d5b2405748b52").unwrap();
+    block.header.output_mr =
+        FixedHash::from_hex("c0fc5b1871d2208122297f99d4d32e750b1e947fb60af7dde9ff431315ce56df").unwrap();
+    block.header.validator_node_mr =
+        FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -297,54 +336,50 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 }
 
 fn get_igor_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block_igor in core/tests/helpers/block_builders.rs to generate the required fields
-    // below
-    let sig = Signature::new(
-        PublicKey::from_hex("e28d427eca88f76a07b3710ecc3cdc1c19a39b6936dfed3e36f2c94e1c74811b").unwrap(),
-        PrivateKey::from_hex("2749e866be9b231778952922268d18843eace6a76844b3c7579750f7898d8f09").unwrap(),
+    // Note: Use 'print_new_genesis_block_igor' in core/tests/helpers/block_builders.rs to generate the required fields
+    // below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
+    let extra = "Hello, Igor";
+    let excess_sig = Signature::new(
+        PublicKey::from_hex("280b26ea8bb952b173d51bf86580c92c910d30bcadb469823bc9369326a0c705").unwrap(),
+        PrivateKey::from_hex("49f653d7dd5effeb8de9ad9cb975536c44cba3ba025c732e433450f8dd714a07").unwrap(),
     );
     let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("54caee18216617c0bd1c35a39c3bb6c1158e61cf5083fedc5c50aecab5802121").unwrap(),
-        PublicKey::from_hex("d2ad84c5bb638ac21280da8de5b8c682107c4e8ce1412b8e102de549e510af53").unwrap(),
-        PrivateKey::from_hex("a930bb55c4a04aa86e16d8711bd9b72fb4791bfc31676442d0886bde01addf0a").unwrap(),
-        PrivateKey::from_hex("6ff89c404b71748fe49d8d6c9aedcbb6af6c7c0f6c9128bf94edfa0b6185c50d").unwrap(),
-        PrivateKey::from_hex("d6d4578a3640754b88ef7c7de59d83d16fad30dd7ddce344c5d249a3b015b404").unwrap(),
+        Commitment::from_hex("d252d95ac1b59cda85d6f1c3635d578bddbd4cc7ec1530728cc087ed61606860").unwrap(),
+        PublicKey::from_hex("6ebb7267c0b7f0475d40c2e2c34bbc801b742f1d17aff3840cdedad7fbe56f18").unwrap(),
+        PrivateKey::from_hex("82c34aeeea3434e5b6f444d7503b6341ab1b8731d5e09f28f58be5904dc57608").unwrap(),
+        PrivateKey::from_hex("9839a4f80a63a3448d1275d83ef3a3768053c82be4b2833179d93df297c84a07").unwrap(),
+        PrivateKey::from_hex("1b5cd36e529208d6439aa184b9f278682344dda180e67ec7fac6bd806194b50f").unwrap(),
     );
-    let extra = "Hello, Igor";
-    let mut body = AggregateBody::new(
-        vec![],
-        vec![TransactionOutput::new_current_version(
-            OutputFeatures::create_coinbase(6, Some(extra.as_bytes().to_vec())),
-            Commitment::from_hex(
-                "ae0335c9afec7ee8e423feed1605092a7ba2c05dae2c7be1830acd8c9e9d1733",
-            )
-                .unwrap(),
-            BulletRangeProof::from_hex("015eb52c05ba445ceab516b9f941c8832194ae348c2c34228949ab3435d84b6470961464e4d85e3c25e9d9a65344ce67607bad7a65e598700c504380831ae82c24ccd091caf279d9b878eaf501c81c231586f1073883b94734c2387b5aa5ba5f150846cd7ae07a9949f17ad4443292d081e41ce5797c884035987c8de94cf9e44d4ec38e200fa315cb2e79fa6a5892a576000e4a2c712b08e6f9adbe5a9fd67959a21eb58b418cb2ac5cd5ae60ef985a9c15c189c4646ff3aeeb065ca46c8f8c41542473c909f9875dc2f8e9c9691bbfad5c383825c935743992069f37d995727644123853a2f812093e41cd85440de0d6500d8fe399352600fae2ebce14b1fd103266e4354ca3abd9de79f68631d0966ceaca723f1049e9f06ad13cb669998f52d8c1ddbebf307a83d6feffb756d5ff060ab630aa6d96737e01e2af881362a128029bcb0d1b1d015c617f17dbc9df150dce09804d5ea35325f7931e8218700e48882528b1d54845603f6e02f2b7bb08bad9261f19394df4ac9d86f27879619d469453c88ded79a558fddca8523f51d01f346a1e327f1489aaea54dd61bac8071ed46830dbbbc5f2469f799dccb926d5af5bf5f06f6f5e3aee40aad3268ea2902a6258d3db4c3438d4d3b4c88d2128784af7ddd260fd446a602bb196b489c5cc6f4e1963f68cdd16753d1d55674193fe446f9848e939b0de24e0b2ec11ef9f1e044bdaa138934aaf40fb3f4af45ac65873043f67f9a2ef07edb21615e0db44f808baa1fcac60ae0249acd1c1f548daaa79a8f3344c69dc5543f1e63003a9825203").unwrap(),
-            // For genesis block: A default script can never be spent, intentionally
-            script!(Nop),
-            // Script offset never checked for coinbase, thus can use default
-            PublicKey::from_hex("d0c6e428e32ca2626dd66d328056acac0812e5e697652535e285c4b04f394c38").unwrap(),
-            coinbase_meta_sig,
-            Covenant::default(),
-            EncryptedValue::default(),
-            // Genesis blocks don't need to prove a minimum value
-            MicroTari::zero(),
-        )],
-        vec![TransactionKernel::new_current_version(
-            KernelFeatures::COINBASE_KERNEL,
-            MicroTari(0),
-            0,
-            Commitment::from_hex(
-                "0acc815177030858527ab0eaa991d7aeaaaa8363c0e75fbd210d1209f08bdc0b",
-            )
-                .unwrap(),
-            sig,None
 
-        )],
+    let coinbase = TransactionOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        OutputFeatures::create_coinbase(6, Some(extra.as_bytes().to_vec())),
+        Commitment::from_hex("aaa625805404339d2e4cdc8ea22073b0633f9b22ef049d98b488f5f1dfd23f07").unwrap(),
+        BulletRangeProof::from_hex("013aca7480dee5525ed6eb60650ebac4b023b7035e72397ec6faf5ce6b216e4839d6b6d35451239a62bccd5a85e4f7edab6213021e2ee11c7432f361a009c845587ce418a60386e1fd6155f6a48b2e37f8c1458ecc54e690c823ee78aa7c114f13cca5b13c8353d191ca1b83d1aaa164424ff6cbfed43079fa7e2d966f7cf7ab745254c4083a832ddb214747c937e60952b3ba19d71517ccbe0c0386f921d2786762b4f37eeabaeb7e6637d6077285e8fb2f1d91fe075f01a8617c3c21b261a9546c8624069e34dcdb3cf5f7dcb7ba1ede5d2bb1002099e3dec6a3e49fc67fd55546c86171ad6998738e04aee879dddcc94a98fbed289be8d8ac9cb304b694e204daa57fb6d6cc1449279a2caa0ef0482529479ca51e157ca8fdfebf6021100c35a8160c70d6603e9184c7ede8bcba85580b245dd7acfb45ba53eafb3827fbe578162cc78e3727a4e7e841b2d6845d17a8419e8e97abed4269ad26c02fd8aec53b0a447eb9bb328d15864c88d9f51b2b5ff9c8ba812bfeed484104f6f0606c811988eb7a0ac409c61a30827f757a70f237392fc73557d18eefd25f5f28763d761e4ea3579927ef81cbc0f5df8bdc1c1c812aa5bd5299f1bc87a96fa52a346fe93c50e4a99080015704d6393efaf2dd630760f42bd92d0f726665ed6c272339840155b1e5e5dcc4e6223fea60b090a149fee9329c3c0e72167ec1b8dce146ff60079351f0c82fe11b20853618f81e7027af60713a84a14414459281dcc0a4b3f503118ed182442b6e5fdb3e7e690ab53238d80a1fedbc118332fefce98920a0a70c").unwrap(),
+        // A default script can never be spent, intentionally
+        script!(Nop),
+        // The Sender offset public key is not checked for coinbase outputs
+        PublicKey::from_hex("06a12cf13dbe2c455912128bf36975a421ec2bcbdf5fae8a7f22d172e4371673").unwrap(),
+        coinbase_meta_sig,
+        // Covenant
+        Covenant::default(),
+        EncryptedValue::default(),
+        // Genesis blocks don't need to prove a minimum value
+        MicroTari::zero(),
     );
+    let kernel = TransactionKernel::new(
+        TransactionKernelVersion::V0,
+        KernelFeatures::COINBASE_KERNEL,
+        MicroTari(0),
+        0,
+        Commitment::from_hex("a4545e2eedf020d9d0dfef3a8571e27525437e88c037a52dc5254fc7e8e0cc2d").unwrap(),
+        excess_sig,
+        None,
+    );
+    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("30 Nov 2022 16:00:00 +0100").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("29 Mar 2023 06:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -353,12 +388,14 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("d8bcf0f897d1dcca3bf479a3801f1637734967d54badfc74dbce761ae5ed97a1").unwrap(),
-            witness_mr: FixedHash::from_hex("287e36690ed5008619417ebd4342e797fc717aeb06d004b10051cc439f2c521f")
+            output_mr: FixedHash::from_hex("380139dfd2dfaadd4a17805c50e645585da2e7cca1425dabc456df0f8ef62a1a").unwrap(),
+            witness_mr: FixedHash::from_hex("1ae98f1730a1473e3bd56e5878a567e0c818c1c9becefb20d33507abdcf2f567")
                 .unwrap(),
             output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("70d32b50d61845d1624e16e367de7315434ee6ffed600e660a3ebc71e36e125f").unwrap(),
+            kernel_mr: FixedHash::from_hex("a623c3b5e6e75c2cfffca535709bf059bf474cfa660787ad6cecbeb6b14ae8ea").unwrap(),
             kernel_mmr_size: 1,
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -373,8 +410,6 @@ fn get_igor_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
-                .unwrap(),
         },
         body,
     }
@@ -384,7 +419,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let block = get_esmeralda_genesis_block_raw();
 
     // leaving this code here if we want to add faucets back again the future
-    // Add faucet utxos
+    // // Add faucet utxos
+    // // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
     // let mut utxos = Vec::new();
     // let file = include_str!("faucets/esmeralda_faucet.json");
     // let mut counter = 1;
@@ -408,6 +444,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // use croaring::Bitmap;
     // use std::convert::TryFrom;
     // use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr, WitnessMmr};
+    // use crate::transactions::transaction_components::OutputType;
 
     // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
@@ -466,8 +503,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 }
 
 fn get_esmeralda_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block_esmeralda in core/tests/helpers/block_builders.rs to generate the required
-    // fields below
+    // Note: Use 'print_new_genesis_block_esmeralda' in core/tests/helpers/block_builders.rs to generate the required
+    // fields below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
     let excess_sig = Signature::new(
         PublicKey::from_hex("02fc8b9ed73a7c30927a5f07f75fbb3bdbf5969d17b4d7bf4596c0af8a824361").unwrap(),
         PrivateKey::from_hex("17f6a1e485a977bc46d5a72063f065f81ffe889b5e9b9681d69218cbc36c9f06").unwrap(),
@@ -509,7 +546,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("15 Mar 2023 10:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("31 Mar 2023 14:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -524,6 +561,8 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             output_mmr_size: 1,
             kernel_mr: FixedHash::from_hex("80056d85dd0b419fcb63427b96df706ae32d81a4ddef27bf1ea3c0198425abeb").unwrap(),
             kernel_mmr_size: 1,
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -538,8 +577,6 @@ fn get_esmeralda_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
-                .unwrap(),
         },
         body,
     }
@@ -547,9 +584,16 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
 
     use croaring::Bitmap;
-    use tari_common_types::{epoch::VnEpoch, types::Commitment};
+    use curve25519_dalek::scalar::Scalar;
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{Commitment, PrivateKey},
+    };
+    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
@@ -571,7 +615,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 1, 1);
+        check_block(Network::StageNet, &block, 1, 1, false);
     }
 
     #[test]
@@ -579,7 +623,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 1, 1);
+        check_block(Network::NextNet, &block, 1, 1, false);
     }
 
     #[test]
@@ -587,16 +631,24 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 1, 1);
+        check_block(Network::Esmeralda, &block, 1, 1, false);
     }
 
     #[test]
     fn igor_genesis_sanity_check() {
+        // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
+        // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 1, 1);
+        check_block(Network::Igor, &block, 5527, 2, true);
     }
 
-    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
+    fn check_block(
+        network: Network,
+        block: &ChainBlock,
+        expected_outputs: usize,
+        expected_kernels: usize,
+        alternate_range_proof_check: bool,
+    ) {
         assert!(block.block().body.inputs().is_empty());
         assert_eq!(block.block().body.kernels().len(), expected_kernels);
         assert_eq!(block.block().body.outputs().len(), expected_outputs);
@@ -604,7 +656,11 @@ mod test {
         let factories = CryptoFactories::default();
         assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
         let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
-        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
+        if alternate_range_proof_check {
+            do_alternate_range_proof_check(&factories, &outputs);
+        } else {
+            batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
+        }
         // Coinbase and faucet kernel
         assert_eq!(
             block.block().body.kernels().len() as u64,
@@ -669,5 +725,61 @@ mod test {
         ChainBalanceValidator::new(ConsensusManager::builder(network).build(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
+    }
+
+    fn receiver_commit_nonce_a(commitment: &Commitment) -> PrivateKey {
+        hash_domain!(
+            CommitNonceHashDomain,
+            "com.tari-genesis-tools.multi_party_utxo.receiver_commit_nonce_a",
+            0
+        );
+        let hasher_bytes = DomainSeparatedHasher::<Blake256, CommitNonceHashDomain>::new()
+            .chain(commitment.as_bytes())
+            .finalize();
+        PrivateKey::from_bytes(hasher_bytes.as_ref()).expect("blake256 hash will succeed")
+    }
+
+    // For the faucet, the value of the commitment can be bound into the metadata signature using a deterministic nonce
+    fn do_alternate_range_proof_check(factories: &CryptoFactories, outputs: &[&TransactionOutput]) {
+        for output_ref in outputs {
+            let output = (*output_ref).clone();
+            if output.features.output_type == OutputType::Standard {
+                let commit_nonce_a = receiver_commit_nonce_a(&output.commitment);
+                let e_bytes = TransactionOutput::build_metadata_signature_challenge(
+                    TransactionOutputVersion::get_current_version(),
+                    &output.script,
+                    &output.features,
+                    &output.sender_offset_public_key,
+                    output.metadata_signature.ephemeral_commitment(),
+                    output.metadata_signature.ephemeral_pubkey(),
+                    &output.commitment,
+                    &output.covenant,
+                    &output.encrypted_value,
+                    output.minimum_value_promise,
+                );
+                let e = PrivateKey::from_bytes(&e_bytes).unwrap();
+                let value_as_private_key = PrivateKey::from(output.minimum_value_promise.as_u64());
+                assert_eq!(
+                    output.metadata_signature.u_a().to_hex(),
+                    (commit_nonce_a.clone() + e.clone() * value_as_private_key).to_hex()
+                );
+
+                // Demonstrating how to extract the value (Note: For the proof, inverting the scalar with multiplication
+                // is less efficient than multiplication only as above)
+                let metadata_signature_u_a_scalar =
+                    Scalar::from_bits(<[u8; 32]>::try_from(output.metadata_signature.u_a().as_bytes()).unwrap());
+                let commit_nonce_a_scalar = Scalar::from_bits(<[u8; 32]>::try_from(commit_nonce_a.as_bytes()).unwrap());
+                let e_scalar = Scalar::from_bits(<[u8; 32]>::try_from(e.as_bytes()).unwrap());
+                let value_scalar = (metadata_signature_u_a_scalar - commit_nonce_a_scalar) * e_scalar.invert();
+                assert_eq!(value_scalar, Scalar::from(output.minimum_value_promise.as_u64()));
+                let mut value_bytes = [0u8; 8];
+                value_bytes.copy_from_slice(&value_scalar.to_bytes()[0..8]);
+                let value = u64::from_le_bytes(value_bytes);
+                assert_eq!(value, output.minimum_value_promise.as_u64());
+            } else {
+                // Normal range proof verification for the coinbase output
+                assert!(output.verify_range_proof(factories.range_proof.as_ref()).is_ok());
+            }
+        }
     }
 }

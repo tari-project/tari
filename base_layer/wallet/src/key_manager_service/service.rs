@@ -19,24 +19,25 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::collections::HashMap;
+
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 
-use crate::types::KeyDigest;
+use crate::{
+    key_manager_service::{
+        error::KeyManagerServiceError,
+        interface::NextKeyResult,
+        storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
+        AddResult,
+    },
+    types::KeyDigest,
+};
 
 const LOG_TARGET: &str = "wallet::key_manager";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
-
-use std::collections::HashMap;
-
-use crate::key_manager_service::{
-    error::KeyManagerServiceError,
-    interface::NextKeyResult,
-    storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
-    AddResult,
-};
 
 pub struct KeyManagerInner<TBackend> {
     key_managers: HashMap<String, Mutex<KeyManager<PrivateKey, KeyDigest>>>,
