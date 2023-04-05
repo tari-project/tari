@@ -68,6 +68,7 @@ use std::{
 
 use chrono::{DateTime, Local};
 use error::LibWalletError;
+use ffi_basenode_state::TariBaseNodeState;
 use itertools::Itertools;
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 use log::{LevelFilter, *};
@@ -180,6 +181,7 @@ mod callback_handler;
 mod callback_handler_tests;
 mod enums;
 mod error;
+mod ffi_basenode_state;
 #[cfg(test)]
 mod output_manager_service_mock;
 mod tasks;
@@ -5172,6 +5174,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
+    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
@@ -5393,9 +5396,11 @@ pub unsafe extern "C" fn wallet_create(
                 }
             }
             let wallet_address = TariAddress::new(w.comms.node_identity().public_key().clone(), w.network.as_network());
+
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
                 TransactionDatabase::new(transaction_backend),
+                w.base_node_service.get_event_stream(),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
@@ -5420,6 +5425,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_base_node_state,
             );
 
             runtime.spawn(callback_handler.start());
@@ -8539,6 +8545,7 @@ mod test {
         pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
+        pub callback_basenode_state_updated: bool,
     }
 
     impl CallbackState {
@@ -8558,6 +8565,7 @@ mod test {
                 callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
+                callback_basenode_state_updated: false,
             }
         }
     }
@@ -8740,6 +8748,10 @@ mod test {
     }
 
     unsafe extern "C" fn connectivity_status_callback(_status: u64) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn base_node_state_callback(_state: *mut TariBaseNodeState) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -9328,6 +9340,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9370,6 +9383,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9481,6 +9495,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9703,6 +9718,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9764,6 +9780,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9839,6 +9856,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -9984,6 +10002,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -10096,6 +10115,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -10290,6 +10310,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -10492,6 +10513,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -10723,6 +10745,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
