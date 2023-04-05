@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-pre.6](https://github.com/tari-project/tari/compare/v0.49.0-pre.5...v0.49.0-pre.6) (2023-04-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* move key manager service to key_manager (#5284)
+* add igor faucet (#5281)
+* reset dates for networks (#5283)
+
+### Features
+
+* add igor faucet ([#5281](https://github.com/tari-project/tari/issues/5281)) ([bfc92fd](https://github.com/tari-project/tari/commit/bfc92fdcb759aa31301cf11f239dc1aefd58ac63))
+* added auxiliary callback to push base node state changes [#5109](https://github.com/tari-project/tari/issues/5109) ([#5257](https://github.com/tari-project/tari/issues/5257)) ([b7f7d31](https://github.com/tari-project/tari/commit/b7f7d31fb634804ecf2f8ba1c39094163944f584))
+* move key manager service to key_manager ([#5284](https://github.com/tari-project/tari/issues/5284)) ([d50ed02](https://github.com/tari-project/tari/commit/d50ed02675dbca9294882e5bbe522b8fda00fb2a))
+* reset dates for networks ([#5283](https://github.com/tari-project/tari/issues/5283)) ([d6342a4](https://github.com/tari-project/tari/commit/d6342a4200cb7de469575d67129f9214535cf237))
+
+
+### Bug Fixes
+
+* resize transaction tab windows ([#5290](https://github.com/tari-project/tari/issues/5290)) ([bd95a85](https://github.com/tari-project/tari/commit/bd95a853b2eb166a4aa8e32778ed72bb1f8172ad)), closes [#4942](https://github.com/tari-project/tari/issues/4942) [#5289](https://github.com/tari-project/tari/issues/5289) [#12365](https://github.com/tari-project/tari/issues/12365)
+
 ## [0.49.0-pre.5](https://github.com/tari-project/tari/compare/v0.49.0-pre.4...v0.49.0-pre.5) (2023-04-04)
 
 
