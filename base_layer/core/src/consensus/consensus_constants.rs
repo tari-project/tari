@@ -381,7 +381,10 @@ impl ConsensusConstants {
 
     pub fn weatherwax() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // setting sha3/monero to 40/60 split
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -427,18 +430,25 @@ impl ConsensusConstants {
 
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // sha3/monero to 40/60 split
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
+        const MONERO_SPLIT: u64 = 60; // Must be < 100
+        const SHA3_SPLIT: u64 = 100 - MONERO_SPLIT;
+        const MONERO_TARGET_TIME: u64 = 20; // usually 200 (for a 120 average block time)
+        const SHA3_TARGET_TIME: u64 = MONERO_TARGET_TIME * (100 - SHA3_SPLIT) / SHA3_SPLIT;
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            max_target_time: SHA3_TARGET_TIME * 6,               // target_time x 6
+            min_difficulty: (SHA3_TARGET_TIME * 200_000).into(), // target_time x 200_000
             max_difficulty: u64::MAX.into(),
-            target_time: 15,
+            target_time: SHA3_TARGET_TIME, // (monero_target_time x 1.5)
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
+            max_target_time: MONERO_TARGET_TIME * 6,           // target_time x 6
+            min_difficulty: (MONERO_TARGET_TIME * 300).into(), // target_time x 300
             max_difficulty: u64::MAX.into(),
-            target_time: 10,
+            target_time: MONERO_TARGET_TIME,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
@@ -458,7 +468,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: 0.into(),
+            faucet_value: 1_581_548_314_320_266.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -483,7 +493,10 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn dibbler() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // sha3/monero to 40/60 split
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -569,7 +582,10 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // sha3/monero to 40/60 split
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -623,6 +639,10 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn stagenet() -> Vec<Self> {
         // Note these values are all placeholders for final values
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
@@ -669,6 +689,10 @@ impl ConsensusConstants {
 
     pub fn nextnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
@@ -715,6 +739,10 @@ impl ConsensusConstants {
 
     pub fn mainnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
+        // For SHA3/Monero to have a 40/60 split:
+        // sha3_target_time = monero_target_time * (100 - 40) / 40
+        // monero_target_time = sha3_target_time * (100 - 60) / 60
+        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
