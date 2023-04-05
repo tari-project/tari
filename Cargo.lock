@@ -5531,6 +5531,7 @@ dependencies = [
  "serde_repr",
  "sha3",
  "strum_macros",
+ "tari-curve25519-dalek",
  "tari_common",
  "tari_common_types",
  "tari_comms",
