@@ -8545,6 +8545,7 @@ mod test {
         pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
+        pub callback_basenode_state_updated: bool,
     }
 
     impl CallbackState {
@@ -8564,6 +8565,7 @@ mod test {
                 callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
+                callback_basenode_state_updated: false,
             }
         }
     }
