@@ -69,6 +69,7 @@ pub type TariUtxoSort = c_void;
 pub type EmojiSet = c_void;
 #[allow(dead_code)]
 pub type TariFeePerGramStats = c_void;
+pub type TariBaseNodeState = c_void;
 
 #[cfg_attr(windows, link(name = "tari_wallet_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "tari_wallet_ffi"))]
@@ -400,6 +401,7 @@ extern "C" {
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
+        callback_base_node_state_updated: unsafe extern "C" fn(*mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;
