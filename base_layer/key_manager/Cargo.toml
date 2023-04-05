@@ -15,18 +15,17 @@ crate-type = ["lib", "cdylib"]
 tari_crypto = "0.16.11"
 tari_utilities = "0.4.10"
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_common_types = {  path = "../../base_layer/common_types" }
+tari_common_types = {  path = "../../base_layer/common_types"}
 tari_service_framework = {  path = "../service_framework" }
 
-async-trait = "0.1.50"
+async-trait = {version = "0.1.50"}
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 chacha20poly1305 = "0.10.1"
-tokio = { version = "1.23", features = ["sync", "macros"] }
+tokio = { version = "1.23", features = ["sync", "macros"]}
 futures = { version = "^0.3.1", features = ["compat", "std"] }
-log = "0.4.6"
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = "2.0.0"
+log = {version = "0.4.6"}
+diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"]}
+diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
@@ -47,7 +46,6 @@ subtle = "2.4.1"
 [dev-dependencies]
 sha2 = "0.9.8"
 wasm-bindgen-test = "0.3.28"
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tempfile = "3.1.0"
 
 [features]
