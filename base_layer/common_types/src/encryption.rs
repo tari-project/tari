@@ -114,7 +114,7 @@ mod test {
     use rand::{rngs::OsRng, RngCore};
     use tari_utilities::{ByteArray, Hidden};
 
-    use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
+    use super::*;
 
     #[test]
     fn test_encrypt_decrypt() {

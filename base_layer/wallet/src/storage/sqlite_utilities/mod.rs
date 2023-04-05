@@ -27,12 +27,12 @@ use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
+use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
 
 use crate::{
     error::WalletStorageError,
-    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::DbKey,
@@ -106,6 +106,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
     Ok(file)
 }
 
+#[allow(clippy::type_complexity)]
 pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     db_path: P,
     passphrase: SafePassword,
@@ -116,7 +117,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
         TransactionServiceSqliteDatabase,
         OutputManagerSqliteDatabase,
         ContactsServiceSqliteDatabase<WalletDbConnection>,
-        KeyManagerSqliteDatabase,
+        KeyManagerSqliteDatabase<WalletDbConnection>,
     ),
     WalletStorageError,
 > {
@@ -132,11 +133,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let contacts_backend = ContactsServiceSqliteDatabase::init(connection.clone());
-    let key_manager_backend = KeyManagerSqliteDatabase::new(connection, wallet_backend.cipher()).map_err(|e| {
-        error!(target: LOG_TARGET, "Error migrating key manager database: {:?}", e);
-        WalletStorageError::DatabaseMigrationError(e.to_string())
-    })?;
-
+    let key_manager_backend = KeyManagerSqliteDatabase::init(connection, wallet_backend.cipher());
     Ok((
         wallet_backend,
         transaction_backend,

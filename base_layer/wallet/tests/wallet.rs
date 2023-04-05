@@ -56,7 +56,12 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
+    mnemonic::Mnemonic,
+    SeedWords,
+};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
@@ -74,7 +79,6 @@ use tari_test_utils::{collect_recv, comms_and_services::get_next_memory_address,
 use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
-    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -712,7 +716,7 @@ async fn test_import_utxo() {
         TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
         ContactsServiceSqliteDatabase::init(connection.clone()),
-        KeyManagerSqliteDatabase::new(connection.clone(), cipher.clone()).unwrap(),
+        KeyManagerSqliteDatabase::init(connection.clone(), cipher.clone()),
         shutdown.to_signal(),
         CipherSeed::new(),
     )

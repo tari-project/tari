@@ -24,19 +24,20 @@ use std::collections::HashMap;
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 
 use crate::{
+    cipher_seed::CipherSeed,
+    key_manager::KeyManager,
     key_manager_service::{
         error::KeyManagerServiceError,
         interface::NextKeyResult,
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
         AddResult,
+        KeyDigest,
     },
-    types::KeyDigest,
 };
 
-const LOG_TARGET: &str = "wallet::key_manager";
+const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 pub struct KeyManagerInner<TBackend> {

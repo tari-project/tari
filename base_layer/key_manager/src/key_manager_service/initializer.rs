@@ -28,12 +28,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::key_manager_service::{
-    storage::database::{KeyManagerBackend, KeyManagerDatabase},
-    KeyManagerHandle,
+use crate::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{
+        storage::database::{KeyManagerBackend, KeyManagerDatabase},
+        KeyManagerHandle,
+    },
 };
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.

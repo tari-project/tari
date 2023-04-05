@@ -22,52 +22,75 @@
 
 use std::{
     convert::TryFrom,
+    io::Write,
     sync::{Arc, RwLock},
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
-use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
+use tari_common_types::encryption::Encryptable;
+use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
-use crate::{
-    key_manager_service::{
-        error::KeyManagerStorageError,
-        storage::database::{KeyManagerBackend, KeyManagerState},
-    },
-    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::encryption::Encryptable,
+use crate::key_manager_service::{
+    error::KeyManagerStorageError,
+    storage::database::{KeyManagerBackend, KeyManagerState},
 };
-
 mod key_manager_state;
 
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
-pub struct KeyManagerSqliteDatabase {
-    database_connection: WalletDbConnection,
+pub struct KeyManagerSqliteDatabase<TKeyManagerDbConnection> {
+    database_connection: Arc<TKeyManagerDbConnection>,
     cipher: Arc<RwLock<XChaCha20Poly1305>>,
 }
 
-impl KeyManagerSqliteDatabase {
+impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone>
+    KeyManagerSqliteDatabase<TKeyManagerDbConnection>
+{
     /// Creates a new sql backend from provided wallet db connection
     /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
     /// from a provided password, which we enforce for class instantiation
-    pub fn new(
-        database_connection: WalletDbConnection,
-        cipher: XChaCha20Poly1305,
-    ) -> Result<Self, KeyManagerStorageError> {
-        let db = Self {
-            database_connection,
+    fn new(database_connection: TKeyManagerDbConnection, cipher: XChaCha20Poly1305) -> Self {
+        Self {
+            database_connection: Arc::new(database_connection),
             cipher: Arc::new(RwLock::new(cipher)),
-        };
-        Ok(db)
+        }
+    }
+
+    pub fn init(database_connection: TKeyManagerDbConnection, cipher: XChaCha20Poly1305) -> Self {
+        let db = Self::new(database_connection, cipher);
+        db.run_migrations().expect("Migrations to run");
+        db
+    }
+
+    fn run_migrations(&self) -> Result<Vec<String>, SqliteStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.run_pending_migrations(MIGRATIONS)
+            .map(|v| {
+                v.into_iter()
+                    .map(|b| {
+                        let m = format!("Running migration {}", b);
+                        std::io::stdout()
+                            .write_all(m.as_ref())
+                            .expect("Couldn't write migration number to stdout");
+                        m
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))
     }
 }
 
-impl KeyManagerBackend for KeyManagerSqliteDatabase {
+impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone> KeyManagerBackend
+    for KeyManagerSqliteDatabase<TKeyManagerDbConnection>
+{
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -184,14 +207,14 @@ mod test {
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
-    use tari_test_utils::random;
     use tempfile::tempdir;
 
+    use super::*;
     use crate::key_manager_service::storage::sqlite_db::{KeyManagerState, KeyManagerStateSql, NewKeyManagerStateSql};
 
     #[test]
     fn test_key_manager_crud() {
-        let db_name = format!("{}.sqlite3", random::string(8).as_str());
+        let db_name = format!("{}.sqlite3", "test");
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -215,7 +238,7 @@ mod test {
             .expect("Migrations failed");
 
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
-        let branch = random::string(8);
+        let branch = "branch_key".to_string();
         assert!(KeyManagerStateSql::get_state(&branch, &mut conn).is_err());
 
         let state1 = KeyManagerState {

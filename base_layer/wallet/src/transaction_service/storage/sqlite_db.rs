@@ -33,6 +33,7 @@ use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     tari_address::TariAddress,
     transaction::{
         TransactionConversionError,
@@ -69,7 +70,6 @@ use crate::{
             },
         },
     },
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
@@ -2256,6 +2256,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
+        encryption::Encryptable,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
@@ -2292,7 +2293,6 @@ mod test {
                 UpdateCompletedTransactionSql,
             },
         },
-        util::encryption::Encryptable,
     };
 
     #[test]
