@@ -14,7 +14,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { version = "0.16.11"}
+tari_crypto = { version = "0.16.12"}
 
 anyhow = "1.0.53"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
