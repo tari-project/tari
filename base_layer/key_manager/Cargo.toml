@@ -49,6 +49,8 @@ wasm-bindgen-test = "0.3.28"
 tempfile = "3.1.0"
 
 [features]
+default = []
+key_manager_service = []
 avx2 = ["tari_crypto/simd_backend"]
 js = [ "js-sys"]
 wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "console_error_panic_hook"]
