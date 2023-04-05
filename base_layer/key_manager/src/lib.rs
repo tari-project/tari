@@ -21,7 +21,6 @@ pub mod cipher_seed;
 pub mod diacritics;
 pub mod error;
 pub mod key_manager;
-// #[cfg(not(feature = "wasm"))]
 #[cfg(feature = "key_manager_service")]
 pub mod key_manager_service;
 pub mod mnemonic;
