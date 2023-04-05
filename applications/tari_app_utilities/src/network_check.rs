@@ -53,18 +53,14 @@ pub const TARGET_NETWORK: Target = Target::NextNet;
 pub const TARGET_NETWORK: Target = Target::TestNet;
 
 pub fn is_network_choice_valid(network: Network) -> Result<(), NetworkCheckError> {
-    match TARGET_NETWORK {
-        Target::MainNet => match network {
-            Network::MainNet | Network::StageNet => Ok(()),
-            _ => Err(NetworkCheckError::MainNetBinary(network)),
-        },
-        Target::NextNet => match network {
-            Network::NextNet => Ok(()),
-            _ => Err(NetworkCheckError::NextNetBinary(network)),
-        },
-        Target::TestNet => match network {
-            Network::LocalNet | Network::Igor | Network::Esmeralda => Ok(()),
-            _ => Err(NetworkCheckError::TestNetBinary(network)),
-        },
+    match (TARGET_NETWORK, network) {
+        (Target::MainNet, Network::MainNet | Network::StageNet) => Ok(()),
+        (Target::MainNet, _) => Err(NetworkCheckError::MainNetBinary(network)),
+
+        (Target::NextNet, Network::NextNet) => Ok(()),
+        (Target::NextNet, _) => Err(NetworkCheckError::NextNetBinary(network)),
+
+        (Target::TestNet, Network::LocalNet | Network::Igor | Network::Esmeralda) => Ok(()),
+        (Target::TestNet, _) => Err(NetworkCheckError::TestNetBinary(network)),
     }
 }
