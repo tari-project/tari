@@ -100,13 +100,13 @@ pub enum BalancedBinaryMerkleProofError {
 
 /// Flag to indicate if proof data represents an index or a node hash
 /// This reduces the need for checking lengths instead
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MergedBalancedBinaryMerkleDataType {
     Index,
     Hash,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MergedBalancedBinaryMerkleProof<D> {
     pub paths: Vec<Vec<(MergedBalancedBinaryMerkleDataType, Vec<u8>)>>, // these tuples can contain indexes or hashes!
     pub node_indices: Vec<u32>,
