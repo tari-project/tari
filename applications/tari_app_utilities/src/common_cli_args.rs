@@ -78,14 +78,13 @@ impl CommonCliArgs {
         if config_path.is_absolute() {
             config_path
         } else {
-            let mut base_path = PathBuf::from(&self.base_path);
-            base_path.push(config_path);
-            base_path
+            self.get_base_path().join(config_path)
         }
     }
 
     pub fn get_base_path(&self) -> PathBuf {
-        PathBuf::from(&self.base_path)
+        let network = self.network.unwrap_or_default();
+        PathBuf::from(&self.base_path).join(network.to_string())
     }
 
     pub fn log_config_path(&self, application_name: &str) -> PathBuf {
@@ -94,16 +93,13 @@ impl CommonCliArgs {
             if path.is_absolute() {
                 log_config.clone()
             } else {
-                let mut base_path = PathBuf::from(&self.base_path);
-                base_path.push(log_config);
-                base_path
+                self.get_base_path().join(log_config)
             }
         } else {
-            let mut path = PathBuf::from(&self.base_path);
-            path.push("config");
-            path.push(application_name);
-            path.push("log4rs.yml");
-            path
+            self.get_base_path()
+                .join("config")
+                .join(application_name)
+                .join("log4rs.yml")
         }
     }
 }
@@ -111,7 +107,14 @@ impl CommonCliArgs {
 impl ConfigOverrideProvider for CommonCliArgs {
     fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
-        overrides.push(("common.base_path".to_string(), self.base_path.clone()));
+        overrides.push((
+            "common.base_path".to_string(),
+            self.get_base_path()
+                .as_os_str()
+                .to_str()
+                .expect("An os string from a path")
+                .into(),
+        ));
         overrides
     }
 }
