@@ -158,16 +158,17 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 current_header_hash.to_hex(),
             );
-
-            let utxo_block_response = SyncUtxosByBlockResponse {
-                outputs: utxos,
-                height: current_header.height,
-                header_hash: current_header_hash.to_vec(),
-                mined_timestamp: current_header.timestamp.as_u64(),
-            };
-            // Ensure task stops if the peer prematurely stops their RPC session
-            if tx.send(Ok(utxo_block_response)).await.is_err() {
-                break;
+            for utxo_chunk in utxos.chunks(2000) {
+                let utxo_block_response = SyncUtxosByBlockResponse {
+                    outputs: utxo_chunk.to_vec(),
+                    height: current_header.height,
+                    header_hash: current_header_hash.to_vec(),
+                    mined_timestamp: current_header.timestamp.as_u64(),
+                };
+                // Ensure task stops if the peer prematurely stops their RPC session
+                if tx.send(Ok(utxo_block_response)).await.is_err() {
+                    break;
+                }
             }
 
             debug!(
