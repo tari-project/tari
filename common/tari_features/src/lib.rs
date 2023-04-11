@@ -27,11 +27,4 @@ mod status;
 pub use feature::Feature;
 pub use status::Status;
 
-pub const FEATURE_LIST: [Feature; 0] = [
-    // Feature::new(
-    //     "example_feature_name",
-    //     "example description",
-    //     None,
-    //     Status::New,
-    // ),
-];
+pub const FEATURE_LIST: [Feature; 0] = [];
