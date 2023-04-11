@@ -29,7 +29,6 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -572,7 +571,7 @@ pub fn batch_verify_range_proofs(
         Ok(_) => Ok(()),
         Err(err_1) => {
             for output in outputs.iter() {
-                match output.verify_range_proof(&prover) {
+                match output.verify_range_proof(prover) {
                     Ok(_) => {},
                     Err(err_2) => {
                         let proof = output.proof.to_hex();
