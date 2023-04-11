@@ -84,7 +84,6 @@ pub async fn run_base_node(
         rebuild_db: false,
         non_interactive_mode: true,
         watch: None,
-        network: None,
         profile_with_tokio_console: false,
     };
 
