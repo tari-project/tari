@@ -45,6 +45,7 @@ function update_versions {
    base_layer/tari_mining_helper_ffi
    common
    common_sqlite
+   common/tari_features
    comms/core
    comms/dht
    comms/rpc_macros
