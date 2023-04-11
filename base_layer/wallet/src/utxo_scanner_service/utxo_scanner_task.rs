@@ -428,6 +428,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn scan_utxos(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
