@@ -81,6 +81,7 @@ impl MergeMiningProxyProcess {
                     config: config_path.into_os_string().into_string().unwrap(),
                     log_config: None,
                     log_level: None,
+                    network: None,
                     config_property_overrides: vec![
                         ("merge_mining_proxy.listener_address".to_string(), proxy_full_address),
                         (
