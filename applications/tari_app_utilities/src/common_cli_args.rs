@@ -46,7 +46,11 @@ pub struct CommonCliArgs {
     #[clap()]
     pub log_level: Option<Level>,
 
-    /// Overrides for properties in the config file, e.g. -p base_node.netwok=esmeralda
+    /// Supply a network (overrides existing configuration)
+    #[clap(long, env = "TARI_NETWORK")]
+    pub network: Option<Network>,
+
+    /// Overrides for properties in the config file, e.g. -p base_node.network=esmeralda
     #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
     pub config_property_overrides: Vec<(String, String)>,
 }
