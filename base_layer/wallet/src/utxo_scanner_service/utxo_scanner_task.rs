@@ -526,6 +526,14 @@ where
                 timestamp: Utc::now().naive_utc(),
             });
         }
+        // We need to update the last one
+        if let Some(scanned_block) = prev_scanned_block {
+            self.resources.db.clear_scanned_blocks_before_height(
+                scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                true,
+            )?;
+            self.resources.db.save_scanned_block(scanned_block)?;
+        }
         trace!(
             target: LOG_TARGET,
             "bulletproof rewind profile - streamed {} outputs in {} ms",
