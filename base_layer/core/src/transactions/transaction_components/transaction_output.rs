@@ -29,6 +29,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -567,8 +568,35 @@ pub fn batch_verify_range_proofs(
         });
         proofs.push(output.proof.to_vec().clone());
     }
-    prover.verify_batch(proofs.iter().collect(), statements.iter().collect())?;
-    Ok(())
+    match prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
+        Ok(_) => Ok(()),
+        Err(err_1) => {
+            for output in outputs.iter() {
+                match output.verify_range_proof(&prover) {
+                    Ok(_) => {},
+                    Err(err_2) => {
+                        let proof = output.proof.to_hex();
+                        let proof = if proof.len() > 32 {
+                            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
+                        } else {
+                            proof
+                        };
+                        return Err(RangeProofError::InvalidRangeProof(format!(
+                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
+                            output.commitment.to_hex(),
+                            output.minimum_value_promise,
+                            proof,
+                            err_2,
+                        )));
+                    },
+                }
+            }
+            Err(RangeProofError::InvalidRangeProof(format!(
+                "Batch verification failed, but individual verification passed - {:?}",
+                err_1
+            )))
+        },
+    }
 }
 
 #[cfg(test)]
