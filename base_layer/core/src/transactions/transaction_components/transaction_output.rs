@@ -47,7 +47,11 @@ use tari_crypto::{
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
+    ristretto::bulletproofs_plus::{
+        RistrettoAggregatedPrivateStatement,
+        RistrettoAggregatedPublicStatement,
+        RistrettoStatement,
+    },
     tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_script::TariScript;
@@ -248,7 +252,19 @@ impl TransactionOutput {
         prover: &RangeProofService,
         rewind_blinding_key: &PrivateKey,
     ) -> Result<BlindingFactor, TransactionError> {
-        Ok(prover.recover_mask(&self.proof.0, &self.commitment, rewind_blinding_key)?)
+        let statement_private = RistrettoAggregatedPrivateStatement::init(
+            vec![RistrettoStatement {
+                commitment: self.commitment.clone(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            }],
+            Some(rewind_blinding_key.clone()),
+        )?;
+        match prover.recover_extended_mask(&self.proof.0, &statement_private)? {
+            Some(extended_mask) => Ok(extended_mask.secrets()[0].clone()),
+            None => Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(
+                "Empty mask".to_string(),
+            ))),
+        }
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
