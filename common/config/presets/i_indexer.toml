@@ -1,0 +1,45 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                                     Indexer Configuration Options (IndexerConfig)                                    #
+#                                                                                                                      #
+########################################################################################################################
+
+[indexer]
+
+# A path to the file that stores your node identity and secret key (default = "indexer_id.json")
+#identity_file = "indexer_id.json"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport
+# (default = "indexer_tor_id.json")
+#tor_identity_file = "indexer_tor_id.json"
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured (default = )
+#public_address =
+
+# The Tari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+#base_node_grpc_address = "127.0.0.1/tcp/18142"
+
+# How often do we want to scan the base layer for changes. (default = 10)
+#base_layer_scanning_interval = 10
+
+# The relative path to store persistent data (default = "data/indexer")
+#data_dir = "data/indexer"
+
+# JSON-RPC listener address (default = "127.0.0.1:18300")
+#json_rpc_address = "127.0.0.1:18300"
+
+# HTTP UI listener address (default = "127.0.0.1:15000")
+#http_ui_address = "127.0.0.1:15000"
+
+# Substate addresses to keep watching
+#address_watchlist=[]
+
+# How often do we want to scan the dan layer for change. (default = 10)
+#dan_layer_scanning_internal=10
+
+[indexer.p2p]
+#transport = "tor"

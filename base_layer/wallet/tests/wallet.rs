@@ -34,7 +34,9 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
@@ -100,7 +102,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
         NodeId::from_key(&public_key),
-        net_address.into(),
+        MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         Default::default(),
@@ -121,9 +123,9 @@ async fn create_wallet(
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig::new_memory(MemoryTransportConfig {
-            listener_address: node_identity.public_address(),
+            listener_address: node_identity.first_public_address(),
         }),
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
@@ -198,7 +200,7 @@ async fn create_wallet(
     .await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
@@ -248,7 +250,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             bob_identity.public_key().clone(),
-            bob_identity.public_address(),
+            bob_identity.first_public_address(),
         ))
         .await
         .unwrap();
@@ -258,7 +260,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             alice_identity.public_key().clone(),
-            alice_identity.public_address(),
+            alice_identity.first_public_address(),
         ))
         .await
         .unwrap();
@@ -266,7 +268,7 @@ async fn test_wallet() {
     alice_wallet
         .set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            base_node_identity.public_address().clone(),
+            base_node_identity.first_public_address().clone(),
         )
         .await
         .unwrap();
@@ -312,7 +314,7 @@ async fn test_wallet() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new(public_key, Network::LocalNet);
 
-        contacts.push(Contact::new(random::string(8), address, None, None));
+        contacts.push(Contact::new(random::string(8), address, None, None, false));
 
         alice_wallet
             .contacts_service
@@ -510,7 +512,7 @@ fn test_many_iterations_store_and_forward_send_tx() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn test_store_and_forward_send_tx() {
     let shutdown_a = Shutdown::new();
@@ -535,11 +537,7 @@ async fn test_store_and_forward_send_tx() {
     .await
     .unwrap();
 
-    let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
-        "/memory/0".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    ));
+    let base_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (tx, _rx) = mpsc::channel(100);
     let (base_node, _dht, _msg_sender) = initialize_local_test_comms(
         base_node_identity,
@@ -667,7 +665,7 @@ async fn test_import_utxo() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig::new_tcp(TcpTransportConfig {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_address: None,
@@ -732,7 +730,7 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
-        .set_base_node_peer(node_identity.public_key().clone(), node_identity.public_address())
+        .set_base_node_peer(node_identity.public_key().clone(), node_identity.first_public_address())
         .await
         .unwrap();
     let tx_id = alice_wallet
@@ -871,7 +869,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(bob_identity.to_peer())
         .await
         .unwrap();
-    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None);
+    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None, false);
     alice_wallet.contacts_service.upsert_contact(contact_bob).await.unwrap();
 
     bob_wallet
@@ -880,7 +878,7 @@ async fn test_contacts_service_liveness() {
         .add_peer(alice_identity.to_peer())
         .await
         .unwrap();
-    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None);
+    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None, false);
     bob_wallet.contacts_service.upsert_contact(contact_alice).await.unwrap();
 
     alice_wallet

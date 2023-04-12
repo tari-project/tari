@@ -41,6 +41,7 @@ use crate::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Substream,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
@@ -49,7 +50,6 @@ use crate::{
         ProtocolEvent,
         Protocols,
     },
-    runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     CommsNode,
@@ -68,7 +68,7 @@ async fn spawn_node(
         .parse::<Multiaddr>()
         .unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    node_identity.set_public_address(addr.clone());
+    node_identity.add_public_address(addr.clone());
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -108,7 +108,7 @@ async fn spawn_node(
     (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_custom_protocols() {
     static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
     static ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test-again");
@@ -140,7 +140,10 @@ async fn peer_to_peer_custom_protocols() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses().clone(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             vec![TEST_PROTOCOL.clone(), ANOTHER_TEST_PROTOCOL.clone()],
@@ -197,7 +200,7 @@ async fn peer_to_peer_custom_protocols() {
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();
@@ -215,7 +218,10 @@ async fn peer_to_peer_messaging() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -278,7 +284,7 @@ async fn peer_to_peer_messaging() {
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn peer_to_peer_messaging_simultaneous() {
     const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();
@@ -302,7 +308,10 @@ async fn peer_to_peer_messaging_simultaneous() {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            node_identity2.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -315,7 +324,10 @@ async fn peer_to_peer_messaging_simultaneous() {
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
-            node_identity1.public_address().clone().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity1.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             Default::default(),
             Default::default(),

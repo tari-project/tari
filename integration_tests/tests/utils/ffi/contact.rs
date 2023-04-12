@@ -53,6 +53,7 @@ impl Contact {
             ptr = ffi_import::contact_create(
                 CString::new(alias).unwrap().into_raw(),
                 WalletAddress::from_hex(address).get_ptr(),
+                false,
                 &mut error,
             );
             if error > 0 {

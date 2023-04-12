@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_test_utils::unpack_enum;
+use tokio::task;
 
 use crate::{
     framing,
@@ -30,11 +31,9 @@ use crate::{
         handshake::{RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
         Handshake,
     },
-    runtime,
-    runtime::task,
 };
 
-#[runtime::test]
+#[tokio::test]
 async fn it_performs_the_handshake() {
     let (client, server) = MemorySocket::new_pair();
 
@@ -52,7 +51,7 @@ async fn it_performs_the_handshake() {
     assert!(SUPPORTED_RPC_VERSIONS.contains(&v));
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn it_rejects_the_handshake() {
     let (client, server) = MemorySocket::new_pair();
 

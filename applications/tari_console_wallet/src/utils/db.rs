@@ -24,6 +24,7 @@ use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
@@ -74,7 +75,7 @@ pub fn get_custom_base_node_peer_from_db(wallet: &mut WalletSqlite) -> Option<Pe
             Some(Peer::new(
                 pub_key,
                 node_id,
-                address.into(),
+                MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
                 PeerFlags::default(),
                 PeerFeatures::COMMUNICATION_NODE,
                 Default::default(),

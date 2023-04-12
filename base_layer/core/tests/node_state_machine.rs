@@ -64,7 +64,7 @@ use crate::helpers::{chain_metadata::MockChainMetadata, nodes::random_node_ident
 mod helpers;
 
 static EMISSION: [u64; 2] = [10, 10];
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;

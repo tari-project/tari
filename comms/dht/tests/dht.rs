@@ -172,7 +172,7 @@ async fn setup_comms_dht(
     let comms = CommsBuilder::new()
         .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
-        .with_listener_address(node_identity.public_address())
+        .with_listener_address(node_identity.first_public_address())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_peer_storage(storage,None)
@@ -230,9 +230,9 @@ fn dht_config() -> DhtConfig {
     config
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn dht_join_propagation() {
+async fn test_dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
 
     // Node C knows no one
@@ -300,9 +300,9 @@ async fn dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn dht_discover_propagation() {
+async fn test_dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
 
     // Node D knows no one
@@ -374,9 +374,9 @@ async fn dht_discover_propagation() {
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn dht_store_forward() {
+async fn test_dht_store_forward() {
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // Node B knows about Node C
     let node_B = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -489,7 +489,7 @@ async fn dht_store_forward() {
 #[tokio::test]
 #[allow(non_snake_case)]
 #[allow(clippy::too_many_lines)]
-async fn dht_propagate_dedup() {
+async fn test_dht_propagate_dedup() {
     let mut config = dht_config();
     // For this test we want to exactly measure the path of a message, so we disable repropagation of messages (i.e
     // allow 1 occurrence)
@@ -634,7 +634,7 @@ async fn dht_propagate_dedup() {
 #[tokio::test]
 #[allow(non_snake_case)]
 #[allow(clippy::too_many_lines)]
-async fn dht_do_not_store_invalid_message_in_dedup() {
+async fn test_dht_do_not_store_invalid_message_in_dedup() {
     let mut config = dht_config();
     config.dedup_allowed_message_occurrences = 1;
 
@@ -803,7 +803,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
 
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn dht_repropagate() {
+async fn test_dht_repropagate() {
     let mut config = dht_config();
     config.dedup_allowed_message_occurrences = 3;
     let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, config.clone(), []).await;
@@ -904,9 +904,9 @@ async fn dht_repropagate() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn dht_propagate_message_contents_not_malleable_ban() {
+async fn test_dht_propagate_message_contents_not_malleable_ban() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
     let mut node_B = make_node(
@@ -1009,9 +1009,9 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn dht_header_not_malleable() {
+async fn test_dht_header_not_malleable() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
     let mut node_B = make_node(

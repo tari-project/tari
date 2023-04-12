@@ -506,7 +506,6 @@ mod test {
     use futures::{executor::block_on, future};
     use tari_comms::{
         message::{MessageExt, MessageTag},
-        runtime,
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
         BytesMut,
@@ -579,7 +578,7 @@ mod test {
         assert_eq!(counter.get(), 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// We can decrypt valid encrypted messages destined for us
     async fn decrypt_inbound_success() {
         let (connectivity, mock) = create_connectivity_mock();
@@ -612,7 +611,7 @@ mod test {
         assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message is not destined for us
     async fn decrypt_inbound_not_for_us() {
         let (connectivity, mock) = create_connectivity_mock();
@@ -652,7 +651,7 @@ mod test {
         assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message is empty
     async fn empty_message() {
         let node_identity = make_node_identity();
@@ -675,7 +674,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message is destined for us but can't be decrypted
     async fn decrypt_inbound_fail_for_us() {
         let node_identity = make_node_identity();
@@ -695,7 +694,7 @@ mod test {
         .await;
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message has no destination
     async fn decrypt_inbound_fail_no_destination() {
         let node_identity = make_node_identity();
@@ -715,7 +714,7 @@ mod test {
         .await;
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message destined for us has an invalid signature
     async fn decrypt_inbound_fail_invalid_signature_encrypted() {
         let node_identity = make_node_identity();
@@ -765,7 +764,7 @@ mod test {
         .await;
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An unencrypted message has an invalid signature
     async fn decrypt_inbound_fail_invalid_signature_cleartext() {
         let node_identity = make_node_identity();
@@ -791,7 +790,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message has no signature
     async fn decrypt_inbound_fail_missing_signature_encrypted() {
         let node_identity = make_node_identity();
@@ -817,7 +816,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An encrypted message has no ephemeral key
     async fn decrypt_inbound_fail_missing_ephemeral_encrypted() {
         let node_identity = make_node_identity();
@@ -843,7 +842,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An unencrypted message has a signature that can't be decoded (wire format)
     async fn decrypt_inbound_fail_cleartext_signature_decode_wire() {
         let node_identity = make_node_identity();
@@ -869,7 +868,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test]
     /// An unencrypted message has a signature that can't be decoded (signature structure)
     async fn decrypt_inbound_fail_cleartext_signature_decode_structure() {
         let node_identity = make_node_identity();

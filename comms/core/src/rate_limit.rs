@@ -140,9 +140,8 @@ mod test {
     use futures::{stream, StreamExt};
 
     use super::*;
-    use crate::runtime;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn rate_limit() {
         let repeater = stream::repeat(());
 
@@ -168,7 +167,7 @@ mod test {
         assert_eq!(count, 10);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn rate_limit_restock() {
         let repeater = stream::repeat(());
 

@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,14 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Runtime used by Tari comms (tokio)
+use std::convert::TryFrom;
 
-use tokio::runtime;
-// Re-export
-pub use tokio::{runtime::Handle, task, test};
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_crypto::{commitment::HomomorphicCommitment, signatures::CommitmentSignature};
+use tari_utilities::ByteArray;
 
-/// Return the current tokio executor. Panics if the tokio runtime is not started.
-#[inline]
-pub fn current() -> runtime::Handle {
-    runtime::Handle::current()
+use crate::tari_rpc as grpc;
+
+impl TryFrom<grpc::CommitmentSignature> for CommitmentSignature<PublicKey, PrivateKey> {
+    type Error = String;
+
+    fn try_from(sig: grpc::CommitmentSignature) -> Result<Self, Self::Error> {
+        let public_nonce = HomomorphicCommitment::<PublicKey>::from_bytes(&sig.public_nonce)
+            .map_err(|_| "Could not get public nonce".to_string())?;
+        let u = PrivateKey::from_bytes(&sig.u).map_err(|_| "Could not get u_x".to_string())?;
+        let v = PrivateKey::from_bytes(&sig.v).map_err(|_| "Could not get v_x".to_string())?;
+
+        Ok(Self::new(public_nonce, u, v))
+    }
+}
+
+impl From<CommitmentSignature<PublicKey, PrivateKey>> for grpc::CommitmentSignature {
+    fn from(sig: CommitmentSignature<PublicKey, PrivateKey>) -> Self {
+        Self {
+            public_nonce: sig.public_nonce().to_vec(),
+            u: sig.u().to_vec(),
+            v: sig.v().to_vec(),
+        }
+    }
 }

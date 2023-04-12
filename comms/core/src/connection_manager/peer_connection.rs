@@ -58,9 +58,8 @@ use crate::{
     framing,
     framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, PeerFeatures},
+    peer_manager::{NodeId, PeerFeatures, PeerIdentityClaim},
     protocol::{ProtocolId, ProtocolNegotiation},
-    runtime,
     utils::atomic_ref_counter::AtomicRefCounter,
 };
 
@@ -68,7 +67,7 @@ const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-pub fn create(
+pub fn try_create(
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
@@ -77,6 +76,7 @@ pub fn create(
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
     their_supported_protocols: Vec<ProtocolId>,
+    peer_identity_claim: PeerIdentityClaim,
 ) -> Result<PeerConnection, ConnectionManagerError> {
     trace!(
         target: LOG_TARGET,
@@ -95,6 +95,7 @@ pub fn create(
         peer_addr,
         direction,
         substream_counter,
+        peer_identity_claim,
     );
     let peer_actor = PeerConnectionActor::new(
         id,
@@ -106,7 +107,7 @@ pub fn create(
         our_supported_protocols,
         their_supported_protocols,
     );
-    runtime::current().spawn(peer_actor.run());
+    tokio::spawn(peer_actor.run());
 
     Ok(peer_conn)
 }
@@ -138,10 +139,36 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
+    peer_identity_claim: Option<PeerIdentityClaim>,
 }
 
 impl PeerConnection {
     pub(crate) fn new(
+        id: ConnectionId,
+        request_tx: mpsc::Sender<PeerConnectionRequest>,
+        peer_node_id: NodeId,
+        peer_features: PeerFeatures,
+        address: Multiaddr,
+        direction: ConnectionDirection,
+        substream_counter: AtomicRefCounter,
+        peer_identity_claim: PeerIdentityClaim,
+    ) -> Self {
+        Self {
+            id,
+            request_tx,
+            peer_node_id,
+            peer_features,
+            address: Arc::new(address),
+            direction,
+            started_at: Instant::now(),
+            substream_counter,
+            handle_counter: Arc::new(()),
+            peer_identity_claim: Some(peer_identity_claim),
+        }
+    }
+
+    /// Should only be used in tests
+    pub(crate) fn unverified(
         id: ConnectionId,
         request_tx: mpsc::Sender<PeerConnectionRequest>,
         peer_node_id: NodeId,
@@ -160,6 +187,7 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
+            peer_identity_claim: None,
         }
     }
 
@@ -203,6 +231,10 @@ impl PeerConnection {
 
     pub fn handle_count(&self) -> usize {
         Arc::strong_count(&self.handle_counter)
+    }
+
+    pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
+        self.peer_identity_claim.as_ref()
     }
 
     #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]

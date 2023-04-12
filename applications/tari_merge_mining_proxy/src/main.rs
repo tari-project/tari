@@ -52,6 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     initialize_logging(
         &cli.common.log_config_path("proxy"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
     run_merge_miner::start_merge_miner(cli).await

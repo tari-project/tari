@@ -515,7 +515,7 @@ mod test {
     use tokio_stream::StreamExt;
 
     use super::*;
-    use crate::{framing, runtime};
+    use crate::framing;
 
     #[test]
     fn listener_bind() -> io::Result<()> {
@@ -526,7 +526,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_connect() -> io::Result<()> {
         let port = acquire_next_memsocket_port().into();
         let mut listener = MemoryListener::bind(port)?;
@@ -544,7 +544,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn listen_on_port_zero() -> io::Result<()> {
         let mut listener = MemoryListener::bind(0)?;
         let listener_addr = listener.local_addr();
@@ -569,7 +569,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn listener_correctly_frees_port_on_drop() {
         async fn connect_on_port(port: u16) {
             let mut listener = MemoryListener::bind(port).unwrap();
@@ -590,7 +590,7 @@ mod test {
         connect_on_port(port).await;
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_write_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -605,7 +605,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn partial_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -621,7 +621,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn partial_read_write_both_sides() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -645,7 +645,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn many_small_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -666,7 +666,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn large_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -682,7 +682,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_zero_bytes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -698,7 +698,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_bytes_with_large_buffer() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
@@ -713,7 +713,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn read_and_write_canonical_framing() -> io::Result<()> {
         let (a, b) = MemorySocket::new_pair();
         let mut a = framing::canonical(a, 1024);

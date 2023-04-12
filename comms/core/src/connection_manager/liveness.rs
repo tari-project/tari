@@ -118,7 +118,7 @@ where
             let _ = self.tx_watch.send(LivenessStatus::Checking);
             match self.transport.dial(&self.address).await {
                 Ok(mut socket) => {
-                    info!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
+                    debug!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
                     if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
                         warn!(target: LOG_TARGET, "🔌️ liveness failed to write byte: {}", err);
                         self.tx_watch.send_replace(LivenessStatus::Unreachable);
@@ -128,7 +128,7 @@ where
                     loop {
                         match self.ping_pong(&mut framed).await {
                             Ok(Some(latency)) => {
-                                info!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
+                                debug!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
                                 self.tx_watch.send_replace(LivenessStatus::Live(latency));
                             },
                             Ok(None) => {
@@ -183,13 +183,13 @@ mod test {
     use tokio_stream::StreamExt;
 
     use super::*;
-    use crate::{memsocket::MemorySocket, runtime};
+    use crate::memsocket::MemorySocket;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
         let liveness = LivenessSession::new(inbound);
-        let join_handle = runtime::current().spawn(liveness.run());
+        let join_handle = tokio::spawn(liveness.run());
         let mut outbound = Framed::new(outbound, LinesCodec::new());
         for _ in 0..10usize {
             outbound.send("ECHO".to_string()).await.unwrap()

@@ -25,6 +25,7 @@ use std::{sync::Arc, time::Duration};
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,
+    net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     transports::MemoryTransport,
     types::CommsPublicKey,
@@ -70,7 +71,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     let peer_source = Peer::new(
         public_key.clone(),
         NodeId::from_key(public_key),
-        Vec::<Multiaddr>::new().into(),
+        MultiaddressesWithStats::empty(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         Default::default(),

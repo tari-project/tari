@@ -42,8 +42,6 @@ use crate::{
         ProtocolId,
         ProtocolNotification,
     },
-    runtime,
-    runtime::task,
     test_utils::mocks::{new_peer_connection_mock_pair, PeerConnectionMockState},
 };
 
@@ -53,7 +51,7 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
 
-    task::spawn(
+    tokio::spawn(
         RpcServer::builder()
             .with_maximum_simultaneous_sessions(num_concurrent_sessions)
             .finish()
@@ -61,7 +59,7 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
             .serve(notif_rx, context),
     );
 
-    task::spawn(async move {
+    tokio::spawn(async move {
         while let Some(stream) = conn2_state.next_incoming_substream().await {
             notif_tx
                 .send(ProtocolNotification::new(
@@ -80,7 +78,7 @@ mod lazy_pool {
     use super::*;
     use crate::protocol::rpc::client::pool::{LazyPool, RpcClientPoolError};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_connects_lazily() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -91,7 +89,7 @@ mod lazy_pool {
         assert_eq!(mock_state.num_open_substreams(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_unused_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -103,7 +101,7 @@ mod lazy_pool {
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_least_used_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -124,7 +122,7 @@ mod lazy_pool {
         assert_eq!(conn3.lease_count(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_reuses_used_connections_if_necessary() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 1, Default::default());
@@ -136,7 +134,7 @@ mod lazy_pool {
         drop(conn2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_gracefully_handles_insufficient_server_sessions() {
         let (conn, mock_state, _shutdown) = setup(1).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -148,7 +146,7 @@ mod lazy_pool {
         assert_eq!(conn2.lease_count(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_prunes_disconnected_sessions() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
@@ -165,7 +163,7 @@ mod lazy_pool {
         assert_eq!(mock_state.num_open_substreams(), 2);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_fails_when_peer_connected_disconnects() {
         let (mut peer_conn, _, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2, Default::default());
@@ -179,7 +177,7 @@ mod lazy_pool {
 mod last_request_latency {
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn it_returns_the_latency_until_the_first_response() {
         let (mut conn, _, _shutdown) = setup(1).await;
 

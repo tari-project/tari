@@ -259,7 +259,7 @@ impl Index<usize> for MessageSendStates {
 mod test {
     use std::iter::repeat_with;
 
-    use tari_comms::{message::MessagingReplyTx, runtime};
+    use tari_comms::message::MessagingReplyTx;
     use tokio::sync::oneshot;
 
     use super::*;
@@ -279,7 +279,7 @@ mod test {
         assert!(!states.is_empty());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn wait_single() {
         let (state, mut reply_tx) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
@@ -294,7 +294,7 @@ mod test {
         assert!(!states.wait_single().await);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_percentage_success() {
         let (states, mut reply_txs) = repeat_with(|| create_send_state())
@@ -311,7 +311,7 @@ mod test {
         assert_eq!(failed.len(), 4);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_n_timeout() {
         let (states, mut reply_txs) = repeat_with(|| create_send_state())
@@ -342,7 +342,7 @@ mod test {
         assert_eq!(failed.len(), 6);
     }
 
-    #[runtime::test]
+    #[tokio::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_all() {
         let (states, mut reply_txs) = repeat_with(|| create_send_state())

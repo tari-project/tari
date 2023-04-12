@@ -43,7 +43,7 @@ The Tari release process draws inspiration from the Rust [compiler release proce
 ideas.
 
 The process is well-suited for a large open-source project that desires a regular release schedule but also needs 
-the flexibility of having features being "in development" over several cycles.
+the flexibility of having features being "in development" over several cycles. See specifics about managing the [release cycle](./docs/src/branching_releases.md).
 
 ## Release branches
 

@@ -134,9 +134,8 @@ mod test {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
-    use crate::runtime;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {
         let t = MemoryTransport::default();
 
@@ -162,7 +161,7 @@ mod test {
         Ok(())
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn unsupported_multiaddrs() {
         let t = MemoryTransport::default();
 

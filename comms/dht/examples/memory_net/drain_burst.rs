@@ -74,14 +74,14 @@ mod test {
 
     use super::*;
 
-    #[runtime::test]
+    #[tokio::test]
     async fn drain_terminating_stream() {
         let mut stream = stream::iter(1..10u8);
         let burst = DrainBurst::new(&mut stream).await;
         assert_eq!(burst, (1..10u8).into_iter().collect::<Vec<_>>());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn drain_stream_with_pending() {
         let mut stream = stream::iter(1..10u8);
         let burst = DrainBurst::new(&mut stream).await;

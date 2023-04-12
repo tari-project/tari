@@ -61,9 +61,9 @@ pub fn is_leaf(pos: usize) -> bool {
 /// Gets the postorder traversal index of all peaks in a MMR given its size.
 /// Starts with the top peak, which is always on the left side of the range, and navigates toward lower siblings
 /// toward the right  of the range.
-pub fn find_peaks(size: usize) -> Vec<usize> {
+pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
     if size == 0 {
-        return vec![];
+        return Some(vec![]);
     }
     let mut peak_size = ALL_ONES >> size.leading_zeros();
     let mut num_left = size;
@@ -78,9 +78,21 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
         peak_size >>= 1;
     }
     if num_left > 0 {
-        return vec![];
+        // This happens, whenever the MMR is not valid, that is, all nodes are not
+        // fully spawned. For example, in this case
+        //    2
+        //   / \
+        //  0   1   3   4
+        // is invalid, as it can be completed to form
+        //       6
+        //     /    \
+        //    2      5
+        //  /  \    /  \
+        // 0    1  3    4
+        // which is of size 7 (with single peak [6])
+        return None;
     }
-    peaks
+    Some(peaks)
 }
 
 /// Calculates the positions of the (parent, sibling) of the node at the provided position.
@@ -245,12 +257,39 @@ mod test {
 
     #[test]
     fn peak_vectors() {
-        assert_eq!(find_peaks(0), Vec::<usize>::new());
-        assert_eq!(find_peaks(1), vec![0]);
-        assert_eq!(find_peaks(3), vec![2]);
-        assert_eq!(find_peaks(4), vec![2, 3]);
-        assert_eq!(find_peaks(15), vec![14]);
-        assert_eq!(find_peaks(23), vec![14, 21, 22]);
+        assert_eq!(find_peaks(0), Some(Vec::<usize>::new()));
+        assert_eq!(find_peaks(1), Some(vec![0]));
+        assert_eq!(find_peaks(2), None);
+        assert_eq!(find_peaks(3), Some(vec![2]));
+        assert_eq!(find_peaks(4), Some(vec![2, 3]));
+        assert_eq!(find_peaks(5), None);
+        assert_eq!(find_peaks(6), None);
+        assert_eq!(find_peaks(7), Some(vec![6]));
+        assert_eq!(find_peaks(8), Some(vec![6, 7]));
+        assert_eq!(find_peaks(9), None);
+        assert_eq!(find_peaks(10), Some(vec![6, 9]));
+        assert_eq!(find_peaks(11), Some(vec![6, 9, 10]));
+        assert_eq!(find_peaks(12), None);
+        assert_eq!(find_peaks(13), None);
+        assert_eq!(find_peaks(14), None);
+        assert_eq!(find_peaks(15), Some(vec![14]));
+        assert_eq!(find_peaks(16), Some(vec![14, 15]));
+        assert_eq!(find_peaks(17), None);
+        assert_eq!(find_peaks(18), Some(vec![14, 17]));
+        assert_eq!(find_peaks(19), Some(vec![14, 17, 18]));
+        assert_eq!(find_peaks(20), None);
+        assert_eq!(find_peaks(21), None);
+        assert_eq!(find_peaks(22), Some(vec![14, 21]));
+        assert_eq!(find_peaks(23), Some(vec![14, 21, 22]));
+        assert_eq!(find_peaks(24), None);
+        assert_eq!(find_peaks(25), Some(vec![14, 21, 24]));
+        assert_eq!(find_peaks(26), Some(vec![14, 21, 24, 25]));
+        assert_eq!(find_peaks(27), None);
+        assert_eq!(find_peaks(28), None);
+        assert_eq!(find_peaks(56), Some(vec![30, 45, 52, 55]));
+        assert_eq!(find_peaks(60), None);
+        assert_eq!(find_peaks(123), None);
+        assert_eq!(find_peaks(130), Some(vec![126, 129]));
     }
 
     #[test]
@@ -350,11 +389,11 @@ mod test {
 
     #[test]
     fn find_peaks_when_num_left_gt_zero() {
-        assert!(find_peaks(0).is_empty());
-        assert_eq!(find_peaks(1), vec![0]);
-        assert!(find_peaks(2).is_empty());
-        assert_eq!(find_peaks(3), vec![2]);
-        assert_eq!(find_peaks(usize::MAX), [18446744073709551614].to_vec());
-        assert_eq!(find_peaks(usize::MAX - 1).len(), 0);
+        assert!(find_peaks(0).unwrap().is_empty());
+        assert_eq!(find_peaks(1).unwrap(), vec![0]);
+        assert_eq!(find_peaks(2), None);
+        assert_eq!(find_peaks(3).unwrap(), vec![2]);
+        assert_eq!(find_peaks(usize::MAX).unwrap(), [18446744073709551614].to_vec());
+        assert_eq!(find_peaks(usize::MAX - 1), None);
     }
 }

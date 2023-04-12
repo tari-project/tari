@@ -101,12 +101,7 @@ mod test {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
-    use crate::{
-        memsocket::MemorySocket,
-        peer_manager::PeerFeatures,
-        runtime,
-        test_utils::node_identity::build_node_identity,
-    };
+    use crate::{memsocket::MemorySocket, peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
 
     fn check_noise_params(config: &NoiseConfig) {
         assert_eq!(config.parameters.hash, HashChoice::Blake2b);
@@ -125,7 +120,7 @@ mod test {
         assert_eq!(config.node_identity.public_key(), node_identity.public_key());
     }
 
-    #[runtime::test]
+    #[tokio::test]
     async fn upgrade_socket() {
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let config1 = NoiseConfig::new(node_identity1.clone());

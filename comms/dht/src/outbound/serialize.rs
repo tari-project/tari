@@ -136,12 +136,12 @@ impl<S> Layer<S> for SerializeLayer {
 #[cfg(test)]
 mod test {
     use prost::Message;
-    use tari_comms::{peer_manager::NodeId, runtime};
+    use tari_comms::peer_manager::NodeId;
 
     use super::*;
     use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
 
-    #[runtime::test]
+    #[tokio::test]
     async fn serialize() {
         let spy = service_spy();
         let mut serialize = SerializeLayer.layer(spy.to_service::<PipelineError>());

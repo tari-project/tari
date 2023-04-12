@@ -361,7 +361,7 @@ mod test {
 
         // manipulate tag and check that decryption fails
         let n = encrypted.len();
-        encrypted[n - 1] += 1;
+        encrypted[n - 1] = !encrypted[n - 1];
 
         // decryption should fail
         assert!(decrypt_signature(&key, encrypted.as_slice())
@@ -381,7 +381,7 @@ mod test {
         let mut encrypted = encrypt_signature(&key, signature).unwrap();
 
         // manipulate encrypted message body and check that decryption fails
-        encrypted[0] += 1;
+        encrypted[0] = !encrypted[0];
 
         // decryption should fail
         assert!(decrypt_signature(&key, encrypted.as_slice())
@@ -593,7 +593,8 @@ mod test {
         let mut msg = encode_with_prepended_length(&message, size_of::<Nonce>());
         encrypt_message(&key, &mut msg).unwrap();
 
-        msg[size_of::<u32>() + size_of::<Nonce>() + 1] += 1;
+        let index = size_of::<u32>() + size_of::<Nonce>() + 1;
+        msg[index] = !msg[index];
 
         decrypt_message(&key, &mut msg).unwrap();
         eprintln!("msg = {:?}", msg);

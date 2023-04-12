@@ -433,7 +433,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 let public_key = base_node.public_key.to_hex();
                 let address = base_node
                     .addresses
-                    .first()
+                    .best()
                     .map(|a| a.to_string())
                     .unwrap_or_else(|| "".to_string());
 

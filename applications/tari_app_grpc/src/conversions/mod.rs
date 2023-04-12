@@ -26,6 +26,7 @@ mod block;
 mod block_header;
 mod chain_metadata;
 mod com_and_pub_signature;
+mod commitment_signature;
 mod consensus_constants;
 mod historical_block;
 mod new_block_template;

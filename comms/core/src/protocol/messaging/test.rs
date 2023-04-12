@@ -40,8 +40,6 @@ use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
-    runtime,
-    runtime::task,
     test_utils::{
         mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
         node_id,
@@ -84,7 +82,7 @@ async fn spawn_messaging_protocol() -> (
         inbound_msg_tx,
         shutdown.to_signal(),
     );
-    task::spawn(msg_proto.run());
+    tokio::spawn(msg_proto.run());
 
     (
         peer_manager,
@@ -98,7 +96,7 @@ async fn spawn_messaging_protocol() -> (
     )
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn new_inbound_substream_handling() {
     let (peer_manager, _, _, proto_tx, _, mut inbound_msg_rx, mut events_rx, _shutdown) =
         spawn_messaging_protocol().await;
@@ -153,7 +151,7 @@ async fn new_inbound_substream_handling() {
     assert_eq!(*node_id, expected_node_id);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn send_message_request() {
     let (_, node_identity, conn_man_mock, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
 
@@ -179,7 +177,7 @@ async fn send_message_request() {
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn send_message_dial_failed() {
     let (_, _, conn_manager_mock, _, request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
 
@@ -199,7 +197,7 @@ async fn send_message_dial_failed() {
     assert!(calls.iter().all(|evt| evt.starts_with("DialPeer")));
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn send_message_substream_bulk_failure() {
     const NUM_MSGS: usize = 10;
     let (_, node_identity, conn_manager_mock, _, mut request_tx, _, mut events_rx, _shutdown) =
@@ -266,7 +264,7 @@ async fn send_message_substream_bulk_failure() {
     assert_eq!(node_id, peer_node_id);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn many_concurrent_send_message_requests() {
     const NUM_MSGS: usize = 100;
     let (_, _, conn_man_mock, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
@@ -314,7 +312,7 @@ async fn many_concurrent_send_message_requests() {
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
 
-#[runtime::test]
+#[tokio::test]
 async fn many_concurrent_send_message_requests_that_fail() {
     const NUM_MSGS: usize = 100;
     let (_, _, _, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;

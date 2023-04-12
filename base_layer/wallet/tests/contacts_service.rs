@@ -71,11 +71,11 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     ));
     let comms_config = P2pConfig {
         override_from: None,
-        public_address: None,
+        public_addresses: vec![],
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {
-                listener_address: node_identity.public_address(),
+                listener_address: node_identity.first_public_address(),
             },
             ..Default::default()
         },
@@ -144,7 +144,7 @@ pub fn test_contacts_service() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new(public_key, Network::default());
 
-        contacts.push(Contact::new(random::string(8), address, None, None));
+        contacts.push(Contact::new(random::string(8), address, None, None, false));
 
         runtime
             .block_on(contacts_service.upsert_contact(contacts[i].clone()))
@@ -189,6 +189,7 @@ pub fn test_contacts_service() {
 
     let mut updated_contact = contacts[1].clone();
     updated_contact.alias = "Fred".to_string();
+    updated_contact.favourite = true;
 
     runtime
         .block_on(contacts_service.upsert_contact(updated_contact.clone()))

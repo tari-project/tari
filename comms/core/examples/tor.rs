@@ -10,6 +10,7 @@ use rand::{rngs::OsRng, thread_rng, RngCore};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
@@ -84,15 +85,15 @@ async fn run() -> Result<(), Error> {
 
     println!("Comms nodes started!");
     println!(
-        "Node 1 is '{}' with address '{}' (local_listening_addr='{}')",
+        "Node 1 is '{}' with address '{:?}' (local_listening_addr='{}')",
         node_identity1.node_id().short_str(),
-        node_identity1.public_address(),
+        node_identity1.public_addresses(),
         comms_node1.listening_address(),
     );
     println!(
-        "Node 2 is '{}' with address '{}' (local_listening_addr='{}')",
+        "Node 2 is '{}' with address '{:?}' (local_listening_addr='{}')",
         node_identity2.node_id().short_str(),
-        node_identity2.public_address(),
+        node_identity2.public_addresses(),
         comms_node2.listening_address(),
     );
 
@@ -102,7 +103,10 @@ async fn run() -> Result<(), Error> {
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
-            vec![node_identity2.public_address()].into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                node_identity2.public_addresses(),
+                &PeerAddressSource::Config,
+            ),
             Default::default(),
             PeerFeatures::COMMUNICATION_CLIENT,
             Default::default(),
@@ -204,8 +208,8 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         .await?;
 
     println!(
-        "Tor hidden service created with address '{}'",
-        comms_node.node_identity().public_address()
+        "Tor hidden service created with address '{:?}'",
+        comms_node.node_identity().public_addresses()
     );
 
     Ok((comms_node, inbound_rx, outbound_tx))
