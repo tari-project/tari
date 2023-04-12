@@ -62,7 +62,6 @@ fn main() {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 async fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
     initialize_logging(

@@ -112,6 +112,7 @@ impl MinerProcess {
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),
                 ],
+                network: None,
             },
             mine_until_height: None,
             miner_max_blocks: blocks,
