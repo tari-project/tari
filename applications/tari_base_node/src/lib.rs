@@ -77,13 +77,13 @@ pub async fn run_base_node(
             config: config_path.into_os_string().into_string().unwrap(),
             log_config: None,
             log_level: None,
+            network: None,
             config_property_overrides: vec![],
         },
         init: true,
         rebuild_db: false,
         non_interactive_mode: true,
         watch: None,
-        network: None,
         profile_with_tokio_console: false,
     };
 

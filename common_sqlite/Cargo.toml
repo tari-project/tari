@@ -11,7 +11,6 @@ edition = "2018"
 [dependencies]
 tari_utilities = "0.4.10"
 
-chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
 diesel_migrations = "2.0.0"
 log = "0.4.6"

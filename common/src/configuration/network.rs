@@ -74,9 +74,20 @@ impl Network {
 
 /// The default network for all applications
 impl Default for Network {
+    #[cfg(tari_network_mainnet)]
     fn default() -> Self {
         // TODO: set the default network to mainnet
         Network::StageNet
+    }
+
+    #[cfg(tari_network_nextnet)]
+    fn default() -> Self {
+        Network::NextNet
+    }
+
+    #[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+    fn default() -> Self {
+        Network::Esmeralda
     }
 }
 
@@ -195,7 +206,7 @@ mod test {
     #[test]
     fn network_default() {
         let network = Network::default();
-        assert_eq!(network, Network::StageNet);
+        assert_eq!(network, Network::Esmeralda);
     }
 
     #[test]

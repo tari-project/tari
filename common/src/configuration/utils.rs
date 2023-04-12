@@ -98,6 +98,8 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
         include_str!("../../config/presets/f_merge_mining_proxy.toml"),
         include_str!("../../config/presets/e_validator_node.toml"),
         include_str!("../../config/presets/h_collectibles.toml"),
+        include_str!("../../config/presets/i_indexer.toml"),
+        include_str!("../../config/presets/j_dan_wallet_daemon.toml"),
     ]
     .join("\n");
 
