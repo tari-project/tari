@@ -147,9 +147,9 @@ track_reorgs = true
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
-# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
 # automatically configured
-#public_address = "/ip4/172.2.3.4/tcp/18189"
+#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:

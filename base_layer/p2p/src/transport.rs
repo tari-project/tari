@@ -86,7 +86,7 @@ impl TransportConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum TransportType {
     /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.

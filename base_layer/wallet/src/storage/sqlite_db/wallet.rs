@@ -35,7 +35,11 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{generic_array::GenericArray, FixedOutput};
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
@@ -61,7 +65,6 @@ use crate::{
         sqlite_db::scanned_blocks::ScannedBlockSql,
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     utxo_scanner_service::service::ScannedBlock,
 };
 
@@ -413,7 +416,14 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::CommsIdentitySignature, identity_sig.to_bytes().to_hex())
                     .set(&mut conn)?;
             },
+            DbKeyValuePair::NetworkAndVersion((network, version)) => {
+                kvp_text = "NetworkAndVersion";
+
+                WalletSettingSql::new(DbKey::LastAccessedNetwork, network).set(&mut conn)?;
+                WalletSettingSql::new(DbKey::LastAccessedVersion, version).set(&mut conn)?;
+            },
         }
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -451,7 +461,9 @@ impl WalletSqliteDatabase {
             DbKey::SecondaryKeySalt |
             DbKey::SecondaryKeyHash |
             DbKey::WalletBirthday |
-            DbKey::CommsIdentitySignature => {
+            DbKey::CommsIdentitySignature |
+            DbKey::LastAccessedNetwork |
+            DbKey::LastAccessedVersion => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
         };
@@ -498,6 +510,8 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::SecondaryKeySalt => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeySalt),
             DbKey::SecondaryKeyHash => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeyHash),
             DbKey::WalletBirthday => WalletSettingSql::get(key, &mut conn)?.map(DbValue::WalletBirthday),
+            DbKey::LastAccessedNetwork => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedNetwork),
+            DbKey::LastAccessedVersion => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedVersion),
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &mut conn)?
                 .and_then(|s| from_hex(&s).ok())
                 .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
@@ -876,6 +890,8 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::{
@@ -885,15 +901,11 @@ mod test {
     };
     use tempfile::tempdir;
 
-    use crate::{
-        storage::{
-            database::{DbKey, DbValue, WalletBackend},
-            sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
-            sqlite_utilities::run_migration_and_create_sqlite_connection,
-        },
-        util::encryption::{decrypt_bytes_integral_nonce, Encryptable},
+    use crate::storage::{
+        database::{DbKey, DbValue, WalletBackend},
+        sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-
     #[test]
     fn test_passphrase() {
         // Set up a database

@@ -23,13 +23,13 @@ use log::*;
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_wallet::{
-    contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},

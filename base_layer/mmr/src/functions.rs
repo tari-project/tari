@@ -95,7 +95,6 @@ where
     for index in deletions {
         pruned_mmr.delete(index);
     }
-    pruned_mmr.compress();
     pruned_mmr.get_merkle_root()
 }
 

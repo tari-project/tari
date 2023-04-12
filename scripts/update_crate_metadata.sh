@@ -34,6 +34,7 @@ function update_versions {
    infrastructure/storage
    infrastructure/test_utils
    base_layer/common_types
+   base_layer/contacts
    base_layer/core
    base_layer/key_manager
    base_layer/mmr
@@ -44,6 +45,7 @@ function update_versions {
    base_layer/tari_mining_helper_ffi
    common
    common_sqlite
+   common/tari_features
    comms/core
    comms/dht
    comms/rpc_macros

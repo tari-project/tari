@@ -26,14 +26,6 @@ CREATE TABLE completed_transactions (
     transaction_signature_key   BLOB    DEFAULT 0  NOT NULL
 );
 
-CREATE TABLE contacts (
-    address     BLOB PRIMARY KEY NOT NULL UNIQUE,
-    node_id     BLOB             NOT NULL UNIQUE,
-    alias       TEXT             NOT NULL,
-    last_seen   DATETIME         NULL,
-    latency     INTEGER          NULL
-);
-
 CREATE TABLE inbound_transactions (
     tx_id               BIGINT PRIMARY KEY NOT NULL,
     source_address      BLOB               NOT NULL,
@@ -45,13 +37,6 @@ CREATE TABLE inbound_transactions (
     direct_send_success INTEGER DEFAULT 0  NOT NULL,
     send_count          INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp DATETIME           NULL
-);
-
-CREATE TABLE key_manager_states (
-    id                INTEGER PRIMARY KEY NOT NULL,
-    branch_seed       TEXT UNIQUE         NOT NULL,
-    primary_key_index BLOB                NOT NULL,
-    timestamp         DATETIME            NOT NULL
 );
 
 CREATE TABLE known_one_sided_payment_scripts (

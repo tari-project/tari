@@ -34,9 +34,10 @@ use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
+    burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{Commitment, FixedHash, PrivateKey, PublicKey, RangeProof, Signature},
+    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -76,7 +77,6 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -119,7 +119,9 @@ use crate::{
         },
         utc::utc_duration_since,
     },
+    types::ConfidentialOutputHasher,
     util::{
+        burn_proof::{derive_burn_claim_encryption_key, derive_diffie_hellman_burn_claim_spend_key},
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
@@ -131,7 +133,6 @@ use crate::{
         watch::Watch,
     },
     utxo_scanner_service::RECOVERY_KEY,
-    BurntOutputDomainHasher,
     OperationId,
 };
 
@@ -662,13 +663,9 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(|(tx_id, commitment, ownership_proof, rangeproof)| {
-                    TransactionServiceResponse::BurntTransactionSent {
-                        tx_id,
-                        commitment: commitment.into(),
-                        ownership_proof,
-                        rangeproof: rangeproof.into(),
-                    }
+                .map(|(tx_id, proof)| TransactionServiceResponse::BurntTransactionSent {
+                    tx_id,
+                    proof: Box::new(proof),
                 }),
             TransactionServiceRequest::RegisterValidatorNode {
                 amount,
@@ -1391,9 +1388,13 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, RangeProof), TransactionServiceError> {
+    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let output_features = OutputFeatures::create_burn_output();
+        let output_features = claim_public_key
+            .as_ref()
+            .cloned()
+            .map(OutputFeatures::create_burn_confidential_output)
+            .unwrap_or_else(OutputFeatures::create_burn_output);
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
@@ -1423,54 +1424,68 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        // TODO: Save spending key in key manager
-        let spend_key = PrivateKey::random(&mut OsRng);
-        let rtp = ReceiverTransactionProtocol::new(
+        let (spend_key, _script_key) = self
+            .resources
+            .output_manager_service
+            .get_next_spend_and_script_keys()
+            .await?;
+        let public_spend_key = PublicKey::from_secret_key(&spend_key);
+
+        let rewind_data = self.resources.output_manager_service.get_rewind_data().await?;
+
+        let (shared_spend_key, rewind_data) = match claim_public_key {
+            Some(ref claim_public_key) => {
+                // For claimable L2 burn transactions, we derive a shared mask and encryption key from a nonce (in this
+                // case a new spend key from the key manager) and the provided claim public key. The public
+                // nonce/spend_key is returned back to the caller.
+                let shared_spend_key = derive_diffie_hellman_burn_claim_spend_key(&spend_key, claim_public_key);
+                let commitment = CommitmentFactory::default().commit_value(&shared_spend_key, amount.into());
+                let shared_encryption_key = derive_burn_claim_encryption_key(&shared_spend_key, &commitment);
+
+                let shared_rewind_data = RewindData {
+                    rewind_blinding_key: rewind_data.rewind_blinding_key,
+                    encryption_key: shared_encryption_key,
+                };
+                (shared_spend_key, shared_rewind_data)
+            },
+            // No claim key provided, no shared mask is required
+            None => (spend_key, rewind_data),
+        };
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spend_key.clone(),
+            shared_spend_key.clone(),
             &self.resources.factories,
+            &rewind_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let commitment = recipient_reply.output.commitment.clone();
         let range_proof = recipient_reply.output.proof.clone();
-        let nonce_a = PrivateKey::random(&mut OsRng);
-        let nonce_x = PrivateKey::random(&mut OsRng);
-        let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
         let mut ownership_proof = None;
 
         if let Some(claim_public_key) = claim_public_key {
-            let hasher = BurntOutputDomainHasher::new_with_label("commitment_signature")
-                .chain(pub_nonce.as_bytes())
-                .chain(commitment.as_bytes())
-                .chain(claim_public_key.as_bytes());
+            let nonce_a = PrivateKey::random(&mut OsRng);
+            let nonce_x = PrivateKey::random(&mut OsRng);
+            let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
 
-            let challenge: FixedHash = digest::Digest::finalize(hasher).into();
+            let challenge = ConfidentialOutputHasher::new("commitment_signature")
+                .chain(&pub_nonce)
+                .chain(&commitment)
+                .chain(&claim_public_key)
+                .finalize();
 
-            warn!(target: LOG_TARGET, "Pub nonce: {}", pub_nonce.to_vec().to_hex());
-            warn!(
-                target: LOG_TARGET,
-                "claim_public_key: {}",
-                claim_public_key.to_vec().to_hex()
-            );
-            warn!(target: LOG_TARGET, "Challenge: {}", challenge.to_vec().to_hex());
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
-                &spend_key,
+                &shared_spend_key,
                 &nonce_a,
                 &nonce_x,
-                challenge.as_bytes(),
+                &challenge,
                 &*self.resources.factories.commitment,
             )?);
-            warn!(
-                target: LOG_TARGET,
-                "Ownership proof: {}",
-                ownership_proof.clone().unwrap().to_vec().to_hex()
-            );
         }
         // Start finalizing
-
         stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1518,7 +1533,13 @@ where
             ),
         )?;
 
-        Ok((tx_id, commitment, ownership_proof, range_proof))
+        Ok((tx_id, BurntProof {
+            // Key used to claim the burn on L2
+            reciprocal_claim_public_key: public_spend_key,
+            commitment,
+            ownership_proof,
+            range_proof,
+        }))
     }
 
     pub async fn register_validator_node(

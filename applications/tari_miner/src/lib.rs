@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// non-64-bit not supported
+tari_app_utilities::deny_non_64_bit_archs!();
+
 mod cli;
 pub use cli::Cli;
 use tari_common::exit_codes::ExitError;

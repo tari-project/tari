@@ -29,6 +29,7 @@ message SideChainFeature {
     oneof side_chain_feature {
         ValidatorNodeRegistration validator_node_registration = 1;
         TemplateRegistration template_registration = 2;
+        ConfidentialOutputData confidential_output = 3;
     }
 }
 
@@ -48,14 +49,26 @@ message TemplateRegistration {
     string binary_url = 8;
 }
 
+message ConfidentialOutputData {
+    bytes claim_public_key = 1;
+}
+
 message TemplateType {
     oneof template_type {
         WasmInfo wasm = 1;
+        FlowInfo flow = 2;
+        ManifestInfo manifest = 3;
     }
 }
 
 message WasmInfo {
     uint32 abi_version = 1;
+}
+
+message FlowInfo {
+}
+
+message ManifestInfo {
 }
 
 message BuildInfo {

@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// non-64-bit not supported
+tari_app_utilities::deny_non_64_bit_archs!();
+
 #[macro_use]
 mod table;
 
@@ -39,7 +42,7 @@ use std::{process, sync::Arc};
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
-use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_app_utilities::{common_cli_args::CommonCliArgs, network_check::is_network_choice_valid};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -74,13 +77,13 @@ pub async fn run_base_node(
             config: config_path.into_os_string().into_string().unwrap(),
             log_config: None,
             log_level: None,
+            network: None,
             config_property_overrides: vec![],
         },
         init: true,
         rebuild_db: false,
         non_interactive_mode: true,
         watch: None,
-        network: None,
         profile_with_tokio_console: false,
     };
 
@@ -94,6 +97,8 @@ pub async fn run_base_node_with_cli(
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
+    is_network_choice_valid(config.network())?;
+
     #[cfg(feature = "metrics")]
     {
         metrics::install(

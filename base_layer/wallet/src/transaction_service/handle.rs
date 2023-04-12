@@ -29,9 +29,10 @@ use std::{
 
 use chrono::NaiveDateTime;
 use tari_common_types::{
+    burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{BulletRangeProof, Commitment, PublicKey, Signature},
+    types::{PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -42,7 +43,6 @@ use tari_core::{
         transaction_components::{OutputFeatures, Transaction, TransactionOutput},
     },
 };
-use tari_crypto::ristretto::RistrettoComSig;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -237,12 +237,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
-    BurntTransactionSent {
-        tx_id: TxId,
-        commitment: Box<Commitment>,
-        ownership_proof: Option<RistrettoComSig>,
-        rangeproof: Box<BulletRangeProof>,
-    },
+    BurntTransactionSent { tx_id: TxId, proof: Box<BurntProof> },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -528,7 +523,7 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroTari,
         message: String,
         claim_public_key: Option<PublicKey>,
-    ) -> Result<(TxId, Commitment, Option<RistrettoComSig>, BulletRangeProof), TransactionServiceError> {
+    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -540,12 +535,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::BurntTransactionSent {
-                tx_id,
-                commitment,
-                ownership_proof,
-                rangeproof,
-            } => Ok((tx_id, *commitment, ownership_proof, *rangeproof)),
+            TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, *proof)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
