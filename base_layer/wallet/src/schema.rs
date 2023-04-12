@@ -48,15 +48,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    key_manager_states (id) {
-        id -> Integer,
-        branch_seed -> Text,
-        primary_key_index -> Binary,
-        timestamp -> Timestamp,
-    }
-}
-
-diesel::table! {
     known_one_sided_payment_scripts (script_hash) {
         script_hash -> Binary,
         private_key -> Binary,
@@ -143,7 +134,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
     inbound_transactions,
-    key_manager_states,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,

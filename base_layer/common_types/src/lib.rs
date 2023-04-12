@@ -24,6 +24,7 @@ pub mod burnt_proof;
 pub mod chain_metadata;
 pub mod dammsum;
 pub mod emoji;
+pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
 pub mod tari_address;

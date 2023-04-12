@@ -30,6 +30,7 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     transaction::TxId,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
 };
@@ -59,7 +60,6 @@ use crate::{
         UtxoSelectionOrdering,
     },
     schema::outputs,
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";

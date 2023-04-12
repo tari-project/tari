@@ -49,7 +49,7 @@ pub use cli::{
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
-use tari_app_utilities::{common_cli_args::CommonCliArgs, consts};
+use tari_app_utilities::{common_cli_args::CommonCliArgs, consts, network_check::is_network_choice_valid};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -80,6 +80,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
             config: config_path.into_os_string().into_string().unwrap(),
             log_config: None,
             log_level: None,
+            network: None,
             config_property_overrides: vec![],
         },
         password: None,
@@ -92,7 +93,6 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         command: None,
         wallet_notify: None,
         command_mode_auto_exit: false,
-        network: None,
         grpc_enabled: true,
         grpc_address: None,
         command2: None,
@@ -113,6 +113,8 @@ pub fn run_wallet_with_cli(
         ApplicationType::ConsoleWallet,
         consts::APP_VERSION
     );
+
+    is_network_choice_valid(config.wallet.network)?;
 
     let password = get_password(config, &cli);
 

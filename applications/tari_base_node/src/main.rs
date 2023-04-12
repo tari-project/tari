@@ -131,9 +131,6 @@ fn main_inner() -> Result<(), ExitError> {
     );
 
     let mut config = ApplicationConfig::load_from(&cfg)?;
-    if let Some(network) = cli.network {
-        config.base_node.network = network;
-    }
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity

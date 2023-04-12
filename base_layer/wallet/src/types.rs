@@ -26,9 +26,6 @@ use tari_crypto::{hash::blake2::Blake256, hash_domain, hasher};
 
 use crate::error::WalletError;
 
-/// Specify the Hash function used by the key manager
-pub type KeyDigest = Blake256;
-
 pub(crate) trait PersistentKeyManager {
     fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
 }

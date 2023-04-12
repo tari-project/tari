@@ -65,6 +65,7 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -74,7 +75,6 @@ use tokio::sync::Mutex;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    key_manager_service::KeyManagerInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
