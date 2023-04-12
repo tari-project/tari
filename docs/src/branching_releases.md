@@ -43,7 +43,7 @@ Our version numbers can be broken down into 5 segments.
 Example: `v1.55.2-rc.7`
 
 - MAJOR: `1` - Used to anytime the network the _MainNet_ will see a hard-fork. TestNets may be reset, or hard-fork on a regular basis without a major version bump. The major version bump will be reserved for only a MainNet hard-fork.
-- MINOR: `55` - For upgrades that may contain breaking changes. These changes won't cause the network to fork, but may require a change in configuration, a restart to the node, or other circumstances.
+- MINOR: `55` - For upgrades that may contain breaking changes. These changes won't cause the network to fork, but may require a change in configuration, a restart to the node, or other circumstances. This is only changed once on an 8-week release.
 - PATCH: `2` - All other changes including HotFixes will be reflected in PATCH version increments.
 - PRE-RELEASE TAG: `rc.7` - in the form of `rc` for NextNet and the form `pre` for development networks. In the case of development networks the number following the pre-release tag is incremented anytime a developer wishes to produce a new binary for the testnet. In the case of NextNet it would be used to produce a change to the release candidate.
 

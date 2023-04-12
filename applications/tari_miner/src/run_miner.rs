@@ -29,6 +29,7 @@ use tari_app_grpc::{
     tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient},
 };
 use tari_common::{
+    configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
@@ -57,11 +58,14 @@ pub const LOG_TARGET_FILE: &str = "tari::logging::miner::main";
 
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
+#[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli.common)?;
-    let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
+    let cfg = load_configuration(config_path.as_path(), true, &cli)?;
+    let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
+    setup_grpc_config(&mut config);
+
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
@@ -164,7 +168,12 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 }
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletGrpcClient), MinerError> {
-    let base_node_addr = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
+    let base_node_addr = multiaddr_to_socketaddr(
+        &config
+            .base_node_grpc_address
+            .clone()
+            .expect("no base node grpc address found"),
+    )?;
     info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
 
@@ -184,7 +193,15 @@ async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, Walle
 }
 
 async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerError> {
-    let wallet_addr = format!("http://{}", multiaddr_to_socketaddr(&config.wallet_grpc_address)?);
+    let wallet_addr = format!(
+        "http://{}",
+        multiaddr_to_socketaddr(
+            &config
+                .wallet_grpc_address
+                .clone()
+                .expect("Wallet grpc address not found")
+        )?
+    );
     info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
     let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
     let wallet_conn = WalletClient::with_interceptor(
@@ -340,4 +357,28 @@ async fn validate_tip(
         return Err(MinerError::MinerLostBlock(height));
     }
     Ok(())
+}
+
+fn setup_grpc_config(config: &mut MinerConfig) {
+    if config.base_node_grpc_address.is_none() {
+        config.base_node_grpc_address = Some(
+            format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                grpc_default_port(ApplicationType::BaseNode, config.network)
+            )
+            .parse()
+            .unwrap(),
+        );
+    }
+
+    if config.wallet_grpc_address.is_none() {
+        config.wallet_grpc_address = Some(
+            format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                grpc_default_port(ApplicationType::ConsoleWallet, config.network)
+            )
+            .parse()
+            .unwrap(),
+        );
+    }
 }

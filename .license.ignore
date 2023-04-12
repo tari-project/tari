@@ -11,7 +11,9 @@
 ./applications/tari_base_node/osx-pkg/scripts/postinstall
 ./applications/tari_base_node/osx-pkg/scripts/preinstall
 ./applications/tari_console_wallet/linux/start_tari_console_wallet
+./base_layer/contacts/src/schema.rs
 ./base_layer/key_manager/Makefile
+./base_layer/key_manager/src/schema.rs
 ./base_layer/p2p/src/dns/roots/tls.rs
 ./base_layer/wallet/src/schema.rs
 ./buildtools/docker/torrc

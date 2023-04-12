@@ -96,12 +96,15 @@ use tari_crypto::{
     hash::blake2::Blake256,
     keys::{PublicKey as PK, SecretKey as SK},
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInitializer, KeyManagerMock},
+};
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::random;
+use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_utilities::SafePassword;
 use tari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -112,7 +115,6 @@ use tari_wallet::{
         WalletConnectivityInterface,
         WalletConnectivityMock,
     },
-    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInitializer, KeyManagerMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::{OutputManagerEvent, OutputManagerHandle},
@@ -154,7 +156,7 @@ use tokio::{
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
 };
@@ -198,7 +200,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), cipher.clone());
-    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, cipher).unwrap();
+    let kms_backend = KeyManagerSqliteDatabase::init(db_connection, cipher);
     let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
     let cipher = CipherSeed::new();
@@ -207,7 +209,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .add_initializer(RegisterHandle::new(comms.connectivity()))
         .add_initializer(OutputManagerServiceInitializer::<
             OutputManagerSqliteDatabase,
-            KeyManagerSqliteDatabase,
+            KeyManagerSqliteDatabase<WalletDbConnection>,
         >::new(
             OutputManagerServiceConfig::default(),
             oms_backend,

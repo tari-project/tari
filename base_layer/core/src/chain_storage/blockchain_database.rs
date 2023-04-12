@@ -1360,8 +1360,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         }
     }
 
-    output_mmr.compress();
-
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
     let validator_node_mr = if block_height % epoch_len == 0 {

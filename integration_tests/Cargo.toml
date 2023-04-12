@@ -22,7 +22,7 @@ tari_miner = { path = "../applications/tari_miner" }
 tari_p2p = { path = "../base_layer/p2p" }
 tari_script = { path = "../infrastructure/tari_script" }
 tari_shutdown = { path = "../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10"}
+tari_utilities = "0.4.10"
 tari_wallet = { path = "../base_layer/wallet" }
 tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
@@ -45,7 +45,7 @@ tonic = "0.6.2"
 
 
 [dev-dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+tari_crypto = { version = "0.16.11"}
 
 # FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
 #cucumber = { version = "0.13.0", features = ["default"] }

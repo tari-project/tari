@@ -11,8 +11,8 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
+tari_crypto = { version = "0.16.11"}
+tari_utilities = "0.4.10"
 
 blake2 = "0.9"
 borsh = "0.9.3"

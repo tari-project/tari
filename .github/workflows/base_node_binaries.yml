@@ -86,6 +86,24 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Declare TestNet for tags
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          tagnet=${{github.ref_name}}
+          echo $tagnet
+          # case match is not RegEx, but wildcards/globs
+          case "$tagnet" in
+            v*-pre.*) TARI_NETWORK=esme
+              ;;
+            v*-rc.*) TARI_NETWORK=nextnet
+              ;;
+            *) TARI_NETWORK=mainnet
+              ;;
+          esac
+          echo ${TARI_NETWORK}
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+
       - name: Declare Global Variables 4 GHA ${{ github.event_name }}
         id: vars
         shell: bash
@@ -355,11 +373,20 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
+      - name: Prep miner for upload
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}${{ env.TBN_DIST }}"
+          cp -v "tari_miner${{ env.TBN_EXT}}" \
+            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
         with:
           name: tari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails

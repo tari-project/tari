@@ -26,10 +26,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BulletRangeProof, PrivateKey, PublicKey},
+    types::{BlindingFactor, BulletRangeProof, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
-    transaction_components::{EncryptedValue, TransactionOutput, UnblindedOutput},
+    tari_amount::MicroTari,
+    transaction_components::{EncryptedValue, OutputType, TransactionOutput, UnblindedOutput},
     transaction_protocol::RewindData,
     CryptoFactories,
 };
@@ -37,10 +38,10 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::hex::Hex,
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, Opcode};
 
 use crate::{
-    key_manager_service::KeyManagerInterface,
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
         handle::RecoveredOutput,
@@ -51,6 +52,7 @@ use crate::{
             OutputSource,
         },
     },
+    util::burn_proof::derive_burn_claim_encryption_key,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
@@ -98,42 +100,47 @@ where
             if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;
             }
-            let committed_value = EncryptedValue::decrypt_value(
-                &self.rewind_data.encryption_key,
-                &output.commitment,
-                &output.encrypted_value,
+
+            let (blinding_factor, committed_value) = match output.features.output_type {
+                OutputType::Standard |
+                OutputType::Coinbase |
+                OutputType::ValidatorNodeRegistration |
+                OutputType::CodeTemplateRegistration => match self.attempt_standard_output_recovery(&output)? {
+                    Some(recovered) => recovered,
+                    None => continue,
+                },
+                OutputType::Burn => match self.attempt_burn_output_recovery(&output)? {
+                    Some(recovered) => recovered,
+                    None => continue,
+                },
+            };
+
+            let (input_data, script_key) = if let Some(index) = known_script_index {
+                (
+                    known_scripts[index].input.clone(),
+                    known_scripts[index].private_key.clone(),
+                )
+            } else {
+                let key = PrivateKey::random(&mut OsRng);
+                (inputs!(PublicKey::from_secret_key(&key)), key)
+            };
+            let uo = UnblindedOutput::new(
+                output.version,
+                committed_value,
+                blinding_factor,
+                output.features,
+                output.script,
+                input_data,
+                script_key,
+                output.sender_offset_public_key,
+                output.metadata_signature,
+                0,
+                output.covenant,
+                output.encrypted_value,
+                output.minimum_value_promise,
             );
-            if let Ok(committed_value) = committed_value {
-                let blinding_factor =
-                    output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
-                if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
-                    let (input_data, script_key) = if let Some(index) = known_script_index {
-                        (
-                            known_scripts[index].input.clone(),
-                            known_scripts[index].private_key.clone(),
-                        )
-                    } else {
-                        let key = PrivateKey::random(&mut OsRng);
-                        (inputs!(PublicKey::from_secret_key(&key)), key)
-                    };
-                    let uo = UnblindedOutput::new(
-                        output.version,
-                        committed_value,
-                        blinding_factor,
-                        output.features,
-                        output.script,
-                        input_data,
-                        script_key,
-                        output.sender_offset_public_key,
-                        output.metadata_signature,
-                        0,
-                        output.covenant,
-                        output.encrypted_value,
-                        output.minimum_value_promise,
-                    );
-                    rewound_outputs.push((uo, output.proof));
-                }
-            }
+
+            rewound_outputs.push((uo, output.proof));
         }
 
         let rewind_time = start.elapsed();
@@ -191,6 +198,66 @@ where
         }
 
         Ok(rewound_outputs_with_tx_id)
+    }
+
+    fn attempt_standard_output_recovery(
+        &self,
+        output: &TransactionOutput,
+    ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
+        let committed_value = EncryptedValue::decrypt_value(
+            &self.rewind_data.encryption_key,
+            &output.commitment,
+            &output.encrypted_value,
+        );
+        let committed_value = match committed_value {
+            Ok(value) => value,
+            Err(_) => {
+                return Ok(None);
+            },
+        };
+
+        let blinding_factor =
+            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
+        if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
+            return Ok(None);
+        }
+
+        Ok(Some((blinding_factor, committed_value)))
+    }
+
+    fn attempt_burn_output_recovery(
+        &self,
+        output: &TransactionOutput,
+    ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
+        if output
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.confidential_output_data())
+            .is_none()
+        {
+            return self.attempt_standard_output_recovery(output);
+        };
+
+        let blinding_factor =
+            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
+
+        let shard_encryption_key = derive_burn_claim_encryption_key(&blinding_factor, &output.commitment);
+
+        let committed_value =
+            EncryptedValue::decrypt_value(&shard_encryption_key, &output.commitment, &output.encrypted_value);
+        let committed_value = match committed_value {
+            Ok(value) => value,
+            Err(_) => {
+                return Ok(None);
+            },
+        };
+
+        if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
+            return Ok(None);
+        }
+
+        Ok(Some((blinding_factor, committed_value)))
     }
 
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify

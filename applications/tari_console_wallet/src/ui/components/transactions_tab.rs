@@ -472,8 +472,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 [
                     Constraint::Length(3),
                     Constraint::Length(1),
-                    Constraint::Min(10),
-                    Constraint::Length(15),
+                    Constraint::Min(9),
+                    Constraint::Length(16),
                 ]
                 .as_ref(),
             )
