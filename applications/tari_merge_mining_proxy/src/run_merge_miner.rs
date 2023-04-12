@@ -26,7 +26,11 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
-use tari_common::{load_configuration, DefaultConfigLoader};
+use tari_common::{
+    configuration::bootstrap::{grpc_default_port, ApplicationType},
+    load_configuration,
+    DefaultConfigLoader,
+};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tari_wallet_grpc_client::WalletGrpcClient;
@@ -44,7 +48,8 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(&config_path, true, &cli)?;
-    let config = MergeMiningProxyConfig::load_from(&cfg)?;
+    let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
+    setup_grpc_config(&mut config);
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
@@ -54,11 +59,21 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let base_node = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
+    let base_node = multiaddr_to_socketaddr(
+        config
+            .base_node_grpc_address
+            .as_ref()
+            .expect("No base node address provided"),
+    )?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
     println!("Connecting to base node at {}", base_node);
     let base_node_client = BaseNodeGrpcClient::connect(format!("http://{}", base_node)).await?;
-    let wallet_addr = multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?;
+    let wallet_addr = multiaddr_to_socketaddr(
+        config
+            .console_wallet_grpc_address
+            .as_ref()
+            .expect("No waller address provided"),
+    )?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
     let wallet_addr = format!("http://{}", wallet_addr);
     let wallet_client =
@@ -92,5 +107,29 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!();
             Err(err.into())
         },
+    }
+}
+
+fn setup_grpc_config(config: &mut MergeMiningProxyConfig) {
+    if config.base_node_grpc_address.is_none() {
+        config.base_node_grpc_address = Some(
+            format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                grpc_default_port(ApplicationType::BaseNode, config.network)
+            )
+            .parse()
+            .unwrap(),
+        );
+    }
+
+    if config.console_wallet_grpc_address.is_none() {
+        config.console_wallet_grpc_address = Some(
+            format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                grpc_default_port(ApplicationType::ConsoleWallet, config.network)
+            )
+            .parse()
+            .unwrap(),
+        );
     }
 }
