@@ -27,7 +27,7 @@ use tower::Service;
 
 use super::MessagingProtocol;
 use crate::{
-    bounded_executor::{BoundedExecutor, OptionallyBoundedExecutor},
+    bounded_executor::BoundedExecutor,
     message::InboundMessage,
     pipeline,
     protocol::{
@@ -36,7 +36,6 @@ use crate::{
         ProtocolExtensionContext,
         ProtocolExtensionError,
     },
-    runtime::task,
 };
 
 /// Buffer size for inbound messages from _all_ peers. If the message consumer is slow to get through this queue,
@@ -88,22 +87,26 @@ where
         context.register_complete_signal(messaging.complete_signal());
 
         // Spawn messaging protocol
-        task::spawn(messaging.run());
+        tokio::spawn(messaging.run());
 
         // Spawn inbound pipeline
-        let bounded_executor = BoundedExecutor::from_current(self.pipeline.max_concurrent_inbound_tasks);
+        let bounded_executor = BoundedExecutor::new(self.pipeline.max_concurrent_inbound_tasks);
         let inbound = pipeline::Inbound::new(
             bounded_executor,
             inbound_message_rx,
             self.pipeline.inbound,
             context.shutdown_signal(),
         );
-        task::spawn(inbound.run());
+        tokio::spawn(inbound.run());
 
-        let executor = OptionallyBoundedExecutor::from_current(self.pipeline.max_concurrent_outbound_tasks);
+        let executor = BoundedExecutor::new(
+            self.pipeline
+                .max_concurrent_outbound_tasks
+                .unwrap_or_else(BoundedExecutor::max_theoretical_tasks),
+        );
         // Spawn outbound pipeline
         let outbound = pipeline::Outbound::new(executor, self.pipeline.outbound);
-        task::spawn(outbound.run());
+        tokio::spawn(outbound.run());
 
         Ok(())
     }

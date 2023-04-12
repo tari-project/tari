@@ -15,6 +15,17 @@
 # All DNS seed records must pass DNSSEC validation
 #dns_seeds_use_dnssec = false
 
+[nextnet.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+dns_seeds = ["seeds.nextnet.tari.com"]
+# Custom specified peer seed nodes
+peer_seeds = [
+    # 44444408d5fa29410d9752770f
+    "2c84ccdf0dcb7b4845f167ea8988166384a36451d068e0ae1bb84b5bf0d52425::/onion3/7gwfakr7ko5uo3fl3yz3fsjc7elccbzter5botggodrmmwi2exm3vbid:18141",
+    # bbbbbb87215db9ee00bb2763b5
+    "64639314dc3c9a4b0fa57f812d68b381a882e72eb9cc20e861ce6e04936ef438::/onion3/lvsj75guqc4gfqasgyhg3of2clijf3vkgipbpufh6dmhyapp2dmuelad:18141",
+]
+
 [stagenet.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
 dns_seeds = ["seeds.stagenet.tari.com"]

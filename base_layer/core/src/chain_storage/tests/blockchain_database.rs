@@ -574,24 +574,23 @@ mod clear_all_pending_headers {
 }
 
 mod validator_node_merkle_root {
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_common_types::types::PublicKey;
-    use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
-    use tari_utilities::ByteArray;
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
     use crate::{
+        chain_storage::calculate_validator_node_mr,
         transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
-        ValidatorNodeMmr,
+        ValidatorNodeBMT,
     };
 
     #[test]
     fn it_has_the_correct_genesis_merkle_root() {
-        let vn_mmr = ValidatorNodeMmr::new(Vec::new());
+        let vn_mmr = ValidatorNodeBMT::create(Vec::new());
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db);
-        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root().unwrap());
+        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root());
     }
 
     #[test]
@@ -618,18 +617,9 @@ mod validator_node_merkle_root {
             .unwrap()
             .unwrap();
 
-        let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
-        vn_mmr
-            .push(
-                Blake256::new()
-                    .chain(public_key.as_bytes())
-                    .chain(shard_key.as_slice())
-                    .finalize()
-                    .to_vec(),
-            )
-            .unwrap();
+        let merkle_root = calculate_validator_node_mr(&[(public_key, shard_key)]);
 
         let tip = db.fetch_tip_header().unwrap();
-        assert_eq!(tip.header().validator_node_mr, vn_mmr.get_merkle_root().unwrap());
+        assert_eq!(tip.header().validator_node_mr, merkle_root);
     }
 }

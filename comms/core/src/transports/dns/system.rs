@@ -31,7 +31,6 @@ use log::*;
 use super::{DnsResolver, DnsResolverError};
 use crate::{
     multiaddr::{Multiaddr, Protocol},
-    runtime::task::spawn_blocking,
     transports::dns::common,
 };
 
@@ -61,7 +60,7 @@ impl DnsResolver for SystemDnsResolver {
 /// Performs an non-blocking DNS lookup of the given address
 async fn dns_lookup<T>(addr: T) -> Result<SocketAddr, DnsResolverError>
 where T: ToSocketAddrs + Display + Send + Sync + 'static {
-    spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         debug!(target: LOG_TARGET, "Resolving address `{}` using system resolver", addr);
         addr.to_socket_addrs()
             .map_err(|err| DnsResolverError::NameResolutionFailed {

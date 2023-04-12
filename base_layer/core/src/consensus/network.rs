@@ -30,10 +30,11 @@ pub struct NetworkConsensus(Network);
 
 impl NetworkConsensus {
     pub fn create_consensus_constants(&self) -> Vec<ConsensusConstants> {
-        use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, StageNet, Stibbons, Weatherwax};
+        use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, NextNet, Ridcully, StageNet, Stibbons, Weatherwax};
         match self.as_network() {
             MainNet => ConsensusConstants::mainnet(),
             StageNet => ConsensusConstants::stagenet(),
+            NextNet => ConsensusConstants::nextnet(),
             LocalNet => ConsensusConstants::localnet(),
             Dibbler => ConsensusConstants::dibbler(),
             Igor => ConsensusConstants::igor(),

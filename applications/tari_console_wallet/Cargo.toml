@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.45.1-stagenet.0"
+version = "0.48.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"

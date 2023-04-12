@@ -52,8 +52,8 @@ use crate::{
     utils::{coinbase_request, extract_outputs_and_kernels},
 };
 
-pub const LOG_TARGET: &str = "tari_miner::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
+pub const LOG_TARGET: &str = "tari::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari::logging::miner::main";
 
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
@@ -167,7 +167,18 @@ async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, Walle
     let base_node_addr = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
     info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
-    let wallet_conn = connect_wallet(config).await?;
+
+    let wallet_conn = match connect_wallet(config).await {
+        Ok(client) => client,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not connect to wallet");
+            error!(
+                target: LOG_TARGET,
+                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
+            );
+            return Err(e);
+        },
+    };
 
     Ok((node_conn, wallet_conn))
 }

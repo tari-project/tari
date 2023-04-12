@@ -51,21 +51,21 @@ impl ContactsServiceSqliteDatabase {
 
 impl ContactsBackend for ContactsServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
 
         let result = match key {
-            DbKey::Contact(address) => match ContactSql::find_by_address(&address.to_bytes(), &conn) {
+            DbKey::Contact(address) => match ContactSql::find_by_address(&address.to_bytes(), &mut conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
-            DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &conn) {
+            DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &mut conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
             DbKey::Contacts => Some(DbValue::Contacts(
-                ContactSql::index(&conn)?
+                ContactSql::index(&mut conn)?
                     .iter()
                     .map(|c| Contact::try_from(c.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
@@ -76,30 +76,33 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self.database_connection.get_pooled_connection()?;
 
         match op {
             WriteOperation::Upsert(kvp) => match *kvp {
                 DbKeyValuePair::Contact(k, c) => {
-                    if ContactSql::find_by_address_and_update(&conn, &k.to_bytes(), UpdateContact {
+                    if ContactSql::find_by_address_and_update(&mut conn, &k.to_bytes(), UpdateContact {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
+                        favourite: Some(i32::from(c.favourite)),
                     })
                     .is_err()
                     {
-                        ContactSql::from(c).commit(&conn)?;
+                        ContactSql::from(c).commit(&mut conn)?;
                     }
                 },
                 DbKeyValuePair::LastSeen(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::UpdateLastSeen(kvp) => match *kvp {
                 DbKeyValuePair::LastSeen(node_id, date_time, latency) => {
-                    let contact = ContactSql::find_by_node_id_and_update(&conn, &node_id.to_vec(), UpdateContact {
-                        alias: None,
-                        last_seen: Some(Some(date_time)),
-                        latency: Some(latency),
-                    })?;
+                    let contact =
+                        ContactSql::find_by_node_id_and_update(&mut conn, &node_id.to_vec(), UpdateContact {
+                            alias: None,
+                            last_seen: Some(Some(date_time)),
+                            latency: Some(latency),
+                            favourite: None,
+                        })?;
                     return Ok(Some(DbValue::TariAddress(Box::new(
                         TariAddress::from_bytes(&contact.address)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?,
@@ -108,14 +111,14 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                 DbKeyValuePair::Contact(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find_by_address_and_delete(&conn, &k.to_bytes()) {
+                DbKey::Contact(k) => match ContactSql::find_by_address_and_delete(&mut conn, &k.to_bytes()) {
                     Ok(c) => {
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 },
-                DbKey::ContactId(id) => match ContactSql::find_by_node_id_and_delete(&conn, &id.to_vec()) {
+                DbKey::ContactId(id) => match ContactSql::find_by_node_id_and_delete(&mut conn, &id.to_vec()) {
                     Ok(c) => {
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
@@ -132,18 +135,19 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 
 /// A Sql version of the Contact struct
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
-#[table_name = "contacts"]
+#[diesel(table_name = contacts)]
 struct ContactSql {
     address: Vec<u8>,
     node_id: Vec<u8>,
     alias: String,
     last_seen: Option<NaiveDateTime>,
     latency: Option<i32>,
+    favourite: i32,
 }
 
 impl ContactSql {
     /// Write this struct to the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), ContactsServiceStorageError> {
+    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), ContactsServiceStorageError> {
         diesel::insert_into(contacts::table)
             .values(self.clone())
             .execute(conn)?;
@@ -151,19 +155,25 @@ impl ContactSql {
     }
 
     /// Return all contacts
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<ContactSql>, ContactsServiceStorageError> {
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<ContactSql>, ContactsServiceStorageError> {
         Ok(contacts::table.load::<ContactSql>(conn)?)
     }
 
     /// Find a particular Contact by their address, if it exists
-    pub fn find_by_address(address: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
+    pub fn find_by_address(
+        address: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
         Ok(contacts::table
             .filter(contacts::address.eq(address))
             .first::<ContactSql>(conn)?)
     }
 
     /// Find a particular Contact by their node ID, if it exists
-    pub fn find_by_node_id(node_id: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
+    pub fn find_by_node_id(
+        node_id: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
         Ok(contacts::table
             .filter(contacts::node_id.eq(node_id))
             .first::<ContactSql>(conn)?)
@@ -171,7 +181,7 @@ impl ContactSql {
 
     /// Find a particular Contact by their address, and update it if it exists, returning the affected record
     pub fn find_by_address_and_update(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
         address: &[u8],
         updated_contact: UpdateContact,
     ) -> Result<ContactSql, ContactsServiceStorageError> {
@@ -185,7 +195,7 @@ impl ContactSql {
 
     /// Find a particular Contact by their address, and delete it if it exists, returning the affected record
     pub fn find_by_address_and_delete(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
         address: &[u8],
     ) -> Result<ContactSql, ContactsServiceStorageError> {
         // Note: `get_result` not implemented for SQLite
@@ -198,7 +208,7 @@ impl ContactSql {
 
     /// Find a particular Contact by their node ID, and update it if it exists, returning the affected record
     pub fn find_by_node_id_and_update(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
         node_id: &[u8],
         updated_contact: UpdateContact,
     ) -> Result<ContactSql, ContactsServiceStorageError> {
@@ -212,7 +222,7 @@ impl ContactSql {
 
     /// Find a particular Contact by their node ID, and delete it if it exists, returning the affected record
     pub fn find_by_node_id_and_delete(
-        conn: &SqliteConnection,
+        conn: &mut SqliteConnection,
         node_id: &[u8],
     ) -> Result<ContactSql, ContactsServiceStorageError> {
         // Note: `get_result` not implemented for SQLite
@@ -238,6 +248,11 @@ impl TryFrom<ContactSql> for Contact {
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as u32),
+            favourite: match o.favourite {
+                0 => false,
+                1 => true,
+                _ => return Err(ContactsServiceStorageError::ConversionError),
+            },
         })
     }
 }
@@ -253,23 +268,26 @@ impl From<Contact> for ContactSql {
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as i32),
+            favourite: i32::from(o.favourite),
         }
     }
 }
 
 #[derive(AsChangeset)]
-#[table_name = "contacts"]
+#[diesel(table_name = contacts)]
 pub struct UpdateContact {
     alias: Option<String>,
     last_seen: Option<Option<NaiveDateTime>>,
     latency: Option<Option<i32>>,
+    favourite: Option<i32>,
 }
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, io::Write};
 
-    use diesel::{Connection, SqliteConnection};
+    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_types::{
@@ -290,13 +308,25 @@ mod test {
             let db_name = format!("{}.sqlite3", string(8).as_str());
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
 
-            embed_migrations!("./migrations");
-            let conn =
+            const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+            let mut conn =
                 SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-            embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+            conn.run_pending_migrations(MIGRATIONS)
+                .map(|v| {
+                    v.into_iter()
+                        .map(|b| {
+                            let m = format!("Running migration {}", b);
+                            std::io::stdout()
+                                .write_all(m.as_ref())
+                                .expect("Couldn't write migration number to stdout");
+                            m
+                        })
+                        .collect::<Vec<String>>()
+                })
+                .expect("Migrations failed");
 
-            conn.execute("PRAGMA foreign_keys = ON").unwrap();
+            sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
             let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
 
@@ -304,11 +334,11 @@ mod test {
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
                 let address = TariAddress::new(pub_key, Network::default());
-                contacts.push(Contact::new(names[i].clone(), address, None, None));
-                ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
+                contacts.push(Contact::new(names[i].clone(), address, None, None, false));
+                ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();
             }
 
-            let retrieved_contacts = ContactSql::index(&conn).unwrap();
+            let retrieved_contacts = ContactSql::index(&mut conn).unwrap();
 
             for i in &contacts {
                 assert!(retrieved_contacts.iter().any(|v| v == &ContactSql::from(i.clone())));
@@ -316,28 +346,31 @@ mod test {
 
             assert_eq!(
                 contacts[1],
-                Contact::try_from(ContactSql::find_by_address(&contacts[1].address.to_bytes(), &conn).unwrap())
+                Contact::try_from(ContactSql::find_by_address(&contacts[1].address.to_bytes(), &mut conn).unwrap())
                     .unwrap()
             );
 
-            ContactSql::find_by_address_and_delete(&conn, &contacts[0].address.clone().to_bytes()).unwrap();
+            ContactSql::find_by_address_and_delete(&mut conn, &contacts[0].address.clone().to_bytes()).unwrap();
 
-            let retrieved_contacts = ContactSql::index(&conn).unwrap();
+            let retrieved_contacts = ContactSql::index(&mut conn).unwrap();
             assert_eq!(retrieved_contacts.len(), 2);
 
             assert!(!retrieved_contacts
                 .iter()
                 .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
-            let _c = ContactSql::find_by_address_and_update(&conn, &contacts[1].address.to_bytes(), UpdateContact {
-                alias: Some("Fred".to_string()),
-                last_seen: None,
-                latency: None,
-            })
-            .unwrap();
+            let _c =
+                ContactSql::find_by_address_and_update(&mut conn, &contacts[1].address.to_bytes(), UpdateContact {
+                    alias: Some("Fred".to_string()),
+                    last_seen: None,
+                    latency: None,
+                    favourite: Some(i32::from(true)),
+                })
+                .unwrap();
 
-            let c_updated = ContactSql::find_by_address(&contacts[1].address.to_bytes(), &conn).unwrap();
+            let c_updated = ContactSql::find_by_address(&contacts[1].address.to_bytes(), &mut conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());
+            assert_eq!(c_updated.favourite, i32::from(true));
         });
     }
 }

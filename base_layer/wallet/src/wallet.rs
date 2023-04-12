@@ -31,6 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
@@ -267,7 +268,7 @@ where
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(comms.node_identity().public_address())?;
+        wallet_database.set_node_address(comms.node_identity().first_public_address())?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
@@ -323,19 +324,19 @@ where
                 .await?;
         }
 
-        let addresses = vec![address].into();
         let peer_manager = self.comms.peer_manager();
         let mut connectivity = self.comms.connectivity();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
-            if current_peer.addresses != addresses {
+            if current_peer.addresses.contains(&address) {
                 info!(
                     target: LOG_TARGET,
                     "Address for base node differs from storage. Was {}, setting to {}",
                     current_peer.addresses,
-                    addresses
+                    address
                 );
-                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+
+                current_peer.addresses.add_address(&address, &PeerAddressSource::Config);
                 peer_manager.add_peer(current_peer.clone()).await?;
             }
             connectivity
@@ -347,7 +348,7 @@ where
             let peer = Peer::new(
                 public_key,
                 node_id,
-                addresses,
+                MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
                 Default::default(),

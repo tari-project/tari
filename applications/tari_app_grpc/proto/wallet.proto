@@ -105,6 +105,7 @@ message CreateBurnTransactionRequest{
     uint64 amount = 1;
     uint64 fee_per_gram = 2;
     string message = 3;
+    bytes claim_public_key = 4;
 }
 
 
@@ -137,6 +138,9 @@ message CreateBurnTransactionResponse{
     uint64 transaction_id = 1;
     bool is_success = 2;
     string failure_message = 3;
+    bytes commitment = 4;
+    CommitmentSignature ownership_proof = 5;
+    bytes rangeproof = 6;
 }
 
 message TransferResult {

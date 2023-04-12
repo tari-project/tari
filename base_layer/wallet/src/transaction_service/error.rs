@@ -34,6 +34,7 @@ use tari_core::transactions::{
     transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
+use tari_crypto::signatures::CommitmentSignatureError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
@@ -178,6 +179,8 @@ pub enum TransactionServiceError {
     EncryptionError(#[from] EncryptionError),
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Commitment signature error: {0}")]
+    CommitmentSignatureError(#[from] CommitmentSignatureError),
 }
 
 #[derive(Debug, Error)]

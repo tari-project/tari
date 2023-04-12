@@ -60,9 +60,8 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
-    peer_manager::{NodeIdentity, PeerFeatures},
+    peer_manager::NodeIdentity,
     protocol::ProtocolId,
-    runtime,
     transports::Transport,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
@@ -110,7 +109,7 @@ where
             node_identity,
             shutdown_signal,
             our_supported_protocols: Vec::new(),
-            bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
+            bounded_executor: BoundedExecutor::new(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
             on_listening: oneshot_trigger::channel(),
@@ -134,7 +133,7 @@ where
 
     pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
         let on_listening = self.on_listening();
-        runtime::current().spawn(self.run());
+        tokio::spawn(self.run());
         on_listening.await
     }
 
@@ -223,7 +222,7 @@ where
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
-        runtime::current().spawn(async move {
+        tokio::spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
             permit.fetch_add(1, Ordering::SeqCst);
         });
@@ -262,7 +261,7 @@ where
                             log_if_error!(
                                 target: LOG_TARGET,
                                 conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn))
+                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn.into()))
                                     .await,
                                 "Failed to publish event because '{error}'",
                             );
@@ -386,44 +385,28 @@ where
         )
         .await?;
 
-        let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        debug!(
-            target: LOG_TARGET,
-            "Peer identity exchange succeeded on Inbound connection for peer '{}' (Features = {:?})",
-            authenticated_public_key,
-            features
-        );
-        trace!(target: LOG_TARGET, "{:?}", peer_identity);
-
-        let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
-            peer_identity,
-            None,
+            &peer_identity,
             config.allow_test_addresses,
         )
         .await?;
 
-        debug!(
-            target: LOG_TARGET,
-            "[ThisNode={}] Peer '{}' added to peer list.",
-            node_identity.node_id().short_str(),
-            peer_node_id.short_str()
-        );
-
         let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        peer_connection::create(
+        peer_connection::try_create(
             muxer,
             peer_addr,
             peer_node_id,
-            features,
+            peer_identity.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
-            their_supported_protocols,
+            peer_identity.supported_protocols(),
+            peer_identity,
         )
     }
 

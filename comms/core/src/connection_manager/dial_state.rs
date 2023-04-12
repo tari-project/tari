@@ -87,4 +87,8 @@ impl DialState {
     pub fn peer(&self) -> &Peer {
         &self.peer
     }
+
+    pub fn peer_mut(&mut self) -> &mut Peer {
+        &mut self.peer
+    }
 }

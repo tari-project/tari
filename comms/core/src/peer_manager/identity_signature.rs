@@ -33,7 +33,7 @@ use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain,
 use crate::{
     message::MessageExt,
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures, PeerManagerError},
+    peer_manager::{PeerFeatures, PeerManagerError},
     proto,
     types::{CommsChallenge, CommsPublicKey, CommsSecretKey, Signature},
 };
@@ -94,14 +94,6 @@ impl IdentitySignature {
 
     pub fn version(&self) -> u8 {
         self.version
-    }
-
-    pub fn is_valid_for_peer(&self, peer: &Peer) -> bool {
-        self.is_valid(
-            &peer.public_key,
-            peer.features,
-            peer.addresses.to_lexicographically_sorted().iter(),
-        )
     }
 
     pub fn is_valid<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -202,7 +194,6 @@ mod test {
     use tari_crypto::keys::{PublicKey, SecretKey};
 
     use super::*;
-    use crate::peer_manager::{NodeId, PeerFlags};
 
     mod is_valid_for_peer {
         use super::*;
@@ -215,18 +206,10 @@ mod test {
             let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            let node_id = NodeId::from_public_key(&public_key);
-
-            let peer = Peer::new(
-                public_key,
-                node_id,
-                vec![address].into(),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                vec![],
-                String::new(),
+            assert!(
+                identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                "Signature is not valid"
             );
-            assert!(identity.is_valid_for_peer(&peer));
         }
 
         #[test]
@@ -237,20 +220,12 @@ mod test {
             let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            let node_id = NodeId::from_public_key(&public_key);
 
             let tampered = Multiaddr::from_str("/ip4/127.0.0.1/tcp/4321").unwrap();
-
-            let peer = Peer::new(
-                public_key,
-                node_id,
-                vec![tampered].into(),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                vec![],
-                String::new(),
+            assert!(
+                !identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered]),
+                "Signature is not valid"
             );
-            assert!(!identity.is_valid_for_peer(&peer));
         }
 
         #[test]
@@ -261,20 +236,13 @@ mod test {
             let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            let node_id = NodeId::from_public_key(&public_key);
 
             let tampered = PeerFeatures::COMMUNICATION_CLIENT;
 
-            let peer = Peer::new(
-                public_key,
-                node_id,
-                vec![address].into(),
-                PeerFlags::empty(),
-                tampered,
-                vec![],
-                String::new(),
+            assert!(
+                !identity.is_valid(&public_key, tampered, [&address]),
+                "Signature is not valid"
             );
-            assert!(!identity.is_valid_for_peer(&peer));
         }
     }
 }

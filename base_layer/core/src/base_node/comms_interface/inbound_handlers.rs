@@ -608,7 +608,7 @@ where B: BlockchainBackend + 'static
         source_peer: NodeId,
         block_hash: BlockHash,
     ) -> Result<Block, CommsInterfaceError> {
-        return match self
+        match self
             .outbound_nci
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
             .await?
@@ -636,7 +636,7 @@ where B: BlockchainBackend + 'static
                     source_peer
                 )))
             },
-        };
+        }
     }
 
     /// Handle inbound blocks from remote nodes and local services.

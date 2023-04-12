@@ -69,8 +69,6 @@ pub enum ConnectionManagerError {
     NoiseError(String),
     #[error("Peer is banned, denying connection")]
     PeerBanned,
-    #[error("Unable to parse any of the network addresses offered by the connecting peer")]
-    PeerIdentityNoValidAddresses,
     #[error("Identity protocol failed: {0}")]
     IdentityProtocolError(#[from] IdentityProtocolError),
     #[error("The dial was cancelled")]

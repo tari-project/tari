@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, net::Ipv6Addr};
+use std::{convert::TryInto, net::Ipv6Addr};
 
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -28,9 +28,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
-    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    proto,
-    proto::identity::PeerIdentityMsg,
+    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerIdentityClaim},
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
     types::CommsPublicKey,
@@ -38,9 +37,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
-
-/// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
-const MAX_USER_AGENT_LEN: usize = 100;
 
 /// Performs the identity exchange protocol on the given socket.
 pub(super) async fn perform_identity_exchange<
@@ -52,11 +48,41 @@ pub(super) async fn perform_identity_exchange<
     node_identity: &NodeIdentity,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
-) -> Result<PeerIdentityMsg, ConnectionManagerError> {
+) -> Result<PeerIdentityClaim, ConnectionManagerError> {
     let peer_identity =
         protocol::identity_exchange(node_identity, our_supported_protocols, network_info, socket).await?;
 
-    Ok(peer_identity)
+    Ok(peer_identity.try_into()?)
+}
+
+/// Validate the peer identity info.
+///
+/// The following process is used to validate the peer:
+/// 1. Check the offered node identity is a valid base node identity (TODO: This won't work for DAN nodes)
+/// 1. Check if we know the peer, if so, is the peer banned, if so, return an error
+/// 1. Check that the offered addresses are valid
+///
+/// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
+/// for p2p comms will be accepted.
+pub(super) async fn validate_peer_identity(
+    authenticated_public_key: &CommsPublicKey,
+    peer_identity: &PeerIdentityClaim,
+    allow_test_addrs: bool,
+) -> Result<(), ConnectionManagerError> {
+    validate_addresses(&peer_identity.addresses, allow_test_addrs)?;
+    if peer_identity.addresses.is_empty() {
+        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
+    }
+
+    if !peer_identity.signature.is_valid(
+        authenticated_public_key,
+        peer_identity.features,
+        &peer_identity.addresses,
+    ) {
+        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+    }
+
+    Ok(())
 }
 
 /// Validate the peer identity info.
@@ -73,33 +99,20 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
     peer_manager: &PeerManager,
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
-    mut peer_identity: PeerIdentityMsg,
-    dialed_addr: Option<&Multiaddr>,
+    peer_identity: &PeerIdentityClaim,
     allow_test_addrs: bool,
-) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError> {
+) -> Result<NodeId, ConnectionManagerError> {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
-    let addresses = peer_identity
-        .addresses
-        .into_iter()
-        .filter_map(|addr_bytes| Multiaddr::try_from(addr_bytes).ok())
-        .collect::<Vec<_>>();
 
-    // TODO: #banheuristic
-    validate_peer_addresses(&addresses, allow_test_addrs)?;
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        peer_identity.addresses.clone(),
+        &PeerAddressSource::FromPeerConnection {
+            peer_identity_claim: peer_identity.clone(),
+        },
+    );
+    validate_addresses_and_source(&addresses, &authenticated_public_key, allow_test_addrs)?;
 
-    if addresses.is_empty() {
-        return Err(ConnectionManagerError::PeerIdentityNoValidAddresses);
-    }
-
-    let supported_protocols = peer_identity
-        .supported_protocols
-        .into_iter()
-        .map(bytes::Bytes::from)
-        .collect::<Vec<_>>();
-
-    peer_identity.user_agent.truncate(MAX_USER_AGENT_LEN);
-
-    // Add or update the peer
+    // Note: the peer will be merged in the db if it already exists
     let peer = match known_peer {
         Some(mut peer) => {
             debug!(
@@ -107,19 +120,15 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 "Peer '{}' already exists in peer list. Updating.",
                 peer.node_id.short_str()
             );
-            peer.connection_stats.set_connection_success();
-            peer.addresses = addresses.into();
-            peer.set_offline(false);
-            if let Some(addr) = dialed_addr {
-                peer.addresses.mark_last_seen_now(addr);
-            }
-            peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
-            peer.supported_protocols = supported_protocols.clone();
-            peer.user_agent = peer_identity.user_agent;
-            let identity_sig = peer_identity
-                .identity_signature
-                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
-            add_valid_identity_signature_to_peer(&mut peer, identity_sig)?;
+            peer.addresses
+                .update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.clone(),
+                });
+
+            peer.features = peer_identity.features;
+            peer.supported_protocols = peer_identity.supported_protocols();
+            peer.user_agent = peer_identity.user_agent().unwrap_or_default();
+
             peer
         },
         None => {
@@ -128,49 +137,26 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 "Peer '{}' does not exist in peer list. Adding.",
                 peer_node_id.short_str()
             );
-            let mut new_peer = Peer::new(
+            Peer::new(
                 authenticated_public_key.clone(),
                 peer_node_id.clone(),
-                addresses.into(),
+                MultiaddressesWithStats::from_addresses_with_source(
+                    peer_identity.addresses.clone(),
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: peer_identity.clone(),
+                    },
+                ),
                 PeerFlags::empty(),
-                PeerFeatures::from_bits_truncate(peer_identity.features),
-                supported_protocols.clone(),
-                peer_identity.user_agent,
-            );
-            new_peer.connection_stats.set_connection_success();
-            let identity_sig = peer_identity
-                .identity_signature
-                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
-            add_valid_identity_signature_to_peer(&mut new_peer, identity_sig)?;
-            if let Some(addr) = dialed_addr {
-                new_peer.addresses.mark_last_seen_now(addr);
-            }
-            new_peer
+                peer_identity.features,
+                peer_identity.supported_protocols(),
+                peer_identity.user_agent().unwrap_or_default(),
+            )
         },
     };
 
     peer_manager.add_peer(peer).await?;
 
-    Ok((peer_node_id, supported_protocols))
-}
-
-fn add_valid_identity_signature_to_peer(
-    peer: &mut Peer,
-    identity_sig: proto::identity::IdentitySignature,
-) -> Result<(), ConnectionManagerError> {
-    let identity_sig =
-        IdentitySignature::try_from(identity_sig).map_err(|_| ConnectionManagerError::PeerIdentityInvalidSignature)?;
-
-    if !identity_sig.is_valid_for_peer(peer) {
-        warn!(
-            target: LOG_TARGET,
-            "Peer {} sent invalid identity signature", peer.node_id
-        );
-        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
-    }
-
-    peer.identity_signature = Some(identity_sig);
-    Ok(())
+    Ok(peer_node_id)
 }
 
 pub(super) async fn find_unbanned_peer(
@@ -185,19 +171,50 @@ pub(super) async fn find_unbanned_peer(
 }
 
 /// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
-/// memory addresses will be rejected.
-pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
-    addresses: A,
+/// memory addresses will be rejected. Also checks that the source (signature of the address) is correct
+pub fn validate_addresses_and_source(
+    addresses: &MultiaddressesWithStats,
+    public_key: &CommsPublicKey,
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError> {
-    let mut has_address = false;
+    for addr in addresses.addresses() {
+        validate_address_and_source(public_key, addr, allow_test_addrs)?;
+    }
+
+    Ok(())
+}
+
+/// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
+/// memory addresses will be rejected.
+pub fn validate_addresses(addresses: &[Multiaddr], allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
     for addr in addresses {
-        has_address = true;
         validate_address(addr, allow_test_addrs)?;
     }
-    if !has_address {
-        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
+
+    Ok(())
+}
+
+pub fn validate_address_and_source(
+    public_key: &CommsPublicKey,
+    addr: &MultiaddrWithStats,
+    allow_test_addrs: bool,
+) -> Result<(), ConnectionManagerError> {
+    match addr.source {
+        PeerAddressSource::Config => (),
+        _ => {
+            let claim = addr
+                .source
+                .peer_identity_claim()
+                .ok_or(ConnectionManagerError::PeerIdentityInvalidSignature)?;
+            if !claim.signature.is_valid(public_key, claim.features, &claim.addresses) {
+                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+            }
+            if !claim.addresses.contains(addr.address()) {
+                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+            }
+        },
     }
+    validate_address(addr.address(), allow_test_addrs)?;
     Ok(())
 }
 
@@ -318,7 +335,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(&valid, false).unwrap();
+        validate_addresses(&valid, false).unwrap();
         for addr in invalid {
             validate_address(addr, false).unwrap_err();
         }
@@ -346,7 +363,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(&valid, true).unwrap();
+        validate_addresses(&valid, true).unwrap();
         for addr in invalid {
             validate_address(addr, true).unwrap_err();
         }

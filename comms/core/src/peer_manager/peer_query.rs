@@ -220,7 +220,7 @@ mod test {
 
     use super::*;
     use crate::{
-        net_address::MultiaddressesWithStats,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
@@ -231,7 +231,10 @@ mod test {
     fn create_test_peer(ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
-        let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
+        let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap()],
+            &PeerAddressSource::Config,
+        );
         let mut peer = Peer::new(
             pk,
             node_id,

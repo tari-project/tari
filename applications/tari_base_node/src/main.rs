@@ -69,7 +69,7 @@
 /// `whoami` - Displays identity information about this Base Node and it's wallet
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
-use std::{process, sync::Arc};
+use std::{panic, process, sync::Arc};
 
 use clap::Parser;
 use log::*;
@@ -85,6 +85,14 @@ const LOG_TARGET: &str = "tari::base_node::app";
 
 /// Application entry point
 fn main() {
+    // Setup a panic hook which prints the default rust panic message but also exits the process. This makes a panic in
+    // any thread "crash" the system instead of silently continuing.
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        process::exit(1);
+    }));
+
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;
@@ -107,8 +115,13 @@ fn main_inner() -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli)?;
 
+    if cli.profile_with_tokio_console {
+        console_subscriber::init();
+    }
+
     initialize_logging(
         &cli.common.log_config_path("base_node"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
     info!(
@@ -126,7 +139,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
-        config.base_node.p2p.public_address.as_ref(),
+        config.base_node.p2p.public_addresses.clone(),
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
     )?;

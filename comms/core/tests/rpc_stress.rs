@@ -54,7 +54,7 @@ async fn spawn_node(signal: ShutdownSignal) -> CommsNode {
 
     comms
         .node_identity()
-        .set_public_address(comms.listening_address().clone());
+        .replace_public_address(comms.listening_address().clone());
     comms
 }
 

@@ -36,7 +36,15 @@ use tari_crypto::{
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    peer_manager::{identity_signature::IdentitySignature, node_id::NodeId, Peer, PeerFeatures, PeerFlags},
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        identity_signature::IdentitySignature,
+        node_id::NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerIdentityClaim,
+    },
     types::{CommsPublicKey, CommsSecretKey},
 };
 
@@ -49,7 +57,7 @@ pub struct NodeIdentity {
     public_key: CommsPublicKey,
     features: PeerFeatures,
     secret_key: CommsSecretKey,
-    public_address: RwLock<Multiaddr>,
+    public_addresses: RwLock<Vec<Multiaddr>>,
     #[serde(default = "rwlock_none")]
     identity_signature: RwLock<Option<IdentitySignature>>,
 }
@@ -60,7 +68,7 @@ fn rwlock_none() -> RwLock<Option<IdentitySignature>> {
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
-    pub fn new(secret_key: CommsSecretKey, public_address: Multiaddr, features: PeerFeatures) -> Self {
+    pub fn new(secret_key: CommsSecretKey, public_addresses: Vec<Multiaddr>, features: PeerFeatures) -> Self {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key);
 
@@ -69,7 +77,7 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
-            public_address: RwLock::new(public_address),
+            public_addresses: RwLock::new(public_addresses),
             identity_signature: RwLock::new(None),
         };
         node_identity.sign();
@@ -83,7 +91,7 @@ impl NodeIdentity {
     /// Prefer using NodeIdentity::new over this function.
     pub fn with_signature_unchecked(
         secret_key: CommsSecretKey,
-        public_address: Multiaddr,
+        public_addresses: Vec<Multiaddr>,
         features: PeerFeatures,
         identity_signature: Option<IdentitySignature>,
     ) -> Self {
@@ -95,7 +103,7 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
-            public_address: RwLock::new(public_address),
+            public_addresses: RwLock::new(public_addresses),
             identity_signature: RwLock::new(identity_signature),
         }
     }
@@ -104,21 +112,46 @@ impl NodeIdentity {
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
-        Self::new(secret_key, public_address, features)
+        Self::new(secret_key, vec![public_address], features)
+    }
+
+    pub fn random_multiple_addresses<R>(rng: &mut R, public_addresses: Vec<Multiaddr>, features: PeerFeatures) -> Self
+    where R: CryptoRng + Rng {
+        let secret_key = CommsSecretKey::random(rng);
+        Self::new(secret_key, public_addresses, features)
     }
 
     /// Retrieve the publicly accessible address that peers must connect to establish a connection
-    pub fn public_address(&self) -> Multiaddr {
-        acquire_read_lock!(self.public_address).clone()
+    pub fn public_addresses(&self) -> Vec<Multiaddr> {
+        acquire_read_lock!(self.public_addresses).clone()
+    }
+
+    pub fn first_public_address(&self) -> Multiaddr {
+        acquire_read_lock!(self.public_addresses)[0].clone()
     }
 
     /// Modify the public address.
-    pub fn set_public_address(&self, address: Multiaddr) {
+    pub fn add_public_address(&self, address: Multiaddr) {
         let mut must_sign = false;
         {
-            let mut lock = acquire_write_lock!(self.public_address);
-            if *lock != address {
-                *lock = address;
+            let mut lock = acquire_write_lock!(self.public_addresses);
+            if !lock.contains(&address) {
+                lock.push(address);
+                must_sign = true;
+            }
+        }
+        if must_sign {
+            self.sign()
+        }
+    }
+
+    pub fn replace_public_address(&self, address: Multiaddr) {
+        let mut must_sign = false;
+        {
+            let mut lock = acquire_write_lock!(self.public_addresses);
+            if !lock.contains(&address) {
+                lock.clear();
+                lock.push(address);
                 must_sign = true;
             }
         }
@@ -182,7 +215,7 @@ impl NodeIdentity {
         let identity_sig = IdentitySignature::sign_new(
             self.secret_key(),
             self.features,
-            Some(&*acquire_read_lock!(self.public_address)),
+            &*acquire_read_lock!(self.public_addresses),
             Utc::now(),
         );
 
@@ -192,16 +225,29 @@ impl NodeIdentity {
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {
-        let mut peer = Peer::new(
+        let peer_identity_claim = PeerIdentityClaim {
+            addresses: self.public_addresses(),
+            features: self.features,
+            signature: IdentitySignature::sign_new(
+                &self.secret_key,
+                self.features,
+                &self.public_addresses(),
+                Utc::now(),
+            ),
+            unverified_data: None,
+        };
+        let peer = Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
-            self.public_address().into(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                self.public_addresses(),
+                &PeerAddressSource::FromNodeIdentity { peer_identity_claim },
+            ),
             PeerFlags::empty(),
             self.features(),
             Default::default(),
             Default::default(),
         );
-        peer.identity_signature = acquire_read_lock!(self.identity_signature).clone();
 
         peer
     }
@@ -214,7 +260,7 @@ impl Clone for NodeIdentity {
             public_key: self.public_key.clone(),
             features: self.features,
             secret_key: self.secret_key.clone(),
-            public_address: RwLock::new(self.public_address()),
+            public_addresses: RwLock::new(self.public_addresses()),
             identity_signature: RwLock::new(self.identity_signature_read().as_ref().cloned()),
         }
     }
@@ -224,7 +270,15 @@ impl fmt::Display for NodeIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Public Key: {}", self.public_key)?;
         writeln!(f, "Node ID: {}", self.node_id)?;
-        writeln!(f, "Public Address: {}", acquire_read_lock!(self.public_address))?;
+        writeln!(
+            f,
+            "Public Address: {}",
+            acquire_read_lock!(self.public_addresses)
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
         writeln!(f, "Features: {:?}", self.features)?;
 
         Ok(())
@@ -236,7 +290,7 @@ impl fmt::Debug for NodeIdentity {
         f.debug_struct("NodeIdentity")
             .field("public_key", &self.public_key)
             .field("node_id", &self.node_id)
-            .field("public_address", &self.public_address)
+            .field("public_address", &self.public_addresses)
             .field("features", &self.features)
             .field("secret_key", &"<secret>")
             .field("identity_signature", &*acquire_read_lock!(self.identity_signature))

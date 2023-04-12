@@ -32,8 +32,8 @@ use tokio::runtime::Runtime;
 
 use crate::cli::Cli;
 
-pub const LOG_TARGET: &str = "tari_miner::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
+pub const LOG_TARGET: &str = "tari::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari::logging::miner::main";
 
 mod cli;
 mod config;
@@ -67,6 +67,7 @@ async fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
     initialize_logging(
         &cli.common.log_config_path("miner"),
+        &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
     start_miner(cli).await

@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.45.1-stagenet.0"
+version = "0.48.0"
 edition = "2018"
 
 [dependencies]
@@ -35,12 +35,12 @@ borsh = "0.9.3"
 sha2 = "0.9.5"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
-diesel = { version = "1.4.8", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = "1.4.0"
+diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = "2.0.0"
 digest = "0.9.0"
 fs2 = "0.4.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
-libsqlite3-sys = { version = "0.22.2", features = ["bundled"], optional = true }
+libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = "0.4.6"
 rand = "0.7.3"
 serde = { version = "1.0.89", features = ["derive"] }

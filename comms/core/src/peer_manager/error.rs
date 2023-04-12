@@ -40,6 +40,12 @@ pub enum PeerManagerError {
     MigrationError(String),
     #[error("Identity signature is invalid")]
     InvalidIdentitySignature,
+    #[error("Identity signature missing")]
+    MissingIdentitySignature,
+    #[error("Invalid peer address: {0}")]
+    MultiaddrError(String),
+    #[error("Unable to parse any of the network addresses offered by the connecting peer")]
+    PeerIdentityNoValidAddresses,
 }
 
 impl PeerManagerError {

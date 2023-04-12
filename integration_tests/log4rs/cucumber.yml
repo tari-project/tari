@@ -4,7 +4,7 @@ appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
     kind: rolling_file
-    path: "log/stdout.log"
+    path: "{{log_dir}}/log/stdout.log"
     policy:
       kind: compound
       trigger:
@@ -14,13 +14,13 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/stdout.{}.log"
+        pattern: "{{log_dir}}/log/stdout.{}.log"
     encoder:
       pattern: "{m}"
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
-    path: "log/network.log"
+    path: "{{log_dir}}/log/network.log"
     policy:
       kind: compound
       trigger:
@@ -30,12 +30,12 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/network.{}.log"
+        pattern: "{{log_dir}}/log/network.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
   base_layer_base_node:
     kind: rolling_file
-    path: "log/base_node.log"
+    path: "{{log_dir}}/log/base_node.log"
     policy:
       kind: compound
       trigger:
@@ -45,12 +45,12 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/base_node.{}.log"
+        pattern: "{{log_dir}}/log/base_node.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
   base_layer_wallet:
     kind: rolling_file
-    path: "log/wallet.log"
+    path: "{{log_dir}}/log/wallet.log"
     policy:
       kind: compound
       trigger:
@@ -60,13 +60,13 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/wallet.{}.log"
+        pattern: "{{log_dir}}/log/wallet.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
-    path: "log/other.log"
+    path: "{{log_dir}}/log/other.log"
     policy:
       kind: compound
       trigger:
@@ -76,9 +76,9 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/other.{}.log"
+        pattern: "{{log_dir}}/log/other.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
 # We don't want prints during cucumber test, everything useful will in logs.
 # root:
 #   level: warn

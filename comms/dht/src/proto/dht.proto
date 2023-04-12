@@ -14,8 +14,8 @@ import "common.proto";
 // if everything checks out, the peer is added to the peer list and the join request
 // is propagated to the network.
 message JoinMessage {
-    bytes node_id = 1;
-    repeated string addresses = 2;
+    bytes public_key =1;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
@@ -27,16 +27,16 @@ message JoinMessage {
 // provided and, if everything checks out, a DiscoveryResponse is sent to the origin of this
 // Discovery request so that the source node knows about this node.
 message DiscoveryMessage {
-    bytes node_id = 1;
-    repeated string addresses = 2;
+    bytes public_key =1;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
 }
 
 message DiscoveryResponseMessage {
-    bytes node_id = 1;
-    repeated string addresses = 2;
+    bytes public_key = 1;
+    repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;

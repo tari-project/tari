@@ -24,6 +24,7 @@ use std::{io::stdin, str::FromStr};
 
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
@@ -135,7 +136,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
 }
 
 pub fn to_short_str(peer: &Peer) -> String {
-    format!("{}::{}", peer.public_key, peer.addresses.first().unwrap())
+    format!("{}::{}", peer.public_key, peer.addresses.best().unwrap())
 }
 
 #[allow(clippy::ptr_arg)]
@@ -147,7 +148,7 @@ pub fn parse_from_short_str(s: &String) -> Option<Peer> {
     Some(Peer::new(
         pk,
         node_id,
-        vec![address].into(),
+        MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
         Default::default(),
         Default::default(),
         Default::default(),

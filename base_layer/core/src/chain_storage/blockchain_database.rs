@@ -38,8 +38,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_crypto::hash::blake2::Blake256;
-use tari_mmr::{error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;
@@ -79,9 +78,17 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
+    consensus::{
+        chain_strength_comparer::ChainStrengthComparer,
+        ConsensusConstants,
+        ConsensusManager,
+        DomainSeparatedConsensusHasher,
+    },
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::{
+        transaction_components::{TransactionInput, TransactionKernel},
+        TransactionHashDomain,
+    },
     validation::{
         helpers::calc_median_timestamp,
         CandidateBlockValidator,
@@ -93,7 +100,7 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     PrunedWitnessMmr,
-    ValidatorNodeMmr,
+    ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -1360,7 +1367,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let validator_node_mr = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
-        FixedHash::try_from(calculate_validator_node_mr(&validator_nodes)?)?
+        FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?
     } else {
         // MR is unchanged except for epoch boundary
         let tip_header = fetch_header(db, block_height - 1)?;
@@ -1379,24 +1386,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     Ok(mmr_roots)
 }
 
-pub fn calculate_validator_node_mr(
-    validator_nodes: &[(PublicKey, [u8; 32])],
-) -> Result<tari_mmr::Hash, MerkleMountainRangeError> {
+pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
     fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
-        use digest::Digest;
-        Blake256::new()
-            .chain(pk.as_bytes())
-            .chain(s.as_slice())
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node")
+            .chain(pk)
+            .chain(s)
             .finalize()
             .to_vec()
     }
 
-    let mut vn_mmr = ValidatorNodeMmr::new(Vec::new());
-    for vn in validator_nodes {
-        vn_mmr.push(hash_node(vn))?;
-    }
-    let merkle_root = vn_mmr.get_merkle_root()?;
-    Ok(merkle_root)
+    let vn_bmt = ValidatorNodeBMT::create(validator_nodes.iter().map(hash_node).collect::<Vec<_>>());
+    vn_bmt.get_merkle_root()
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {

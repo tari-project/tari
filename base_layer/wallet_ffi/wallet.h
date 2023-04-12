@@ -1368,6 +1368,7 @@ void seed_words_destroy(struct TariSeedWords *seed_words);
  */
 TariContact *contact_create(const char *alias,
                             TariWalletAddress *address,
+                            bool favourite,
                             int *error_out);
 
 /**
@@ -1387,6 +1388,24 @@ TariContact *contact_create(const char *alias,
  */
 char *contact_get_alias(TariContact *contact,
                         int *error_out);
+
+/**
+ * Gets the favourite status of the TariContact
+ *
+ * ## Arguments
+ * `contact` - The pointer to a TariContact
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
+ * null as well.
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+bool contact_get_favourite(TariContact *contact,
+                           int *error_out);
 
 /**
  * Gets the TariWalletAddress of the TariContact

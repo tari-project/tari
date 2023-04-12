@@ -39,6 +39,7 @@ diesel::table! {
         alias -> Text,
         last_seen -> Nullable<Timestamp>,
         latency -> Nullable<Integer>,
+        favourite -> Integer,
     }
 }
 
