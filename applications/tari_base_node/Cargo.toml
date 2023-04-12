@@ -57,4 +57,5 @@ metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
 
-
+[build-dependencies]
+tari_features = { version = "0.49.0-pre.6", path = "../../common/tari_features"}

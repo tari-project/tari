@@ -441,33 +441,36 @@ fn test_output_rewinding_bulletproofs() {
     let v = MicroTari::from(42);
     let random_key = PrivateKey::random(&mut OsRng);
 
-    let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
-        value: v,
-        ..Default::default()
-    });
-    let output = unblinded_output
-        .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
-        .unwrap();
+    for minimum_value_promise in [MicroTari::zero(), v / 2, v] {
+        let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
+            value: v,
+            minimum_value_promise,
+            ..Default::default()
+        });
+        let output = unblinded_output
+            .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
+            .unwrap();
 
-    match output.recover_mask(&factories.range_proof, &random_key) {
-        Ok(recovered_mask) => {
-            if let Ok(succeeded) =
-                output.verify_mask(&factories.range_proof, &recovered_mask, unblinded_output.value.as_u64())
-            {
-                if succeeded {
-                    panic!("Should not have succeeded")
+        match output.recover_mask(&factories.range_proof, &random_key) {
+            Ok(recovered_mask) => {
+                if let Ok(succeeded) =
+                    output.verify_mask(&factories.range_proof, &recovered_mask, unblinded_output.value.as_u64())
+                {
+                    if succeeded {
+                        panic!("Should not have succeeded")
+                    }
                 }
-            }
-        },
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
-        _ => {
-            panic!("Unexpected error condition")
-        },
+            },
+            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
+            _ => {
+                panic!("Unexpected error condition")
+            },
+        }
+        let recovered_mask = output
+            .recover_mask(&factories.range_proof, &test_params.rewind_data.rewind_blinding_key)
+            .unwrap();
+        assert_eq!(recovered_mask, test_params.spend_key);
     }
-    let recovered_mask = output
-        .recover_mask(&factories.range_proof, &test_params.rewind_data.rewind_blinding_key)
-        .unwrap();
-    assert_eq!(recovered_mask, test_params.spend_key);
 }
 
 mod validate_internal_consistency {

@@ -5149,6 +5149,7 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
+ "tari_features",
  "tari_utilities",
  "thiserror",
  "tokio",
@@ -5186,6 +5187,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_libtor",
  "tari_metrics",
  "tari_p2p",
@@ -5447,6 +5449,7 @@ dependencies = [
  "tari_contacts",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
@@ -5589,6 +5592,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_features"
+version = "0.49.0-pre.6"
+dependencies = [
+ "tari_common",
+]
+
+[[package]]
 name = "tari_integration_tests"
 version = "0.35.1"
 dependencies = [
@@ -5711,6 +5721,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
+ "tari_features",
  "tari_utilities",
  "tari_wallet_grpc_client",
  "thiserror",

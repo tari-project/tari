@@ -47,7 +47,11 @@ use tari_crypto::{
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
+    ristretto::bulletproofs_plus::{
+        RistrettoAggregatedPrivateStatement,
+        RistrettoAggregatedPublicStatement,
+        RistrettoStatement,
+    },
     tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_script::TariScript;
@@ -248,7 +252,19 @@ impl TransactionOutput {
         prover: &RangeProofService,
         rewind_blinding_key: &PrivateKey,
     ) -> Result<BlindingFactor, TransactionError> {
-        Ok(prover.recover_mask(&self.proof.0, &self.commitment, rewind_blinding_key)?)
+        let statement_private = RistrettoAggregatedPrivateStatement::init(
+            vec![RistrettoStatement {
+                commitment: self.commitment.clone(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            }],
+            Some(rewind_blinding_key.clone()),
+        )?;
+        match prover.recover_extended_mask(&self.proof.0, &statement_private)? {
+            Some(extended_mask) => Ok(extended_mask.secrets()[0].clone()),
+            None => Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(
+                "Empty mask".to_string(),
+            ))),
+        }
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
@@ -551,8 +567,35 @@ pub fn batch_verify_range_proofs(
         });
         proofs.push(output.proof.to_vec().clone());
     }
-    prover.verify_batch(proofs.iter().collect(), statements.iter().collect())?;
-    Ok(())
+    match prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
+        Ok(_) => Ok(()),
+        Err(err_1) => {
+            for output in outputs.iter() {
+                match output.verify_range_proof(prover) {
+                    Ok(_) => {},
+                    Err(err_2) => {
+                        let proof = output.proof.to_hex();
+                        let proof = if proof.len() > 32 {
+                            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
+                        } else {
+                            proof
+                        };
+                        return Err(RangeProofError::InvalidRangeProof(format!(
+                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
+                            output.commitment.to_hex(),
+                            output.minimum_value_promise,
+                            proof,
+                            err_2,
+                        )));
+                    },
+                }
+            }
+            Err(RangeProofError::InvalidRangeProof(format!(
+                "Batch verification failed, but individual verification passed - {:?}",
+                err_1
+            )))
+        },
+    }
 }
 
 #[cfg(test)]
