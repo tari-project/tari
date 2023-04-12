@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod common_cli_args;
-pub mod identity_management;
-pub mod network_check;
-pub mod utilities;
+mod feature;
+pub mod resolver;
+mod status;
 
-pub mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
+pub use feature::Feature;
+pub use status::Status;
 
-/// Non-64-bit architectures are untested. Depending on the application, it may not compile already or could be various
-/// classes of bugs (overflows, crashes, etc). Use this macro to explicitly fail compilation on non-64-bit targets.
-#[macro_export]
-macro_rules! deny_non_64_bit_archs {
-    () => {
-        #[cfg(not(target_pointer_width = "64"))]
-        compile_error!("Only 64-bit architectures are supported. Here's a medal for trying 🏅");
-    };
-}
+pub const FEATURE_LIST: [Feature; 0] = [];
