@@ -180,6 +180,8 @@ impl TryFrom<grpc::TemplateType> for TemplateType {
             grpc::template_type::TemplateType::Wasm(wasm) => Ok(TemplateType::Wasm {
                 abi_version: wasm.abi_version.try_into().map_err(|_| "abi_version overflowed")?,
             }),
+            grpc::template_type::TemplateType::Flow(_flow) => Ok(TemplateType::Flow {}),
+            grpc::template_type::TemplateType::Manifest(_manifest) => Ok(TemplateType::Manifest {}),
         }
     }
 }
@@ -191,6 +193,12 @@ impl From<TemplateType> for grpc::TemplateType {
                 template_type: Some(grpc::template_type::TemplateType::Wasm(grpc::WasmInfo {
                     abi_version: abi_version.into(),
                 })),
+            },
+            TemplateType::Flow => Self {
+                template_type: Some(grpc::template_type::TemplateType::Flow(grpc::FlowInfo {})),
+            },
+            TemplateType::Manifest => Self {
+                template_type: Some(grpc::template_type::TemplateType::Manifest(grpc::ManifestInfo {})),
             },
         }
     }

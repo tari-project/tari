@@ -182,6 +182,8 @@ impl TryFrom<proto::types::TemplateType> for TemplateType {
             proto::types::template_type::TemplateType::Wasm(wasm) => Ok(TemplateType::Wasm {
                 abi_version: wasm.abi_version.try_into().map_err(|_| "abi_version overflowed")?,
             }),
+            proto::types::template_type::TemplateType::Flow(_flow) => Ok(TemplateType::Flow),
+            proto::types::template_type::TemplateType::Manifest(_manifest) => Ok(TemplateType::Manifest),
         }
     }
 }
@@ -194,6 +196,16 @@ impl From<TemplateType> for proto::types::TemplateType {
                     proto::types::WasmInfo {
                         abi_version: abi_version.into(),
                     },
+                )),
+            },
+            TemplateType::Flow => Self {
+                template_type: Some(proto::types::template_type::TemplateType::Flow(
+                    proto::types::FlowInfo {},
+                )),
+            },
+            TemplateType::Manifest => Self {
+                template_type: Some(proto::types::template_type::TemplateType::Manifest(
+                    proto::types::ManifestInfo {},
                 )),
             },
         }

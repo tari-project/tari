@@ -38,10 +38,20 @@ message ConfidentialOutputData {
 message TemplateType {
     oneof template_type {
         WasmInfo wasm = 1;
+        FlowInfo flow = 2;
+        ManifestInfo manifest =3;
     }
 }
  message WasmInfo {
      uint32 abi_version = 1;
+ }
+
+ message FlowInfo {
+
+ }
+
+ message ManifestInfo {
+
  }
 
  message BuildInfo {
