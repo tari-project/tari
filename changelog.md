@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.50.0-pre.0](https://github.com/tari-project/tari/compare/v0.49.0-pre.6...v0.50.0-pre.0) (2023-04-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* add paging to utxo stream request (#5302)
+
+### Features
+
+* add extended mask recovery ([#5301](https://github.com/tari-project/tari/issues/5301)) ([23d882e](https://github.com/tari-project/tari/commit/23d882eb783f3d94efbfdd928b3d87b2907bf2d7))
+* add network name to data path and --network flag to the miners ([#5291](https://github.com/tari-project/tari/issues/5291)) ([1f04beb](https://github.com/tari-project/tari/commit/1f04bebd4f6d14432aab923baeab17d1d6cc39bf))
+* add other code template types ([#5242](https://github.com/tari-project/tari/issues/5242)) ([93e5e85](https://github.com/tari-project/tari/commit/93e5e85cbc13be33bea40c7b8289d0ff344df08c))
+* add paging to utxo stream request ([#5302](https://github.com/tari-project/tari/issues/5302)) ([3540309](https://github.com/tari-project/tari/commit/3540309e29d450fc8cb48bc714fb780c1c107b81))
+* add wallet daemon config ([#5311](https://github.com/tari-project/tari/issues/5311)) ([30419cf](https://github.com/tari-project/tari/commit/30419cfcf198fb923ef431316f2915cbc80f1e3b))
+* define different network defaults for bins ([#5307](https://github.com/tari-project/tari/issues/5307)) ([2f5d498](https://github.com/tari-project/tari/commit/2f5d498d2130b5358fbf126c96a917ed98016955))
+* feature gates ([#5287](https://github.com/tari-project/tari/issues/5287)) ([72c19dc](https://github.com/tari-project/tari/commit/72c19dc130b0c7652cca422c9c4c2e08e5b8e555))
+* fix rpc transaction conversion ([#5304](https://github.com/tari-project/tari/issues/5304)) ([344040a](https://github.com/tari-project/tari/commit/344040ac7322bae5604aa9db48d4194c1b3779fa))
+
 ## [0.49.0-pre.6](https://github.com/tari-project/tari/compare/v0.49.0-pre.5...v0.49.0-pre.6) (2023-04-05)
 
 
