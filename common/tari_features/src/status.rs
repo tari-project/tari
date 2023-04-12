@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod common_cli_args;
-pub mod identity_management;
-pub mod network_check;
-pub mod utilities;
-
-pub mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
-
-/// Non-64-bit architectures are untested. Depending on the application, it may not compile already or could be various
-/// classes of bugs (overflows, crashes, etc). Use this macro to explicitly fail compilation on non-64-bit targets.
-#[macro_export]
-macro_rules! deny_non_64_bit_archs {
-    () => {
-        #[cfg(not(target_pointer_width = "64"))]
-        compile_error!("Only 64-bit architectures are supported. Here's a medal for trying 🏅");
-    };
+pub enum Status {
+    New,     // new feature, may not even be working or compiling. Will be present on dibbler testnet
+    Testing, // potentially active feature, but still gated. Potentially present on nextnet,
+    Active,  // feature is live and gate has been removed. Will be running on stagenet and mainnet
+    Removed, // feature has been cancelled. Can not be invoked anywhere
 }

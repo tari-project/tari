@@ -42,7 +42,7 @@ use std::{process, sync::Arc};
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
-use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_app_utilities::{common_cli_args::CommonCliArgs, network_check::is_network_choice_valid};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -97,6 +97,8 @@ pub async fn run_base_node_with_cli(
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
+    is_network_choice_valid(config.network())?;
+
     #[cfg(feature = "metrics")]
     {
         metrics::install(
