@@ -31,6 +31,7 @@ use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     configuration::{
         bootstrap::{grpc_default_port, prompt, ApplicationType},
+        MultiaddrList,
         Network,
     },
     exit_codes::{ExitCode, ExitError},
@@ -378,8 +379,8 @@ pub async fn init_wallet(
 
     let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
         match wallet_db.get_node_address()? {
-            Some(addr) => vec![addr],
-            None => vec![],
+            Some(addr) => MultiaddrList::from(vec![addr]),
+            None => MultiaddrList::default(),
         }
     } else {
         config.wallet.p2p.public_addresses.clone()
@@ -394,9 +395,14 @@ pub async fn init_wallet(
                 "Node identity overridden by file {}",
                 identity_file.to_string_lossy()
             );
-            setup_node_identity(identity_file, node_addresses, true, PeerFeatures::COMMUNICATION_CLIENT)?
+            setup_node_identity(
+                identity_file,
+                node_addresses.to_vec(),
+                true,
+                PeerFeatures::COMMUNICATION_CLIENT,
+            )?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses)?,
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?,
     };
 
     let mut wallet_config = config.wallet.clone();
