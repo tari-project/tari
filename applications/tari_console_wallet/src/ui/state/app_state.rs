@@ -22,6 +22,7 @@
 
 use std::{
     collections::{HashMap, VecDeque},
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -73,7 +74,7 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            tasks::{send_burn_transaction_task, send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
         UiContact,
@@ -351,6 +352,55 @@ impl AppState {
             MicroTari::from(amount),
             selection_criteria,
             output_features,
+            message,
+            fee_per_gram,
+            tx_service_handle,
+            result_tx,
+        ));
+
+        Ok(())
+    }
+
+    pub async fn send_burn_transaction(
+        &mut self,
+        burn_proof_filepath: Option<String>,
+        claim_public_key: Option<String>,
+        amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: u64,
+        message: String,
+        result_tx: watch::Sender<UiTransactionBurnStatus>,
+    ) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+
+        let burn_proof_filepath = match burn_proof_filepath {
+            None => None,
+            Some(path) => {
+                let path = PathBuf::from(path);
+
+                if path.exists() {
+                    return Err(UiError::BurnProofFileExists);
+                }
+
+                Some(path)
+            },
+        };
+
+        let fee_per_gram = fee_per_gram * uT;
+        let tx_service_handle = inner.wallet.transaction_service.clone();
+        let claim_public_key = match claim_public_key {
+            None => return Err(UiError::PublicKeyParseError),
+            Some(claim_public_key) => match PublicKey::from_hex(claim_public_key.as_str()) {
+                Ok(claim_public_key) => Some(claim_public_key),
+                Err(_) => return Err(UiError::PublicKeyParseError),
+            },
+        };
+
+        tokio::spawn(send_burn_transaction_task(
+            burn_proof_filepath,
+            claim_public_key,
+            MicroTari::from(amount),
+            selection_criteria,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -1162,6 +1212,17 @@ pub struct MyIdentity {
 
 #[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
+    Initiated,
+    Queued,
+    SentDirect,
+    TransactionComplete,
+    DiscoveryInProgress,
+    SentViaSaf,
+    Error(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum UiTransactionBurnStatus {
     Initiated,
     Queued,
     SentDirect,

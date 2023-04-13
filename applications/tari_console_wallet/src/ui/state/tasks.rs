@@ -20,15 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::tari_address::TariAddress;
+use std::path::PathBuf;
+
+use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
+use tari_utilities::ByteArray;
 use tari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
 };
 use tokio::sync::{broadcast, watch};
 
-use crate::ui::{state::UiTransactionSendStatus, UiError};
+use crate::ui::{
+    state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
+    UiError,
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
@@ -211,6 +217,77 @@ pub async fn send_one_sided_to_stealth_address_transaction(
 
             let _result = result_tx.send(UiTransactionSendStatus::Error(
                 "One-sided transaction could not be sent".to_string(),
+            ));
+        },
+    }
+}
+
+pub async fn send_burn_transaction_task(
+    burn_proof_filepath: Option<PathBuf>,
+    claim_public_key: Option<PublicKey>,
+    amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
+    message: String,
+    fee_per_gram: MicroTari,
+    mut transaction_service_handle: TransactionServiceHandle,
+    result_tx: watch::Sender<UiTransactionBurnStatus>,
+) {
+    let _ = result_tx.send(UiTransactionBurnStatus::Initiated);
+    let mut event_stream = transaction_service_handle.get_event_stream();
+
+    match transaction_service_handle
+        .burn_tari(amount, selection_criteria, fee_per_gram, message, claim_public_key)
+        .await
+    {
+        Err(e) => {
+            let _ = result_tx.send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()));
+        },
+        Ok((burn_tx_id, proof)) => {
+            loop {
+                match event_stream.recv().await {
+                    Ok(event) => {
+                        if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
+                            if burn_tx_id == *completed_tx_id {
+                                let wrapped_proof = BurntProofBase64 {
+                                    reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
+                                    commitment: proof.commitment.to_vec(),
+                                    ownership_proof: proof.ownership_proof.map(|x| CommitmentSignatureBase64 {
+                                        public_nonce: x.public_nonce().to_vec(),
+                                        u: x.u().to_vec(),
+                                        v: x.v().to_vec(),
+                                    }),
+                                    range_proof: proof.range_proof.0,
+                                };
+
+                                let filepath = burn_proof_filepath
+                                    .unwrap_or(PathBuf::from(format!("{}.json", burn_tx_id.as_u64().to_string())));
+
+                                std::fs::write(
+                                    filepath,
+                                    serde_json::to_string_pretty(&BurntProofBase64::from(wrapped_proof))
+                                        .expect("failed to serialize burn proof"),
+                                )
+                                .expect("failed to save burn proof");
+
+                                let _ = result_tx.send(UiTransactionBurnStatus::TransactionComplete);
+                                return;
+                            }
+                        }
+                    },
+
+                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
+                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                        continue;
+                    },
+
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    },
+                }
+            }
+
+            let _ = result_tx.send(UiTransactionBurnStatus::Error(
+                "failed to send burn transaction".to_string(),
             ));
         },
     }

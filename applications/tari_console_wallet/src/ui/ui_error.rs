@@ -33,6 +33,8 @@ pub enum UiError {
     AddressParseError,
     #[error("Peer did not include an address")]
     NoAddress,
+    #[error("Specified burn proof file already exists")]
+    BurnProofFileExists,
     #[error("Channel send error: `{0}`")]
     SendError(String),
 }

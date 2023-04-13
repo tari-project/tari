@@ -22,3 +22,4 @@ rand = "0.7.3"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.29"
 tokio = { version = "1.23", features = ["time", "sync"] }
+base64 = "0.21.0"
