@@ -44,6 +44,10 @@ pub struct CodeTemplateRegistration {
 pub enum TemplateType {
     /// Indicates that the template is a WASM module
     Wasm { abi_version: u16 },
+    /// A flow template
+    Flow,
+    /// A manifest template
+    Manifest,
 }
 
 // -------------------------------- BuildInfo -------------------------------- //
