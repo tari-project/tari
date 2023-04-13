@@ -43,6 +43,7 @@ pub mod loader;
 mod network;
 pub use network::Network;
 mod common_config;
+mod multiaddr_list;
 pub mod name_server;
 pub mod serializers;
 mod string_list;
@@ -52,6 +53,7 @@ use std::{iter::FromIterator, net::SocketAddr};
 
 pub use common_config::CommonConfig;
 use multiaddr::{Error, Multiaddr, Protocol};
+pub use multiaddr_list::MultiaddrList;
 pub use string_list::StringList;
 
 /// Interpret a string as either a socket address (first) or a multiaddr format string.

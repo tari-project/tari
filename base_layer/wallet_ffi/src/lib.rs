@@ -86,7 +86,7 @@ use log4rs::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_common::configuration::StringList;
+use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
@@ -4772,9 +4772,9 @@ pub unsafe extern "C" fn comms_config_create(
     match public_address {
         Ok(public_address) => {
             let addresses = if (*transport).transport_type == TransportType::Tor {
-                vec![]
+                MultiaddrList::default()
             } else {
-                vec![public_address]
+                MultiaddrList::from(vec![public_address])
             };
 
             let config = TariCommsConfig {
@@ -5294,8 +5294,8 @@ pub unsafe extern "C" fn wallet_create(
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
         let node_addresses = if comms_config.public_addresses.is_empty() {
             match wallet_database.get_node_address()? {
-                Some(addr) => vec![addr],
-                None => vec![],
+                Some(addr) => MultiaddrList::from(vec![addr]),
+                None => MultiaddrList::default(),
             }
         } else {
             comms_config.public_addresses.clone()
@@ -5316,7 +5316,7 @@ pub unsafe extern "C" fn wallet_create(
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
             comms_secret_key,
-            node_addresses,
+            node_addresses.to_vec(),
             node_features,
             identity_sig,
         ));
