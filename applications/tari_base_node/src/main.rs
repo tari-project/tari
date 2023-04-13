@@ -130,7 +130,7 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
-    let config = ApplicationConfig::load_from(&cfg)?;
+    let mut config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
