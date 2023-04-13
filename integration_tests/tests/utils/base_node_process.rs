@@ -33,7 +33,7 @@ use std::{
 use rand::rngs::OsRng;
 use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
-use tari_common::configuration::CommonConfig;
+use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
@@ -173,8 +173,13 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
         base_node_config.base_node.p2p.transport.tcp.listener_address =
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
-        base_node_config.base_node.p2p.public_addresses =
-            vec![base_node_config.base_node.p2p.transport.tcp.listener_address.clone()];
+        base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(vec![base_node_config
+            .base_node
+            .p2p
+            .transport
+            .tcp
+            .listener_address
+            .clone()]);
         // base_node_config.base_node.p2p.datastore_path = temp_dir_path.to_path_buf();
         // base_node_config.base_node.p2p.peer_database_name = "peer_db.mdb".to_string();
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();

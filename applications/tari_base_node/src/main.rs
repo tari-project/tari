@@ -136,7 +136,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
-        config.base_node.p2p.public_addresses.clone(),
+        config.base_node.p2p.public_addresses.clone().into_vec(),
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
     )?;

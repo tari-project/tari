@@ -23,7 +23,7 @@
 use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common::configuration::{Network, StringList};
+use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
@@ -67,7 +67,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     ));
     let comms_config = P2pConfig {
         override_from: None,
-        public_addresses: vec![],
+        public_addresses: MultiaddrList::default(),
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {

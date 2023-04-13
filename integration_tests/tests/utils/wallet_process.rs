@@ -24,7 +24,7 @@ use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
 use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
-use tari_common::configuration::CommonConfig;
+use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 use tari_console_wallet::{run_wallet_with_cli, Cli};
@@ -127,7 +127,7 @@ pub async fn spawn_wallet(
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         wallet_config.wallet.p2p.public_addresses =
-            vec![wallet_config.wallet.p2p.transport.tcp.listener_address.clone()];
+            MultiaddrList::from(vec![wallet_config.wallet.p2p.transport.tcp.listener_address.clone()]);
         wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db").join("wallet");
         wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
         wallet_config.wallet.p2p.allow_test_addresses = true;
