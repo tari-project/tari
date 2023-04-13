@@ -30,9 +30,6 @@ identity_file = "config/base_node_id_stagenet.json"
 identity_file = "config/base_node_id_nextnet.json"
 
 [base_node]
-# Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
-#network = "stagenet"
-
 # Set to false to disable the base node GRPC server (default = true)
 #grpc_enabled = true
 
