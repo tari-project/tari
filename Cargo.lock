@@ -5271,6 +5271,7 @@ dependencies = [
  "sha2 0.9.9",
  "structopt",
  "tari_crypto",
+ "tari_features",
  "tari_test_utils",
  "tempfile",
  "thiserror",
@@ -5593,9 +5594,6 @@ dependencies = [
 [[package]]
 name = "tari_features"
 version = "0.50.0-pre.0"
-dependencies = [
- "tari_common",
-]
 
 [[package]]
 name = "tari_integration_tests"
