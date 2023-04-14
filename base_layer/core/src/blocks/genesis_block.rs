@@ -584,15 +584,11 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use croaring::Bitmap;
-    use curve25519_dalek::scalar::Scalar;
     use tari_common_types::{
         epoch::VnEpoch,
         types::{Commitment, PrivateKey},
     };
-    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -727,24 +723,12 @@ mod test {
             .unwrap();
     }
 
-    fn receiver_commit_nonce_a(commitment: &Commitment) -> PrivateKey {
-        hash_domain!(
-            CommitNonceHashDomain,
-            "com.tari-genesis-tools.multi_party_utxo.receiver_commit_nonce_a",
-            0
-        );
-        let hasher_bytes = DomainSeparatedHasher::<Blake256, CommitNonceHashDomain>::new()
-            .chain(commitment.as_bytes())
-            .finalize();
-        PrivateKey::from_bytes(hasher_bytes.as_ref()).expect("blake256 hash will succeed")
-    }
-
-    // For the faucet, the value of the commitment can be bound into the metadata signature using a deterministic nonce
+    // For the faucet, the value of the commitment can be bound into a value-revealing metadata signature
     fn do_alternate_range_proof_check(factories: &CryptoFactories, outputs: &[&TransactionOutput]) {
         for output_ref in outputs {
             let output = (*output_ref).clone();
             if output.features.output_type == OutputType::Standard {
-                let commit_nonce_a = receiver_commit_nonce_a(&output.commitment);
+                // Reconstruct the signature challnge
                 let e_bytes = TransactionOutput::build_metadata_signature_challenge(
                     TransactionOutputVersion::get_current_version(),
                     &output.script,
@@ -758,24 +742,15 @@ mod test {
                     output.minimum_value_promise,
                 );
                 let e = PrivateKey::from_bytes(&e_bytes).unwrap();
+
+                // Check that `u_a = e*v`
+                // This _must_ be in addition to a separate check that the signature is valid!
+                // This check is not done here!
                 let value_as_private_key = PrivateKey::from(output.minimum_value_promise.as_u64());
                 assert_eq!(
                     output.metadata_signature.u_a().to_hex(),
-                    (commit_nonce_a.clone() + e.clone() * value_as_private_key).to_hex()
+                    (e.clone() * value_as_private_key).to_hex()
                 );
-
-                // Demonstrating how to extract the value (Note: For the proof, inverting the scalar with multiplication
-                // is less efficient than multiplication only as above)
-                let metadata_signature_u_a_scalar =
-                    Scalar::from_bits(<[u8; 32]>::try_from(output.metadata_signature.u_a().as_bytes()).unwrap());
-                let commit_nonce_a_scalar = Scalar::from_bits(<[u8; 32]>::try_from(commit_nonce_a.as_bytes()).unwrap());
-                let e_scalar = Scalar::from_bits(<[u8; 32]>::try_from(e.as_bytes()).unwrap());
-                let value_scalar = (metadata_signature_u_a_scalar - commit_nonce_a_scalar) * e_scalar.invert();
-                assert_eq!(value_scalar, Scalar::from(output.minimum_value_promise.as_u64()));
-                let mut value_bytes = [0u8; 8];
-                value_bytes.copy_from_slice(&value_scalar.to_bytes()[0..8]);
-                let value = u64::from_le_bytes(value_bytes);
-                assert_eq!(value, output.minimum_value_promise.as_u64());
             } else {
                 // Normal range proof verification for the coinbase output
                 assert!(output.verify_range_proof(factories.range_proof.as_ref()).is_ok());
