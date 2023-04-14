@@ -11,5 +11,6 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
-tari_common = { path = "../../common" }
+# So you're thinking about adding a dependency here?
+# This crate is utilized in the compilation of _most_ of our other crates. You're probably about
+# to create a cyclic depedency. Please think hard whether this change is actually required.

@@ -38,3 +38,6 @@ blake2 = "0.9.1"
 [dev-dependencies]
 tari_test_utils = {  path = "../infrastructure/test_utils"}
 toml = "0.5.8"
+
+[build-dependencies]
+tari_features = { version = "0.50.0-pre.0", path = "./tari_features"}
