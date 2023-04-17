@@ -5258,6 +5258,7 @@ dependencies = [
  "anyhow",
  "diesel",
  "lmdb-zero",
+ "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
