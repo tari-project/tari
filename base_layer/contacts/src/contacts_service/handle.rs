@@ -131,7 +131,7 @@ pub enum ContactsServiceRequest {
     GetContacts,
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
-    GetMessages(TariAddress, u64, u64),
+    GetAllMessages(TariAddress),
 }
 
 #[derive(Debug)]
@@ -229,15 +229,10 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_messages(
-        &mut self,
-        pk: TariAddress,
-        x: u64,
-        y: u64,
-    ) -> Result<Vec<Message>, ContactsServiceError> {
+    pub async fn get_all_messages(&mut self, pk: TariAddress) -> Result<Vec<Message>, ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetMessages(pk, x, y))
+            .call(ContactsServiceRequest::GetAllMessages(pk))
             .await??
         {
             ContactsServiceResponse::Messages(messages) => Ok(messages),

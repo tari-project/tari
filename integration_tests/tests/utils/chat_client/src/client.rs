@@ -117,7 +117,7 @@ impl Client {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
             messages = contacts_service
-                .get_messages(sender.clone(), 0, 0)
+                .get_all_messages(sender.clone())
                 .await
                 .expect("Messages not fetched");
         }
