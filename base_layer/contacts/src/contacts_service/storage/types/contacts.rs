@@ -128,9 +128,9 @@ impl ContactSql {
     ) -> Result<ContactSql, ContactsServiceStorageError> {
         // Note: `get_result` not implemented for SQLite
         let contact = ContactSql::find_by_node_id(node_id, conn)?;
-        if diesel::delete(contacts::table.filter(contacts::node_id.eq(node_id))).execute(conn)? == 0 {
-            return Err(ContactsServiceStorageError::ValuesNotFound);
-        }
+        diesel::delete(contacts::table.filter(contacts::node_id.eq(node_id)))
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
         Ok(contact)
     }
 }
