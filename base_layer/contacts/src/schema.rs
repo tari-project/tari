@@ -14,7 +14,7 @@ diesel::table! {
 diesel::table! {
     messages (message_id) {
         address -> Binary,
-        message_id -> BigInt,
+        message_id -> Binary,
         body -> Binary,
         stored_at -> Timestamp,
         direction -> Integer,

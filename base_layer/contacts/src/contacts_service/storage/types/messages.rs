@@ -43,6 +43,7 @@ pub struct MessagesSqlInsert {
     pub body: Vec<u8>,
     pub direction: i32,
     pub stored_at: NaiveDateTime,
+    pub message_id: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Queryable, PartialEq, Eq, QueryableByName)]
@@ -50,7 +51,7 @@ pub struct MessagesSqlInsert {
 #[diesel(primary_key(message_id))]
 pub struct MessagesSql {
     pub address: Vec<u8>,
-    pub message_id: i64,
+    pub message_id: Vec<u8>,
     pub body: Vec<u8>,
     pub stored_at: NaiveDateTime,
     pub direction: i32,
@@ -91,7 +92,7 @@ impl TryFrom<MessagesSql> for Message {
                 .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
             stored_at: o.stored_at.timestamp() as u64,
             body: o.body,
-            message_id: o.message_id as u64,
+            message_id: o.message_id,
         })
     }
 }
@@ -105,6 +106,7 @@ impl From<Message> for MessagesSqlInsert {
             direction: i32::from(o.direction.as_byte()),
             stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0).unwrap(),
             body: o.body,
+            message_id: o.message_id,
         }
     }
 }

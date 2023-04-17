@@ -35,7 +35,7 @@ pub struct Message {
     pub address: TariAddress,
     pub direction: Direction,
     pub stored_at: u64,
-    pub message_id: u64,
+    pub message_id: Vec<u8>,
 }
 
 #[repr(u8)]
