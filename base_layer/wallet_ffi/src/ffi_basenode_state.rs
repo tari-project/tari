@@ -36,7 +36,6 @@ use crate::{
 };
 
 #[derive(Debug)]
-#[repr(C)]
 pub struct TariBaseNodeState {
     /// The ID of the base node this wallet is connected to
     pub node_id: Option<NodeId>,
