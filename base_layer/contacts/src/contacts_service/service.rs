@@ -285,7 +285,7 @@ where T: ContactsBackend + 'static
                         let mut comms_outbound = self.dht.outbound_requester();
 
                         comms_outbound
-                            .send_direct(
+                            .send_direct_encrypted(
                                 address.public_key().clone(),
                                 ob_message,
                                 encryption,

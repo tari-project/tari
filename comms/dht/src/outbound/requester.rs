@@ -51,7 +51,7 @@ impl OutboundMessageRequester {
     }
 
     /// Send directly to a peer. If the peer does not exist in the peer list, a discovery will be initiated.
-    pub async fn send_direct<T>(
+    pub async fn send_direct_encrypted<T>(
         &mut self,
         dest_public_key: CommsPublicKey,
         message: OutboundDomainMessage<T>,
