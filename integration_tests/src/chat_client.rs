@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2023. The Tari Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -20,37 +20,30 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::str::FromStr;
 
-use libc::{c_int, c_void};
+use rand::rngs::OsRng;
+use tari_chat_client::Client;
+use tari_common::configuration::Network;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{Peer, PeerFeatures},
+    NodeIdentity,
+};
 
-use super::ffi_import;
+use crate::{base_node_process::get_base_dir, get_port};
 
-pub struct TransportConfig {
-    ptr: *mut c_void,
-}
+pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
+    let port = get_port(18000..18499).unwrap();
+    let temp_dir_path = get_base_dir()
+        .join("chat_clients")
+        .join(format!("port_{}", port))
+        .join(name);
+    let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+    let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
 
-impl Drop for TransportConfig {
-    fn drop(&mut self) {
-        unsafe { ffi_import::transport_config_destroy(self.ptr) };
-        self.ptr = null_mut();
-    }
-}
+    let mut client = Client::new(identity, seed_peers, temp_dir_path, Network::LocalNet);
+    client.initialize().await;
 
-impl TransportConfig {
-    pub fn create_tcp(listener_address: *const i8) -> Self {
-        let ptr;
-        let mut error: c_int = 0;
-        unsafe {
-            ptr = ffi_import::transport_tcp_create(listener_address, &mut error);
-            if error > 0 {
-                println!("transport_tcp_create error {}", error);
-            }
-        }
-        Self { ptr }
-    }
-
-    pub fn get_ptr(&self) -> *mut c_void {
-        self.ptr
-    }
+    client
 }

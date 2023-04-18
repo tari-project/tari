@@ -113,7 +113,7 @@ impl Client {
         }
     }
 
-    pub async fn get_messages(&self, sender: &TariAddress) -> Vec<Message> {
+    pub async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message> {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
             messages = contacts_service
