@@ -64,7 +64,7 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        messages = receiver.get_messages(&address).await;
+        messages = receiver.get_all_messages(&address).await;
 
         if messages.len() as u64 == message_count {
             return;

@@ -22,6 +22,7 @@
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use tari_common::configuration::MultiaddrList;
 use tari_common_sqlite::connection::DbConnection;
 // Re-exports
 pub use tari_comms::{
@@ -84,7 +85,7 @@ pub async fn start(
         },
         transport: transport_config.clone(),
         allow_test_addresses: true,
-        public_addresses: vec![node_identity.first_public_address()],
+        public_addresses: MultiaddrList::from(vec![node_identity.first_public_address()]),
         user_agent: "tari/chat-client/0.0.1".to_string(),
         ..P2pConfig::default()
     };
