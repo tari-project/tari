@@ -58,6 +58,31 @@ jobs:
         with:
           command: lints
           args: clippy --all-targets --all-features
+  machete:
+    name: machete
+    #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
+    runs-on: [ubuntu-20.04]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Install cargo-machete
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: cargo-machete
+      - name: cargo machete check
+        uses: actions-rs/cargo@v1
+        with:
+          command: machete
   build:
     name: cargo check
     runs-on: [self-hosted, ubuntu18.04-high-cpu]
