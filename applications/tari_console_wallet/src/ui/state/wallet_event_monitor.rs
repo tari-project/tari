@@ -266,7 +266,7 @@ impl WalletEventMonitor {
                                     );
                                     self.trigger_contacts_refresh().await;
                                 }
-                                ContactsLivenessEvent::NetworkSilence => {}
+                                ContactsLivenessEvent::NetworkSilence => {},
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {

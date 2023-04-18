@@ -391,7 +391,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     );
 
     let send_message_response = outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             origin_public_key,
             OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
             "Outbound response message from base node".to_string(),

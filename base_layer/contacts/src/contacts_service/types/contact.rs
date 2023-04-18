@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,6 +20,48 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod database;
-pub mod sqlite_db;
-pub mod types;
+use chrono::NaiveDateTime;
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::peer_manager::NodeId;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Contact {
+    pub alias: String,
+    pub address: TariAddress,
+    pub node_id: NodeId,
+    pub last_seen: Option<NaiveDateTime>,
+    pub latency: Option<u32>,
+    pub favourite: bool,
+}
+
+impl Contact {
+    pub fn new(
+        alias: String,
+        address: TariAddress,
+        last_seen: Option<NaiveDateTime>,
+        latency: Option<u32>,
+        favourite: bool,
+    ) -> Self {
+        Self {
+            alias,
+            node_id: NodeId::from_key(address.public_key()),
+            address,
+            last_seen,
+            latency,
+            favourite,
+        }
+    }
+}
+
+impl From<&TariAddress> for Contact {
+    fn from(address: &TariAddress) -> Self {
+        Self {
+            alias: address.to_emoji_string(),
+            address: address.clone(),
+            node_id: NodeId::from_key(address.public_key()),
+            last_seen: None,
+            latency: None,
+            favourite: false,
+        }
+    }
+}
