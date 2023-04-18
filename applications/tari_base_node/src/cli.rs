@@ -44,9 +44,6 @@ pub struct Cli {
     /// Watch a command in the non-interactive mode.
     #[clap(long)]
     pub watch: Option<String>,
-    /// Supply a network (overrides existing configuration)
-    #[clap(long, env = "TARI_NETWORK")]
-    pub network: Option<Network>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
 }
@@ -54,7 +51,8 @@ pub struct Cli {
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.network.unwrap_or(default_network);
+        let network = self.common.network.unwrap_or(default_network);
+        overrides.push(("base_node.network".to_string(), network.to_string()));
         overrides.push(("base_node.override_from".to_string(), network.to_string()));
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
         overrides.push(("auto_update.override_from".to_string(), network.to_string()));

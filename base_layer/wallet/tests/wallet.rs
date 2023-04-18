@@ -25,7 +25,7 @@ use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use support::utils::make_input;
-use tari_common::configuration::StringList;
+use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
@@ -127,7 +127,7 @@ async fn create_wallet(
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
         override_from: None,
-        public_addresses: vec![],
+        public_addresses: MultiaddrList::default(),
         transport: TransportConfig::new_memory(MemoryTransportConfig {
             listener_address: node_identity.first_public_address(),
         }),
@@ -669,7 +669,7 @@ async fn test_import_utxo() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = P2pConfig {
         override_from: None,
-        public_addresses: vec![],
+        public_addresses: MultiaddrList::default(),
         transport: TransportConfig::new_tcp(TcpTransportConfig {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_address: None,

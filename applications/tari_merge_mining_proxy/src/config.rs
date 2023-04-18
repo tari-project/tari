@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::StringList, SubConfigPath};
+use tari_common::{
+    configuration::{Network, StringList},
+    SubConfigPath,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_wallet_grpc_client::GrpcAuthentication;
 
@@ -39,9 +42,9 @@ pub struct MergeMiningProxyConfig {
     /// If authentication is being used for curl
     pub monerod_use_auth: bool,
     /// The Tari base node's GRPC address
-    pub base_node_grpc_address: Multiaddr,
+    pub base_node_grpc_address: Option<Multiaddr>,
     /// The Tari console wallet's GRPC address
-    pub console_wallet_grpc_address: Multiaddr,
+    pub console_wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
     pub console_wallet_grpc_authentication: GrpcAuthentication,
     /// Address of the tari_merge_mining_proxy application
@@ -64,6 +67,8 @@ pub struct MergeMiningProxyConfig {
     /// Note that this data is publicly readable, but it is suggested you populate it so that
     /// pool dominance can be seen before any one party has more than 51%.
     pub coinbase_extra: String,
+    /// Selected network
+    pub network: Network,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -74,8 +79,8 @@ impl Default for MergeMiningProxyConfig {
             monerod_username: String::new(),
             monerod_password: String::new(),
             monerod_use_auth: false,
-            base_node_grpc_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
-            console_wallet_grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
+            base_node_grpc_address: None,
+            console_wallet_grpc_address: None,
             console_wallet_grpc_authentication: GrpcAuthentication::default(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
@@ -83,6 +88,7 @@ impl Default for MergeMiningProxyConfig {
             check_tari_difficulty_before_submit: true,
             max_randomx_vms: 5,
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
+            network: Default::default(),
         }
     }
 }
@@ -95,7 +101,10 @@ impl SubConfigPath for MergeMiningProxyConfig {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use tari_common::DefaultConfigLoader;
+    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MergeMiningProxyConfig;
 
@@ -135,12 +144,12 @@ mod test {
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_stagenet");
         assert_eq!(
-            config.base_node_grpc_address.to_string().as_str(),
-            "/dns4/base_node_b/tcp/8080"
+            config.base_node_grpc_address,
+            Some(Multiaddr::from_str("/dns4/base_node_b/tcp/8080").unwrap())
         );
         assert_eq!(
-            config.console_wallet_grpc_address.to_string().as_str(),
-            "/dns4/wallet/tcp/9000"
+            config.console_wallet_grpc_address,
+            Some(Multiaddr::from_str("/dns4/wallet/tcp/9000").unwrap())
         );
 
         let cfg = get_config("config_a");
@@ -150,19 +159,19 @@ mod test {
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_igor");
         assert_eq!(
-            config.base_node_grpc_address.to_string().as_str(),
-            "/dns4/base_node_a/tcp/8080"
+            config.base_node_grpc_address,
+            Some(Multiaddr::from_str("/dns4/base_node_a/tcp/8080").unwrap())
         );
         assert_eq!(
-            config.console_wallet_grpc_address.to_string().as_str(),
-            "/dns4/wallet_a/tcp/9000"
+            config.console_wallet_grpc_address,
+            Some(Multiaddr::from_str("/dns4/wallet_a/tcp/9000").unwrap())
         );
     }
 
     #[test]
     fn default_config() {
         let config = MergeMiningProxyConfig::default();
-        assert_eq!(&config.base_node_grpc_address.to_string(), "/ip4/127.0.0.1/tcp/18142");
+        assert_eq!(config.base_node_grpc_address, None);
         assert!(!config.monerod_use_auth);
         assert!(config.submit_to_origin);
     }
