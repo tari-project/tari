@@ -459,7 +459,6 @@ where
         let mut utxo_next_await_profiling = Vec::new();
         let mut scan_for_outputs_profiling = Vec::new();
         let mut prev_scanned_block: Option<ScannedBlock> = None;
-        let mut prev_output = None;
         while let Some(response) = {
             let start = Instant::now();
             let utxo_stream_next = utxo_stream.next().await;
@@ -481,7 +480,6 @@ where
                 .into_iter()
                 .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
                 .collect::<Result<Vec<_>, _>>()?;
-            let first_output = outputs.get(0).cloned();
             total_scanned += outputs.len();
 
             let start = Instant::now();
@@ -493,7 +491,7 @@ where
                 .await?;
             let block_hash = current_header_hash.try_into()?;
             if let Some(scanned_block) = prev_scanned_block {
-                if block_hash == scanned_block.header_hash && first_output == prev_output {
+                if block_hash == scanned_block.header_hash {
                     count += scanned_block.num_outputs.unwrap_or(0);
                     amount += scanned_block.amount.unwrap_or_else(|| 0.into())
                 } else {
@@ -518,7 +516,6 @@ where
                     total_amount += amount;
                 }
             }
-            prev_output = first_output;
             prev_scanned_block = Some(ScannedBlock {
                 header_hash: block_hash,
                 height: current_height,
