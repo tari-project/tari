@@ -24,26 +24,62 @@ use std::str::FromStr;
 
 use rand::rngs::OsRng;
 use tari_chat_client::Client;
-use tari_common::configuration::Network;
+use tari_common::configuration::{MultiaddrList, Network};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
+use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
+use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 
 use crate::{base_node_process::get_base_dir, get_port};
 
 pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
     let port = get_port(18000..18499).unwrap();
+    let identity = identity_file(&port);
+    let config = test_config(name, &port, &identity);
+    let network = Network::LocalNet;
+
+    let mut client = Client::new(identity, config, seed_peers, network);
+    client.initialize().await;
+
+    client
+}
+
+fn test_config(name: &str, port: &u64, identity: &NodeIdentity) -> P2pConfig {
     let temp_dir_path = get_base_dir()
         .join("chat_clients")
         .join(format!("port_{}", port))
         .join(name);
+
+    let mut config = P2pConfig {
+        datastore_path: temp_dir_path.clone(),
+        dht: DhtConfig {
+            network_discovery: NetworkDiscoveryConfig {
+                enabled: true,
+                ..NetworkDiscoveryConfig::default()
+            },
+            saf: SafConfig {
+                auto_request: true,
+                ..Default::default()
+            },
+            ..DhtConfig::default_local_test()
+        },
+        transport: TransportConfig::new_tcp(TcpTransportConfig {
+            listener_address: identity.first_public_address(),
+            ..TcpTransportConfig::default()
+        }),
+        allow_test_addresses: true,
+        public_addresses: MultiaddrList::from(vec![identity.first_public_address()]),
+        user_agent: "tari/chat-client/0.0.1".to_string(),
+        ..P2pConfig::default()
+    };
+    config.set_base_path(temp_dir_path);
+    config
+}
+
+fn identity_file(port: &u64) -> NodeIdentity {
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-    let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
-
-    let mut client = Client::new(identity, seed_peers, temp_dir_path, Network::LocalNet);
-    client.initialize().await;
-
-    client
+    NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE)
 }

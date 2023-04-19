@@ -22,7 +22,6 @@
 
 use std::{
     fmt::{Debug, Formatter},
-    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
@@ -34,17 +33,17 @@ use tari_contacts::contacts_service::{
     service::ContactOnlineStatus,
     types::{Message, MessageBuilder},
 };
-use tari_p2p::Network;
+use tari_p2p::{Network, P2pConfig};
 use tari_shutdown::Shutdown;
 
 use crate::{database, networking};
 
 #[derive(Clone)]
 pub struct Client {
-    pub base_dir: PathBuf,
     pub contacts: Option<ContactsServiceHandle>,
     pub identity: Arc<NodeIdentity>,
     pub network: Network,
+    pub config: P2pConfig,
     pub seed_peers: Vec<Peer>,
     pub shutdown: Shutdown,
 }
@@ -52,7 +51,7 @@ pub struct Client {
 impl Debug for Client {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
-            .field("base_dir", &self.base_dir)
+            .field("config", &self.config)
             .field("identity", &self.identity)
             .field("network", &self.network)
             .field("seed_peers", &self.seed_peers)
@@ -68,10 +67,10 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn new(identity: NodeIdentity, seed_peers: Vec<Peer>, base_dir: PathBuf, network: Network) -> Self {
+    pub fn new(identity: NodeIdentity, config: P2pConfig, seed_peers: Vec<Peer>, network: Network) -> Self {
         Self {
             identity: Arc::new(identity),
-            base_dir,
+            config,
             seed_peers,
             shutdown: Shutdown::new(),
             contacts: None,
@@ -129,11 +128,11 @@ impl Client {
         println!("initializing chat");
 
         let signal = self.shutdown.to_signal();
-        let db = database::create_chat_storage(self.base_dir.clone()).unwrap();
+        let db = database::create_chat_storage(self.config.datastore_path.clone()).unwrap();
 
         let (contacts, comms_node) = networking::start(
             self.identity.clone(),
-            self.base_dir.clone(),
+            self.config.clone(),
             self.seed_peers.clone(),
             self.network,
             db,
