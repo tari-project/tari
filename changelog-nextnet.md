@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.49.0-rc.2](https://github.com/tari-project/tari/compare/v0.49.0-rc.1...v0.49.0-rc.2) (2023-04-19)
+
+
+### Bug Fixes
+
+* fix wallet panic([0f55724](https://github.com/tari-project/tari/commit/0f55724ba64f51de088db038e9d55daea21ab230))
+
 ## [0.49.0-rc.1](https://github.com/tari-project/tari/compare/v0.49.0-rc.0...v0.49.0-rc.1) (2023-04-17)
 
 
