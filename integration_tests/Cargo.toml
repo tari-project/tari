@@ -11,7 +11,7 @@ tari_app_grpc = { path = "../applications/tari_app_grpc" }
 tari_app_utilities = { path = "../applications/tari_app_utilities" }
 tari_base_node = { path = "../applications/tari_base_node" }
 tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_chat_client = { path = "./src/chat_client" }
+tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
 tari_crypto = "0.16.12"
 tari_common = { path = "../common" }
 tari_common_sqlite = { path = "../common_sqlite" }
