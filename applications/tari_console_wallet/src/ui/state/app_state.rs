@@ -1084,7 +1084,7 @@ pub struct EventListItem {
 impl AppStateData {
     pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
         let eid = wallet_identity.address.to_emoji_string();
-        let qr_link = format!("tari_address://{}", wallet_identity.address.to_hex());
+        let qr_link = format!("tari://{}/transactions/send?publicKey={}", wallet_identity.network,wallet_identity.address.to_hex());
         let code = QrCode::new(qr_link).unwrap();
         let image = code
             .render::<unicode::Dense1x2>()
