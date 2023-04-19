@@ -23,7 +23,7 @@
 use std::str::FromStr;
 
 use rand::rngs::OsRng;
-use tari_chat_client::Client;
+use tari_chat_client::{database, Client};
 use tari_common::configuration::{MultiaddrList, Network};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -40,8 +40,10 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
     let identity = identity_file(&port);
     let config = test_config(name, &port, &identity);
     let network = Network::LocalNet;
+    let db_path = database::create_chat_storage(&config.datastore_path).unwrap();
+    database::create_peer_storage(&config.datastore_path);
 
-    let mut client = Client::new(identity, config, seed_peers, network);
+    let mut client = Client::new(identity, config, seed_peers, db_path, network);
     client.initialize().await;
 
     client

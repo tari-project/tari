@@ -35,6 +35,7 @@ use thiserror::Error;
 
 use crate::{
     base_node_process::BaseNodeProcess,
+    chat_ffi::ChatFFI,
     merge_mining_proxy::MergeMiningProxyProcess,
     miner::MinerProcess,
     wallet_ffi::WalletFFI,
@@ -65,6 +66,7 @@ pub struct TariWorld {
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
     pub chat_clients: IndexMap<String, Client>,
+    pub ffi_chat_clients: IndexMap<String, ChatFFI>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses

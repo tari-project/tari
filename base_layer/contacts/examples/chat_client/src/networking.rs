@@ -20,20 +20,15 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use tari_common_sqlite::connection::DbConnection;
 // Re-exports
 pub use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
-use tari_contacts::contacts_service::{
-    handle::ContactsServiceHandle,
-    storage::sqlite_db::ContactsServiceSqliteDatabase,
-    ContactsServiceInitializer,
-};
+use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{spawn_comms_using_transport, P2pInitializer},
@@ -45,18 +40,17 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
-use crate::database;
+use crate::database::connect_to_db;
 
 pub async fn start(
     node_identity: Arc<NodeIdentity>,
     config: P2pConfig,
     seed_peers: Vec<Peer>,
     network: Network,
-    db: DbConnection,
+    db_path: PathBuf,
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
-    database::create_peer_storage(config.datastore_path.clone());
-    let backend = ContactsServiceSqliteDatabase::init(db);
+    let backend = connect_to_db(db_path)?;
 
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
     let in_msg = Arc::new(subscription_factory);

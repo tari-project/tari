@@ -22,10 +22,12 @@
 
 use std::{
     fmt::{Debug, Formatter},
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
 
+use log::debug;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{peer_manager::Peer, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
@@ -35,15 +37,25 @@ use tari_contacts::contacts_service::{
 };
 use tari_p2p::{Network, P2pConfig};
 use tari_shutdown::Shutdown;
+use tokio::runtime::Runtime;
 
-use crate::{database, networking};
+use crate::networking;
 
-#[derive(Clone)]
+const LOG_TARGET: &str = "contacts::chat_client";
+
+trait ChatClient {
+    fn add_contact(&self, address: &TariAddress);
+    fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus;
+    fn send_message(&self, receiver: TariAddress, message: String);
+    fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message>;
+}
+
 pub struct Client {
+    pub config: P2pConfig,
     pub contacts: Option<ContactsServiceHandle>,
+    pub db_path: PathBuf,
     pub identity: Arc<NodeIdentity>,
     pub network: Network,
-    pub config: P2pConfig,
     pub seed_peers: Vec<Peer>,
     pub shutdown: Shutdown,
 }
@@ -52,6 +64,7 @@ impl Debug for Client {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("config", &self.config)
+            .field("db_path", &self.db_path)
             .field("identity", &self.identity)
             .field("network", &self.network)
             .field("seed_peers", &self.seed_peers)
@@ -67,14 +80,21 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn new(identity: NodeIdentity, config: P2pConfig, seed_peers: Vec<Peer>, network: Network) -> Self {
+    pub fn new(
+        identity: NodeIdentity,
+        config: P2pConfig,
+        seed_peers: Vec<Peer>,
+        db_path: PathBuf,
+        network: Network,
+    ) -> Self {
         Self {
-            identity: Arc::new(identity),
             config,
+            contacts: None,
+            db_path,
+            identity: Arc::new(identity),
+            network,
             seed_peers,
             shutdown: Shutdown::new(),
-            contacts: None,
-            network,
         }
     }
 
@@ -125,17 +145,16 @@ impl Client {
     }
 
     pub async fn initialize(&mut self) {
-        println!("initializing chat");
+        debug!(target: LOG_TARGET, "initializing chat");
 
         let signal = self.shutdown.to_signal();
-        let db = database::create_chat_storage(self.config.datastore_path.clone()).unwrap();
 
         let (contacts, comms_node) = networking::start(
             self.identity.clone(),
             self.config.clone(),
             self.seed_peers.clone(),
             self.network,
-            db,
+            self.db_path.clone(),
             signal,
         )
         .await
@@ -143,17 +162,17 @@ impl Client {
 
         if !self.seed_peers.is_empty() {
             loop {
-                println!("Waiting for peer connections...");
+                debug!(target: LOG_TARGET, "Waiting for peer connections...");
                 match wait_for_connectivity(comms_node.clone()).await {
                     Ok(_) => break,
-                    Err(e) => println!("{}. Still waiting...", e),
+                    Err(e) => debug!(target: LOG_TARGET, "{}. Still waiting...", e),
                 }
             }
         }
 
         self.contacts = Some(contacts);
 
-        println!("Connections established")
+        debug!(target: LOG_TARGET, "Connections established")
     }
 
     pub fn quit(&mut self) {

@@ -8,28 +8,100 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+struct ClientFFI;
+
 /**
  * Configuration for a comms node
  */
 struct P2pConfig;
 
-/**
- * Peer seed configuration
- */
-struct PeerSeedsConfig;
+struct TariAddress;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 /**
+ * Creates a Chat Client
+ *
+ * ## Arguments
+ * `config` - The P2PConfig pointer
+ * `identity_file_path` - The path to the node identity file
+ * `db_path` - The path to the db file
+ * `seed_peers` - A ptr to a collection of seed peers
+ * `network_str` - The network to connect to
+ * ## Returns
+ * `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
+ * if config is null, an error was encountered or if the runtime could not be created
+ *
+ * # Safety
+ * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+ */
+struct ClientFFI *create_chat_client(struct P2pConfig *config,
+                                     const char *identity_file_path,
+                                     const char *db_path,
+                                     Peer **seed_peers,
+                                     const char *network_str);
+
+/**
+ * Frees memory for a ClientFFI
+ *
+ * ## Arguments
+ * `client` - The pointer of a ClientFFI
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
  * # Safety
  * None
  */
-void create_chat_client(struct P2pConfig *config,
-                        const char *identity_file_path,
-                        struct PeerSeedsConfig *peer_seeds_config,
-                        const char *network_str);
+void destroy_client_ffi(struct ClientFFI *client);
+
+/**
+ * Sends a message over a client
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `receiver` - A string containing a tari address
+ * `message` - The peer seeds config for the node
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```receiver``` should be destroyed after use
+ */
+void send_message(struct ClientFFI *client,
+                  struct TariAddress *receiver,
+                  const char *message_c_char);
+
+/**
+ * Sends a message over a client
+ *
+ * ## Arguments
+ * `receiver_c_char` - A string containing a tari address hex value
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * # Safety
+ * The ```destroy_tari_address``` function should be called when finished with the TariAddress
+ */
+struct TariAddress *create_tari_address(const char *receiver_c_char);
+
+/**
+ * Frees memory for a TariAddress
+ *
+ * ## Arguments
+ * `address` - The pointer of a TariAddress
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_address(struct TariAddress *address);
 
 #ifdef __cplusplus
 } // extern "C"

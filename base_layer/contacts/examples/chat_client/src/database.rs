@@ -27,26 +27,32 @@ use tari_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
     error::StorageError,
 };
+use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::random::string;
 
-pub fn create_chat_storage(base_path: PathBuf) -> Result<DbConnection, StorageError> {
-    std::fs::create_dir_all(&base_path).unwrap();
+pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, StorageError> {
+    let url: DbConnectionUrl = db_path.into_os_string().into_string().unwrap().try_into().unwrap();
+    let connection = DbConnection::connect_url(&url)?;
+    Ok(ContactsServiceSqliteDatabase::init(connection))
+}
+
+pub fn create_chat_storage(base_path: &PathBuf) -> Result<PathBuf, StorageError> {
+    std::fs::create_dir_all(base_path).unwrap();
     let db_name = format!("{}.sqlite3", string(8).as_str());
     let db_path = format!("{}/{}", base_path.to_str().unwrap(), db_name);
-    let url: DbConnectionUrl = db_path.clone().try_into().unwrap();
 
     // Create the db
     let _db = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-    DbConnection::connect_url(&url)
+    Ok(PathBuf::from(db_path))
 }
 
-pub fn create_peer_storage(base_path: PathBuf) {
-    std::fs::create_dir_all(&base_path).unwrap();
+pub fn create_peer_storage(base_path: &PathBuf) {
+    std::fs::create_dir_all(base_path).unwrap();
 
     LMDBBuilder::new()
-        .set_path(&base_path)
+        .set_path(base_path)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)

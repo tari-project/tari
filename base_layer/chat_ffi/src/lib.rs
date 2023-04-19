@@ -22,26 +22,48 @@
 
 #![recursion_limit = "1024"]
 
-use std::{fs::File, io::Read, path::PathBuf, str::FromStr};
+use std::{ffi::CStr, fs::File, io::Read, path::PathBuf, str::FromStr};
 
 use libc::c_char;
-use tari_chat_client::Client;
+use tari_chat_client::{ChatClient, Client};
 use tari_common::configuration::Network;
-use tari_comms::NodeIdentity;
-use tari_p2p::{P2pConfig, PeerSeedsConfig};
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_p2p::P2pConfig;
+use tokio::runtime::Runtime;
 
-const LOG_TARGET: &str = "chat_ffi";
+pub struct ClientFFI {
+    client: Client,
+    runtime: Runtime,
+}
 
+/// Creates a Chat Client
+///
+/// ## Arguments
+/// `config` - The P2PConfig pointer
+/// `identity_file_path` - The path to the node identity file
+/// `db_path` - The path to the db file
+/// `seed_peers` - A ptr to a collection of seed peers
+/// `network_str` - The network to connect to
+/// ## Returns
+/// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
+/// if config is null, an error was encountered or if the runtime could not be created
+///
 /// # Safety
-/// None
+/// The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
     config: *mut P2pConfig,
     identity_file_path: *const c_char,
-    peer_seeds_config: *mut PeerSeedsConfig,
+    db_path: *const c_char,
+    seed_peers: *mut *mut Peer,
     network_str: *const c_char,
-) {
-    let identity_path = PathBuf::from((*identity_file_path).to_string());
+) -> *mut ClientFFI {
+    let identity_path = PathBuf::from(
+        CStr::from_ptr(identity_file_path)
+            .to_str()
+            .expect("A non-null identity path should be able to convert to a string"),
+    );
     let mut buf = Vec::new();
     File::open(identity_path)
         .expect("Can't open the identity file")
@@ -49,8 +71,118 @@ pub unsafe extern "C" fn create_chat_client(
         .expect("Can't read the identity file into buffer");
     let identity: NodeIdentity = serde_json::from_slice(&buf).expect("Can't parse identity file as json");
 
-    let network = Network::from_str(&(*network_str).to_string()).expect("Network is invalid");
-    let mut client = Client::new(identity, (*config).clone(), vec![], network);
+    let network = Network::from_str(
+        CStr::from_ptr(network_str)
+            .to_str()
+            .expect("A non-null network should be able to be converted to string"),
+    )
+    .expect("Network is invalid");
 
-    client.initialize();
+    let db_path = PathBuf::from(
+        CStr::from_ptr(db_path)
+            .to_str()
+            .expect("A non-null db path should be able to convert to a string"),
+    );
+
+    let mut seed_peers_vec = Vec::new();
+
+    let mut i = 0;
+    while !(*seed_peers.offset(i)).is_null() {
+        let peer = (**seed_peers.offset(i)).clone();
+        seed_peers_vec.push(peer);
+        i += 1;
+    }
+
+    let runtime = Runtime::new().unwrap();
+    let mut client = Client::new(identity, (*config).clone(), seed_peers_vec, db_path, network);
+
+    runtime.block_on(client.initialize());
+
+    let client_ffi = ClientFFI { client, runtime };
+
+    Box::into_raw(Box::new(client_ffi))
+}
+
+/// Frees memory for a ClientFFI
+///
+/// ## Arguments
+/// `client` - The pointer of a ClientFFI
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
+    if !client.is_null() {
+        drop(Box::from_raw(client))
+    }
+}
+
+/// Sends a message over a client
+///
+/// ## Arguments
+/// `client` - The Client pointer
+/// `receiver` - A string containing a tari address
+/// `message` - The peer seeds config for the node
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```receiver``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn send_message(
+    client: *mut ClientFFI,
+    receiver: *mut TariAddress,
+    message_c_char: *const c_char,
+) {
+    let message = CStr::from_ptr(message_c_char)
+        .to_str()
+        .expect("A non-null message should be able to be converted to string")
+        .to_string();
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_message((*receiver).clone(), message));
+}
+
+/// Sends a message over a client
+///
+/// ## Arguments
+/// `receiver_c_char` - A string containing a tari address hex value
+///
+/// ## Returns
+/// `*mut TariAddress` - A ptr to a TariAddress
+///
+/// # Safety
+/// The ```destroy_tari_address``` function should be called when finished with the TariAddress
+#[no_mangle]
+pub unsafe extern "C" fn create_tari_address(receiver_c_char: *const c_char) -> *mut TariAddress {
+    let receiver = TariAddress::from_str(
+        CStr::from_ptr(receiver_c_char)
+            .to_str()
+            .expect("A non-null receiver should be able to be converted to string"),
+    )
+    .expect("A TariAddress from str");
+
+    Box::into_raw(Box::new(receiver))
+}
+
+/// Frees memory for a TariAddress
+///
+/// ## Arguments
+/// `address` - The pointer of a TariAddress
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
 }
