@@ -1,8 +1,6 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::path::Path;
-
 use log::*;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::output_manager_service::UtxoSelectionCriteria;
@@ -12,15 +10,20 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, Paragraph, TableState, Wrap},
+    widgets::{Block, Borders, ListItem, Paragraph, TableState, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::ui::{
-    components::{balance::Balance, Component, KeyHandled},
-    state::{AppState, UiTransactionBurnStatus},
-    widgets::draw_dialog,
+use crate::{
+    ui::{
+        components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
+        state::{AppState, UiTransactionBurnStatus},
+        types::UiBurntProof,
+        widgets::{draw_dialog, MultiColumnList, WindowedListState},
+        MAX_WIDTH,
+    },
+    utils::formatting::display_compressed_string,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::burn_tab ";
@@ -39,6 +42,8 @@ pub struct BurnTab {
     burn_result_watch: Option<watch::Receiver<UiTransactionBurnStatus>>,
     confirmation_dialog: Option<BurnConfirmationDialogType>,
     table_state: TableState,
+    proofs_list_state: WindowedListState,
+    show_proofs: bool,
 }
 
 impl BurnTab {
@@ -54,9 +59,11 @@ impl BurnTab {
             error_message: None,
             success_message: None,
             offline_message: None,
+            proofs_list_state: WindowedListState::new(),
             burn_result_watch: None,
             confirmation_dialog: None,
             table_state: TableState::default(),
+            show_proofs: false,
         }
     }
 
@@ -101,7 +108,9 @@ impl BurnTab {
                 Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field."),
+                Span::raw(" field,"),
+                Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to view burnt proofs."),
             ]),
             Spans::from(vec![
                 Span::raw("Press "),
@@ -199,6 +208,68 @@ impl BurnTab {
         }
     }
 
+    #[allow(dead_code)]
+    fn draw_proofs<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            "Burnt Proofs",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+        f.render_widget(block, area);
+
+        let list_areas = Layout::default()
+            .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
+            .margin(1)
+            .split(area);
+
+        let instructions = Paragraph::new(Spans::from(vec![
+            Span::raw(" Use "),
+            Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to choose a contact, "),
+            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to select."),
+        ]))
+        .wrap(Wrap { trim: true });
+        f.render_widget(instructions, list_areas[0]);
+
+        self.proofs_list_state.set_num_items(app_state.get_burnt_proofs().len());
+
+        let mut list_state = self
+            .proofs_list_state
+            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+
+        let window = self.proofs_list_state.get_start_end();
+        let windowed_view = app_state.get_burnt_proofs_slice(window.0, window.1);
+
+        let column_list = BurnTab::create_column_view(windowed_view);
+        column_list.render(f, list_areas[1], &mut list_state);
+    }
+
+    // Helper function to create the column list to be rendered
+    pub fn create_column_view(windowed_view: &[UiBurntProof]) -> MultiColumnList<Vec<ListItem>> {
+        let mut column0_items = Vec::new();
+        let mut column1_items = Vec::new();
+        // let mut column2_items = Vec::new();
+
+        for item in windowed_view.iter() {
+            column0_items.push(ListItem::new(Span::raw(item.id.to_string())));
+            column1_items.push(ListItem::new(Span::raw(item.proof.clone())));
+            // column2_items.push(ListItem::new(Span::raw(item.last_seen.clone())));
+        }
+
+        let column_list = MultiColumnList::new()
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
+            .heading_style(Style::default().fg(Color::Magenta))
+            .max_width(MAX_WIDTH)
+            .add_column(Some("ID"), Some(23), column0_items)
+            .add_column(None, Some(1), Vec::new())
+            .add_column(Some("Reciprocal Public Key"), Some(66), column1_items);
+        // .add_column(None, Some(1), Vec::new())
+        // .add_column(Some("Last Seen"), Some(11), column2_items);
+
+        column_list
+    }
+
     #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
@@ -286,7 +357,7 @@ impl BurnTab {
             match self.burn_input_mode {
                 BurnInputMode::None => (),
                 BurnInputMode::BurntProofPath => match c {
-                    '\n' => self.burn_input_mode = BurnInputMode::Amount,
+                    '\n' => self.burn_input_mode = BurnInputMode::ClaimPublicKey,
                     c => {
                         self.burnt_proof_filepath_field.push(c);
                         return KeyHandled::Handled;
@@ -329,6 +400,22 @@ impl BurnTab {
 
         KeyHandled::NotHandled
     }
+
+    fn on_key_show_proofs(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.show_proofs && c == '\n' {
+            if let Some(c) = self
+                .proofs_list_state
+                .selected()
+                .and_then(|i| app_state.get_burnt_proof_by_index(i))
+                .cloned()
+            {
+                self.show_proofs = false;
+            }
+            return KeyHandled::Handled;
+        }
+
+        KeyHandled::NotHandled
+    }
 }
 
 impl<B: Backend> Component<B> for BurnTab {
@@ -349,6 +436,10 @@ impl<B: Backend> Component<B> for BurnTab {
 
         self.balance.draw(f, areas[0], app_state);
         self.draw_burn_form(f, areas[1], app_state);
+
+        if self.show_proofs {
+            self.draw_proofs(f, areas[2], app_state);
+        };
 
         let rx_option = self.burn_result_watch.take();
         if let Some(rx) = rx_option {
@@ -373,7 +464,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     );
                     return;
                 },
-                UiTransactionBurnStatus::TransactionComplete => {
+                UiTransactionBurnStatus::TransactionComplete((proof_id, serialized_proof)) => {
                     self.success_message =
                         Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
                     return;
@@ -456,6 +547,10 @@ impl<B: Backend> Component<B> for BurnTab {
             return;
         }
 
+        if self.on_key_show_proofs(c, app_state) == KeyHandled::Handled {
+            return;
+        }
+
         match c {
             'p' => self.burn_input_mode = BurnInputMode::BurntProofPath,
             'c' => self.burn_input_mode = BurnInputMode::ClaimPublicKey,
@@ -464,6 +559,9 @@ impl<B: Backend> Component<B> for BurnTab {
             },
             'f' => self.burn_input_mode = BurnInputMode::Fee,
             'm' => self.burn_input_mode = BurnInputMode::Message,
+            'b' => {
+                self.show_proofs = !self.show_proofs;
+            },
             's' => {
                 // if self.burnt_proof_filepath_field.is_empty() {
                 // self.error_message = Some("Burn proof filepath is empty\nPress Enter to continue.".to_string());

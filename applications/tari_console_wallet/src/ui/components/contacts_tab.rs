@@ -16,8 +16,8 @@ use crate::{
     ui::{
         components::{Component, KeyHandled},
         state::AppState,
+        types::UiContact,
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
-        UiContact,
         MAX_WIDTH,
     },
     utils::formatting::display_compressed_string,

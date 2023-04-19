@@ -29,9 +29,9 @@ use crate::utils::crossterm_events::CrosstermEvents;
 mod app;
 mod components;
 pub mod state;
-mod ui_contact;
-mod ui_error;
+pub mod types;
 mod widgets;
+
 use std::io::{stdout, Stdout};
 
 pub use app::*;
@@ -41,10 +41,9 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use log::*;
+use tari_contacts::contacts_service::storage::database::Contact;
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
-pub use ui_contact::*;
-pub use ui_error::*;
 
 use crate::utils::events::{Event, EventStream};
 

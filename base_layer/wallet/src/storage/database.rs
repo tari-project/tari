@@ -79,6 +79,8 @@ pub enum DbKey {
     WalletBirthday,
     LastAccessedNetwork,
     LastAccessedVersion,
+    BurntProofId(i32),
+    ListBurntProofs,
 }
 
 impl DbKey {
@@ -98,6 +100,8 @@ impl DbKey {
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
             DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
             DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
+            DbKey::BurntProofId(id) => format!("BurntProof.{}", id),
+            DbKey::ListBurntProofs => "ListBurntProofs".to_string(),
         }
     }
 }
@@ -118,6 +122,8 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
+    BurntProofs(Vec<(i32, String)>),
+    BurntProof((i32, String)),
 }
 
 #[derive(Clone)]
@@ -130,6 +136,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
+    BurntProof((i32, String)),
 }
 
 pub enum WriteOperation {
@@ -351,6 +358,31 @@ where T: WalletBackend + 'static
         self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
         Ok(())
     }
+
+    // ----------------------------------------------------------------------------
+    // burnt proofs
+
+    pub fn insert_burn_proof(&self, id: i32, proof: String) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::BurntProof((id, proof))))?;
+        Ok(())
+    }
+
+    pub fn remove_burnt_proof(&self, id: i32) -> Result<(), WalletStorageError> {
+        self.db.write(WriteOperation::Remove(DbKey::BurntProofId(id)))?;
+        Ok(())
+    }
+
+    pub fn get_burnt_proofs(&self) -> Result<Vec<(i32, String)>, WalletStorageError> {
+        let proofs = match self.db.fetch(&DbKey::ListBurntProofs) {
+            Ok(None) => Ok(vec![]),
+            Ok(Some(DbValue::BurntProofs(proofs))) => Ok(proofs),
+            Ok(Some(other)) => unexpected_result(DbKey::ListBurntProofs, other),
+            Err(e) => log_error(DbKey::ListBurntProofs, e),
+        }?;
+
+        Ok(proofs)
+    }
 }
 
 impl Display for DbValue {
@@ -371,6 +403,8 @@ impl Display for DbValue {
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
+            DbValue::BurntProofs(proofs) => f.write_str(&format!("BurntProofs: {:?}", proofs)),
+            DbValue::BurntProof((id, _)) => f.write_str(&format!("BurntProof: {}", id)),
         }
     }
 }

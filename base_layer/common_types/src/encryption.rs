@@ -41,6 +41,7 @@ pub trait Encryptable<C> {
     const COMPLETED_TRANSACTION: &'static [u8] = b"COMPLETED_TRANSACTION";
     const KNOWN_ONESIDED_PAYMENT_SCRIPT: &'static [u8] = b"KNOWN_ONESIDED_PAYMENT_SCRIPT";
     const CLIENT_KEY_VALUE: &'static [u8] = b"CLIENT_KEY_VALUE";
+    const BURNT_PROOF: &'static [u8] = b"BURNT_PROOF";
 
     fn domain(&self, field_name: &'static str) -> Vec<u8>;
     fn encrypt(self, cipher: &C) -> Result<Self, String>

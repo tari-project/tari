@@ -22,6 +22,7 @@
 
 use std::path::PathBuf;
 
+use rand::random;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
 use tari_utilities::ByteArray;
@@ -32,8 +33,8 @@ use tari_wallet::{
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{
+    app::UiError,
     state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
-    UiError,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
@@ -259,17 +260,21 @@ pub async fn send_burn_transaction_task(
                                     range_proof: proof.range_proof.0,
                                 };
 
+                                let serialized_proof =
+                                    serde_json::to_string_pretty(&BurntProofBase64::from(wrapped_proof))
+                                        .expect("failed to serialize burn proof");
+
                                 let filepath = burn_proof_filepath
                                     .unwrap_or(PathBuf::from(format!("{}.json", burn_tx_id.as_u64().to_string())));
 
-                                std::fs::write(
-                                    filepath,
-                                    serde_json::to_string_pretty(&BurntProofBase64::from(wrapped_proof))
-                                        .expect("failed to serialize burn proof"),
-                                )
-                                .expect("failed to save burn proof");
+                                std::fs::write(filepath, serialized_proof.as_bytes())
+                                    .expect("failed to save burn proof");
 
-                                let _ = result_tx.send(UiTransactionBurnStatus::TransactionComplete);
+                                let _ = result_tx.send(UiTransactionBurnStatus::TransactionComplete((
+                                    random::<i32>(),
+                                    serialized_proof,
+                                )));
+
                                 return;
                             }
                         }

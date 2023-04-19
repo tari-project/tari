@@ -34,6 +34,7 @@ use argon2::password_hash::{
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{generic_array::GenericArray, FixedOutput};
+use itertools::Itertools;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
@@ -51,6 +52,7 @@ use tari_utilities::{
     hex::{from_hex, Hex},
     hidden_type,
     safe_array::SafeArray,
+    ByteArray,
     Hidden,
     SafePassword,
 };
@@ -59,7 +61,7 @@ use zeroize::Zeroize;
 
 use crate::{
     error::WalletStorageError,
-    schema::{client_key_values, wallet_settings},
+    schema::{burnt_proofs, client_key_values, wallet_settings},
     storage::{
         database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
         sqlite_db::scanned_blocks::ScannedBlockSql,
@@ -422,6 +424,12 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::LastAccessedNetwork, network).set(&mut conn)?;
                 WalletSettingSql::new(DbKey::LastAccessedVersion, version).set(&mut conn)?;
             },
+            DbKeyValuePair::BurntProof((id, proof)) => {
+                kvp_text = "BurntProof";
+
+                let cipher = acquire_read_lock!(self.cipher);
+                BurntProofSql::new(id, proof, &cipher)?.insert(&mut conn)?;
+            },
         }
 
         if start.elapsed().as_millis() > 0 {
@@ -463,7 +471,9 @@ impl WalletSqliteDatabase {
             DbKey::WalletBirthday |
             DbKey::CommsIdentitySignature |
             DbKey::LastAccessedNetwork |
-            DbKey::LastAccessedVersion => {
+            DbKey::LastAccessedVersion |
+            DbKey::BurntProofId(_) |
+            DbKey::ListBurntProofs => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
         };
@@ -517,6 +527,12 @@ impl WalletBackend for WalletSqliteDatabase {
                 .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
                 .map(Box::new)
                 .map(DbValue::CommsIdentitySignature),
+            DbKey::BurntProofId(id) => {
+                BurntProofSql::get(*id, &mut conn)?.map(|BurntProofSql { id, value }| DbValue::BurntProof((id, value)))
+            },
+            DbKey::ListBurntProofs => BurntProofSql::index(&mut conn)
+                .map(|proofs| DbValue::BurntProofs(proofs.into_iter().map(|x| (x.id, x.value)).collect_vec()))
+                .ok(),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -855,6 +871,90 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
         [Self::CLIENT_KEY_VALUE, self.key.as_bytes(), field_name.as_bytes()]
             .concat()
             .to_vec()
+    }
+
+    #[allow(unused_assignments)]
+    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        self.value = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("value"),
+            Hidden::hide(self.value.as_bytes().to_vec()),
+        )?
+        .to_hex();
+
+        Ok(self)
+    }
+
+    #[allow(unused_assignments)]
+    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
+        let mut decrypted_value = decrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("value"),
+            &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
+        )?;
+
+        self.value = from_utf8(decrypted_value.as_slice())
+            .map_err(|e| e.to_string())?
+            .to_string();
+
+        // we zeroize the decrypted value
+        decrypted_value.zeroize();
+
+        Ok(self)
+    }
+}
+
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
+#[diesel(table_name = burnt_proofs)]
+struct BurntProofSql {
+    id: i32,
+    value: String,
+}
+
+impl BurntProofSql {
+    pub fn new(id: i32, value: String, cipher: &XChaCha20Poly1305) -> Result<Self, WalletStorageError> {
+        let client_kv = Self { id, value };
+        client_kv.encrypt(cipher).map_err(WalletStorageError::AeadError)
+    }
+
+    #[allow(dead_code)]
+    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<Self>, WalletStorageError> {
+        Ok(burnt_proofs::table.load::<BurntProofSql>(conn)?)
+    }
+
+    pub fn insert(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
+        diesel::replace_into(burnt_proofs::table).values(self).execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn get(id: i32, conn: &mut SqliteConnection) -> Result<Option<Self>, WalletStorageError> {
+        burnt_proofs::table
+            .filter(burnt_proofs::id.eq(id))
+            .first::<BurntProofSql>(conn)
+            .map(Some)
+            .or_else(|err| match err {
+                diesel::result::Error::NotFound => Ok(None),
+                err => Err(err.into()),
+            })
+    }
+
+    pub fn delete(id: i32, conn: &mut SqliteConnection) -> Result<bool, WalletStorageError> {
+        let num_deleted = diesel::delete(burnt_proofs::table.filter(burnt_proofs::id.eq(id))).execute(conn)?;
+
+        Ok(num_deleted > 0)
+    }
+}
+
+impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::BURNT_PROOF,
+            self.id.to_be_bytes().as_bytes(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
     }
 
     #[allow(unused_assignments)]

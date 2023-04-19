@@ -130,6 +130,13 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    burnt_proofs (id) {
+        id -> Integer,
+        value -> Text,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
@@ -139,4 +146,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     outputs,
     scanned_blocks,
     wallet_settings,
+    burnt_proofs,
 );

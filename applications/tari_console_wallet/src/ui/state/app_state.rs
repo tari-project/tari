@@ -72,13 +72,13 @@ use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
     notifier::Notifier,
     ui::{
+        app::UiError,
         state::{
             debouncer::BalanceEnquiryDebouncer,
             tasks::{send_burn_transaction_task, send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
-        UiContact,
-        UiError,
+        types::{UiBurntProof, UiContact},
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
@@ -160,6 +160,14 @@ impl AppState {
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_contacts_state().await?;
+        drop(inner);
+        self.update_cache().await;
+        Ok(())
+    }
+
+    pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_burnt_proofs_state().await?;
         drop(inner);
         self.update_cache().await;
         Ok(())
@@ -379,7 +387,7 @@ impl AppState {
                 let path = PathBuf::from(path);
 
                 if path.exists() {
-                    return Err(UiError::BurnProofFileExists);
+                    return Err(UiError::BurntProofFileExists);
                 }
 
                 Some(path)
@@ -435,6 +443,14 @@ impl AppState {
         &self.cached_data.my_identity
     }
 
+    pub fn get_burnt_proofs(&self) -> &[UiBurntProof] {
+        self.cached_data.burnt_proofs.as_slice()
+    }
+
+    pub fn get_burnt_proof_by_index(&self, idx: usize) -> Option<&UiBurntProof> {
+        self.cached_data.burnt_proofs.get(idx)
+    }
+
     pub fn get_contacts(&self) -> &[UiContact] {
         self.cached_data.contacts.as_slice()
     }
@@ -453,6 +469,14 @@ impl AppState {
         }
 
         &self.cached_data.contacts[start..end]
+    }
+
+    pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
+        if self.cached_data.burnt_proofs.is_empty() || start > end || end > self.cached_data.burnt_proofs.len() {
+            return &[];
+        }
+
+        &self.cached_data.burnt_proofs[start..end]
     }
 
     pub fn get_pending_txs(&self) -> &Vec<CompletedTransactionInfo> {
@@ -829,6 +853,29 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
+        let db_burnt_proofs = self.wallet.db.get_burnt_proofs()?;
+        let mut ui_proofs: Vec<UiBurntProof> = vec![];
+
+        for proof in db_burnt_proofs {
+            ui_proofs.push(UiBurntProof {
+                id: proof.0,
+                proof: proof.1,
+            });
+        }
+
+        // TODO: sort by timestamp when added
+        // ui_proofs.sort_by(|a, b| {
+        // a.alias
+        // .partial_cmp(&b.alias)
+        // .expect("Should be able to compare contact aliases")
+        // });
+
+        self.data.burnt_proofs = ui_proofs;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
@@ -1113,6 +1160,7 @@ struct AppStateData {
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
+    burnt_proofs: Vec<UiBurntProof>,
     connected_peers: Vec<Peer>,
     balance: Balance,
     base_node_state: BaseNodeState,
@@ -1187,6 +1235,7 @@ impl AppStateData {
             confirmations: HashMap::new(),
             my_identity: identity,
             contacts: Vec::new(),
+            burnt_proofs: vec![],
             connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
@@ -1226,7 +1275,7 @@ pub enum UiTransactionBurnStatus {
     Initiated,
     Queued,
     SentDirect,
-    TransactionComplete,
+    TransactionComplete((i32, String)),
     DiscoveryInProgress,
     SentViaSaf,
     Error(String),

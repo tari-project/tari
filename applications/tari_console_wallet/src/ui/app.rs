@@ -20,8 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::peer_manager::Peer;
-use tari_wallet::{util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::Peer};
+use tari_contacts::contacts_service::error::ContactsServiceError;
+use tari_utilities::hex::HexError;
+use tari_wallet::{
+    error::{WalletError, WalletStorageError},
+    output_manager_service::error::OutputManagerError,
+    transaction_service::error::TransactionServiceError,
+    util::wallet_identity::WalletIdentity,
+    WalletConfig,
+    WalletSqlite,
+};
+use thiserror::Error;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -187,4 +197,34 @@ impl<B: Backend> App<B> {
         self.base_node_status.draw(f, title_chunks[2], &self.app_state);
         self.menu.draw(f, title_chunks[3], &self.app_state);
     }
+}
+
+#[derive(Error, Debug)]
+pub enum UiError {
+    #[error(transparent)]
+    TransactionService(#[from] TransactionServiceError),
+    #[error(transparent)]
+    OutputManager(#[from] OutputManagerError),
+    #[error(transparent)]
+    ContactsService(#[from] ContactsServiceError),
+    #[error(transparent)]
+    Connectivity(#[from] ConnectivityError),
+    #[error(transparent)]
+    HexError(#[from] HexError),
+    #[error(transparent)]
+    WalletError(#[from] WalletError),
+    #[error(transparent)]
+    WalletStorageError(#[from] WalletStorageError),
+    #[error("Could not convert string into Public Key")]
+    PublicKeyParseError,
+    #[error("Could not convert string into Net Address")]
+    AddressParseError,
+    #[error("Peer did not include an address")]
+    NoAddress,
+    #[error("Specified burn proof file already exists")]
+    BurntProofFileExists,
+    #[error("Burnt proof with id {0} is not found")]
+    BurntProofNotFound(i32),
+    #[error("Channel send error: `{0}`")]
+    SendError(String),
 }
