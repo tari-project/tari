@@ -40,7 +40,7 @@ pub async fn send_transaction_cancelled_message(
     // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as
     // they are just courtesy messages
     let _send_message_response = outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             destination_public_key.clone(),
             OutboundDomainMessage::new(&TariMessageType::TransactionCancelled, proto_message.clone()),
             "transaction cancelled".to_string(),

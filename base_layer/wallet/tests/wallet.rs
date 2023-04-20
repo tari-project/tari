@@ -43,7 +43,8 @@ use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
     handle::ContactsLivenessEvent,
     service::ContactMessageType,
-    storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    storage::sqlite_db::ContactsServiceSqliteDatabase,
+    types::Contact,
 };
 use tari_core::{
     consensus::ConsensusManager,

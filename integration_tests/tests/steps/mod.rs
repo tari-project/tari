@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2023. The Tari Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -20,26 +20,33 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// A type that can indicate something is not found.
-/// Implement this on `E` to get the `.optional()?` function on the `Result<T, E>` type.
-pub trait IsNotFoundError {
-    fn is_not_found_error(&self) -> bool;
+use std::time::Duration;
+
+use cucumber::{then, when};
+use tari_integration_tests::TariWorld;
+
+pub mod chat_steps;
+pub mod merge_mining_steps;
+pub mod mining_steps;
+pub mod node_steps;
+pub mod wallet_cli_steps;
+pub mod wallet_ffi_steps;
+pub mod wallet_steps;
+
+pub const CONFIRMATION_PERIOD: u64 = 4;
+pub const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
+pub const HALF_SECOND: u64 = 500;
+
+#[when(expr = "I wait {int} seconds")]
+async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
+    tokio::time::sleep(Duration::from_secs(seconds)).await;
 }
 
-pub trait Optional<T> {
-    type Error;
+#[then(regex = r"I receive an error containing '(.*)'")]
+async fn receive_an_error(_world: &mut TariWorld, _error: String) {
+    // No-op.
+    // Was not implemented in previous suite, gave it a quick try but missing other peices
 
-    fn optional(self) -> Result<Option<T>, Self::Error>;
-}
-
-impl<T, E: IsNotFoundError> Optional<T> for Result<T, E> {
-    type Error = E;
-
-    fn optional(self) -> Result<Option<T>, Self::Error> {
-        match self {
-            Ok(t) => Ok(Some(t)),
-            Err(e) if e.is_not_found_error() => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
+    // assert!(world.errors.len() > 1);
+    // assert!(world.errors.pop_front().unwrap().contains(&error))
 }

@@ -208,10 +208,11 @@ where
                     max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
                     ..Default::default()
                 },
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(
                 contacts_backend,
+                peer_message_subscription_factory,
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))

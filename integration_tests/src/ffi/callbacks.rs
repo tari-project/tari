@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, Once};
 use libc::c_void;
 
 use super::{Balance, CompletedTransaction, ContactsLivenessData, PendingInboundTransaction, Wallet};
-use crate::utils::ffi::TransactionSendStatus;
+use crate::ffi::TransactionSendStatus;
 
 #[derive(Debug, Default)]
 pub struct Callbacks {

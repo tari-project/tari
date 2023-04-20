@@ -42,7 +42,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact};
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,

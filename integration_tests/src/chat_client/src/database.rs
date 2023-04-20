@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2023. The Tari Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -20,37 +20,36 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::{convert::TryInto, path::PathBuf};
 
-use libc::{c_int, c_void};
+use diesel::{Connection, SqliteConnection};
+use tari_common_sqlite::{
+    connection::{DbConnection, DbConnectionUrl},
+    error::StorageError,
+};
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+use tari_test_utils::random::string;
 
-use super::ffi_import;
+pub fn create_chat_storage(base_path: PathBuf) -> Result<DbConnection, StorageError> {
+    std::fs::create_dir_all(&base_path).unwrap();
+    let db_name = format!("{}.sqlite3", string(8).as_str());
+    let db_path = format!("{}/{}", base_path.to_str().unwrap(), db_name);
+    let url: DbConnectionUrl = db_path.clone().try_into().unwrap();
 
-pub struct TransportConfig {
-    ptr: *mut c_void,
+    // Create the db
+    let _db = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+    DbConnection::connect_url(&url)
 }
 
-impl Drop for TransportConfig {
-    fn drop(&mut self) {
-        unsafe { ffi_import::transport_config_destroy(self.ptr) };
-        self.ptr = null_mut();
-    }
-}
+pub fn create_peer_storage(base_path: PathBuf) {
+    std::fs::create_dir_all(&base_path).unwrap();
 
-impl TransportConfig {
-    pub fn create_tcp(listener_address: *const i8) -> Self {
-        let ptr;
-        let mut error: c_int = 0;
-        unsafe {
-            ptr = ffi_import::transport_tcp_create(listener_address, &mut error);
-            if error > 0 {
-                println!("transport_tcp_create error {}", error);
-            }
-        }
-        Self { ptr }
-    }
-
-    pub fn get_ptr(&self) -> *mut c_void {
-        self.ptr
-    }
+    LMDBBuilder::new()
+        .set_path(&base_path)
+        .set_env_config(LMDBConfig::default())
+        .set_max_number_of_databases(1)
+        .add_database("peerdb", lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
 }
