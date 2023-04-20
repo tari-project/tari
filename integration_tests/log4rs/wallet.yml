@@ -69,6 +69,23 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
+  # An appender named "contacts" that writes to a file with a custom pattern encoder
+  contacts:
+    kind: rolling_file
+    path: "log/wallet/contacts.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/wallet/contacts.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
   level: warn
@@ -92,6 +109,11 @@ loggers:
     level: debug
     appenders:
       - network
+    additive: false
+  contacts:
+    level: debug
+    appenders:
+      - contacts
     additive: false
   comms::noise:
     level: error

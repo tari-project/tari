@@ -557,10 +557,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Attempting to decrypt message signature ({} byte(s))",
                 header.message_signature.len()
             );
-            let shared_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
-            let key_signature = crypt::generate_key_signature(&shared_secret);
-            let decrypted = crypt::decrypt_signature(&key_signature, &header.message_signature)?;
-            let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
+            let masked_sender_public_key = Self::authenticate_message(&header.message_signature, header, body)?;
 
             trace!(
                 target: LOG_TARGET,
@@ -568,15 +565,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 body.len()
             );
 
-            let key_message = crypt::generate_key_message(&shared_secret);
+            let shared_ephemeral_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
+            let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
             let mut decrypted_bytes = BytesMut::from(body);
-            crypt::decrypt_message(&key_message, &mut decrypted_bytes)?;
+            crypt::decrypt_message(&key_message, &mut decrypted_bytes, masked_sender_public_key.as_bytes())?;
             let envelope_body =
                 EnvelopeBody::decode(decrypted_bytes.freeze()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
             if envelope_body.is_empty() {
                 return Err(StoreAndForwardError::InvalidEnvelopeBody);
             }
-            Ok((Some(authenticated_pk), envelope_body))
+
+            // Unmask the sender public key
+            let mask = crypt::generate_key_mask(&shared_ephemeral_secret)?;
+            let mask_inverse = mask.invert().ok_or(StoreAndForwardError::DecryptionFailed)?;
+            Ok((Some(mask_inverse * masked_sender_public_key), envelope_body))
         } else {
             let authenticated_pk = if header.message_signature.is_empty() {
                 None

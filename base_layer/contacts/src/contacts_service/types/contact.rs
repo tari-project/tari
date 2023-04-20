@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,36 +20,48 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::FixedHashSizeError;
-use tari_comms::peer_manager::PeerManagerError;
-use thiserror::Error;
+use chrono::NaiveDateTime;
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::peer_manager::NodeId;
 
-use crate::optional::IsNotFoundError;
-
-#[derive(Error, Debug)]
-pub enum GrpcBaseNodeError {
-    #[error("Could not connect to base node")]
-    ConnectionError,
-    #[error("Connection error: {0}")]
-    GrpcConnection(#[from] tonic::transport::Error),
-    #[error("GRPC error: {0}")]
-    GrpcStatus(#[from] tonic::Status),
-    #[error("Peer sent an invalid message: {0}")]
-    InvalidPeerMessage(String),
-    #[error("Hash size error: {0}")]
-    HashSizeError(#[from] FixedHashSizeError),
-    #[error("Node not found: {0}")]
-    NodeNotFound(String),
-    #[error("Peer manager error: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Contact {
+    pub alias: String,
+    pub address: TariAddress,
+    pub node_id: NodeId,
+    pub last_seen: Option<NaiveDateTime>,
+    pub latency: Option<u32>,
+    pub favourite: bool,
 }
 
-impl IsNotFoundError for GrpcBaseNodeError {
-    fn is_not_found_error(&self) -> bool {
-        if let Self::GrpcStatus(status) = self {
-            status.code() == tonic::Code::NotFound
-        } else {
-            false
+impl Contact {
+    pub fn new(
+        alias: String,
+        address: TariAddress,
+        last_seen: Option<NaiveDateTime>,
+        latency: Option<u32>,
+        favourite: bool,
+    ) -> Self {
+        Self {
+            alias,
+            node_id: NodeId::from_key(address.public_key()),
+            address,
+            last_seen,
+            latency,
+            favourite,
+        }
+    }
+}
+
+impl From<&TariAddress> for Contact {
+    fn from(address: &TariAddress) -> Self {
+        Self {
+            alias: address.to_emoji_string(),
+            address: address.clone(),
+            node_id: NodeId::from_key(address.public_key()),
+            last_seen: None,
+            latency: None,
+            favourite: false,
         }
     }
 }

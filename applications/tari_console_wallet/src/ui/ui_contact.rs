@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use chrono::{DateTime, Local};
-use tari_contacts::contacts_service::storage::database::Contact;
+use tari_contacts::contacts_service::types::Contact;
 
 #[derive(Debug, Clone)]
 pub struct UiContact {

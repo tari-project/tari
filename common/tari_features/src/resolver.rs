@@ -20,9 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Display, str::FromStr};
-
-use tari_common::configuration::Network;
+use std::fmt::Display;
 
 use crate::{Feature, FEATURE_LIST};
 
@@ -38,6 +36,17 @@ impl Target {
             Target::MainNet => "mainnet",
             Target::NextNet => "nextnet",
             Target::TestNet => "testnet",
+        }
+    }
+
+    pub fn from_network_str(value: &str) -> Self {
+        // The duplication of network names here isn't great but we're being lazy and non-exhaustive
+        // regarding the endless testnet possibilities. This minor MainNet, StageNet, and NextNet
+        // duplication allows us to leave the crate dependency free.
+        match value.to_lowercase().as_str() {
+            "mainnet" | "stagenet" => Target::MainNet,
+            "nextnet" => Target::NextNet,
+            _ => Target::TestNet,
         }
     }
 }
@@ -64,16 +73,7 @@ pub fn identify_target() -> Target {
 
 pub fn check_envar(envar: &str) -> Option<Target> {
     match std::env::var(envar) {
-        Ok(s) => {
-            let network =
-                Network::from_str(s.to_lowercase().as_str()).unwrap_or_else(|_| panic!("Unknown network, {}", s));
-            match network {
-                Network::MainNet | Network::StageNet => Some(Target::MainNet),
-                Network::NextNet => Some(Target::NextNet),
-                Network::LocalNet | Network::Igor | Network::Esmeralda => Some(Target::TestNet),
-                Network::Weatherwax | Network::Ridcully | Network::Stibbons | Network::Dibbler => None,
-            }
-        },
+        Ok(s) => Some(Target::from_network_str(s.to_lowercase().as_str())),
         _ => None,
     }
 }

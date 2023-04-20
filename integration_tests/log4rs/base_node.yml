@@ -109,6 +109,11 @@ loggers:
     level: debug
     appenders:
       - network
+  # Route log events sent to the "contacts" logger to the "network" appender
+  contacts:
+    level: debug
+    appenders:
+      - network
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: debug

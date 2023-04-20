@@ -100,7 +100,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_contacts::contacts_service::storage::database::Contact;
+use tari_contacts::contacts_service::types::Contact;
 use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
@@ -210,7 +210,7 @@ pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
-pub type TariContact = tari_contacts::contacts_service::storage::database::Contact;
+pub type TariContact = tari_contacts::contacts_service::types::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;

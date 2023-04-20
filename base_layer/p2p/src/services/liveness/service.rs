@@ -226,7 +226,7 @@ where
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
         let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
         self.outbound_messaging
-            .send_direct(
+            .send_direct_unencrypted(
                 dest,
                 OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
                 "Sending pong".to_string(),

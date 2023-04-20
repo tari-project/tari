@@ -13,6 +13,7 @@ enum TariMessageType {
     // -- NetMessages --
 
     TariMessageTypePingPong = 1;
+    TariMessageTypeChat = 2;
 
     // -- Blockchain messages --
 

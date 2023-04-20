@@ -85,11 +85,7 @@ struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
 
-struct FixedHash;
-
 struct InboundTransaction;
-
-struct Option_NodeId;
 
 struct OutboundTransaction;
 
@@ -158,6 +154,8 @@ struct RistrettoPublicKey;
 struct RistrettoSecretKey;
 
 struct TariAddress;
+
+struct TariBaseNodeState;
 
 struct TariCompletedTransactions;
 
@@ -323,43 +321,6 @@ typedef struct TransportConfig TariTransportConfig;
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
-
-typedef struct FixedHash BlockHash;
-
-struct TariBaseNodeState {
-  /**
-   * The ID of the base node this wallet is connected to
-   */
-  struct Option_NodeId node_id;
-  /**
-   * The current chain height, or the block number of the longest valid chain, or zero if there is no chain
-   */
-  uint64_t height_of_longest_chain;
-  /**
-   * The block hash of the current tip of the longest valid chain
-   */
-  BlockHash best_block;
-  /**
-   * Timestamp of the tip block in the longest valid chain
-   */
-  uint64_t best_block_timestamp;
-  /**
-   * The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
-   * pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
-   * was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
-   * are preserved from genesis (i.e. the database is in full archival mode).
-   */
-  uint64_t pruning_horizon;
-  /**
-   * The height of the pruning horizon. This indicates from what height a full block can be provided
-   * (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
-   * provided. Archival nodes wil always have an `pruned_height` of zero.
-   */
-  uint64_t pruned_height;
-  bool is_node_synced;
-  uint64_t updated_at;
-  uint64_t latency;
-};
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 

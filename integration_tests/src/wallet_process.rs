@@ -36,11 +36,7 @@ use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{
-    get_peer_addresses,
-    utils::{get_port, wait_for_service},
-    TariWorld,
-};
+use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -120,7 +116,7 @@ pub async fn spawn_wallet(
         wallet_config.wallet.grpc_enabled = true;
         wallet_config.wallet.grpc_address =
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
-        wallet_config.wallet.data_dir = temp_dir_path.clone().join("data").join("wallet");
+        wallet_config.wallet.data_dir = temp_dir_path.clone().join("../../data").join("wallet");
         wallet_config.wallet.db_file = temp_dir_path.clone().join("db").join("console_wallet.db");
         wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(5);
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;

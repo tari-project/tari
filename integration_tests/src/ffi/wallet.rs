@@ -54,7 +54,7 @@ use super::{
     PublicKeys,
     WalletAddress,
 };
-use crate::utils::ffi::{callbacks, ffi_import::TariBaseNodeState};
+use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
 extern "C" fn callback_received_transaction(ptr: *mut TariPendingInboundTransaction) {
     let callbacks = Callbacks::instance();
@@ -164,6 +164,7 @@ impl Drop for Wallet {
 }
 
 impl Wallet {
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
