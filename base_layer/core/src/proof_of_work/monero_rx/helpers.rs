@@ -45,7 +45,7 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 /// contain valid Monero PoW data.
 pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header)?;
-    debug!(target: LOG_TARGET, "Valid Monero data: {:?}", monero_pow_data);
+    debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
