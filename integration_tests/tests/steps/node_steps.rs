@@ -73,7 +73,6 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
 
 #[when(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "I wait for {word} to connect to {word}")]
-#[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
     let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
     let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
@@ -427,6 +426,31 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
         Ok(())
     } else {
         panic!("Transaction {} wasn't submit to {}", tx_name, node)
+    }
+}
+
+#[when(expr = "I submit transaction {word} to {word} and it does not succeed")]
+pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let resp = client
+        .submit_transaction(grpc::SubmitTransactionRequest {
+            transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
+        })
+        .await?;
+
+    let result = resp.into_inner();
+
+    if result.result == 1 {
+        panic!(
+            "Transaction {} was submitted, but should not have been to {}",
+            tx_name, node
+        )
+    } else {
+        Ok(())
     }
 }
 

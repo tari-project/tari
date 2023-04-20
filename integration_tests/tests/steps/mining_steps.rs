@@ -25,6 +25,7 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{given, then, when};
 use rand::Rng;
 use tari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
+use tari_common_types::types::BlockHash;
 use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::spawn_base_node,
@@ -284,15 +285,31 @@ async fn mine_without_submit(world: &mut TariWorld, block: String, node: String)
     world.blocks.insert(block, unmined_block);
 }
 
+#[then(expr = "I update the parent of block {word} to be an orphan")]
+async fn make_block_orphan(world: &mut TariWorld, block_name: String) {
+    let mut block = world.blocks.remove(&block_name).expect("Couldn't find unmined block");
+    block.header.prev_hash = BlockHash::zero();
+    world.blocks.insert(block_name, block);
+}
+
+#[then(expr = "I update block {word} to have an invalid mmr")]
+async fn make_block_invalid(world: &mut TariWorld, block_name: String) {
+    let mut block = world.blocks.remove(&block_name).expect("Couldn't find unmined block");
+    block.header.output_mr = BlockHash::zero();
+    world.blocks.insert(block_name, block);
+}
+
 #[when(expr = "I submit block {word} to {word}")]
 async fn submit_block_after(world: &mut TariWorld, block_name: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let block = world.blocks.get(&block_name).expect("Couldn't find unmined block");
-
     match client.submit_block(grpc::Block::try_from(block.clone()).unwrap()).await {
-        Ok(_resp) => {},
+        Ok(resp) => {
+            println!("{:?}", resp)
+        },
         Err(e) => {
             // The kind of errors we want don't actually get returned
+            println!("{}", e.message().to_string());
             world.errors.push_back(e.message().to_string());
         },
     }
