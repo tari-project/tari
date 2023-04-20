@@ -34,3 +34,6 @@
 
 # Stratum Mode configuration - mining worker name (e.g. "worker1")
 # mining_worker_name = "worker1"
+
+# Base node reconnect timeout after any GRPC or miner error (default: 10 s)
+# wait_timeout_on_error = 10

@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,35 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// message RegisterValidatorNodeRequest {
-//     bytes validator_node_public_key = 1;
-//     Signature validator_node_signature = 2;
-//     uint64 fee_per_gram = 3;
-//     string message = 4;
-// }
-//
-// message RegisterValidatorNodeResponse {
-//     uint64 transaction_id = 1;
-//     bool is_success = 2;
-//     string failure_message = 3;
-// }
+mod contact;
+pub use contact::Contact;
 
-use tari_common_types::types::FixedHash;
+mod message;
+pub use message::{Direction, Message};
 
-#[derive(Debug, Clone)]
-pub struct BlockInfo {
-    pub hash: FixedHash,
-    pub height: u64,
-    pub next_block_hash: Option<FixedHash>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BaseLayerMetadata {
-    pub height_of_longest_chain: u64,
-    pub tip_hash: FixedHash,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegisterValidatorNode {
-    //
-}
+mod message_builder;
+pub use message_builder::MessageBuilder;

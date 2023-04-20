@@ -854,7 +854,7 @@ async fn receive_and_propagate_transaction() {
 
     alice_node
         .outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             bob_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
                 &TariMessageType::NewTransaction,
@@ -866,7 +866,7 @@ async fn receive_and_propagate_transaction() {
         .unwrap();
     alice_node
         .outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             carol_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
                 &TariMessageType::NewTransaction,

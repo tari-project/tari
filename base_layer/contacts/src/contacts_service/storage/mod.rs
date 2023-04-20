@@ -22,3 +22,4 @@
 
 pub mod database;
 pub mod sqlite_db;
+pub mod types;

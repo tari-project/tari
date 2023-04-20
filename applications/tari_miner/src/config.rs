@@ -75,6 +75,8 @@ pub struct MinerConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
+    /// Base node reconnect timeout after any GRPC or miner error
+    pub wait_timeout_on_error: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -104,6 +106,7 @@ impl Default for MinerConfig {
             mining_worker_name: String::new(),
             coinbase_extra: "tari_miner".to_string(),
             network: Default::default(),
+            wait_timeout_on_error: 10,
         }
     }
 }
@@ -119,8 +122,7 @@ impl MinerConfig {
     }
 
     pub fn wait_timeout(&self) -> Duration {
-        // TODO: add config parameter
-        Duration::from_secs(10)
+        Duration::from_secs(self.wait_timeout_on_error)
     }
 
     pub fn validate_tip_interval(&self) -> Duration {

@@ -130,7 +130,10 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
+    #[cfg(all(unix, feature = "libtor"))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+    #[cfg(not(all(unix, feature = "libtor")))]
+    let config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity

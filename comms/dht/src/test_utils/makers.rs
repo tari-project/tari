@@ -33,6 +33,7 @@ use tari_comms::{
 use tari_crypto::keys::PublicKey;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::{paths::create_temporary_data_path, random};
+use tari_utilities::ByteArray;
 
 use crate::{
     crypt,
@@ -78,6 +79,7 @@ pub fn make_dht_header(
     trace: MessageTag,
     include_destination: bool,
 ) -> Result<DhtMessageHeader, DhtOutboundError> {
+    // For testing purposes, the destination is the same node as the sender (or empty)
     let destination = if include_destination {
         NodeDestination::PublicKey(Box::new(node_identity.public_key().clone()))
     } else {
@@ -95,11 +97,15 @@ pub fn make_dht_header(
             Some(e_public_key),
             message,
         );
-        let signature = make_valid_message_signature(node_identity, &binding_message_representation);
         if flags.is_encrypted() {
-            let shared_secret = CommsDHKE::new(e_secret_key, node_identity.public_key());
-            let key_signature = crypt::generate_key_signature(&shared_secret);
-            message_signature = crypt::encrypt_signature(&key_signature, &signature)?;
+            // We need to offset the sender key by an ECDH-derived mask
+            let shared_ephemeral_secret = CommsDHKE::new(e_secret_key, node_identity.public_key());
+            let mask = crypt::generate_key_mask(&shared_ephemeral_secret).unwrap();
+            message_signature =
+                make_valid_message_signature(&(mask * node_identity.secret_key()), &binding_message_representation);
+        } else {
+            message_signature =
+                make_valid_message_signature(node_identity.secret_key(), &binding_message_representation);
         }
     }
     Ok(DhtMessageHeader {
@@ -118,8 +124,8 @@ pub fn make_dht_header(
     })
 }
 
-pub fn make_valid_message_signature(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
-    MessageSignature::new_signed(node_identity.secret_key().clone(), message)
+pub fn make_valid_message_signature(secret_key: &CommsSecretKey, message: &[u8]) -> Vec<u8> {
+    MessageSignature::new_signed(secret_key.clone(), message)
         .to_proto()
         .to_encoded_bytes()
 }
@@ -202,8 +208,10 @@ pub fn make_dht_envelope<T: prost::Message>(
     let message = if flags.is_encrypted() {
         let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
         let key_message = crypt::generate_key_message(&shared_secret);
+        let mask = crypt::generate_key_mask(&shared_secret).unwrap();
+        let masked_public_key = mask * node_identity.public_key();
         let mut message = prepare_message(true, message);
-        crypt::encrypt_message(&key_message, &mut message).unwrap();
+        crypt::encrypt_message(&key_message, &mut message, masked_public_key.as_bytes()).unwrap();
         message.freeze()
     } else {
         prepare_message(false, message).freeze()

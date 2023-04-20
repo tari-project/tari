@@ -10,3 +10,13 @@ diesel::table! {
         favourite -> Integer,
     }
 }
+
+diesel::table! {
+    messages (message_id) {
+        address -> Binary,
+        message_id -> Binary,
+        body -> Binary,
+        stored_at -> Timestamp,
+        direction -> Integer,
+    }
+}
