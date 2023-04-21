@@ -304,12 +304,9 @@ async fn submit_block_after(world: &mut TariWorld, block_name: String, node: Str
     let mut client = world.get_node_client(&node).await.unwrap();
     let block = world.blocks.get(&block_name).expect("Couldn't find unmined block");
     match client.submit_block(grpc::Block::try_from(block.clone()).unwrap()).await {
-        Ok(resp) => {
-            println!("{:?}", resp)
-        },
+        Ok(_) => {},
         Err(e) => {
             // The kind of errors we want don't actually get returned
-            println!("{}", e.message().to_string());
             world.errors.push_back(e.message().to_string());
         },
     }

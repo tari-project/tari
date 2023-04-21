@@ -46,7 +46,7 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 async fn receive_an_error(world: &mut TariWorld, error: String) {
     match world.errors.back() {
         Some(err) => assert_eq!(err, &error),
-        None => assert!(false),
+        None => panic!("Should have received an error"),
     };
 
     // No-op.
