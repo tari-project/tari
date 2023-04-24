@@ -9,7 +9,7 @@ _Last Updated: April 24, 2023_
 
 This policy applies to:
 
-* Code implementation as seen in the `tari-project` [GitHub repositories](https://github.com/tari-project). This includes code in `master` or `main` branches and any release branch.
+* Code implementation as seen in the `tari-project` [GitHub repositories](https://github.com/tari-project). This includes code in the `development` branches and any release branch.
 * Written research from Tari Labs which dictates the above-referenced Tari code implementation. This includes [Tari RFCs](https://github.com/tari-project/rfcs) and any published academic or journal articles.
 * Infrastructure owned, operated, or maintained by Tari Labs. This includes websites and public-facing applications.
 
