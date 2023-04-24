@@ -22,7 +22,7 @@
 
 use std::path::PathBuf;
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::Utc;
 use log::error;
 use rand::random;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
@@ -32,7 +32,6 @@ use tari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
-    WalletSqlite,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -238,7 +237,7 @@ pub async fn send_burn_transaction_task(
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
 ) {
-    let _ = result_tx.send(UiTransactionBurnStatus::Initiated);
+    result_tx.send(UiTransactionBurnStatus::Initiated).unwrap();
     let mut event_stream = transaction_service_handle.get_event_stream();
 
     match transaction_service_handle
@@ -246,7 +245,9 @@ pub async fn send_burn_transaction_task(
         .await
     {
         Err(e) => {
-            let _ = result_tx.send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()));
+            result_tx
+                .send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()))
+                .unwrap();
         },
         Ok((burn_tx_id, original_proof)) => {
             loop {
@@ -267,12 +268,11 @@ pub async fn send_burn_transaction_task(
                                     range_proof: original_proof.range_proof.0,
                                 };
 
-                                let serialized_proof =
-                                    serde_json::to_string_pretty(&BurntProofBase64::from(wrapped_proof))
-                                        .expect("failed to serialize burn proof");
+                                let serialized_proof = serde_json::to_string_pretty(&wrapped_proof)
+                                    .expect("failed to serialize burn proof");
 
                                 let filepath = burn_proof_filepath
-                                    .unwrap_or(PathBuf::from(format!("{}.json", burn_tx_id.as_u64().to_string())));
+                                    .unwrap_or_else(|| PathBuf::from(format!("{}.json", burn_tx_id.as_u64())));
 
                                 std::fs::write(filepath, serialized_proof.as_bytes())
                                     .expect("failed to save burn proof");
@@ -286,16 +286,18 @@ pub async fn send_burn_transaction_task(
                                     serialized_proof.clone(),
                                     ts,
                                 ) {
-                                    error!("failed to save burnt proof to the database");
+                                    error!("failed to save burnt proof to the database: {:#?}", e);
                                     return;
                                 }
 
-                                let _ = result_tx.send(UiTransactionBurnStatus::TransactionComplete((
-                                    proof_id,
-                                    original_proof.reciprocal_claim_public_key.to_hex(),
-                                    serialized_proof,
-                                    ts,
-                                )));
+                                result_tx
+                                    .send(UiTransactionBurnStatus::TransactionComplete((
+                                        proof_id,
+                                        original_proof.reciprocal_claim_public_key.to_hex(),
+                                        serialized_proof,
+                                        ts,
+                                    )))
+                                    .unwrap();
 
                                 return;
                             }
@@ -313,9 +315,11 @@ pub async fn send_burn_transaction_task(
                 }
             }
 
-            let _ = result_tx.send(UiTransactionBurnStatus::Error(
-                "failed to send burn transaction".to_string(),
-            ));
+            result_tx
+                .send(UiTransactionBurnStatus::Error(
+                    "failed to send burn transaction".to_string(),
+                ))
+                .unwrap();
         },
     }
 }

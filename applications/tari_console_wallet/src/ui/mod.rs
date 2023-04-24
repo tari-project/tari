@@ -41,7 +41,6 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use log::*;
-use tari_contacts::contacts_service::storage::database::Contact;
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
 

@@ -1,12 +1,10 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{fs, str::from_utf8};
+use std::fs;
 
 use log::*;
-use tari_common_types::types::PublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -14,20 +12,17 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, ListItem, Paragraph, TableState, Wrap},
+    widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::{
-    ui::{
-        components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
-        state::{AppState, BurntProofBase64, UiTransactionBurnStatus},
-        types::UiBurntProof,
-        widgets::{draw_dialog, MultiColumnList, WindowedListState},
-        MAX_WIDTH,
-    },
-    utils::formatting::display_compressed_string,
+use crate::ui::{
+    components::{balance::Balance, Component, KeyHandled},
+    state::{AppState, UiTransactionBurnStatus},
+    types::UiBurntProof,
+    widgets::{draw_dialog, MultiColumnList, WindowedListState},
+    MAX_WIDTH,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::burn_tab ";
@@ -45,7 +40,6 @@ pub struct BurnTab {
     offline_message: Option<String>,
     burn_result_watch: Option<watch::Receiver<UiTransactionBurnStatus>>,
     confirmation_dialog: Option<BurnConfirmationDialogType>,
-    table_state: TableState,
     proofs_list_state: WindowedListState,
     show_proofs: bool,
 }
@@ -66,7 +60,6 @@ impl BurnTab {
             proofs_list_state: WindowedListState::new(),
             burn_result_watch: None,
             confirmation_dialog: None,
-            table_state: TableState::default(),
             show_proofs: true,
         }
     }
@@ -281,7 +274,10 @@ impl BurnTab {
                 return KeyHandled::Handled;
             } else if 'y' == c {
                 if 'y' == c {
-                    let amount = self.amount_field.parse::<MicroTari>().unwrap_or(MicroTari::from(0));
+                    let amount = self
+                        .amount_field
+                        .parse::<MicroTari>()
+                        .unwrap_or_else(|_| MicroTari::from(0));
 
                     let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
                         v
@@ -326,7 +322,9 @@ impl BurnTab {
                                 },
                                 Ok(_) => {
                                     Handle::current().block_on(app_state.update_cache());
-                                    &app_state.refresh_burnt_proofs_state();
+                                    Handle::current()
+                                        .block_on(app_state.refresh_burnt_proofs_state())
+                                        .unwrap();
 
                                     reset_fields = true
                                 },
@@ -342,7 +340,9 @@ impl BurnTab {
                                     ))
                                 },
                                 Ok(_) => {
-                                    &app_state.refresh_burnt_proofs_state();
+                                    Handle::current()
+                                        .block_on(app_state.refresh_burnt_proofs_state())
+                                        .unwrap();
                                     Handle::current().block_on(app_state.update_cache());
                                 },
                             }
@@ -494,22 +494,8 @@ impl<B: Backend> Component<B> for BurnTab {
             trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
             let status = match (*rx.borrow()).clone() {
                 UiTransactionBurnStatus::Initiated => "Initiated",
-                UiTransactionBurnStatus::DiscoveryInProgress => "Discovery In Progress",
                 UiTransactionBurnStatus::Error(e) => {
                     self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                    return;
-                },
-                UiTransactionBurnStatus::SentDirect | UiTransactionBurnStatus::SentViaSaf => {
-                    self.success_message =
-                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
-                    return;
-                },
-                UiTransactionBurnStatus::Queued => {
-                    self.offline_message = Some(
-                        "This wallet appears to be offline; transaction queued for further retry sending.\n Please \
-                         press Enter to continue"
-                            .to_string(),
-                    );
                     return;
                 },
                 UiTransactionBurnStatus::TransactionComplete((
@@ -564,7 +550,7 @@ impl<B: Backend> Component<B> for BurnTab {
                 );
             },
 
-            Some(BurnConfirmationDialogType::DeleteBurntProof(proof_id)) => {
+            Some(BurnConfirmationDialogType::DeleteBurntProof(_proof_id)) => {
                 draw_dialog(
                     f,
                     area,
@@ -644,9 +630,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     return;
                 }
 
-                self.confirmation_dialog = Some(match c {
-                    _ => BurnConfirmationDialogType::Normal,
-                });
+                self.confirmation_dialog = Some(BurnConfirmationDialogType::Normal);
             },
             _ => {},
         }

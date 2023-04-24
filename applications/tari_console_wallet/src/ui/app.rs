@@ -223,8 +223,6 @@ pub enum UiError {
     NoAddress,
     #[error("Specified burn proof file already exists")]
     BurntProofFileExists,
-    #[error("Burnt proof with id {0} is not found")]
-    BurntProofNotFound(i32),
     #[error("Channel send error: `{0}`")]
     SendError(String),
 }

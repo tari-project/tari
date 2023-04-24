@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local, NaiveDateTime};
-use tari_contacts::contacts_service::storage::database::Contact;
+use tari_contacts::contacts_service::types::Contact;
 
 #[derive(Debug, Clone)]
 pub struct UiBurntProof {

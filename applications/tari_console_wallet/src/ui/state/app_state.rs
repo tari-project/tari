@@ -50,10 +50,7 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::hex::{from_hex, Hex};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
@@ -67,7 +64,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::{
-    sync::{broadcast, watch, RwLock, RwLockMappedWriteGuard},
+    sync::{broadcast, watch, RwLock},
     task,
 };
 
@@ -1290,11 +1287,7 @@ pub enum UiTransactionSendStatus {
 #[derive(Clone, Debug)]
 pub enum UiTransactionBurnStatus {
     Initiated,
-    Queued,
-    SentDirect,
     TransactionComplete((i32, String, String, NaiveDateTime)),
-    DiscoveryInProgress,
-    SentViaSaf,
     Error(String),
 }
 
