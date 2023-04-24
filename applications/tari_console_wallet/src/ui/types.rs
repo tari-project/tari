@@ -1,10 +1,12 @@
-use chrono::{DateTime, Local};
-use tari_contacts::contacts_service::types::Contact;
+use chrono::{DateTime, Local, NaiveDateTime};
+use tari_contacts::contacts_service::storage::database::Contact;
 
 #[derive(Debug, Clone)]
 pub struct UiBurntProof {
     pub id: i32,
-    pub proof: String,
+    pub reciprocal_claim_public_key: String,
+    pub payload: String,
+    pub burned_at: NaiveDateTime,
 }
 
 #[derive(Debug, Clone)]

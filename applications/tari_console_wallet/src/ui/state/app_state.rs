@@ -50,7 +50,10 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
@@ -64,7 +67,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::{
-    sync::{broadcast, watch, RwLock},
+    sync::{broadcast, watch, RwLock, RwLockMappedWriteGuard},
     task,
 };
 
@@ -268,6 +271,18 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn delete_burnt_proof(&mut self, proof_id: i32) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+
+        inner.wallet.db.remove_burnt_proof(proof_id)?;
+
+        inner.refresh_burnt_proofs_state().await?;
+        drop(inner);
+        self.update_cache().await;
+
+        Ok(())
+    }
+
     pub async fn send_transaction(
         &mut self,
         address: String,
@@ -412,6 +427,7 @@ impl AppState {
             message,
             fee_per_gram,
             tx_service_handle,
+            inner.wallet.db.clone(),
             result_tx,
         ));
 
@@ -860,16 +876,17 @@ impl AppStateInner {
         for proof in db_burnt_proofs {
             ui_proofs.push(UiBurntProof {
                 id: proof.0,
-                proof: proof.1,
+                reciprocal_claim_public_key: proof.1,
+                payload: proof.2,
+                burned_at: proof.3,
             });
         }
 
-        // TODO: sort by timestamp when added
-        // ui_proofs.sort_by(|a, b| {
-        // a.alias
-        // .partial_cmp(&b.alias)
-        // .expect("Should be able to compare contact aliases")
-        // });
+        ui_proofs.sort_by(|a, b| {
+            a.burned_at
+                .partial_cmp(&b.burned_at)
+                .expect("Should be able to compare burn timestamps")
+        });
 
         self.data.burnt_proofs = ui_proofs;
         self.updated = true;
@@ -1275,7 +1292,7 @@ pub enum UiTransactionBurnStatus {
     Initiated,
     Queued,
     SentDirect,
-    TransactionComplete((i32, String)),
+    TransactionComplete((i32, String, String, NaiveDateTime)),
     DiscoveryInProgress,
     SentViaSaf,
     Error(String),

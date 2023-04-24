@@ -133,7 +133,9 @@ diesel::table! {
 diesel::table! {
     burnt_proofs (id) {
         id -> Integer,
-        value -> Text,
+        reciprocal_claim_public_key -> Text,
+        payload -> Text,
+        burned_at -> Timestamp,
     }
 }
 

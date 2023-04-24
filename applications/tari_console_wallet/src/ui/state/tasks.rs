@@ -22,13 +22,17 @@
 
 use std::path::PathBuf;
 
+use chrono::{NaiveDateTime, Utc};
+use log::error;
 use rand::random;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
+    storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
+    WalletSqlite,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -231,6 +235,7 @@ pub async fn send_burn_transaction_task(
     message: String,
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
+    db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
 ) {
     let _ = result_tx.send(UiTransactionBurnStatus::Initiated);
@@ -243,21 +248,23 @@ pub async fn send_burn_transaction_task(
         Err(e) => {
             let _ = result_tx.send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()));
         },
-        Ok((burn_tx_id, proof)) => {
+        Ok((burn_tx_id, original_proof)) => {
             loop {
                 match event_stream.recv().await {
                     Ok(event) => {
                         if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
                             if burn_tx_id == *completed_tx_id {
                                 let wrapped_proof = BurntProofBase64 {
-                                    reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
-                                    commitment: proof.commitment.to_vec(),
-                                    ownership_proof: proof.ownership_proof.map(|x| CommitmentSignatureBase64 {
-                                        public_nonce: x.public_nonce().to_vec(),
-                                        u: x.u().to_vec(),
-                                        v: x.v().to_vec(),
+                                    reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
+                                    commitment: original_proof.commitment.to_vec(),
+                                    ownership_proof: original_proof.ownership_proof.map(|x| {
+                                        CommitmentSignatureBase64 {
+                                            public_nonce: x.public_nonce().to_vec(),
+                                            u: x.u().to_vec(),
+                                            v: x.v().to_vec(),
+                                        }
                                     }),
-                                    range_proof: proof.range_proof.0,
+                                    range_proof: original_proof.range_proof.0,
                                 };
 
                                 let serialized_proof =
@@ -270,9 +277,24 @@ pub async fn send_burn_transaction_task(
                                 std::fs::write(filepath, serialized_proof.as_bytes())
                                     .expect("failed to save burn proof");
 
+                                let proof_id = random::<i32>().abs();
+                                let ts = Utc::now().naive_utc();
+
+                                if let Err(e) = db.insert_burnt_proof(
+                                    proof_id,
+                                    original_proof.reciprocal_claim_public_key.to_hex(),
+                                    serialized_proof.clone(),
+                                    ts,
+                                ) {
+                                    error!("failed to save burnt proof to the database");
+                                    return;
+                                }
+
                                 let _ = result_tx.send(UiTransactionBurnStatus::TransactionComplete((
-                                    random::<i32>(),
+                                    proof_id,
+                                    original_proof.reciprocal_claim_public_key.to_hex(),
                                     serialized_proof,
+                                    ts,
                                 )));
 
                                 return;

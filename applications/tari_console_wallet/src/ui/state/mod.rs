@@ -25,7 +25,7 @@ mod debouncer;
 mod tasks;
 mod wallet_event_monitor;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tari_common_types::serde_with;
 
 pub use self::app_state::*;
@@ -33,7 +33,7 @@ pub use self::app_state::*;
 // ----------------------------------------------------------------------------
 // TODO: re-implement in a clean way
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CommitmentSignatureBase64 {
     #[serde(with = "serde_with::base64")]
     pub public_nonce: Vec<u8>,
@@ -43,7 +43,7 @@ pub struct CommitmentSignatureBase64 {
     pub v: Vec<u8>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct BurntProofBase64 {
     #[serde(with = "serde_with::base64")]
     pub reciprocal_claim_public_key: Vec<u8>,

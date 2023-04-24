@@ -57,6 +57,8 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.refresh_transaction_state().await?;
             trace!(target: LOG_TARGET, "Refreshing contacts state");
             app.app_state.refresh_contacts_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
+            app.app_state.refresh_burnt_proofs_state().await?;
             trace!(target: LOG_TARGET, "Refreshing connected peers state");
             app.app_state.refresh_connected_peers_state().await?;
             trace!(target: LOG_TARGET, "Checking connectivity");

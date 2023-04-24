@@ -1,8 +1,12 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::{fs, str::from_utf8};
+
 use log::*;
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -18,7 +22,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::{
     ui::{
         components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
-        state::{AppState, UiTransactionBurnStatus},
+        state::{AppState, BurntProofBase64, UiTransactionBurnStatus},
         types::UiBurntProof,
         widgets::{draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,
@@ -63,7 +67,7 @@ impl BurnTab {
             burn_result_watch: None,
             confirmation_dialog: None,
             table_state: TableState::default(),
-            show_proofs: false,
+            show_proofs: true,
         }
     }
 
@@ -225,9 +229,11 @@ impl BurnTab {
         let instructions = Paragraph::new(Spans::from(vec![
             Span::raw(" Use "),
             Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to choose a contact, "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select."),
+            Span::raw(" to choose a proof, "),
+            Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to save proof to a file (named after proof ID), "),
+            Span::styled("D", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to delete the selected proof."),
         ]))
         .wrap(Wrap { trim: true });
         f.render_widget(instructions, list_areas[0]);
@@ -249,23 +255,20 @@ impl BurnTab {
     pub fn create_column_view(windowed_view: &[UiBurntProof]) -> MultiColumnList<Vec<ListItem>> {
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
-        // let mut column2_items = Vec::new();
 
         for item in windowed_view.iter() {
-            column0_items.push(ListItem::new(Span::raw(item.id.to_string())));
-            column1_items.push(ListItem::new(Span::raw(item.proof.clone())));
-            // column2_items.push(ListItem::new(Span::raw(item.last_seen.clone())));
+            column0_items.push(ListItem::new(Span::raw(item.reciprocal_claim_public_key.clone())));
+            column1_items.push(ListItem::new(Span::raw(item.burned_at.to_string().clone())));
         }
 
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("ID"), Some(23), column0_items)
             .add_column(None, Some(1), Vec::new())
-            .add_column(Some("Reciprocal Public Key"), Some(66), column1_items);
-        // .add_column(None, Some(1), Vec::new())
-        // .add_column(Some("Last Seen"), Some(11), column2_items);
+            .add_column(Some("Reciprocal Claim Public Key"), Some(66), column0_items)
+            .add_column(None, Some(1), Vec::new())
+            .add_column(Some("Burned At"), Some(11), column1_items);
 
         column_list
     }
@@ -277,73 +280,87 @@ impl BurnTab {
                 self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
-                match self.confirmation_dialog {
-                    None => (),
-                    Some(BurnConfirmationDialogType::Normal) => {
-                        if 'y' == c {
-                            let amount = self.amount_field.parse::<MicroTari>().unwrap_or(MicroTari::from(0));
+                if 'y' == c {
+                    let amount = self.amount_field.parse::<MicroTari>().unwrap_or(MicroTari::from(0));
 
-                            let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
-                                v
-                            } else {
-                                self.error_message =
-                                    Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
-                                return KeyHandled::Handled;
-                            };
+                    let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
+                        v
+                    } else {
+                        self.error_message =
+                            Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                        return KeyHandled::Handled;
+                    };
 
-                            let burn_proof_filepath = if self.burnt_proof_filepath_field.is_empty() {
-                                None
-                            } else {
-                                Some(self.burnt_proof_filepath_field.clone())
-                            };
+                    let burn_proof_filepath = if self.burnt_proof_filepath_field.is_empty() {
+                        None
+                    } else {
+                        Some(self.burnt_proof_filepath_field.clone())
+                    };
 
-                            let claim_public_key = if self.claim_public_key_field.is_empty() {
-                                None
-                            } else {
-                                Some(self.claim_public_key_field.clone())
-                            };
+                    let claim_public_key = if self.claim_public_key_field.is_empty() {
+                        None
+                    } else {
+                        Some(self.claim_public_key_field.clone())
+                    };
 
-                            let (tx, rx) = watch::channel(UiTransactionBurnStatus::Initiated);
+                    let (tx, rx) = watch::channel(UiTransactionBurnStatus::Initiated);
 
-                            let mut reset_fields = false;
-                            match self.confirmation_dialog {
-                                Some(BurnConfirmationDialogType::Normal) => {
-                                    match Handle::current().block_on(app_state.send_burn_transaction(
-                                        burn_proof_filepath,
-                                        claim_public_key,
-                                        amount.into(),
-                                        UtxoSelectionCriteria::default(),
-                                        fee_per_gram,
-                                        self.message_field.clone(),
-                                        tx,
-                                    )) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending burn transaction (with a claim public key \
-                                                 provided):\n{}\nPress Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
+                    let mut reset_fields = false;
+                    match self.confirmation_dialog {
+                        Some(BurnConfirmationDialogType::Normal) => {
+                            match Handle::current().block_on(app_state.send_burn_transaction(
+                                burn_proof_filepath,
+                                claim_public_key,
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                fee_per_gram,
+                                self.message_field.clone(),
+                                tx,
+                            )) {
+                                Err(e) => {
+                                    self.error_message = Some(format!(
+                                        "Error sending burn transaction (with a claim public key \
+                                         provided):\n{}\nPress Enter to continue.",
+                                        e
+                                    ))
                                 },
-                                None => {},
-                            }
+                                Ok(_) => {
+                                    Handle::current().block_on(app_state.update_cache());
+                                    &app_state.refresh_burnt_proofs_state();
 
-                            if reset_fields {
-                                self.burnt_proof_filepath_field = "".to_string();
-                                self.claim_public_key_field = "".to_string();
-                                self.amount_field = "".to_string();
-                                self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
-                                self.message_field = "".to_string();
-                                self.burn_input_mode = BurnInputMode::None;
-                                self.burn_result_watch = Some(rx);
+                                    reset_fields = true
+                                },
                             }
+                        },
+                        None => {},
+                        Some(BurnConfirmationDialogType::DeleteBurntProof(proof_id)) => {
+                            match Handle::current().block_on(app_state.delete_burnt_proof(proof_id)) {
+                                Err(e) => {
+                                    self.error_message = Some(format!(
+                                        "Failed to delete burnt proof (id={}):\n{}\nPress Enter to continue.",
+                                        proof_id, e
+                                    ))
+                                },
+                                Ok(_) => {
+                                    &app_state.refresh_burnt_proofs_state();
+                                    Handle::current().block_on(app_state.update_cache());
+                                },
+                            }
+                        },
+                    }
 
-                            self.confirmation_dialog = None;
-                            return KeyHandled::Handled;
-                        }
-                    },
+                    if reset_fields {
+                        self.burnt_proof_filepath_field = "".to_string();
+                        self.claim_public_key_field = "".to_string();
+                        self.amount_field = "".to_string();
+                        self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
+                        self.message_field = "".to_string();
+                        self.burn_input_mode = BurnInputMode::None;
+                        self.burn_result_watch = Some(rx);
+                    }
+
+                    self.confirmation_dialog = None;
+                    return KeyHandled::Handled;
                 }
             } else {
             }
@@ -402,16 +419,47 @@ impl BurnTab {
     }
 
     fn on_key_show_proofs(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-        if self.show_proofs && c == '\n' {
-            if let Some(c) = self
-                .proofs_list_state
-                .selected()
-                .and_then(|i| app_state.get_burnt_proof_by_index(i))
-                .cloned()
-            {
-                self.show_proofs = false;
-            }
-            return KeyHandled::Handled;
+        match (self.show_proofs, c) {
+            (true, 'd') => {
+                if let Some(proof) = self
+                    .proofs_list_state
+                    .selected()
+                    .and_then(|i| app_state.get_burnt_proof_by_index(i))
+                    .cloned()
+                {
+                    if self.proofs_list_state.selected().is_none() {
+                        return KeyHandled::NotHandled;
+                    }
+
+                    self.confirmation_dialog = Some(BurnConfirmationDialogType::DeleteBurntProof(proof.id));
+                }
+
+                return KeyHandled::Handled;
+            },
+
+            (true, 'o') => {
+                if let Some(proof) = self
+                    .proofs_list_state
+                    .selected()
+                    .and_then(|i| app_state.get_burnt_proof_by_index(i))
+                    .cloned()
+                {
+                    if self.proofs_list_state.selected().is_none() {
+                        return KeyHandled::NotHandled;
+                    }
+
+                    if let Err(e) = fs::write(format!("{}.json", proof.id), proof.payload) {
+                        self.error_message = Some(format!(
+                            "Failed to save burnt proof payload to file {}.json: {}, Press Enter to continue.",
+                            proof.id, e
+                        ));
+                    }
+                }
+
+                return KeyHandled::Handled;
+            },
+
+            _ => {},
         }
 
         KeyHandled::NotHandled
@@ -464,7 +512,12 @@ impl<B: Backend> Component<B> for BurnTab {
                     );
                     return;
                 },
-                UiTransactionBurnStatus::TransactionComplete((proof_id, serialized_proof)) => {
+                UiTransactionBurnStatus::TransactionComplete((
+                    _proof_id,
+                    _reciprocal_claim_public_key,
+                    _serialized_proof,
+                    _burned_at,
+                )) => {
                     self.success_message =
                         Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
                     return;
@@ -505,6 +558,18 @@ impl<B: Backend> Component<B> for BurnTab {
                         "Are you sure you want to burn {} Tari with a Claim Public Key {}?\n(Y)es / (N)o",
                         self.amount_field, self.claim_public_key_field
                     ),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+
+            Some(BurnConfirmationDialogType::DeleteBurntProof(proof_id)) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Delete".to_string(),
+                    "Are you sure you want to delete this burnt proof?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -587,19 +652,23 @@ impl<B: Backend> Component<B> for BurnTab {
         }
     }
 
-    fn on_up(&mut self, _app_state: &mut AppState) {
-        let index = self.table_state.selected().unwrap_or_default();
-        if index == 0 {
-            self.table_state.select(None);
-        }
+    fn on_up(&mut self, app_state: &mut AppState) {
+        self.proofs_list_state.set_num_items(app_state.get_burnt_proofs().len());
+        self.proofs_list_state.previous();
     }
 
-    fn on_down(&mut self, _app_state: &mut AppState) {
-        self.table_state.select(None);
+    fn on_down(&mut self, app_state: &mut AppState) {
+        self.proofs_list_state.set_num_items(app_state.get_burnt_proofs().len());
+        self.proofs_list_state.next();
     }
 
     fn on_esc(&mut self, _: &mut AppState) {
+        if self.confirmation_dialog.is_some() {
+            return;
+        }
+
         self.burn_input_mode = BurnInputMode::None;
+        self.proofs_list_state.select(None);
     }
 
     fn on_backspace(&mut self, _app_state: &mut AppState) {
@@ -637,4 +706,5 @@ pub enum BurnInputMode {
 #[derive(PartialEq, Debug)]
 pub enum BurnConfirmationDialogType {
     Normal,
+    DeleteBurntProof(i32),
 }

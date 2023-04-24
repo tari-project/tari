@@ -32,6 +32,7 @@ use argon2::password_hash::{
     SaltString,
 };
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{generic_array::GenericArray, FixedOutput};
 use itertools::Itertools;
@@ -424,11 +425,11 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::LastAccessedNetwork, network).set(&mut conn)?;
                 WalletSettingSql::new(DbKey::LastAccessedVersion, version).set(&mut conn)?;
             },
-            DbKeyValuePair::BurntProof((id, proof)) => {
+            DbKeyValuePair::BurntProof((id, reciprocal_claim_public_key, proof, burned_at)) => {
                 kvp_text = "BurntProof";
 
                 let cipher = acquire_read_lock!(self.cipher);
-                BurntProofSql::new(id, proof, &cipher)?.insert(&mut conn)?;
+                BurntProofSql::new(id, reciprocal_claim_public_key, proof, burned_at, &cipher)?.insert(&mut conn)?;
             },
         }
 
@@ -461,6 +462,10 @@ impl WalletSqliteDatabase {
             DbKey::TorId => {
                 let _ = WalletSettingSql::clear(&DbKey::TorId, &mut conn)?;
             },
+            DbKey::BurntProofId(proof_id) => {
+                BurntProofSql::delete(proof_id, &mut conn)?;
+                return Ok(None);
+            },
             DbKey::CommsFeatures |
             DbKey::CommsAddress |
             DbKey::BaseNodeChainMetadata |
@@ -472,7 +477,6 @@ impl WalletSqliteDatabase {
             DbKey::CommsIdentitySignature |
             DbKey::LastAccessedNetwork |
             DbKey::LastAccessedVersion |
-            DbKey::BurntProofId(_) |
             DbKey::ListBurntProofs => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
@@ -527,11 +531,31 @@ impl WalletBackend for WalletSqliteDatabase {
                 .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
                 .map(Box::new)
                 .map(DbValue::CommsIdentitySignature),
-            DbKey::BurntProofId(id) => {
-                BurntProofSql::get(*id, &mut conn)?.map(|BurntProofSql { id, value }| DbValue::BurntProof((id, value)))
-            },
+            DbKey::BurntProofId(id) => BurntProofSql::get(*id, &mut conn)?.map(
+                |BurntProofSql {
+                     id,
+                     reciprocal_claim_public_key,
+                     payload,
+                     burned_at,
+                 }| DbValue::BurntProof((id, reciprocal_claim_public_key, payload, burned_at)),
+            ),
             DbKey::ListBurntProofs => BurntProofSql::index(&mut conn)
-                .map(|proofs| DbValue::BurntProofs(proofs.into_iter().map(|x| (x.id, x.value)).collect_vec()))
+                .map(|proofs| {
+                    DbValue::BurntProofs(
+                        proofs
+                            .into_iter()
+                            .filter_map(|entry| match self.decrypt_value(entry) {
+                                Ok(decrypted) => Some((
+                                    decrypted.id,
+                                    decrypted.reciprocal_claim_public_key,
+                                    decrypted.payload,
+                                    decrypted.burned_at,
+                                )),
+                                Err(_) => None,
+                            })
+                            .collect_vec(),
+                    )
+                })
                 .ok(),
         };
         if start.elapsed().as_millis() > 0 {
@@ -908,13 +932,26 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 #[diesel(table_name = burnt_proofs)]
 struct BurntProofSql {
     id: i32,
-    value: String,
+    reciprocal_claim_public_key: String,
+    payload: String,
+    burned_at: NaiveDateTime,
 }
 
 impl BurntProofSql {
-    pub fn new(id: i32, value: String, cipher: &XChaCha20Poly1305) -> Result<Self, WalletStorageError> {
-        let client_kv = Self { id, value };
-        client_kv.encrypt(cipher).map_err(WalletStorageError::AeadError)
+    pub fn new(
+        id: i32,
+        reciprocal_claim_public_key: String,
+        payload: String,
+        burned_at: NaiveDateTime,
+        cipher: &XChaCha20Poly1305,
+    ) -> Result<Self, WalletStorageError> {
+        let entry = Self {
+            id,
+            reciprocal_claim_public_key,
+            payload,
+            burned_at,
+        };
+        entry.encrypt(cipher).map_err(WalletStorageError::AeadError)
     }
 
     #[allow(dead_code)]
@@ -923,7 +960,7 @@ impl BurntProofSql {
     }
 
     pub fn insert(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        diesel::replace_into(burnt_proofs::table).values(self).execute(conn)?;
+        diesel::insert_into(burnt_proofs::table).values(self).execute(conn)?;
 
         Ok(())
     }
@@ -959,10 +996,10 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
 
     #[allow(unused_assignments)]
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        self.value = encrypt_bytes_integral_nonce(
+        self.payload = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
-            Hidden::hide(self.value.as_bytes().to_vec()),
+            Hidden::hide(self.payload.as_bytes().to_vec()),
         )?
         .to_hex();
 
@@ -974,10 +1011,10 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
         let mut decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
-            &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
+            &from_hex(self.payload.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.value = from_utf8(decrypted_value.as_slice())
+        self.payload = from_utf8(decrypted_value.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
 

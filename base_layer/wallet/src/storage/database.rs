@@ -25,6 +25,7 @@ use std::{
     sync::Arc,
 };
 
+use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -122,8 +123,8 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    BurntProofs(Vec<(i32, String)>),
-    BurntProof((i32, String)),
+    BurntProofs(Vec<(i32, String, String, NaiveDateTime)>),
+    BurntProof((i32, String, String, NaiveDateTime)),
 }
 
 #[derive(Clone)]
@@ -136,7 +137,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    BurntProof((i32, String)),
+    BurntProof((i32, String, String, NaiveDateTime)),
 }
 
 pub enum WriteOperation {
@@ -362,9 +363,19 @@ where T: WalletBackend + 'static
     // ----------------------------------------------------------------------------
     // burnt proofs
 
-    pub fn insert_burn_proof(&self, id: i32, proof: String) -> Result<(), WalletStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::BurntProof((id, proof))))?;
+    pub fn insert_burnt_proof(
+        &self,
+        id: i32,
+        reciprocal_claim_public_key: String,
+        proof: String,
+        burned_at: NaiveDateTime,
+    ) -> Result<(), WalletStorageError> {
+        self.db.write(WriteOperation::Insert(DbKeyValuePair::BurntProof((
+            id,
+            reciprocal_claim_public_key,
+            proof,
+            burned_at,
+        ))))?;
         Ok(())
     }
 
@@ -373,7 +384,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn get_burnt_proofs(&self) -> Result<Vec<(i32, String)>, WalletStorageError> {
+    pub fn get_burnt_proofs(&self) -> Result<Vec<(i32, String, String, NaiveDateTime)>, WalletStorageError> {
         let proofs = match self.db.fetch(&DbKey::ListBurntProofs) {
             Ok(None) => Ok(vec![]),
             Ok(Some(DbValue::BurntProofs(proofs))) => Ok(proofs),
@@ -404,7 +415,7 @@ impl Display for DbValue {
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
             DbValue::BurntProofs(proofs) => f.write_str(&format!("BurntProofs: {:?}", proofs)),
-            DbValue::BurntProof((id, _)) => f.write_str(&format!("BurntProof: {}", id)),
+            DbValue::BurntProof((id, _, _, _)) => f.write_str(&format!("BurntProof: {}", id)),
         }
     }
 }
