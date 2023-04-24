@@ -65,7 +65,11 @@ as these do introduce issues with Tor via Cloudflare.
 * Affected software versions; and
 * If known, mitigations for the issue.
 
-The more detail you provide, the easier it will be for us to triage and fix the issue. Tari follows a **90 day disclosure timeline** as described in this policy.
+The more detail you provide, the easier it will be for us to triage and fix the issue. Tari follows a **60 day disclosure timeline** as described in this policy.
+
+#### Yat Issues
+
+[Yat](https://y.at) vulnerabilities should be disclosed via the [Yat Bug Bounty](https://bugcrowd.com/yat-og) program.
 
 ## Our Commitments
 
@@ -74,15 +78,15 @@ When disclosing a security issue according to this policy, you can expect us to:
 * Respond to your report promptly, and work with you to understand and validate your report;
 * Let you know if your report qualifies for a bounty reward within five business days;
 * Strive to keep you informed about the progress of a vulnerability as it is processed;
-* Work to remediate discovered vulnerabilities in a timely manner, within our operational constraints; 
+* Work to remediate discovered vulnerabilities in a timely manner, within our operational constraints;
 * Extend [Safe Harbor](#safe-harbor) for your vulnerability research that is related to this policy; and
 
 If your report qualifies for a bounty reward, we will:
 
 * Set a risk level of severity and the reward size within five business days;
-* Resolve qualifying vulnerabilities within 90 days (1 day for critical, 1-2 weeks for high, 4-8 weeks for medium, and 90 days for low issues);
-* Notify you once an issue has been resolved; and 
-* Provide a time window for lifting restrictions around public disclosure.
+* Resolve qualifying vulnerabilities within 60 days (1 day for critical, 1-2 weeks for high, 4-8 weeks for medium, and 60 days for low issues);
+* Notify you once an issue has been resolved; and
+* Provide a time window for the lifting of restrictions around public disclosure.
 
 ## Our Expectations
 
@@ -92,9 +96,9 @@ When disclosing a security issue, we ask that you:
 * Report any vulnerability you’ve discovered promptly and in good faith;
 * Avoid violating the privacy of others, disrupting our systems, destroying data, and/or harming user experience;
 * Use only the [Official Channels](#official-channels) to discuss vulnerability information with us;
-* Provide us a reasonable amount of time (**at least 90 days** from the initial report) to resolve the issue before you disclose it publicly;
+* Provide us a reasonable amount of time (**at least 60 days** from the initial report) to resolve the issue before you disclose it publicly;
 * Perform testing only on in-scope systems, and respect systems and activities which are [Out of Scope](#out-of-scope);
-* You should only interact with test accounts you own or with explicit permission from the account holder; and 
+* You should only interact with test accounts you own or with explicit permission from the account holder; and
 * Do not engage in extortion.
 
 If a vulnerability provides unintended access to data, we ask that you:
@@ -110,7 +114,7 @@ We consider research conducted under this policy to be:
 
 * Authorized concerning any relevant anti-circumvention laws, and we will not bring a claim against you for circumvention of technology controls;
 
-* Exempt from restrictions in our terms of service and/or usage policies that would interfere with conducting security research, and we waive those restrictions on a limited basis; and 
+* Exempt from restrictions in our terms of service and/or usage policies that would interfere with conducting security research, and we waive those restrictions on a limited basis; and
 
 * Lawful, helpful to the overall security of the Internet, and conducted in good faith.
 
@@ -138,7 +142,7 @@ The following requirements must be adhered to in order to for any report to qual
 
 * **First come, first served:** Only the first person to identify a particular vulnerability will qualify for a bounty reward. Any additional reports will be considered as duplicates and will not qualify.
 
-* **Play it safe:** All testing must be performed on test accounts under your control. Any attacks against other users without provable express consent are not allowed and may result in a ban. If a particular issue is severe enough that a proof-of-concept (PoC) in itself may expose sensitive data (e.g., data of other users), please ask us for help first so we can work together on how to safely demonstrate the bug. 
+* **Play it safe:** All testing must be performed on test accounts under your control. Any attacks against other users without provable express consent are not allowed and may result in a ban. If a particular issue is severe enough that a proof-of-concept (PoC) in itself may expose sensitive data (e.g., data of other users), please ask us for help first so we can work together on how to safely demonstrate the bug.
 
 * **Don't disclose too early:** To protect our users, please keep all identified vulnerability details between you and us until we've had a chance to fix the issue. This includes things like posting an obscured video of an issue on social media prior to confirmation of a deployed fix. Though you may think you have concealed critical details, doing so at minimum alerts potentially malicious actors that an issue exists and at worst unintentionally creates early disclosure. Public disclosure prior to us notifying you of the fix may result in a ban. If you have questions regarding the remediation timeline, please inquire on the relevant report.
 
@@ -146,7 +150,7 @@ The following requirements must be adhered to in order to for any report to qual
 
 ### Commonplace Reports
 
-In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy, the following commonplace reports do not qualify for a bounty reward. These issues may be disclosed as a [GitHub issue here](https://github.com/tari-project/tari/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Tari%20better%5D).
+In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy, the following commonplace reports do not qualify for a bounty reward. Such issues may be disclosed as a [GitHub issue here](https://github.com/tari-project/tari/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Tari%20better%5D).
 
 * Lack of a security feature that is not critical to the system's operation
 * Configuration issues that are not relevant to the product/application
