@@ -3,7 +3,7 @@ _Last Updated: April 24, 2023_
 
 ## Introduction
 
-[Tari Labs](https://tari.com) guides the development of the Tari open source project. As the stewards of Tari, we welcome feedback from security researchers and the general public. If you believe you have discovered a vulnerability, privacy issue, exposed data, or other security issues in Tari software or Tari Labs infrastructure, we want to hear from you. This policy outlines steps for reporting vulnerabilities to us, what we expect, and what you can expect from us.
+[Tari Labs](https://tarilabs.com) guides the development of the [Tari open source project](https://tari.com). As the stewards of Tari, we welcome feedback from security researchers and the general public. If you believe you have discovered a vulnerability, privacy issue, exposed data, or other security issues in Tari software or Tari Labs infrastructure, we want to hear from you. This policy outlines steps for reporting vulnerabilities to us, what we expect, and what you can expect from us.
 
 ## Scope
 
