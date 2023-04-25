@@ -481,7 +481,7 @@ where
                 .into_iter()
                 .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
                 .collect::<Result<Vec<_>, _>>()?;
-            let first_output = Some(outputs[0].clone());
+            let first_output = outputs.get(0).cloned();
             total_scanned += outputs.len();
 
             let start = Instant::now();
