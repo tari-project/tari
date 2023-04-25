@@ -77,7 +77,6 @@ impl Display for ContactMessageType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(u8)]
 pub enum ContactOnlineStatus {
     Online,
     Offline,

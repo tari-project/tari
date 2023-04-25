@@ -10,6 +10,8 @@
 
 struct ClientFFI;
 
+struct Message;
+
 /**
  * Configuration for a comms node
  */
@@ -23,6 +25,9 @@ extern "C" {
 
 /**
  * Creates a Chat Client
+ * TODO: This function take a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
+ * isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
+ * for supplying seed peers.
  *
  * ## Arguments
  * `config` - The P2PConfig pointer
@@ -30,6 +35,7 @@ extern "C" {
  * `db_path` - The path to the db file
  * `seed_peers` - A ptr to a collection of seed peers
  * `network_str` - The network to connect to
+ *
  * ## Returns
  * `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
  * if config is null, an error was encountered or if the runtime could not be created
@@ -117,8 +123,23 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
  *
  * # Safety
  * The ```address``` should be destroyed after use
+ * The returned pointer to ```*mut *mut Message``` should be destroyed after use
  */
-Message **get_all_messages(struct ClientFFI *client, struct TariAddress *address);
+struct Message **get_all_messages(struct ClientFFI *client, struct TariAddress *address);
+
+/**
+ * Frees memory for messages
+ *
+ * ## Arguments
+ * `messages_ptr` - The pointer of a Vec<Message>
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_messages(struct Message **messages_ptr);
 
 /**
  * Creates a TariAddress and returns a ptr

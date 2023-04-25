@@ -39,6 +39,9 @@ pub struct ClientFFI {
 }
 
 /// Creates a Chat Client
+/// TODO: This function take a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
+/// isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
+/// for supplying seed peers.
 ///
 /// ## Arguments
 /// `config` - The P2PConfig pointer
@@ -46,6 +49,7 @@ pub struct ClientFFI {
 /// `db_path` - The path to the db file
 /// `seed_peers` - A ptr to a collection of seed peers
 /// `network_str` - The network to connect to
+///
 /// ## Returns
 /// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
 /// if config is null, an error was encountered or if the runtime could not be created
@@ -178,11 +182,10 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 /// The ```address``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *mut TariAddress) -> c_int {
-    let status = (client)
-        .runtime
-        .block_on((client).client.check_online_status(&*receiver));
+    let rec = (*receiver).clone();
+    let status = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
-    status.as_u8().into()
+    status.clone().as_u8().into()
 }
 
 /// Get a ptr to all messages from or to address

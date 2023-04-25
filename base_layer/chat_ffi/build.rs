@@ -24,7 +24,10 @@ fn main() {
             include: Some(vec![
                 "tari_core".to_string(),
                 "tari_common_types".to_string(),
+                "tari_crypto".to_string(),
                 "tari_p2p".to_string(),
+                "tari_wallet".to_string(),
+                "tari_contacts".to_string(),
             ]),
             ..Default::default()
         },

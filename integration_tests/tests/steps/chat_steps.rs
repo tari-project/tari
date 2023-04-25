@@ -96,14 +96,20 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
     let contact = world.chat_clients.get(&contact).unwrap();
 
     let address = TariAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
+    let mut last_status = ContactOnlineStatus::Banned("No result came back".to_string());
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        if ContactOnlineStatus::Online == client.check_online_status(&address).await {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4) {
+        last_status = client.check_online_status(&address).await;
+        if ContactOnlineStatus::Online == last_status {
             return;
         }
 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!("Contact {} never came online", contact.identity().node_id())
+    panic!(
+        "Contact {} never came online, status is: {}",
+        contact.identity().node_id(),
+        last_status
+    )
 }

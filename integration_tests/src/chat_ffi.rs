@@ -33,6 +33,7 @@ use async_trait::async_trait;
 type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
+use log::warn;
 use rand::rngs::OsRng;
 use tari_chat_client::{database, ChatClient};
 use tari_common::configuration::{MultiaddrList, Network};
@@ -88,7 +89,7 @@ impl ChatClient for ChatFFI {
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
         let client = self.ptr.lock().unwrap();
 
-        let address_ptr = Box::into_raw(Box::new(address.to_owned()));
+        let address_ptr = Box::into_raw(Box::new(address.clone()));
 
         let result;
         unsafe { result = check_online_status(client.0, address_ptr) }
