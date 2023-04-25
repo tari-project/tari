@@ -32,7 +32,7 @@ use async_trait::async_trait;
 
 type ClientFFI = c_void;
 
-use libc::c_char;
+use libc::{c_char, c_int};
 use rand::rngs::OsRng;
 use tari_chat_client::{database, ChatClient};
 use tari_common::configuration::{MultiaddrList, Network};
@@ -60,6 +60,9 @@ extern "C" {
         network_str: *const c_char,
     ) -> *mut ClientFFI;
     pub fn send_message(client: *mut ClientFFI, receiver: *mut TariAddress, message: *const c_char);
+    pub fn add_contact(client: *mut ClientFFI, address: *mut TariAddress);
+    pub fn check_online_status(client: *mut ClientFFI, address: *mut TariAddress) -> c_int;
+    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut TariAddress) -> *mut *mut Message;
 }
 
 #[derive(Debug)]
@@ -75,11 +78,22 @@ pub struct ChatFFI {
 #[async_trait]
 impl ChatClient for ChatFFI {
     async fn add_contact(&self, address: &TariAddress) {
-        todo!()
+        let client = self.ptr.lock().unwrap();
+
+        let address_ptr = Box::into_raw(Box::new(address.to_owned()));
+
+        unsafe { add_contact(client.0, address_ptr) }
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
-        todo!()
+        let client = self.ptr.lock().unwrap();
+
+        let address_ptr = Box::into_raw(Box::new(address.to_owned()));
+
+        let result;
+        unsafe { result = check_online_status(client.0, address_ptr) }
+
+        ContactOnlineStatus::from_byte(result as u8).expect("A valid u8 from FFI status")
     }
 
     async fn send_message(&self, receiver: TariAddress, message: String) {
@@ -95,8 +109,24 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message> {
-        todo!()
+    async fn get_all_messages(&self, address: &TariAddress) -> Vec<Message> {
+        let client = self.ptr.lock().unwrap();
+
+        let address_ptr = Box::into_raw(Box::new(address.clone()));
+
+        let mut messages_vec = Vec::new();
+        unsafe {
+            let messages = get_all_messages(client.0, address_ptr);
+
+            let mut i = 0;
+            while !(*messages.offset(i)).is_null() {
+                let message = (**messages.offset(i)).clone();
+                messages_vec.push(message);
+                i += 1;
+            }
+        }
+
+        messages_vec
     }
 
     fn identity(&self) -> &NodeIdentity {

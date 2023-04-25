@@ -76,7 +76,52 @@ void send_message(struct ClientFFI *client,
                   const char *message_c_char);
 
 /**
- * Sends a message over a client
+ * Add a contact
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `address` - A TariAddress ptr
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```address``` should be destroyed after use
+ */
+void add_contact(struct ClientFFI *client, struct TariAddress *receiver);
+
+/**
+ * Check the online status of a contact
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `address` - A TariAddress ptr
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```address``` should be destroyed after use
+ */
+int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
+
+/**
+ * Get a ptr to all messages from or to address
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `address` - A TariAddress ptr
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```address``` should be destroyed after use
+ */
+Message **get_all_messages(struct ClientFFI *client, struct TariAddress *address);
+
+/**
+ * Creates a TariAddress and returns a ptr
  *
  * ## Arguments
  * `receiver_c_char` - A string containing a tari address hex value

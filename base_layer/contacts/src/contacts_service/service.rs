@@ -77,11 +77,33 @@ impl Display for ContactMessageType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ContactOnlineStatus {
     Online,
     Offline,
     NeverSeen,
     Banned(String),
+}
+
+impl ContactOnlineStatus {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Online => 1,
+            Self::Offline => 2,
+            Self::NeverSeen => 3,
+            Self::Banned(_) => 4,
+        }
+    }
+
+    pub fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::Online),
+            2 => Some(Self::Offline),
+            3 => Some(Self::NeverSeen),
+            4 => Some(Self::Banned("No reason listed".to_string())),
+            _ => None,
+        }
+    }
 }
 
 impl Display for ContactOnlineStatus {

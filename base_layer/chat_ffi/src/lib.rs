@@ -24,11 +24,12 @@
 
 use std::{ffi::CStr, fs::File, io::Read, path::PathBuf, str::FromStr};
 
-use libc::c_char;
+use libc::{c_char, c_int};
 use tari_chat_client::{ChatClient, Client};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_contacts::contacts_service::types::Message;
 use tari_p2p::P2pConfig;
 use tokio::runtime::Runtime;
 
@@ -148,7 +149,85 @@ pub unsafe extern "C" fn send_message(
         .block_on((*client).client.send_message((*receiver).clone(), message));
 }
 
-/// Sends a message over a client
+/// Add a contact
+///
+/// ## Arguments
+/// `client` - The Client pointer
+/// `address` - A TariAddress ptr
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```address``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TariAddress) {
+    (*client).runtime.block_on((*client).client.add_contact(&(*receiver)));
+}
+
+/// Check the online status of a contact
+///
+/// ## Arguments
+/// `client` - The Client pointer
+/// `address` - A TariAddress ptr
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```address``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *mut TariAddress) -> c_int {
+    let status = (client)
+        .runtime
+        .block_on((client).client.check_online_status(&*receiver));
+
+    status.as_u8().into()
+}
+
+/// Get a ptr to all messages from or to address
+///
+/// ## Arguments
+/// `client` - The Client pointer
+/// `address` - A TariAddress ptr
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```address``` should be destroyed after use
+/// The returned pointer to ```*mut *mut Message``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn get_all_messages(client: *mut ClientFFI, address: *mut TariAddress) -> *mut *mut Message {
+    let all_messages: Vec<Message> = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
+
+    let mut messages: Vec<*mut Message> = Vec::with_capacity(all_messages.len() + 1);
+    for message in all_messages {
+        messages.push(Box::into_raw(Box::new(message)));
+    }
+    messages.push(std::ptr::null_mut());
+
+    messages.as_mut_ptr()
+}
+
+/// Frees memory for messages
+///
+/// ## Arguments
+/// `messages_ptr` - The pointer of a Vec<Message>
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut *mut Message) {
+    if !messages_ptr.is_null() {
+        drop(Box::from_raw(messages_ptr))
+    }
+}
+
+/// Creates a TariAddress and returns a ptr
 ///
 /// ## Arguments
 /// `receiver_c_char` - A string containing a tari address hex value
