@@ -5256,6 +5256,7 @@ name = "tari_chat_client"
 version = "0.50.0-pre.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "diesel",
  "lmdb-zero",
  "log",

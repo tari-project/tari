@@ -21,7 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod client;
-pub use client::Client;
+pub use client::{ChatClient, Client};
 
 pub mod database;
 pub mod networking;

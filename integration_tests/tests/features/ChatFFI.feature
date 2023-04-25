@@ -7,5 +7,5 @@ Feature: Chat FFI messaging
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
     When I have a chat client CHAT_B connected to seed node SEED_A
-    When FFI client CHAT_A sends a message 'Hey there' to CHAT_B
-    Then CHAT_B will have 1 message with FFI CHAT_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    Then CHAT_B will have 1 message with CHAT_A

@@ -28,11 +28,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use async_trait::async_trait;
+
 type ClientFFI = c_void;
 
 use libc::c_char;
 use rand::rngs::OsRng;
-use tari_chat_client::database;
+use tari_chat_client::{database, ChatClient};
 use tari_common::configuration::{MultiaddrList, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
@@ -41,6 +43,7 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
+use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
 use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 use tari_utilities::message_format::MessageFormat;
 
@@ -56,28 +59,48 @@ extern "C" {
         seed_peers: *mut *mut Peer,
         network_str: *const c_char,
     ) -> *mut ClientFFI;
-    pub fn send_message(client: *mut ClientFFI, receiver: *const c_char, message: *const c_char);
+    pub fn send_message(client: *mut ClientFFI, receiver: *mut TariAddress, message: *const c_char);
 }
 
 #[derive(Debug)]
+pub struct PtrWrapper(*mut ClientFFI);
+unsafe impl Send for PtrWrapper {}
+
+#[derive(Debug)]
 pub struct ChatFFI {
-    ptr: Arc<Mutex<*mut ClientFFI>>,
+    ptr: Arc<Mutex<PtrWrapper>>,
     pub identity: NodeIdentity,
 }
 
-impl ChatFFI {
-    pub async fn send_message(&self, receiver: TariAddress, message: String) {
-        let client = self.ptr.lock().unwrap();
+#[async_trait]
+impl ChatClient for ChatFFI {
+    async fn add_contact(&self, address: &TariAddress) {
+        todo!()
+    }
 
-        let receiver_c_str = CString::new(receiver.to_string()).unwrap();
-        let receiver_c_char: *const c_char = CString::into_raw(receiver_c_str) as *const c_char;
+    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
+        todo!()
+    }
+
+    async fn send_message(&self, receiver: TariAddress, message: String) {
+        let client = self.ptr.lock().unwrap();
 
         let message_c_str = CString::new(message).unwrap();
         let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
 
+        let receiver_ptr = Box::into_raw(Box::new(receiver));
+
         unsafe {
-            send_message(*client, receiver_c_char, message_c_char);
+            send_message(client.0, receiver_ptr, message_c_char);
         }
+    }
+
+    async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message> {
+        todo!()
+    }
+
+    fn identity(&self) -> &NodeIdentity {
+        &self.identity
     }
 }
 
@@ -124,7 +147,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
     }
 
     ChatFFI {
-        ptr: Arc::new(Mutex::new(client_ptr)),
+        ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
         identity,
     }
 }

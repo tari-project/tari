@@ -20,58 +20,13 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
-use cucumber::{then, when};
-use tari_chat_client::Client;
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
-use tari_integration_tests::{
-    chat_ffi::{spawn_ffi_chat_client, ChatFFI},
-    TariWorld,
-};
-
-use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
+use cucumber::when;
+use tari_integration_tests::{chat_ffi::spawn_ffi_chat_client, TariWorld};
 
 #[when(expr = "I have a chat FFI client {word} connected to seed node {word}")]
 async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
     let base_node = world.get_node(&seed_node_name).unwrap();
 
     let client = spawn_ffi_chat_client(&name, vec![base_node.identity.to_peer()]).await;
-    world.ffi_chat_clients.insert(name, client);
-}
-
-#[when(regex = r"^FFI client (.+) sends a message '(.+)' to (.*)$")]
-async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
-    let sender = world.ffi_chat_clients.get(&sender).unwrap();
-    let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
-
-    sender.send_message(address, message).await;
-}
-
-#[then(expr = "{word} will have {int} message(s) with FFI {word}")]
-async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
-    let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
-    let sender: &ChatFFI = world.ffi_chat_clients.get(&sender).unwrap();
-
-    let address = TariAddress::from_public_key(sender.identity.public_key(), Network::LocalNet);
-
-    let mut messages = vec![];
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        messages = receiver.get_all_messages(&address).await;
-
-        if messages.len() as u64 == message_count {
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!(
-        "Receiver {} only received {}/{} messages",
-        receiver.identity.node_id(),
-        messages.len(),
-        message_count
-    )
+    world.chat_clients.insert(name, Box::new(client));
 }
