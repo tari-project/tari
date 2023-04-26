@@ -8,11 +8,9 @@ version = "0.50.0-pre.0"
 edition = "2018"
 
 [dependencies]
-tari_common = { path = "../../../../common" }
 tari_common_types = { path = "../../../common_types" }
 tari_common_sqlite = { path = "../../../../common_sqlite" }
 tari_comms = { path = "../../../../comms/core" }
-tari_comms_dht = { path = "../../../../comms/dht" }
 tari_contacts = { path = "../../../contacts" }
 tari_p2p = { path = "../../../p2p" }
 tari_service_framework= { path = "../../../service_framework" }
@@ -25,4 +23,3 @@ async-trait = "0.1.52"
 diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
 lmdb-zero = "0.4.4"
 log = "0.4.17"
-tokio = "1.23"

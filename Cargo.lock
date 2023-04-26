@@ -5260,45 +5260,31 @@ dependencies = [
  "diesel",
  "lmdb-zero",
  "log",
- "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
- "tari_comms_dht",
  "tari_contacts",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
- "tokio",
 ]
 
 [[package]]
 name = "tari_chat_ffi"
 version = "0.50.0-pre.0"
 dependencies = [
- "anyhow",
  "cbindgen 0.24.3",
- "diesel",
  "libc",
- "lmdb-zero",
- "log",
  "openssl",
- "rand 0.7.3",
  "serde_json",
  "tari_chat_client",
  "tari_common",
- "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
- "tari_comms_dht",
  "tari_contacts",
  "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "tari_test_utils",
  "tokio",
 ]
 
@@ -5673,7 +5659,6 @@ dependencies = [
  "tari_chat_client",
  "tari_chat_ffi",
  "tari_common",
- "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
