@@ -56,13 +56,14 @@ extern "C" {
         config: *mut c_void,
         identity_file_path: *const c_char,
         db_path: *const c_char,
-        seed_peers: *mut *mut c_void,
+        seed_peers: *mut c_void,
         network_str: *const c_char,
+        out_error: *const c_int,
     ) -> *mut ClientFFI;
-    pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char);
-    pub fn add_contact(client: *mut ClientFFI, address: *mut c_void);
-    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void) -> *mut c_void;
+    pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
+    pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
+    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
+    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
 }
 
 #[derive(Debug)]
@@ -82,7 +83,8 @@ impl ChatClient for ChatFFI {
 
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
-        unsafe { add_contact(client.0, address_ptr) }
+        let out_error = Box::into_raw(Box::new(0));
+        unsafe { add_contact(client.0, address_ptr, out_error) }
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
@@ -91,7 +93,8 @@ impl ChatClient for ChatFFI {
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let result;
-        unsafe { result = check_online_status(client.0, address_ptr) }
+        let out_error = Box::into_raw(Box::new(0));
+        unsafe { result = check_online_status(client.0, address_ptr, out_error) }
 
         ContactOnlineStatus::from_byte(result as u8).expect("A valid u8 from FFI status")
     }
@@ -103,9 +106,10 @@ impl ChatClient for ChatFFI {
         let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
 
         let receiver_ptr = Box::into_raw(Box::new(receiver)) as *mut c_void;
+        let out_error = Box::into_raw(Box::new(0));
 
         unsafe {
-            send_message(client.0, receiver_ptr, message_c_char);
+            send_message(client.0, receiver_ptr, message_c_char, out_error);
         }
     }
 
@@ -116,7 +120,8 @@ impl ChatClient for ChatFFI {
 
         let messages;
         unsafe {
-            let all_messages = get_all_messages(client.0, address_ptr) as *mut Vec<Message>;
+            let out_error = Box::into_raw(Box::new(0));
+            let all_messages = get_all_messages(client.0, address_ptr, out_error) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
 
@@ -151,14 +156,11 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
     let db_path_c_char: *const c_char = CString::into_raw(db_path_c_str) as *const c_char;
     database::create_peer_storage(&config.datastore_path);
 
-    let mut peers: Vec<*mut Peer> = Vec::with_capacity(seed_peers.len() + 1);
-    for peer in seed_peers {
-        peers.push(Box::into_raw(Box::new(peer)));
-    }
-    peers.push(std::ptr::null_mut());
-    let seed_peers_ptr = peers.as_mut_ptr() as *mut *mut c_void;
+    let seed_peers_ptr = Box::into_raw(Box::new(seed_peers)) as *mut c_void;
 
     let client_ptr;
+
+    let out_error = Box::into_raw(Box::new(0));
 
     unsafe {
         client_ptr = create_chat_client(
@@ -167,6 +169,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
             db_path_c_char,
             seed_peers_ptr,
             network_c_char,
+            out_error,
         );
     }
 

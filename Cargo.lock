@@ -5277,6 +5277,7 @@ version = "0.50.0-pre.0"
 dependencies = [
  "cbindgen 0.24.3",
  "libc",
+ "log",
  "openssl",
  "serde_json",
  "tari_chat_client",
@@ -5285,6 +5286,7 @@ dependencies = [
  "tari_comms",
  "tari_contacts",
  "tari_p2p",
+ "thiserror",
  "tokio",
 ]
 

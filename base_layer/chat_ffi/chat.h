@@ -12,6 +12,8 @@ struct ChatMessages;
 
 struct ClientFFI;
 
+struct ClientPeers;
+
 /**
  * Configuration for a comms node
  */
@@ -35,10 +37,11 @@ extern "C" {
  * `db_path` - The path to the db file
  * `seed_peers` - A ptr to a collection of seed peers
  * `network_str` - The network to connect to
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
- * if config is null, an error was encountered or if the runtime could not be created
+ * if any error was encountered or if the runtime could not be created.
  *
  * # Safety
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
@@ -46,8 +49,9 @@ extern "C" {
 struct ClientFFI *create_chat_client(struct P2pConfig *config,
                                      const char *identity_file_path,
                                      const char *db_path,
-                                     Peer **seed_peers,
-                                     const char *network_str);
+                                     struct ClientPeers *seed_peers,
+                                     const char *network_str,
+                                     int *error_out);
 
 /**
  * Frees memory for a ClientFFI
@@ -70,6 +74,7 @@ void destroy_client_ffi(struct ClientFFI *client);
  * `client` - The Client pointer
  * `receiver` - A string containing a tari address
  * `message` - The peer seeds config for the node
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -79,7 +84,8 @@ void destroy_client_ffi(struct ClientFFI *client);
  */
 void send_message(struct ClientFFI *client,
                   struct TariAddress *receiver,
-                  const char *message_c_char);
+                  const char *message_c_char,
+                  int *error_out);
 
 /**
  * Add a contact
@@ -87,6 +93,7 @@ void send_message(struct ClientFFI *client,
  * ## Arguments
  * `client` - The Client pointer
  * `address` - A TariAddress ptr
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -94,7 +101,7 @@ void send_message(struct ClientFFI *client,
  * # Safety
  * The ```address``` should be destroyed after use
  */
-void add_contact(struct ClientFFI *client, struct TariAddress *receiver);
+void add_contact(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
 
 /**
  * Check the online status of a contact
@@ -102,6 +109,7 @@ void add_contact(struct ClientFFI *client, struct TariAddress *receiver);
  * ## Arguments
  * `client` - The Client pointer
  * `address` - A TariAddress ptr
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -109,7 +117,7 @@ void add_contact(struct ClientFFI *client, struct TariAddress *receiver);
  * # Safety
  * The ```address``` should be destroyed after use
  */
-int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
+int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
 
 /**
  * Get a ptr to all messages from or to address
@@ -117,6 +125,7 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
  * ## Arguments
  * `client` - The Client pointer
  * `address` - A TariAddress ptr
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -125,7 +134,9 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
  * The ```address``` should be destroyed after use
  * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct ChatMessages *get_all_messages(struct ClientFFI *client, struct TariAddress *address);
+struct ChatMessages *get_all_messages(struct ClientFFI *client,
+                                      struct TariAddress *address,
+                                      int *error_out);
 
 /**
  * Frees memory for messages
@@ -146,6 +157,7 @@ void destroy_messages(struct ChatMessages *messages_ptr);
  *
  * ## Arguments
  * `receiver_c_char` - A string containing a tari address hex value
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `*mut TariAddress` - A ptr to a TariAddress
@@ -153,7 +165,7 @@ void destroy_messages(struct ChatMessages *messages_ptr);
  * # Safety
  * The ```destroy_tari_address``` function should be called when finished with the TariAddress
  */
-struct TariAddress *create_tari_address(const char *receiver_c_char);
+struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_out);
 
 /**
  * Frees memory for a TariAddress

@@ -22,19 +22,26 @@
 
 #![recursion_limit = "1024"]
 
-use std::{ffi::CStr, fs::File, io::Read, path::PathBuf, str::FromStr};
+use std::{ffi::CStr, fs::File, io::Read, path::PathBuf, ptr, str::FromStr};
 
 use libc::{c_char, c_int};
 use tari_chat_client::{ChatClient, Client};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_comms::peer_manager::Peer;
 use tari_contacts::contacts_service::types::Message;
 use tari_p2p::P2pConfig;
 use tokio::runtime::Runtime;
 
+use crate::error::{InterfaceError, LibChatError};
+
+mod error;
+
 #[derive(Clone)]
 pub struct ChatMessages(Vec<Message>);
+
+#[derive(Clone)]
+pub struct ClientPeers(Vec<Peer>);
 
 pub struct ClientFFI {
     client: Client,
@@ -52,10 +59,11 @@ pub struct ClientFFI {
 /// `db_path` - The path to the db file
 /// `seed_peers` - A ptr to a collection of seed peers
 /// `network_str` - The network to connect to
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
-/// if config is null, an error was encountered or if the runtime could not be created
+/// if any error was encountered or if the runtime could not be created.
 ///
 /// # Safety
 /// The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
@@ -64,45 +72,99 @@ pub unsafe extern "C" fn create_chat_client(
     config: *mut P2pConfig,
     identity_file_path: *const c_char,
     db_path: *const c_char,
-    seed_peers: *mut *mut Peer,
+    seed_peers: *mut ClientPeers,
     network_str: *const c_char,
+    error_out: *mut c_int,
 ) -> *mut ClientFFI {
-    let identity_path = PathBuf::from(
-        CStr::from_ptr(identity_file_path)
-            .to_str()
-            .expect("A non-null identity path should be able to convert to a string"),
-    );
-    let mut buf = Vec::new();
-    File::open(identity_path)
-        .expect("Can't open the identity file")
-        .read_to_end(&mut buf)
-        .expect("Can't read the identity file into buffer");
-    let identity: NodeIdentity = serde_json::from_slice(&buf).expect("Can't parse identity file as json");
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
 
-    let network = Network::from_str(
-        CStr::from_ptr(network_str)
-            .to_str()
-            .expect("A non-null network should be able to be converted to string"),
-    )
-    .expect("Network is invalid");
-
-    let db_path = PathBuf::from(
-        CStr::from_ptr(db_path)
-            .to_str()
-            .expect("A non-null db path should be able to convert to a string"),
-    );
-
-    let mut seed_peers_vec = Vec::new();
-
-    let mut i = 0;
-    while !(*seed_peers.offset(i)).is_null() {
-        let peer = (**seed_peers.offset(i)).clone();
-        seed_peers_vec.push(peer);
-        i += 1;
+    if config.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
-    let runtime = Runtime::new().unwrap();
-    let mut client = Client::new(identity, (*config).clone(), seed_peers_vec, db_path, network);
+    let mut bad_identity = |e| {
+        error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    };
+    let identity = match CStr::from_ptr(identity_file_path).to_str() {
+        Ok(str) => {
+            let identity_path = PathBuf::from(str);
+            let mut buf = Vec::new();
+
+            match File::open(identity_path) {
+                Ok(mut f) => {
+                    if let Err(e) = f.read_to_end(&mut buf) {
+                        bad_identity(e.to_string());
+                        return ptr::null_mut();
+                    }
+                },
+                Err(e) => {
+                    bad_identity(e.to_string());
+                    return ptr::null_mut();
+                },
+            }
+
+            match serde_json::from_slice(&buf) {
+                Ok(identity) => identity,
+                Err(e) => {
+                    bad_identity(e.to_string());
+                    return ptr::null_mut();
+                },
+            }
+        },
+        Err(e) => {
+            bad_identity(e.to_string());
+            return ptr::null_mut();
+        },
+    };
+
+    let mut bad_network = |e| {
+        error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    };
+    let network = if network_str.is_null() {
+        bad_network("network is missing".to_string());
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(network_str).to_str() {
+            Ok(str) => match Network::from_str(str) {
+                Ok(network) => network,
+                Err(e) => {
+                    bad_network(e.to_string());
+                    return ptr::null_mut();
+                },
+            },
+            Err(e) => {
+                bad_network(e.to_string());
+                return ptr::null_mut();
+            },
+        }
+    };
+
+    let db_path = match CStr::from_ptr(db_path).to_str() {
+        Ok(str) => PathBuf::from(str),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let seed_peers = (*seed_peers).clone().0;
+
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let mut client = Client::new(identity, (*config).clone(), seed_peers, db_path, network);
 
     runtime.block_on(client.initialize());
 
@@ -134,6 +196,7 @@ pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
 /// `client` - The Client pointer
 /// `receiver` - A string containing a tari address
 /// `message` - The peer seeds config for the node
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -145,11 +208,29 @@ pub unsafe extern "C" fn send_message(
     client: *mut ClientFFI,
     receiver: *mut TariAddress,
     message_c_char: *const c_char,
+    error_out: *mut c_int,
 ) {
-    let message = CStr::from_ptr(message_c_char)
-        .to_str()
-        .expect("A non-null message should be able to be converted to string")
-        .to_string();
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if receiver.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    let message = match CStr::from_ptr(message_c_char).to_str() {
+        Ok(str) => str.to_string(),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
 
     (*client)
         .runtime
@@ -161,6 +242,7 @@ pub unsafe extern "C" fn send_message(
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -168,7 +250,20 @@ pub unsafe extern "C" fn send_message(
 /// # Safety
 /// The ```address``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TariAddress) {
+pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TariAddress, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if receiver.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
     (*client).runtime.block_on((*client).client.add_contact(&(*receiver)));
 }
 
@@ -177,6 +272,7 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -184,7 +280,24 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 /// # Safety
 /// The ```address``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *mut TariAddress) -> c_int {
+pub unsafe extern "C" fn check_online_status(
+    client: *mut ClientFFI,
+    receiver: *mut TariAddress,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if receiver.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
     let rec = (*receiver).clone();
     let status = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
@@ -196,6 +309,7 @@ pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -204,7 +318,24 @@ pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *
 /// The ```address``` should be destroyed after use
 /// The returned pointer to ```*mut ChatMessages``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn get_all_messages(client: *mut ClientFFI, address: *mut TariAddress) -> *mut ChatMessages {
+pub unsafe extern "C" fn get_all_messages(
+    client: *mut ClientFFI,
+    address: *mut TariAddress,
+    error_out: *mut c_int,
+) -> *mut ChatMessages {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if address.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
     let mut messages = Vec::new();
 
     let mut retrieved_messages = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
@@ -234,6 +365,7 @@ pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut ChatMessages) {
 ///
 /// ## Arguments
 /// `receiver_c_char` - A string containing a tari address hex value
+/// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `*mut TariAddress` - A ptr to a TariAddress
@@ -241,13 +373,28 @@ pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut ChatMessages) {
 /// # Safety
 /// The ```destroy_tari_address``` function should be called when finished with the TariAddress
 #[no_mangle]
-pub unsafe extern "C" fn create_tari_address(receiver_c_char: *const c_char) -> *mut TariAddress {
-    let receiver = TariAddress::from_str(
-        CStr::from_ptr(receiver_c_char)
-            .to_str()
-            .expect("A non-null receiver should be able to be converted to string"),
-    )
-    .expect("A TariAddress from str");
+pub unsafe extern "C" fn create_tari_address(
+    receiver_c_char: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariAddress {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let receiver = match CStr::from_ptr(receiver_c_char).to_str() {
+        Ok(str) => match TariAddress::from_str(str) {
+            Ok(address) => address,
+            Err(e) => {
+                error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        },
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::NullError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     Box::into_raw(Box::new(receiver))
 }
