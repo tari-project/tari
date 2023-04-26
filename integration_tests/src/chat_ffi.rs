@@ -33,7 +33,6 @@ use async_trait::async_trait;
 type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
-use log::warn;
 use rand::rngs::OsRng;
 use tari_chat_client::{database, ChatClient};
 use tari_common::configuration::{MultiaddrList, Network};
@@ -142,7 +141,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
         .join(format!("port_{}", port))
         .join(name);
 
-    let (identity, identity_path) = identity_file(&port, &base_dir);
+    let (identity, identity_path) = identity_file(port, &base_dir);
     let identity_path_c_str = CString::new(identity_path.into_os_string().into_string().unwrap()).unwrap();
     let identity_path_c_char: *const c_char = CString::into_raw(identity_path_c_str) as *const c_char;
 
@@ -210,7 +209,7 @@ fn test_config(base_dir: &PathBuf, identity: &NodeIdentity) -> P2pConfig {
     config
 }
 
-fn identity_file(port: &u64, base_dir: &PathBuf) -> (NodeIdentity, PathBuf) {
+fn identity_file(port: u64, base_dir: &PathBuf) -> (NodeIdentity, PathBuf) {
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
 

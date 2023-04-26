@@ -37,8 +37,8 @@ use crate::{base_node_process::get_base_dir, get_port};
 
 pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
     let port = get_port(18000..18499).unwrap();
-    let identity = identity_file(&port);
-    let config = test_config(name, &port, &identity);
+    let identity = identity_file(port);
+    let config = test_config(name, port, &identity);
     let network = Network::LocalNet;
     let db_path = database::create_chat_storage(&config.datastore_path).unwrap();
     database::create_peer_storage(&config.datastore_path);
@@ -49,7 +49,7 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
     client
 }
 
-fn test_config(name: &str, port: &u64, identity: &NodeIdentity) -> P2pConfig {
+fn test_config(name: &str, port: u64, identity: &NodeIdentity) -> P2pConfig {
     let temp_dir_path = get_base_dir()
         .join("chat_clients")
         .join(format!("port_{}", port))
@@ -81,7 +81,7 @@ fn test_config(name: &str, port: &u64, identity: &NodeIdentity) -> P2pConfig {
     config
 }
 
-fn identity_file(port: &u64) -> NodeIdentity {
+fn identity_file(port: u64) -> NodeIdentity {
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
     NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE)
 }

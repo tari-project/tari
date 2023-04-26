@@ -185,7 +185,7 @@ pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *
     let rec = (*receiver).clone();
     let status = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
-    status.clone().as_u8().into()
+    status.as_u8().into()
 }
 
 /// Get a ptr to all messages from or to address
