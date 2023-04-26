@@ -53,16 +53,16 @@ use crate::{base_node_process::get_base_dir, get_port};
 #[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
 extern "C" {
     pub fn create_chat_client(
-        config: *mut P2pConfig,
+        config: *mut c_void,
         identity_file_path: *const c_char,
         db_path: *const c_char,
-        seed_peers: *mut *mut Peer,
+        seed_peers: *mut *mut c_void,
         network_str: *const c_char,
     ) -> *mut ClientFFI;
-    pub fn send_message(client: *mut ClientFFI, receiver: *mut TariAddress, message: *const c_char);
-    pub fn add_contact(client: *mut ClientFFI, address: *mut TariAddress);
-    pub fn check_online_status(client: *mut ClientFFI, address: *mut TariAddress) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut TariAddress) -> *mut *mut Message;
+    pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char);
+    pub fn add_contact(client: *mut ClientFFI, address: *mut c_void);
+    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void) -> c_int;
+    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void) -> *mut *mut c_void;
 }
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ impl ChatClient for ChatFFI {
     async fn add_contact(&self, address: &TariAddress) {
         let client = self.ptr.lock().unwrap();
 
-        let address_ptr = Box::into_raw(Box::new(address.to_owned()));
+        let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
         unsafe { add_contact(client.0, address_ptr) }
     }
@@ -88,7 +88,7 @@ impl ChatClient for ChatFFI {
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
         let client = self.ptr.lock().unwrap();
 
-        let address_ptr = Box::into_raw(Box::new(address.clone()));
+        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let result;
         unsafe { result = check_online_status(client.0, address_ptr) }
@@ -102,7 +102,7 @@ impl ChatClient for ChatFFI {
         let message_c_str = CString::new(message).unwrap();
         let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
 
-        let receiver_ptr = Box::into_raw(Box::new(receiver));
+        let receiver_ptr = Box::into_raw(Box::new(receiver)) as *mut c_void;
 
         unsafe {
             send_message(client.0, receiver_ptr, message_c_char);
@@ -112,11 +112,11 @@ impl ChatClient for ChatFFI {
     async fn get_all_messages(&self, address: &TariAddress) -> Vec<Message> {
         let client = self.ptr.lock().unwrap();
 
-        let address_ptr = Box::into_raw(Box::new(address.clone()));
+        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let mut messages_vec = Vec::new();
         unsafe {
-            let messages = get_all_messages(client.0, address_ptr);
+            let messages = get_all_messages(client.0, address_ptr) as *mut *mut Message;
 
             let mut i = 0;
             while !(*messages.offset(i)).is_null() {
@@ -146,7 +146,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
     let identity_path_c_char: *const c_char = CString::into_raw(identity_path_c_str) as *const c_char;
 
     let config = test_config(&base_dir, &identity);
-    let config_ptr = Box::into_raw(Box::new(config.clone()));
+    let config_ptr = Box::into_raw(Box::new(config.clone())) as *mut c_void;
 
     let network = Network::LocalNet;
     let network_c_str = CString::new(network.to_string()).unwrap();
@@ -162,7 +162,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
         peers.push(Box::into_raw(Box::new(peer)));
     }
     peers.push(std::ptr::null_mut());
-    let seed_peers_ptr = peers.as_mut_ptr();
+    let seed_peers_ptr = peers.as_mut_ptr() as *mut *mut c_void;
 
     let client_ptr;
 
