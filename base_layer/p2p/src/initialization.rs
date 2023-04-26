@@ -248,12 +248,16 @@ pub async fn spawn_comms_using_transport(
         TransportType::Tor => {
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
+            let listener_address_override = tor_config.listener_address_override.clone();
             let mut hidden_service_ctl = initialize_hidden_service(tor_config).await?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
             let transport = hidden_service_ctl.initialize_transport().await?;
             debug!(target: LOG_TARGET, "Comms and DHT configured");
+
             comms
-                .with_listener_address(hidden_service_ctl.proxied_address())
+                .with_listener_address(
+                    listener_address_override.unwrap_or_else(|| hidden_service_ctl.proxied_address()),
+                )
                 .with_hidden_service_controller(hidden_service_ctl)
                 .spawn_with_transport(transport)
                 .await?
@@ -290,7 +294,7 @@ async fn initialize_hidden_service(
         builder = builder.with_tor_identity(identity);
     }
 
-    let hidden_svc_ctl = builder.build().await?;
+    let hidden_svc_ctl = builder.build()?;
     Ok(hidden_svc_ctl)
 }
 

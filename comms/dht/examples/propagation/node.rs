@@ -103,7 +103,7 @@ pub async fn create<P: AsRef<Path>>(
         hs_builder = hs_builder.with_tor_identity(tor_identity);
     }
 
-    let mut hs_ctl = hs_builder.build().await?;
+    let mut hs_ctl = hs_builder.build()?;
     let transport = hs_ctl.initialize_transport().await?;
 
     let comms_node = builder.with_listener_address(hs_ctl.proxied_address()).build()?;

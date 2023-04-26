@@ -156,7 +156,7 @@ impl HiddenServiceBuilder {
 
 impl HiddenServiceBuilder {
     /// Create a HiddenService with the given builder parameters.
-    pub async fn build(self) -> Result<HiddenServiceController, HiddenServiceBuilderError> {
+    pub fn build(self) -> Result<HiddenServiceController, HiddenServiceBuilderError> {
         let proxied_port_mapping = self
             .port_mapping
             .ok_or(HiddenServiceBuilderError::ProxiedPortMappingNotProvided)?;
