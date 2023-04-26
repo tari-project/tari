@@ -62,7 +62,7 @@ extern "C" {
     pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char);
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void) -> *mut *mut c_void;
+    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void) -> *mut c_void;
 }
 
 #[derive(Debug)]
@@ -114,19 +114,13 @@ impl ChatClient for ChatFFI {
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
-        let mut messages_vec = Vec::new();
+        let messages;
         unsafe {
-            let messages = get_all_messages(client.0, address_ptr) as *mut *mut Message;
-
-            let mut i = 0;
-            while !(*messages.offset(i)).is_null() {
-                let message = (**messages.offset(i)).clone();
-                messages_vec.push(message);
-                i += 1;
-            }
+            let all_messages = get_all_messages(client.0, address_ptr) as *mut Vec<Message>;
+            messages = (*all_messages).clone();
         }
 
-        messages_vec
+        messages
     }
 
     fn identity(&self) -> &NodeIdentity {

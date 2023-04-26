@@ -33,13 +33,16 @@ use tari_contacts::contacts_service::types::Message;
 use tari_p2p::P2pConfig;
 use tokio::runtime::Runtime;
 
+#[derive(Clone)]
+pub struct ChatMessages(Vec<Message>);
+
 pub struct ClientFFI {
     client: Client,
     runtime: Runtime,
 }
 
 /// Creates a Chat Client
-/// TODO: This function take a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
+/// TODO: This function takes a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
 /// isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
 /// for supplying seed peers.
 ///
@@ -199,18 +202,15 @@ pub unsafe extern "C" fn check_online_status(client: *mut ClientFFI, receiver: *
 ///
 /// # Safety
 /// The ```address``` should be destroyed after use
-/// The returned pointer to ```*mut *mut Message``` should be destroyed after use
+/// The returned pointer to ```*mut ChatMessages``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn get_all_messages(client: *mut ClientFFI, address: *mut TariAddress) -> *mut *mut Message {
-    let all_messages: Vec<Message> = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
+pub unsafe extern "C" fn get_all_messages(client: *mut ClientFFI, address: *mut TariAddress) -> *mut ChatMessages {
+    let mut messages = Vec::new();
 
-    let mut messages: Vec<*mut Message> = Vec::with_capacity(all_messages.len() + 1);
-    for message in all_messages {
-        messages.push(Box::into_raw(Box::new(message)));
-    }
-    messages.push(std::ptr::null_mut());
+    let mut retrieved_messages = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
+    messages.append(&mut retrieved_messages);
 
-    messages.as_mut_ptr()
+    Box::into_raw(Box::new(ChatMessages(messages)))
 }
 
 /// Frees memory for messages
@@ -224,7 +224,7 @@ pub unsafe extern "C" fn get_all_messages(client: *mut ClientFFI, address: *mut 
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut *mut Message) {
+pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut ChatMessages) {
     if !messages_ptr.is_null() {
         drop(Box::from_raw(messages_ptr))
     }

@@ -4,10 +4,10 @@
 @chat-ffi @critical
 Feature: Chat FFI messaging
 
-  Scenario: A message is propagated between an FFI node and native client via 3rd party
+  Scenario: A message is propagated between clients via 3rd party
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
-    When I have a chat client CHAT_B connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 

@@ -8,9 +8,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-struct ClientFFI;
+struct ChatMessages;
 
-struct Message;
+struct ClientFFI;
 
 /**
  * Configuration for a comms node
@@ -25,7 +25,7 @@ extern "C" {
 
 /**
  * Creates a Chat Client
- * TODO: This function take a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
+ * TODO: This function takes a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
  * isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
  * for supplying seed peers.
  *
@@ -123,9 +123,9 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver);
  *
  * # Safety
  * The ```address``` should be destroyed after use
- * The returned pointer to ```*mut *mut Message``` should be destroyed after use
+ * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct Message **get_all_messages(struct ClientFFI *client, struct TariAddress *address);
+struct ChatMessages *get_all_messages(struct ClientFFI *client, struct TariAddress *address);
 
 /**
  * Frees memory for messages
@@ -139,7 +139,7 @@ struct Message **get_all_messages(struct ClientFFI *client, struct TariAddress *
  * # Safety
  * None
  */
-void destroy_messages(struct Message **messages_ptr);
+void destroy_messages(struct ChatMessages *messages_ptr);
 
 /**
  * Creates a TariAddress and returns a ptr
