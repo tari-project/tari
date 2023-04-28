@@ -262,7 +262,6 @@ pub enum OutputManagerResponse {
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
-    PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
     FeeEstimate(MicroTari),
     RewoundOutputs(Vec<RecoveredOutput>),
@@ -316,11 +315,6 @@ impl fmt::Display for OutputManagerEvent {
             },
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct PublicRewindKeys {
-    pub rewind_blinding_public_key: PublicKey,
 }
 
 #[derive(Debug, Clone)]

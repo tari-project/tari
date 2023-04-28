@@ -31,6 +31,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
 };
 use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
@@ -153,7 +154,8 @@ impl TestParams {
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v1(),
             rewind_data: RewindData {
-                rewind_blinding_key: PrivateKey::random(&mut OsRng),
+                rewind_key_helper: PrivateKey::random(&mut OsRng).as_bytes().to_vec(),
+                rewind_key_signer: PrivateKey::random(&mut OsRng).as_bytes().to_vec(),
                 encryption_key: PrivateKey::random(&mut OsRng),
             },
         }

@@ -114,7 +114,8 @@ impl SingleReceiverTransactionProtocol {
             factories.range_proof.construct_proof_with_recovery_seed_nonce(
                 spending_key,
                 sender_info.amount.into(),
-                &rewind_data.rewind_blinding_key,
+                &rewind_data.rewind_key_helper,
+                &rewind_data.rewind_key_signer,
             )?
         } else {
             factories

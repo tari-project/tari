@@ -34,7 +34,7 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::SecretKey as SecretKeyTrait,
     range_proof::RangeProofService,
-    tari_utilities::hex::Hex,
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_p2p::Network;
 use tari_script::{script, ExecutionStack, StackItem};
@@ -439,7 +439,8 @@ fn test_output_rewinding_bulletproofs() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
     let v = MicroTari::from(42);
-    let random_key = PrivateKey::random(&mut OsRng);
+    let rewind_key_helper = PrivateKey::random(&mut OsRng).as_bytes().to_vec();
+    let rewind_key_signer = PrivateKey::random(&mut OsRng).as_bytes().to_vec();
 
     for minimum_value_promise in [MicroTari::zero(), v / 2, v] {
         let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
@@ -451,7 +452,7 @@ fn test_output_rewinding_bulletproofs() {
             .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
             .unwrap();
 
-        match output.recover_mask(&factories.range_proof, &random_key) {
+        match output.recover_mask(&factories.range_proof, &rewind_key_helper, &rewind_key_signer) {
             Ok(recovered_mask) => {
                 if let Ok(succeeded) =
                     output.verify_mask(&factories.range_proof, &recovered_mask, unblinded_output.value.as_u64())
@@ -467,7 +468,11 @@ fn test_output_rewinding_bulletproofs() {
             },
         }
         let recovered_mask = output
-            .recover_mask(&factories.range_proof, &test_params.rewind_data.rewind_blinding_key)
+            .recover_mask(
+                &factories.range_proof,
+                &test_params.rewind_data.rewind_key_helper,
+                &test_params.rewind_data.rewind_key_signer,
+            )
             .unwrap();
         assert_eq!(recovered_mask, test_params.spend_key);
     }

@@ -125,7 +125,8 @@ use crate::{
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
-            shared_secret_to_output_rewind_key,
+            shared_secret_to_output_rewind_key_helper,
+            shared_secret_to_output_rewind_key_signer,
             shared_secret_to_output_spending_key,
             stealth_address_script_spending_key,
         },
@@ -1105,11 +1106,13 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let rewind_key_helper = shared_secret_to_output_rewind_key_helper(&shared_secret);
+        let rewind_key_signer = shared_secret_to_output_rewind_key_signer(&shared_secret);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
         let rewind_data = RewindData {
-            rewind_blinding_key,
+            rewind_key_helper,
+            rewind_key_signer,
             encryption_key,
         };
 
@@ -1262,10 +1265,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let rewind_key_helper = shared_secret_to_output_rewind_key_helper(&shared_secret);
+        let rewind_key_signer = shared_secret_to_output_rewind_key_signer(&shared_secret);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         let rewind_data = RewindData {
-            rewind_blinding_key,
+            rewind_key_helper,
+            rewind_key_signer,
             encryption_key,
         };
 
@@ -1443,7 +1448,8 @@ where
                 let shared_encryption_key = derive_burn_claim_encryption_key(&shared_spend_key, &commitment);
 
                 let shared_rewind_data = RewindData {
-                    rewind_blinding_key: rewind_data.rewind_blinding_key,
+                    rewind_key_helper: rewind_data.rewind_key_helper,
+                    rewind_key_signer: rewind_data.rewind_key_signer,
                     encryption_key: shared_encryption_key,
                 };
                 (shared_spend_key, shared_rewind_data)

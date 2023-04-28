@@ -309,6 +309,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::types::{BlindingFactor, PrivateKey, Signature};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+    use tari_utilities::ByteArray;
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -408,10 +409,12 @@ mod test {
 
     #[test]
     fn valid_coinbase_with_rewindable_output() {
-        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
+        let rewind_key_helper = PrivateKey::random(&mut OsRng).as_bytes().to_vec();
+        let rewind_key_signer = PrivateKey::random(&mut OsRng).as_bytes().to_vec();
 
         let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
+            rewind_key_helper: rewind_key_helper.clone(),
+            rewind_key_signer: rewind_key_signer.clone(),
             encryption_key: PrivateKey::random(&mut OsRng),
         };
 
@@ -434,7 +437,7 @@ mod test {
                 .unwrap();
         assert_eq!(committed_value, block_reward);
         let blinding_factor = output
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
+            .recover_mask(&factories.range_proof, &rewind_key_helper, &rewind_key_signer)
             .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
     }

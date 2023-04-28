@@ -216,8 +216,11 @@ where
             },
         };
 
-        let blinding_factor =
-            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
+        let blinding_factor = output.recover_mask(
+            &self.factories.range_proof,
+            &self.rewind_data.rewind_key_helper,
+            &self.rewind_data.rewind_key_signer,
+        )?;
         if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
             return Ok(None);
         }
@@ -239,8 +242,11 @@ where
             return self.attempt_standard_output_recovery(output);
         };
 
-        let blinding_factor =
-            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
+        let blinding_factor = output.recover_mask(
+            &self.factories.range_proof,
+            &self.rewind_data.rewind_key_helper,
+            &self.rewind_data.rewind_key_signer,
+        )?;
 
         let shard_encryption_key = derive_burn_claim_encryption_key(&blinding_factor, &output.commitment);
 

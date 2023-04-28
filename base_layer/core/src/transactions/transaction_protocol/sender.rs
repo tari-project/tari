@@ -1301,7 +1301,8 @@ mod test {
             let blinding_factor = output_0
                 .recover_mask(
                     &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
+                    &alice_test_params.rewind_data.rewind_key_helper,
+                    &alice_test_params.rewind_data.rewind_key_signer,
                 )
                 .unwrap();
             assert_eq!(
@@ -1318,7 +1319,8 @@ mod test {
             let blinding_factor = output_1
                 .recover_mask(
                     &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
+                    &alice_test_params.rewind_data.rewind_key_helper,
+                    &alice_test_params.rewind_data.rewind_key_signer,
                 )
                 .unwrap();
             assert_eq!(

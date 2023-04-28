@@ -251,14 +251,15 @@ impl UnblindedOutput {
     fn construct_range_proof(
         &self,
         factories: &CryptoFactories,
-        seed_nonce: Option<PrivateKey>,
+        seed_nonce_pair: Option<(Vec<u8>, Vec<u8>)>,
     ) -> Result<RangeProof, TransactionError> {
         let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
-            match seed_nonce {
+            match seed_nonce_pair {
                 Some(nonce) => factories.range_proof.construct_proof_with_recovery_seed_nonce(
                     &self.spending_key,
                     self.value.into(),
-                    &nonce,
+                    nonce.0.as_slice(),
+                    nonce.1.as_slice(),
                 ),
                 None => factories
                     .range_proof
@@ -276,7 +277,7 @@ impl UnblindedOutput {
 
             factories
                 .range_proof
-                .construct_extended_proof(vec![extended_witness], seed_nonce)
+                .construct_extended_proof(vec![extended_witness], seed_nonce_pair)
         };
 
         let proof_bytes = proof_bytes_result.map_err(|err| {
@@ -310,12 +311,18 @@ impl UnblindedOutput {
         let proof = if let Some(proof) = range_proof {
             proof.clone()
         } else {
-            self.construct_range_proof(factories, Some(rewind_data.rewind_blinding_key.clone()))
-                .map_err(|_| {
-                    TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                        "Creating rewindable transaction output".to_string(),
-                    ))
-                })?
+            self.construct_range_proof(
+                factories,
+                Some((
+                    rewind_data.rewind_key_helper.clone(),
+                    rewind_data.rewind_key_signer.clone(),
+                )),
+            )
+            .map_err(|_| {
+                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating rewindable transaction output".to_string(),
+                ))
+            })?
         };
 
         let output = TransactionOutput::new(

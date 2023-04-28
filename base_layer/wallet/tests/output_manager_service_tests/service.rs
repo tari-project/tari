@@ -23,7 +23,7 @@
 use std::{collections::HashMap, convert::TryInto, mem::size_of, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey},
@@ -71,7 +71,7 @@ use tari_key_manager::{
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
-use tari_utilities::Hidden;
+use tari_utilities::{ByteArray, Hidden};
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -205,16 +205,25 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
-    let rewind_blinding_key = key_manager
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
+    let rewind_key_helper = key_manager
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryHelper.get_branch_key(), 0)
         .await
-        .unwrap();
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+    let rewind_key_signer = key_manager
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoverySigner.get_branch_key(), 0)
+        .await
+        .unwrap()
+        .as_bytes()
+        .to_vec();
     let encryption_key = key_manager
         .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
         .await
         .unwrap();
     let rewind_data = RewindData {
-        rewind_blinding_key,
+        rewind_key_helper,
+        rewind_key_signer,
         encryption_key,
     };
 
@@ -2228,7 +2237,8 @@ async fn scan_for_recovery_test() {
         .unwrap();
 
     let other_rewind_data = RewindData {
-        rewind_blinding_key: PrivateKey::random(&mut OsRng),
+        rewind_key_helper: OsRng.gen::<[u8; 32]>().to_vec(),
+        rewind_key_signer: OsRng.gen::<[u8; 32]>().to_vec(),
         encryption_key,
     };
 

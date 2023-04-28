@@ -250,14 +250,15 @@ impl TransactionOutput {
     pub fn recover_mask(
         &self,
         prover: &RangeProofService,
-        rewind_blinding_key: &PrivateKey,
+        rewind_key_helper: &[u8],
+        rewind_key_signer: &[u8],
     ) -> Result<BlindingFactor, TransactionError> {
         let statement_private = RistrettoAggregatedPrivateStatement::init(
             vec![RistrettoStatement {
                 commitment: self.commitment.clone(),
                 minimum_value_promise: self.minimum_value_promise.as_u64(),
             }],
-            Some(rewind_blinding_key.clone()),
+            Some((rewind_key_helper.to_vec(), rewind_key_signer.to_vec())),
         )?;
         match prover.recover_extended_mask(&self.proof.0, &statement_private)? {
             Some(extended_mask) => Ok(extended_mask.secrets()[0].clone()),

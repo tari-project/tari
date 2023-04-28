@@ -53,7 +53,8 @@ pub enum OutputManagerKeyManagerBranch {
     SpendScript,
     Coinbase,
     CoinbaseScript,
-    RecoveryBlinding,
+    RecoveryHelper,
+    RecoverySigner,
     ContractIssuer,
     ValueEncryption,
 }
@@ -67,7 +68,8 @@ impl OutputManagerKeyManagerBranch {
             OutputManagerKeyManagerBranch::SpendScript => "script".to_string(),
             OutputManagerKeyManagerBranch::Coinbase => "coinbase".to_string(),
             OutputManagerKeyManagerBranch::CoinbaseScript => "coinbase_script".to_string(),
-            OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
+            OutputManagerKeyManagerBranch::RecoveryHelper => "recovery_helper".to_string(),
+            OutputManagerKeyManagerBranch::RecoverySigner => "recovery_signer".to_string(),
             OutputManagerKeyManagerBranch::ContractIssuer => "contract_issuer".to_string(),
             OutputManagerKeyManagerBranch::ValueEncryption => "value_encryption".to_string(),
         }

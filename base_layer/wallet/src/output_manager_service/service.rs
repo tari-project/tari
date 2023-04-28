@@ -83,7 +83,6 @@ use crate::{
             OutputManagerEventSender,
             OutputManagerRequest,
             OutputManagerResponse,
-            PublicRewindKeys,
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
@@ -100,7 +99,8 @@ use crate::{
     util::one_sided::{
         diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
-        shared_secret_to_output_rewind_key,
+        shared_secret_to_output_rewind_key_helper,
+        shared_secret_to_output_rewind_key_signer,
         stealth_address_script_spending_key,
     },
 };
@@ -145,14 +145,18 @@ where
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
         Self::initialise_key_manager(&key_manager).await?;
-        let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
+        let rewind_key_helper = key_manager
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryHelper.get_branch_key(), 0)
+            .await?;
+        let rewind_key_signer = key_manager
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoverySigner.get_branch_key(), 0)
             .await?;
         let encryption_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
-            rewind_blinding_key,
+            rewind_key_helper: rewind_key_helper.as_bytes().to_vec(),
+            rewind_key_signer: rewind_key_signer.as_bytes().to_vec(),
             encryption_key,
         };
 
@@ -183,13 +187,6 @@ where
             key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
         Ok(())
-    }
-
-    /// Return the public rewind keys
-    pub fn get_rewind_public_keys(&self) -> PublicRewindKeys {
-        PublicRewindKeys {
-            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
-        }
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
@@ -2356,11 +2353,16 @@ where
             self.node_identity.as_ref().secret_key(),
             &output.sender_offset_public_key,
         );
-        let blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+        let rewind_key_helper = shared_secret_to_output_rewind_key_helper(&shared_secret);
+        let rewind_key_signer = shared_secret_to_output_rewind_key_signer(&shared_secret);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
         {
-            let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
+            let blinding_factor = output.recover_mask(
+                &self.resources.factories.range_proof,
+                &rewind_key_helper,
+                &rewind_key_signer,
+            )?;
             if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
                 let rewound_output = UnblindedOutput::new(
                     output.version,
@@ -2639,14 +2641,18 @@ where
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
-            let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
+            let rewind_key_helper = shared_secret_to_output_rewind_key_helper(&shared_secret);
+            let rewind_key_signer = shared_secret_to_output_rewind_key_helper(&shared_secret);
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
             let committed_value =
                 EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
 
             if let Ok(committed_value) = committed_value {
-                let blinding_factor =
-                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
+                let blinding_factor = output.recover_mask(
+                    &self.resources.factories.range_proof,
+                    &rewind_key_helper,
+                    &rewind_key_signer,
+                )?;
 
                 if output.verify_mask(
                     &self.resources.factories.range_proof,
@@ -2674,7 +2680,8 @@ where
                         rewound_output.clone(),
                         &self.resources.factories,
                         &RewindData {
-                            rewind_blinding_key,
+                            rewind_key_helper,
+                            rewind_key_signer,
                             encryption_key,
                         },
                         None,

@@ -35,8 +35,14 @@ use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 use crate::WalletHasher;
 
 hash_domain!(
-    WalletOutputRewindKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_rewind_keys",
+    WalletOutputRewindKeysHelperDomain,
+    "com.tari.tari_project.base_layer.wallet.output_rewind_keys_helper",
+    1
+);
+
+hash_domain!(
+    WalletOutputRewindKeysSignerDomain,
+    "com.tari.tari_project.base_layer.wallet.output_rewind_keys_signer",
     1
 );
 
@@ -52,18 +58,27 @@ hash_domain!(
     1
 );
 
-type WalletOutputRewindKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysDomain>;
+type WalletOutputRewindKeysHelperDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysHelperDomain>;
+type WalletOutputRewindKeysSignerDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysSignerDomain>;
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputSpendingKeysDomain>;
 
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
+/// Generate an output rewind key (for a helper) from a Diffie-Hellman shared secret
+pub fn shared_secret_to_output_rewind_key_helper(shared_secret: &CommsDHKE) -> Vec<u8> {
+    WalletOutputRewindKeysHelperDomainHasher::new()
+        .chain(shared_secret.as_bytes())
+        .finalize()
+        .as_ref()
+        .to_vec()
+}
+
+/// Generate an output rewind key (for a signer) from a Diffie-Hellman shared secret
+pub fn shared_secret_to_output_rewind_key_signer(shared_secret: &CommsDHKE) -> Vec<u8> {
+    WalletOutputRewindKeysSignerDomainHasher::new()
+        .chain(shared_secret.as_bytes())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 /// Generate an output encryption key from a Diffie-Hellman shared secret
