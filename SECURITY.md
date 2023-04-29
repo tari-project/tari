@@ -51,7 +51,7 @@ professor@tari.com
 PGP fingerprint = 5410 7BD9 02F0 A865 3DDF F4CD 7A4A 432E C35C 9C7E
 
 If pasting GPG encrypted data, use paste.debian.net or paste.ubuntu.com
-as these do introduce issues with Tor via Cloudflare.
+as these do not introduce issues with Tor via Cloudflare.
 ```
 
 **You must include:**
@@ -130,7 +130,7 @@ The value of rewards paid out varies depending on severity and will be guided by
 
 ### Payment Amounts
 
-* **Medium, Large, or Critical:** Between $120 to $2000 USD
+* **Medium, Large, or Critical:** Between $120 to $5000 USD
 * **Small:** Up to $100 USD
 
 Please allow up to one week from the time the report was approved and validated to receive your bounty reward payment.
@@ -153,9 +153,10 @@ The following requirements must be adhered to in order to for any report to qual
 In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy, the following commonplace reports do not qualify for a bounty reward. Such issues may be disclosed as a [GitHub issue here](https://github.com/tari-project/tari/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Tari%20better%5D).
 
 * Lack of a security feature that is not critical to the system's operation
-* Configuration issues that are not relevant to the product/application
+* Configuration issues that are not relevant to the network or application
 * Application Denial of Service by locking user accounts
 * Descriptive error messages or headers (e.g., stack traces, banner grabbing, debug information on a production site)
+* Purely technical, public, and non-sensitive network, application, or API information unrelated to a specific exploit
 * Disclosure of known public files or directories, (e.g., `robots.txt`)
 * Outdated software/library versions
 * Lack of security headers, such as the `X-Content-Type-Options` or `X-Frame-Options` headers
