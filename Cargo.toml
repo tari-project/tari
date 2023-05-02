@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "base_layer/chat_ffi",
     "base_layer/core",
     "base_layer/common_types",
     "base_layer/contacts",

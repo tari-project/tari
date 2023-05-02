@@ -20,12 +20,15 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    fmt::{Debug, Formatter},
+};
 
 use cucumber::gherkin::Scenario;
 use indexmap::IndexMap;
 use serde_json::Value;
-use tari_chat_client::Client;
+use tari_chat_client::ChatClient;
 use tari_core::{
     blocks::Block,
     transactions::transaction_components::{Transaction, UnblindedOutput},
@@ -57,14 +60,14 @@ pub enum TariWorldError {
     ClientNotFound(String),
 }
 
-#[derive(Debug, Default, cucumber::World)]
+#[derive(Default, cucumber::World)]
 pub struct TariWorld {
     pub base_nodes: IndexMap<String, BaseNodeProcess>,
     pub blocks: IndexMap<String, Block>,
     pub miners: IndexMap<String, MinerProcess>,
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
-    pub chat_clients: IndexMap<String, Client>,
+    pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -80,6 +83,30 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
+}
+
+impl Debug for TariWorld {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_nodes", &self.base_nodes)
+            .field("blocks", &self.blocks)
+            .field("miners", &self.miners)
+            .field("ffi_wallets", &self.ffi_wallets)
+            .field("wallets", &self.wallets)
+            .field("merge_mining_proxies", &self.merge_mining_proxies)
+            .field("transactions", &self.transactions)
+            .field("wallet_addresses", &self.wallet_addresses)
+            .field("utxos", &self.utxos)
+            .field("output_hash", &self.output_hash)
+            .field("pre_image", &self.pre_image)
+            .field("wallet_connected_to_base_node", &self.wallet_connected_to_base_node)
+            .field("seed_nodes", &self.seed_nodes)
+            .field("wallet_tx_ids", &self.wallet_tx_ids)
+            .field("errors", &self.errors)
+            .field("last_imported_tx_ids", &self.last_imported_tx_ids)
+            .field("last_merge_miner_response", &self.last_merge_miner_response)
+            .finish()
+    }
 }
 
 pub enum NodeClient {

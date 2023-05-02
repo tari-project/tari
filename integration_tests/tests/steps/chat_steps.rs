@@ -23,7 +23,6 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
-use tari_chat_client::Client;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::service::ContactOnlineStatus;
@@ -37,34 +36,34 @@ async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String,
 
     let client = spawn_chat_client(&name, vec![base_node.identity.to_peer()]).await;
 
-    world.chat_clients.insert(name, client);
+    world.chat_clients.insert(name, Box::new(client));
 }
 
 #[when(expr = "I have a chat client {word} with no peers")]
 async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
     let client = spawn_chat_client(&name, vec![]).await;
 
-    world.chat_clients.insert(name, client);
+    world.chat_clients.insert(name, Box::new(client));
 }
 
 #[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
 async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
+    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
     sender.send_message(address, message).await;
 }
 
 #[then(expr = "{word} will have {int} message(s) with {word}")]
 async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
-    let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
+    let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity.public_key(), Network::LocalNet);
+    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        messages = receiver.get_all_messages(&address).await;
+        messages = (*receiver).get_all_messages(&address).await;
 
         if messages.len() as u64 == message_count {
             return;
@@ -75,7 +74,7 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 
     panic!(
         "Receiver {} only received {}/{} messages",
-        receiver.identity.node_id(),
+        (*receiver).identity().node_id(),
         messages.len(),
         message_count
     )
@@ -83,28 +82,34 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 
 #[when(expr = "{word} adds {word} as a contact")]
 async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String) {
-    let receiver: &Client = world.chat_clients.get(&receiver).unwrap();
-    let sender: &Client = world.chat_clients.get(&sender).unwrap();
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let sender = world.chat_clients.get(&sender).unwrap();
 
-    let address = TariAddress::from_public_key(receiver.identity.public_key(), Network::LocalNet);
+    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
     sender.add_contact(&address).await;
 }
 
 #[when(expr = "{word} waits for contact {word} to be online")]
 async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, contact: String) {
-    let client: &Client = world.chat_clients.get(&client).unwrap();
-    let contact: &Client = world.chat_clients.get(&contact).unwrap();
+    let client = world.chat_clients.get(&client).unwrap();
+    let contact = world.chat_clients.get(&contact).unwrap();
 
-    let address = TariAddress::from_public_key(contact.identity.public_key(), Network::LocalNet);
+    let address = TariAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
+    let mut last_status = ContactOnlineStatus::Banned("No result came back".to_string());
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        if ContactOnlineStatus::Online == client.check_online_status(&address).await {
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4) {
+        last_status = client.check_online_status(&address).await;
+        if ContactOnlineStatus::Online == last_status {
             return;
         }
 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!("Contact {} never came online", contact.identity.node_id(),)
+    panic!(
+        "Contact {} never came online, status is: {}",
+        contact.identity().node_id(),
+        last_status
+    )
 }

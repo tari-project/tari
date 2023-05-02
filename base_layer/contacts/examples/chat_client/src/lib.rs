@@ -20,34 +20,8 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+mod client;
+pub use client::{ChatClient, Client};
 
-use cucumber::{then, when};
-use tari_integration_tests::TariWorld;
-
-pub mod chat_ffi_steps;
-pub mod chat_steps;
-pub mod merge_mining_steps;
-pub mod mining_steps;
-pub mod node_steps;
-pub mod wallet_cli_steps;
-pub mod wallet_ffi_steps;
-pub mod wallet_steps;
-
-pub const CONFIRMATION_PERIOD: u64 = 4;
-pub const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
-pub const HALF_SECOND: u64 = 500;
-
-#[when(expr = "I wait {int} seconds")]
-async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
-    tokio::time::sleep(Duration::from_secs(seconds)).await;
-}
-
-#[then(regex = r"I receive an error containing '(.*)'")]
-async fn receive_an_error(_world: &mut TariWorld, _error: String) {
-    // No-op.
-    // Was not implemented in previous suite, gave it a quick try but missing other peices
-
-    // assert!(world.errors.len() > 1);
-    // assert!(world.errors.pop_front().unwrap().contains(&error))
-}
+pub mod database;
+pub mod networking;

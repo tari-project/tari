@@ -22,20 +22,13 @@
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use tari_common::configuration::MultiaddrList;
-use tari_common_sqlite::connection::DbConnection;
 // Re-exports
 pub use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
-use tari_contacts::contacts_service::{
-    handle::ContactsServiceHandle,
-    storage::sqlite_db::ContactsServiceSqliteDatabase,
-    ContactsServiceInitializer,
-};
+use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{spawn_comms_using_transport, P2pInitializer},
@@ -43,53 +36,24 @@ use tari_p2p::{
     Network,
     P2pConfig,
     PeerSeedsConfig,
-    TcpTransportConfig,
-    TransportConfig,
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
-use crate::database;
+use crate::database::connect_to_db;
 
 pub async fn start(
     node_identity: Arc<NodeIdentity>,
-    base_path: PathBuf,
+    config: P2pConfig,
     seed_peers: Vec<Peer>,
     network: Network,
-    db: DbConnection,
+    db_path: PathBuf,
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
-    database::create_peer_storage(base_path.clone());
-    let backend = ContactsServiceSqliteDatabase::init(db);
+    let backend = connect_to_db(db_path)?;
 
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
     let in_msg = Arc::new(subscription_factory);
-
-    let transport_config = TransportConfig::new_tcp(TcpTransportConfig {
-        listener_address: node_identity.first_public_address(),
-        ..TcpTransportConfig::default()
-    });
-
-    let mut config = P2pConfig {
-        datastore_path: base_path.clone(),
-        dht: DhtConfig {
-            network_discovery: NetworkDiscoveryConfig {
-                enabled: true,
-                ..NetworkDiscoveryConfig::default()
-            },
-            saf: SafConfig {
-                auto_request: true,
-                ..Default::default()
-            },
-            ..DhtConfig::default_local_test()
-        },
-        transport: transport_config.clone(),
-        allow_test_addresses: true,
-        public_addresses: MultiaddrList::from(vec![node_identity.first_public_address()]),
-        user_agent: "tari/chat-client/0.0.1".to_string(),
-        ..P2pConfig::default()
-    };
-    config.set_base_path(base_path.clone());
 
     let seed_config = PeerSeedsConfig {
         peer_seeds: seed_peers
@@ -102,7 +66,7 @@ pub async fn start(
 
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
-            config,
+            config.clone(),
             seed_config,
             network,
             node_identity,
@@ -136,7 +100,9 @@ pub async fn start(
         peer_manager.add_peer(peer).await?;
     }
 
-    let comms = spawn_comms_using_transport(comms, transport_config).await.unwrap();
+    let comms = spawn_comms_using_transport(comms, config.transport.clone())
+        .await
+        .unwrap();
     handles.register(comms);
 
     let comms = handles.expect_handle::<CommsNode>();
