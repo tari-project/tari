@@ -416,7 +416,7 @@ impl AppState {
             },
         };
 
-        tokio::spawn(send_burn_transaction_task(
+        send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
             MicroTari::from(amount),
@@ -426,7 +426,8 @@ impl AppState {
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,
-        ));
+        )
+        .await;
 
         Ok(())
     }

@@ -321,10 +321,10 @@ impl BurnTab {
                                     ))
                                 },
                                 Ok(_) => {
-                                    Handle::current().block_on(app_state.update_cache());
                                     Handle::current()
                                         .block_on(app_state.refresh_burnt_proofs_state())
                                         .unwrap();
+                                    Handle::current().block_on(app_state.update_cache());
 
                                     reset_fields = true
                                 },
