@@ -166,7 +166,6 @@ jobs:
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: test key manager wasm
         run: |
-          npm install -g wasm-pack@0.10.3
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test
