@@ -94,15 +94,23 @@ jobs:
           echo $tagnet
           # case match is not RegEx, but wildcards/globs
           case "$tagnet" in
-            v*-pre.*) TARI_NETWORK=esme
+            v*-pre.*)
+              TARI_NETWORK=esme
+              TARI_NETWORK_DIR=testnet
               ;;
-            v*-rc.*) TARI_NETWORK=nextnet
+            v*-rc.*)
+              TARI_NETWORK=nextnet
+              TARI_NETWORK_DIR=nextnet
               ;;
-            *) TARI_NETWORK=mainnet
+            *)
+              TARI_NETWORK=mainnet
+              TARI_NETWORK_DIR=mainnet
               ;;
           esac
           echo ${TARI_NETWORK}
+          echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo "TARI_NETWORK_DIR=${TARI_NETWORK_DIR}" >> $GITHUB_ENV
 
       - name: Declare Global Variables 4 GHA ${{ github.event_name }}
         id: vars
@@ -409,7 +417,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
+          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
           S3CMD: "cp"
           S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
           # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
@@ -445,7 +453,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
+          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
           S3CMD: "cp"
           S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
           # S3OPTIONS: '--acl public-read'
