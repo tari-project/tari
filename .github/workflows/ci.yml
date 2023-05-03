@@ -29,7 +29,6 @@ concurrency:
 jobs:
   clippy:
     name: clippy
-    #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
@@ -60,7 +59,6 @@ jobs:
           args: clippy --all-targets --all-features
   machete:
     name: machete
-    #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
@@ -85,7 +83,7 @@ jobs:
           command: machete
   build:
     name: cargo check
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -111,7 +109,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   build-stable:
     name: cargo check stable
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -154,7 +152,7 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -168,7 +166,6 @@ jobs:
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: test key manager wasm
         run: |
-          npm install -g wasm-pack@0.10.3
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test

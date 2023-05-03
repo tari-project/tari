@@ -17,7 +17,7 @@ concurrency:
 jobs:
   coverage:
     name: test and generate coverage
-    runs-on: [ self-hosted, ubuntu18.04-high-mem ]
+    runs-on: [ self-hosted, ubuntu-high-mem ]
     steps:
       - name: checkout source code
         uses: actions/checkout@v3
