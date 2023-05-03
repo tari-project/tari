@@ -486,7 +486,7 @@ impl AppState {
     }
 
     pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
-        if self.cached_data.burnt_proofs.is_empty() || start > end || end > self.cached_data.burnt_proofs.len() {
+        if self.cached_data.burnt_proofs.is_empty() || start => end || end > self.cached_data.burnt_proofs.len() {
             return &[];
         }
 
