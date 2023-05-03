@@ -5,14 +5,6 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[dibbler.wallet]
-# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
-#network = "dibbler"
-
-[igor.wallet]
-# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
-#network = "igor"
-
 [wallet]
 # The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
 # (min value = 300, default value = 50000).
@@ -21,9 +13,6 @@
 # The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
 # accept - any rate attempting to exceed this limit will be throttled (min value = 5, default value = 1000).
 #buffer_rate_limit = 1000
-
-# Selected network (Note: Not implemented properly, please specify on the command line) (default = "mainnet")
-#network = "mainnet"
 
 # The relative path to store persistent data (default = "data/wallet")
 #data_dir = "data/wallet"
