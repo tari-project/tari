@@ -614,10 +614,6 @@ impl<B: Backend> Component<B> for BurnTab {
                 self.show_proofs = !self.show_proofs;
             },
             's' => {
-                // if self.burnt_proof_filepath_field.is_empty() {
-                // self.error_message = Some("Burn proof filepath is empty\nPress Enter to continue.".to_string());
-                // return;
-                // }
 
                 if self.claim_public_key_field.is_empty() {
                     self.error_message = Some("Claim Public Key is empty\nPress Enter to continue.".to_string());
