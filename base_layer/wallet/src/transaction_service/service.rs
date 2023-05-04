@@ -42,7 +42,7 @@ use tari_common_types::{
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
@@ -52,6 +52,7 @@ use tari_core::{
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
+            TemplateType,
             Transaction,
             TransactionOutput,
             UnblindedOutput,
@@ -681,6 +682,33 @@ where
                     selection_criteria,
                     fee_per_gram,
                     message,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    rp,
+                )
+                .await?;
+                return Ok(());
+            },
+            TransactionServiceRequest::RegisterCodeTemplate {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.register_code_template(
+                    author_public_key,
+                    author_signature,
+                    template_name,
+                    template_version,
+                    template_type,
+                    build_info,
+                    binary_sha,
+                    binary_url,
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     rp,
@@ -1559,6 +1587,42 @@ where
         .await
     }
 
+    pub async fn register_code_template(
+        &mut self,
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let output_features =
+            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
+
+        self.send_transaction(
+            self.resources.wallet_identity.address.clone(),
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await
+    }
+
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -2026,7 +2090,7 @@ where
                 trace!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) has already been received, this is probably a repeated message, Trace:
-            {}.",
+                {}.",
                     data.tx_id,
                     traced_message_tag
                 );

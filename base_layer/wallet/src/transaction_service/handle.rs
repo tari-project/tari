@@ -36,11 +36,12 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
+    consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, Transaction, TransactionOutput},
+        transaction_components::{BuildInfo, OutputFeatures, TemplateType, Transaction, TransactionOutput},
     },
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -96,6 +97,16 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+    },
+    RegisterCodeTemplate {
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -471,6 +482,34 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RegisterValidatorNode {
+                amount,
+                validator_node_public_key,
+                validator_node_signature,
+                selection_criteria,
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn register_code_template(
+        &mut self,
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle

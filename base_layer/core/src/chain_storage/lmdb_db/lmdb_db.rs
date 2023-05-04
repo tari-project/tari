@@ -1340,7 +1340,7 @@ impl LMDBDatabase {
                 .features
                 .sidechain_feature
                 .as_ref()
-                .and_then(|f| f.template_registration())
+                .and_then(|f| f.code_template_registration())
             {
                 let record = TemplateRegistrationEntry {
                     registration_data: template_reg.clone(),
