@@ -99,8 +99,17 @@ message OutputFeatures {
     uint64 maturity = 3;
     // Additional arbitrary info in coinbase transactions supplied by miners
     bytes coinbase_extra = 4;
+    // Features that are specific to a side chain
     SideChainFeature sidechain_feature = 5;
-    // Additional
+    // Encrypted Pedersen commitment openings (value and mask) for the output
+    EncryptedOpenings encrypted_openings = 6;
+    // The type of range proof used in the output
+    uint32 range_proof_type = 7;
+}
+
+message EncryptedOpenings {
+    // The encrypted openings (value and mask)
+    bytes value_and_mask = 1;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

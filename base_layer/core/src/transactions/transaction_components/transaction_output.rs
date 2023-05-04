@@ -64,7 +64,14 @@ use crate::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionError, TransactionInput},
+        transaction_components::{
+            EncryptedValue,
+            OutputFeatures,
+            OutputType,
+            RangeProofType,
+            TransactionError,
+            TransactionInput,
+        },
         TransactionHashDomain,
     },
 };
@@ -184,18 +191,66 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
-        let statement = RistrettoAggregatedPublicStatement {
-            statements: vec![Statement {
-                commitment: self.commitment.clone(),
-                minimum_value_promise: self.minimum_value_promise.as_u64(),
-            }],
-        };
-        match prover.verify_batch(vec![&self.proof.0], vec![&statement]) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(TransactionError::ValidationError(format!(
-                "Recipient output range proof failed to verify ({})",
-                e
-            ))),
+        match self.features.range_proof_type {
+            RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
+                Ok(_) => Ok(()),
+                Err(e) => Err(TransactionError::ValidationError(format!(
+                    "Recipient output RevealedValue range proof for commitment {} failed to verify ({})",
+                    self.commitment.to_hex(),
+                    e
+                ))),
+            },
+            RangeProofType::BulletProofPlus => {
+                let statement = RistrettoAggregatedPublicStatement {
+                    statements: vec![Statement {
+                        commitment: self.commitment.clone(),
+                        minimum_value_promise: self.minimum_value_promise.as_u64(),
+                    }],
+                };
+                match prover.verify_batch(vec![&self.proof.0], vec![&statement]) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError::ValidationError(format!(
+                        "Recipient output BulletProofPlus range proof for commitment {} failed to verify ({})",
+                        self.commitment.to_hex(),
+                        e
+                    ))),
+                }
+            },
+        }
+    }
+
+    // As an alternate range proof check, the value of the commitment with a deterministic ephemeral_commitment nonce
+    // `r_a` of zero can optionally be bound into the metadata signature. This is a much faster check than the full
+    // range proof verification.
+    fn revealed_value_range_proof_check(&self) -> Result<(), RangeProofError> {
+        if self.features.range_proof_type != RangeProofType::RevealedValue {
+            return Err(RangeProofError::InvalidRangeProof(format!(
+                "Commitment {} does not have a RevealedValue range proof",
+                self.commitment.to_hex()
+            )));
+        }
+        let e_bytes = TransactionOutput::build_metadata_signature_challenge(
+            self.version,
+            &self.script,
+            &self.features,
+            &self.sender_offset_public_key,
+            self.metadata_signature.ephemeral_commitment(),
+            self.metadata_signature.ephemeral_pubkey(),
+            &self.commitment,
+            &self.covenant,
+            &self.encrypted_value,
+            self.minimum_value_promise,
+        );
+        let e = PrivateKey::from_bytes(&e_bytes).unwrap();
+        let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
+        let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
+        if self.metadata_signature.u_a().to_hex() == (commit_nonce_a + e * value_as_private_key).to_hex() {
+            Ok(())
+        } else {
+            Err(RangeProofError::InvalidRangeProof(format!(
+                "RevealedValue range proof check for commitment {} failed",
+                self.commitment.to_hex()
+            )))
         }
     }
 
@@ -551,51 +606,59 @@ pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
-    // An empty batch is valid
-    if outputs.is_empty() {
-        return Ok(());
-    }
-
-    let mut statements = Vec::with_capacity(outputs.len());
-    let mut proofs = Vec::with_capacity(outputs.len());
-    for output in outputs.iter() {
-        statements.push(RistrettoAggregatedPublicStatement {
-            statements: vec![Statement {
-                commitment: output.commitment.clone(),
-                minimum_value_promise: output.minimum_value_promise.into(),
-            }],
-        });
-        proofs.push(output.proof.to_vec().clone());
-    }
-    match prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
-        Ok(_) => Ok(()),
-        Err(err_1) => {
-            for output in outputs.iter() {
-                match output.verify_range_proof(prover) {
-                    Ok(_) => {},
-                    Err(err_2) => {
-                        let proof = output.proof.to_hex();
-                        let proof = if proof.len() > 32 {
-                            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
-                        } else {
-                            proof
-                        };
-                        return Err(RangeProofError::InvalidRangeProof(format!(
-                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
-                            output.commitment.to_hex(),
-                            output.minimum_value_promise,
-                            proof,
-                            err_2,
-                        )));
-                    },
+    let bulletproof_plus_proofs = outputs
+        .iter()
+        .filter(|o| o.features.range_proof_type == RangeProofType::BulletProofPlus)
+        .copied()
+        .collect::<Vec<&TransactionOutput>>();
+    if !bulletproof_plus_proofs.is_empty() {
+        let mut statements = Vec::with_capacity(bulletproof_plus_proofs.len());
+        let mut proofs = Vec::with_capacity(bulletproof_plus_proofs.len());
+        for output in &bulletproof_plus_proofs {
+            statements.push(RistrettoAggregatedPublicStatement {
+                statements: vec![Statement {
+                    commitment: output.commitment.clone(),
+                    minimum_value_promise: output.minimum_value_promise.into(),
+                }],
+            });
+            proofs.push(output.proof.to_vec().clone());
+        }
+        if let Err(err_1) = prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
+            for output in &bulletproof_plus_proofs {
+                if let Err(err_2) = output.verify_range_proof(prover) {
+                    let proof = output.proof.to_hex();
+                    let proof = if proof.len() > 32 {
+                        format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
+                    } else {
+                        proof
+                    };
+                    return Err(RangeProofError::InvalidRangeProof(format!(
+                        "commitment {}, minimum_value_promise {}, proof {} ({:?})",
+                        output.commitment.to_hex(),
+                        output.minimum_value_promise,
+                        proof,
+                        err_2,
+                    )));
                 }
             }
             Err(RangeProofError::InvalidRangeProof(format!(
                 "Batch verification failed, but individual verification passed - {:?}",
                 err_1
-            )))
-        },
+            )))?
+        }
     }
+
+    let revealed_value_proofs = outputs
+        .iter()
+        .filter(|o| o.features.range_proof_type == RangeProofType::RevealedValue)
+        .copied()
+        .collect::<Vec<&TransactionOutput>>();
+    for output in revealed_value_proofs {
+        output.revealed_value_range_proof_check()?;
+    }
+
+    // An empty batch is valid
+    Ok(())
 }
 
 #[cfg(test)]

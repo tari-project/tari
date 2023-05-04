@@ -106,7 +106,7 @@ use tari_core::{
     consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -203,6 +203,7 @@ pub type TariCommsConfig = tari_p2p::P2pConfig;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 pub type TariEncryptedValue = tari_core::transactions::transaction_components::EncryptedValue;
+pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedOpeningsX;
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
@@ -2237,6 +2238,96 @@ pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncry
 }
 
 /// -------------------------------------------------------------------------------------------- ///
+/// --------------------------------------- EncryptedOpenings --------------------------------------------///
+
+/// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_openings bytes
+///
+/// ## Arguments
+/// `encrypted_openings_bytes` - The encrypted_openings bytes as a ByteVector
+///
+/// ## Returns
+/// `TariEncryptedOpenings` - Returns the encrypted openings. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The `encrypted_openings_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_openings_create_from_bytes(
+    encrypted_openings_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariEncryptedOpenings {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if encrypted_openings_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_openings_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let decoded_encrypted_openings_bytes = (*encrypted_openings_bytes).0.clone();
+
+    match TariEncryptedOpenings::from_bytes(&decoded_encrypted_openings_bytes) {
+        Ok(encrypted_openings) => Box::into_raw(Box::new(encrypted_openings)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating an encrypted_openings: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_openings_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a ByteVector containing the encrypted_openings bytes from a TariEncryptedOpenings
+///
+/// ## Arguments
+/// `encrypted_openings` - The encrypted_openings as a TariEncryptedOpenings
+///
+/// ## Returns
+/// `ByteVector` - Returns a ByteVector containing the encrypted_openings bytes. Note that it will be ptr::null_mut() if
+/// any argument is null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The `encrypted_openings_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_openings_as_bytes(
+    encrypted_openings: *const TariEncryptedOpenings,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if encrypted_openings.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_openings".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let encrypted_openings_bytes = TariEncryptedOpenings::as_byte_vector(&(*encrypted_openings));
+    let encrypted_byte_vector = ByteVector(encrypted_openings_bytes);
+    Box::into_raw(Box::new(encrypted_byte_vector))
+}
+
+/// Frees memory for a TariEncryptedOpenings
+///
+/// ## Arguments
+/// `encrypted_openings` - The pointer to a TariEncryptedOpenings
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_openings_destroy(encrypted_openings: *mut TariEncryptedOpenings) {
+    if !encrypted_openings.is_null() {
+        // zeroize the data content of encrypted_openings, as to prevent memory leaks
+        (*encrypted_openings).zeroize();
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
 /// ---------------------------------- Output Features ------------------------------------------///
 
 /// Creates a TariOutputFeatures from byte values
@@ -2246,6 +2337,7 @@ pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncry
 /// `output_type` - The encoded value of the output type as a byte
 /// `maturity` - The encoded value maturity as bytes
 /// `metadata` - The metadata componenet as a ByteVector. It cannot be null
+/// `encrypted_openings` - The encrypted_openings component as a ByteVector. It can be null  to model a None value.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2262,6 +2354,8 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     output_type: c_ushort,
     maturity: c_ulonglong,
     metadata: *const ByteVector,
+    encrypted_openings: *const ByteVector,
+    range_proof_type: c_ushort,
     error_out: *mut c_int,
 ) -> *mut TariOutputFeatures {
     let mut error = 0;
@@ -2285,8 +2379,8 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
-    let output_type = match output_type.try_into().ok().and_then(OutputType::from_byte) {
-        Some(output_type) => output_type,
+    let decoded_output_type = match output_type.try_into().ok().and_then(OutputType::from_byte) {
+        Some(val) => val,
         None => {
             error!(target: LOG_TARGET, "output_type overflowed",);
             error = LibWalletError::from(InterfaceError::InvalidArgument("flag".to_string())).code;
@@ -2295,9 +2389,42 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
+    let decoded_range_proof_type = match range_proof_type.try_into().ok().and_then(RangeProofType::from_byte) {
+        Some(val) => val,
+        None => {
+            error!(target: LOG_TARGET, "range_proof_type overflowed",);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("flag".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
     let decoded_metadata = (*metadata).0.clone();
 
-    let output_features = TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None);
+    let decoded_encrypted_openings = if encrypted_openings.is_null() {
+        None
+    } else {
+        match TariEncryptedOpenings::from_bytes((*(encrypted_openings)).0.as_bytes()) {
+            Ok(encrypted_openings) => Some(encrypted_openings),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Error creating an encrypted_openings: {:?}", e);
+                error =
+                    LibWalletError::from(InterfaceError::InvalidArgument("encrypted_openings_bytes".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    };
+
+    let output_features = TariOutputFeatures::new(
+        decoded_version,
+        decoded_output_type,
+        maturity,
+        decoded_metadata,
+        None,
+        decoded_encrypted_openings,
+        decoded_range_proof_type,
+    );
     Box::into_raw(Box::new(output_features))
 }
 
@@ -8505,13 +8632,23 @@ mod test {
 
     use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
-    use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
+    use tari_common_types::{
+        emoji,
+        transaction::TransactionStatus,
+        types::{CommitmentFactory, PrivateKey},
+    };
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
+        transactions::{
+            test_helpers::{create_test_input, create_unblinded_output, TestParams},
+            transaction_components::EncryptedOpeningsX,
+        },
     };
-    use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
+    };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_script::script;
     use tari_test_utils::random;
@@ -9093,6 +9230,61 @@ mod test {
     }
 
     #[test]
+    fn test_encrypted_openings_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let encrypted_openings_bytes_1 = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let encrypted_openings_1 = encrypted_openings_create_from_bytes(encrypted_openings_bytes_1, error_ptr);
+
+            assert_ne!(error, 0);
+
+            // A valid byte vector length is 64
+            let encrypted_openings_bytes_2 = Box::into_raw(Box::new(ByteVector(vec![0u8; 32])));
+            let encrypted_openings_2 = encrypted_openings_create_from_bytes(encrypted_openings_bytes_1, error_ptr);
+
+            assert_ne!(error, 0);
+
+            encrypted_openings_destroy(encrypted_openings_2);
+            byte_vector_destroy(encrypted_openings_bytes_2);
+            encrypted_openings_destroy(encrypted_openings_1);
+            byte_vector_destroy(encrypted_openings_bytes_1);
+        }
+    }
+
+    #[test]
+    fn test_encrypted_openings_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let value = 123456;
+            let mask = PrivateKey::random(&mut OsRng);
+            let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+            let encryption_key = PrivateKey::random(&mut OsRng);
+            let amount = MicroTari::from(value);
+            let encrypted_openings =
+                EncryptedOpeningsX::encrypt_openings(&encryption_key, &commitment, amount, &mask).unwrap();
+            let encrypted_openings_bytes = encrypted_openings.as_byte_vector();
+
+            let encrypted_openings_1 = Box::into_raw(Box::new(encrypted_openings));
+            let encrypted_openings_1_as_bytes = encrypted_openings_as_bytes(encrypted_openings_1, error_ptr);
+            assert_eq!(error, 0);
+
+            let encrypted_openings_2 = encrypted_openings_create_from_bytes(encrypted_openings_1_as_bytes, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*encrypted_openings_1, *encrypted_openings_2);
+
+            assert_eq!((*encrypted_openings_1_as_bytes).0, encrypted_openings_bytes.to_vec());
+
+            encrypted_openings_destroy(encrypted_openings_2);
+            encrypted_openings_destroy(encrypted_openings_1);
+            byte_vector_destroy(encrypted_openings_1_as_bytes);
+        }
+    }
+
+    #[test]
     fn test_output_features_create_empty() {
         unsafe {
             let mut error = 0;
@@ -9100,11 +9292,20 @@ mod test {
 
             let version: c_uchar = 0;
             let output_type: c_ushort = 0;
+            let range_proof_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let encrypted_openings = ptr::null_mut();
 
-            let output_features =
-                output_features_create_from_bytes(version, output_type, maturity, metadata, error_ptr);
+            let output_features = output_features_create_from_bytes(
+                version,
+                output_type,
+                maturity,
+                metadata,
+                encrypted_openings,
+                range_proof_type,
+                error_ptr,
+            );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
             assert_eq!(
@@ -9113,7 +9314,9 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert!((*output_features).coinbase_extra.is_empty());
+            assert!((*output_features).encrypted_openings.is_none());
 
+            byte_vector_destroy(encrypted_openings);
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
         }
@@ -9127,22 +9330,44 @@ mod test {
 
             let version: c_uchar = OutputFeaturesVersion::V1.as_u8();
             let output_type = OutputType::Coinbase.as_byte();
+            let range_proof_type = RangeProofType::RevealedValue.as_byte();
             let maturity: c_ulonglong = 20;
 
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
+            let value = 123456;
+            let mask = PrivateKey::random(&mut OsRng);
+            let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+            let encryption_key = PrivateKey::random(&mut OsRng);
+            let amount = MicroTari::from(value);
+            let expected_encrypted_openings =
+                EncryptedOpeningsX::encrypt_openings(&encryption_key, &commitment, amount, &mask).unwrap();
+            let encrypted_openings = Box::into_raw(Box::new(ByteVector(expected_encrypted_openings.as_byte_vector())));
 
-            let output_features =
-                output_features_create_from_bytes(version, c_ushort::from(output_type), maturity, metadata, error_ptr);
+            let output_features = output_features_create_from_bytes(
+                version,
+                c_ushort::from(output_type),
+                maturity,
+                metadata,
+                encrypted_openings,
+                c_ushort::from(range_proof_type),
+                error_ptr,
+            );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
                 (*output_features).output_type,
                 OutputType::from_byte(output_type).unwrap()
             );
+            assert_eq!(
+                (*output_features).range_proof_type,
+                RangeProofType::from_byte(range_proof_type).unwrap()
+            );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).coinbase_extra, expected_metadata);
+            assert_eq!((*output_features).encrypted_openings, Some(expected_encrypted_openings));
 
+            byte_vector_destroy(encrypted_openings);
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
         }

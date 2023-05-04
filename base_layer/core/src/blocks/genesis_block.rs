@@ -584,15 +584,8 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use croaring::Bitmap;
-    use curve25519_dalek::scalar::Scalar;
-    use tari_common_types::{
-        epoch::VnEpoch,
-        types::{Commitment, PrivateKey},
-    };
-    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use tari_common_types::{epoch::VnEpoch, types::Commitment};
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -615,7 +608,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 1, 1, false);
+        check_block(Network::StageNet, &block, 1, 1);
     }
 
     #[test]
@@ -623,7 +616,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 1, 1, false);
+        check_block(Network::NextNet, &block, 1, 1);
     }
 
     #[test]
@@ -631,7 +624,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 1, 1, false);
+        check_block(Network::Esmeralda, &block, 1, 1);
     }
 
     #[test]
@@ -639,16 +632,10 @@ mod test {
         // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 5527, 2, true);
+        check_block(Network::Igor, &block, 5527, 2);
     }
 
-    fn check_block(
-        network: Network,
-        block: &ChainBlock,
-        expected_outputs: usize,
-        expected_kernels: usize,
-        alternate_range_proof_check: bool,
-    ) {
+    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
         assert!(block.block().body.inputs().is_empty());
         assert_eq!(block.block().body.kernels().len(), expected_kernels);
         assert_eq!(block.block().body.outputs().len(), expected_outputs);
@@ -656,11 +643,7 @@ mod test {
         let factories = CryptoFactories::default();
         assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
         let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
-        if alternate_range_proof_check {
-            do_alternate_range_proof_check(&factories, &outputs);
-        } else {
-            batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
-        }
+        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
         // Coinbase and faucet kernel
         assert_eq!(
             block.block().body.kernels().len() as u64,
@@ -725,61 +708,5 @@ mod test {
         ChainBalanceValidator::new(ConsensusManager::builder(network).build(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
-    }
-
-    fn receiver_commit_nonce_a(commitment: &Commitment) -> PrivateKey {
-        hash_domain!(
-            CommitNonceHashDomain,
-            "com.tari-genesis-tools.multi_party_utxo.receiver_commit_nonce_a",
-            0
-        );
-        let hasher_bytes = DomainSeparatedHasher::<Blake256, CommitNonceHashDomain>::new()
-            .chain(commitment.as_bytes())
-            .finalize();
-        PrivateKey::from_bytes(hasher_bytes.as_ref()).expect("blake256 hash will succeed")
-    }
-
-    // For the faucet, the value of the commitment can be bound into the metadata signature using a deterministic nonce
-    fn do_alternate_range_proof_check(factories: &CryptoFactories, outputs: &[&TransactionOutput]) {
-        for output_ref in outputs {
-            let output = (*output_ref).clone();
-            if output.features.output_type == OutputType::Standard {
-                let commit_nonce_a = receiver_commit_nonce_a(&output.commitment);
-                let e_bytes = TransactionOutput::build_metadata_signature_challenge(
-                    TransactionOutputVersion::get_current_version(),
-                    &output.script,
-                    &output.features,
-                    &output.sender_offset_public_key,
-                    output.metadata_signature.ephemeral_commitment(),
-                    output.metadata_signature.ephemeral_pubkey(),
-                    &output.commitment,
-                    &output.covenant,
-                    &output.encrypted_value,
-                    output.minimum_value_promise,
-                );
-                let e = PrivateKey::from_bytes(&e_bytes).unwrap();
-                let value_as_private_key = PrivateKey::from(output.minimum_value_promise.as_u64());
-                assert_eq!(
-                    output.metadata_signature.u_a().to_hex(),
-                    (commit_nonce_a.clone() + e.clone() * value_as_private_key).to_hex()
-                );
-
-                // Demonstrating how to extract the value (Note: For the proof, inverting the scalar with multiplication
-                // is less efficient than multiplication only as above)
-                let metadata_signature_u_a_scalar =
-                    Scalar::from_bits(<[u8; 32]>::try_from(output.metadata_signature.u_a().as_bytes()).unwrap());
-                let commit_nonce_a_scalar = Scalar::from_bits(<[u8; 32]>::try_from(commit_nonce_a.as_bytes()).unwrap());
-                let e_scalar = Scalar::from_bits(<[u8; 32]>::try_from(e.as_bytes()).unwrap());
-                let value_scalar = (metadata_signature_u_a_scalar - commit_nonce_a_scalar) * e_scalar.invert();
-                assert_eq!(value_scalar, Scalar::from(output.minimum_value_promise.as_u64()));
-                let mut value_bytes = [0u8; 8];
-                value_bytes.copy_from_slice(&value_scalar.to_bytes()[0..8]);
-                let value = u64::from_le_bytes(value_bytes);
-                assert_eq!(value, output.minimum_value_promise.as_u64());
-            } else {
-                // Normal range proof verification for the coinbase output
-                assert!(output.verify_range_proof(factories.range_proof.as_ref()).is_ok());
-            }
-        }
     }
 }

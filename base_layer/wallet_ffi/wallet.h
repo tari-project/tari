@@ -77,6 +77,11 @@ struct Covenant;
 struct EmojiSet;
 
 /**
+ * Encrypted openings for the extended-nonce variant XChaCha20-Poly1305 encryption
+ */
+struct EncryptedOpeningsX;
+
+/**
  * value: u64 + tag: [u8; 16]
  */
 struct EncryptedValue;
@@ -303,6 +308,8 @@ typedef struct OutputFeatures TariOutputFeatures;
 typedef struct Covenant TariCovenant;
 
 typedef struct EncryptedValue TariEncryptedValue;
+
+typedef struct EncryptedOpeningsX TariEncryptedOpenings;
 
 typedef struct Contact TariContact;
 
@@ -1200,6 +1207,56 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
+ * --------------------------------------- EncryptedOpenings --------------------------------------------///
+ * Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_openings bytes
+ *
+ * ## Arguments
+ * `encrypted_openings_bytes` - The encrypted_openings bytes as a ByteVector
+ *
+ * ## Returns
+ * `TariEncryptedOpenings` - Returns the encrypted openings. Note that it will be ptr::null_mut() if any argument is
+ * null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The `encrypted_openings_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
+ * memory leak
+ */
+TariEncryptedOpenings *encrypted_openings_create_from_bytes(const struct ByteVector *encrypted_openings_bytes,
+                                                            int *error_out);
+
+/**
+ * Creates a ByteVector containing the encrypted_openings bytes from a TariEncryptedOpenings
+ *
+ * ## Arguments
+ * `encrypted_openings` - The encrypted_openings as a TariEncryptedOpenings
+ *
+ * ## Returns
+ * `ByteVector` - Returns a ByteVector containing the encrypted_openings bytes. Note that it will be ptr::null_mut() if
+ * any argument is null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The `encrypted_openings_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
+ * memory leak
+ */
+struct ByteVector *encrypted_openings_as_bytes(const TariEncryptedOpenings *encrypted_openings,
+                                               int *error_out);
+
+/**
+ * Frees memory for a TariEncryptedOpenings
+ *
+ * ## Arguments
+ * `encrypted_openings` - The pointer to a TariEncryptedOpenings
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void encrypted_openings_destroy(TariEncryptedOpenings *encrypted_openings);
+
+/**
+ * -------------------------------------------------------------------------------------------- ///
  * ---------------------------------- Output Features ------------------------------------------///
  * Creates a TariOutputFeatures from byte values
  *
@@ -1208,6 +1265,7 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
  * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
+ * `encrypted_openings` - The encrypted_openings component as a ByteVector. It can be null  to model a None value.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -1223,6 +1281,8 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
                                                       unsigned short output_type,
                                                       unsigned long long maturity,
                                                       const struct ByteVector *metadata,
+                                                      const struct ByteVector *encrypted_openings,
+                                                      unsigned short range_proof_type,
                                                       int *error_out);
 
 /**

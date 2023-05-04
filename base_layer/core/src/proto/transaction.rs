@@ -39,11 +39,13 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedOpeningsX,
             EncryptedValue,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
+            RangeProofType,
             SideChainFeature,
             Transaction,
             TransactionInput,
@@ -311,10 +313,20 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .map(SideChainFeature::try_from)
             .transpose()?;
 
+        let encrypted_openings = features
+            .encrypted_openings
+            .map(EncryptedOpeningsX::try_from)
+            .transpose()?;
+
         let output_type = features
             .output_type
             .try_into()
             .map_err(|_| "Invalid output type: overflowed")?;
+
+        let range_proof_type = features
+            .range_proof_type
+            .try_into()
+            .map_err(|_| "Invalid range proof type: overflowed")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -324,6 +336,9 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
+            encrypted_openings,
+            RangeProofType::from_byte(range_proof_type)
+                .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
     }
 }
@@ -336,7 +351,26 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             coinbase_extra: features.coinbase_extra,
             version: features.version as u32,
             sidechain_feature: features.sidechain_feature.map(Into::into),
+            encrypted_openings: features.encrypted_openings.map(Into::into),
+            range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
+    }
+}
+
+//---------------------------------- EncryptedOpenings --------------------------------------------//
+
+impl TryFrom<proto::types::EncryptedOpenings> for EncryptedOpeningsX {
+    type Error = String;
+
+    fn try_from(encrypted_openings: proto::types::EncryptedOpenings) -> Result<Self, Self::Error> {
+        EncryptedOpeningsX::from_bytes(encrypted_openings.value_and_mask.as_slice())
+            .map_err(|err| format!("Could not convert encrypted openings: {:?}", err))
+    }
+}
+
+impl From<EncryptedOpeningsX> for proto::types::EncryptedOpenings {
+    fn from(encrypted_openings: EncryptedOpeningsX) -> Self {
+        encrypted_openings.into()
     }
 }
 

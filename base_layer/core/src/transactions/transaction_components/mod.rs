@@ -24,6 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use chacha20poly1305::Key;
+pub use encrypted_openings_x::{EncryptedOpeningsErrorX, EncryptedOpeningsX};
 pub use encrypted_value::{EncryptedValue, EncryptionError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
@@ -32,6 +33,7 @@ pub use kernel_sum::KernelSum;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
+pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
@@ -48,6 +50,7 @@ pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 use zeroize::Zeroize;
 
+mod encrypted_openings_x;
 mod encrypted_value;
 mod error;
 mod kernel_builder;
@@ -56,6 +59,7 @@ mod kernel_sum;
 mod output_features;
 mod output_features_version;
 mod output_type;
+mod range_proof_type;
 mod side_chain;
 
 mod transaction;
@@ -80,6 +84,7 @@ pub(crate) const AEAD_KEY_LEN: usize = std::mem::size_of::<Key>();
 
 // Type for hiding aead key encryption
 hidden_type!(EncryptedValueKey, SafeArray<u8, AEAD_KEY_LEN>);
+hidden_type!(EncryptedOpeningsKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 

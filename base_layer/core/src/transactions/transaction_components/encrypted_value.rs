@@ -79,6 +79,8 @@ impl From<Error> for EncryptionError {
 impl EncryptedValue {
     const TAG: &'static [u8] = b"TARI_AAD_VALUE";
 
+    /// Encrypt the value (with fixed length) using ChaCha20-Poly1305 with a fixed zero nonce to save space -
+    /// this design assumes a unique `encryption_key` every time and therefore uses a fixed nonce
     pub fn encrypt_value(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
@@ -98,6 +100,7 @@ impl EncryptedValue {
         Ok(EncryptedValue(data))
     }
 
+    /// Authenticate and decrypt the value
     pub fn decrypt_value(
         encryption_key: &PrivateKey,
         commitment: &Commitment,

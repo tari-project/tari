@@ -23,9 +23,11 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_core::transactions::transaction_components::{
+    EncryptedOpeningsX,
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
+    RangeProofType,
     SideChainFeature,
 };
 
@@ -41,10 +43,20 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .map(SideChainFeature::try_from)
             .transpose()?;
 
+        let encrypted_openings = features
+            .encrypted_openings
+            .map(EncryptedOpeningsX::try_from)
+            .transpose()?;
+
         let output_type = features
             .output_type
             .try_into()
             .map_err(|_| "Invalid output type: overflow")?;
+
+        let range_proof_type = features
+            .range_proof_type
+            .try_into()
+            .map_err(|_| "Invalid range proof type: overflowed")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -54,6 +66,9 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
+            encrypted_openings,
+            RangeProofType::from_byte(range_proof_type)
+                .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
     }
 }
@@ -66,6 +81,8 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
+            encrypted_openings: features.encrypted_openings.map(Into::into),
+            range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }
 }

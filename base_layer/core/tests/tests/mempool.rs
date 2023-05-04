@@ -47,6 +47,7 @@ use tari_core::{
             KernelBuilder,
             OutputFeatures,
             OutputType,
+            RangeProofType,
             Transaction,
             TransactionKernel,
             TransactionKernelVersion,
@@ -1106,6 +1107,8 @@ async fn consensus_validation_versions() {
         0,
         Default::default(),
         None,
+        None,
+        RangeProofType::BulletProofPlus,
     );
 
     let test_params = TestParams::new();

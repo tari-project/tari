@@ -51,6 +51,7 @@ use tari_core::{
             EncryptedValue,
             OutputFeatures,
             OutputType,
+            RangeProofType,
             TransactionOutputVersion,
             UnblindedOutput,
         },
@@ -2219,7 +2220,14 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features = OutputFeatures::new_current_version(
+            flags,
+            maturity,
+            coinbase_extra,
+            None,
+            None,
+            RangeProofType::BulletProofPlus,
+        );
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
@@ -2322,7 +2330,14 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features = OutputFeatures::new_current_version(
+            flags,
+            maturity,
+            coinbase_extra,
+            None,
+            None,
+            RangeProofType::BulletProofPlus,
+        );
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
@@ -2364,7 +2379,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         .into_inner()
         .tx_ids;
 }
-
+#[allow(clippy::too_many_lines)]
 #[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
 async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
@@ -2425,7 +2440,14 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features = OutputFeatures::new_current_version(
+            flags,
+            maturity,
+            coinbase_extra,
+            None,
+            None,
+            RangeProofType::BulletProofPlus,
+        );
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
