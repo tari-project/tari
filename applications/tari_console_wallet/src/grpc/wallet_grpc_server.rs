@@ -960,7 +960,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::TemplateRegistration(template_registration)),
+                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
                 ..Default::default()
             })
             .await

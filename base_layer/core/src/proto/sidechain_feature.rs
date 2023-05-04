@@ -56,7 +56,7 @@ impl From<SideChainFeature> for proto::types::side_chain_feature::SideChainFeatu
             SideChainFeature::ValidatorNodeRegistration(template_reg) => {
                 proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
             },
-            SideChainFeature::TemplateRegistration(template_reg) => {
+            SideChainFeature::CodeTemplateRegistration(template_reg) => {
                 proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
             SideChainFeature::ConfidentialOutput(output_data) => {
@@ -75,7 +75,7 @@ impl TryFrom<proto::types::side_chain_feature::SideChainFeature> for SideChainFe
                 Ok(SideChainFeature::ValidatorNodeRegistration(vn_reg.try_into()?))
             },
             proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
-                Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+                Ok(SideChainFeature::CodeTemplateRegistration(template_reg.try_into()?))
             },
             proto::types::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data) => {
                 Ok(SideChainFeature::ConfidentialOutput(output_data.try_into()?))
