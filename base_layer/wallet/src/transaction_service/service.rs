@@ -42,17 +42,19 @@ use tari_common_types::{
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
+            BuildInfo,
             CodeTemplateRegistration,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
+            TemplateType,
             Transaction,
             TransactionOutput,
             UnblindedOutput,

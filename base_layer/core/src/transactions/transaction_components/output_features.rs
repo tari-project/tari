@@ -157,6 +157,32 @@ impl OutputFeatures {
         }
     }
 
+    pub fn for_code_template_registration(
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::CodeTemplateRegistration,
+            sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(CodeTemplateRegistration {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+            })),
+            ..Default::default()
+        }
+    }
+
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
         self.sidechain_feature
             .as_ref()
