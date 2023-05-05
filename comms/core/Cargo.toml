@@ -10,7 +10,7 @@ version = "0.50.0-pre.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.16.12"}
+tari_crypto = { version = "0.16"}
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
