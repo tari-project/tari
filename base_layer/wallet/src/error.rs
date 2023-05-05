@@ -101,6 +101,8 @@ pub enum WalletError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
     UnexpectedApiResponse { method: String, api: String },
+    #[error("Public address not set for this wallet")]
+    PublicAddressNotSet,
 }
 
 pub const LOG_TARGET: &str = "tari::application";

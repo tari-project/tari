@@ -273,7 +273,12 @@ where
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(comms.node_identity().first_public_address())?;
+        wallet_database.set_node_address(
+            comms
+                .node_identity()
+                .first_public_address()
+                .ok_or(WalletError::PublicAddressNotSet)?,
+        )?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
