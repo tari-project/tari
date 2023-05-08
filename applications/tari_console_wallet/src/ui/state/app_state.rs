@@ -72,13 +72,14 @@ use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
     notifier::Notifier,
     ui::{
-        app::UiError,
         state::{
             debouncer::BalanceEnquiryDebouncer,
             tasks::{send_burn_transaction_task, send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
-        types::{UiBurntProof, UiContact},
+        ui_burnt_proof::UiBurntProof,
+        ui_contact::UiContact,
+        ui_error::UiError,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
@@ -268,10 +269,14 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn delete_burnt_proof(&mut self, proof_id: i32) -> Result<(), UiError> {
+    pub async fn delete_burnt_proof(&mut self, proof_id: u32) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        inner.wallet.db.remove_burnt_proof(proof_id)?;
+        inner
+            .wallet
+            .db
+            .delete_burnt_proof(proof_id)
+            .map_err(UiError::WalletStorageError)?;
 
         inner.refresh_burnt_proofs_state().await?;
         drop(inner);
@@ -486,7 +491,7 @@ impl AppState {
     }
 
     pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
-        if self.cached_data.burnt_proofs.is_empty() || start => end || end > self.cached_data.burnt_proofs.len() {
+        if self.cached_data.burnt_proofs.is_empty() || start >= end || end > self.cached_data.burnt_proofs.len() {
             return &[];
         }
 
@@ -868,7 +873,8 @@ impl AppStateInner {
     }
 
     pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
-        let db_burnt_proofs = self.wallet.db.get_burnt_proofs()?;
+        // let db_burnt_proofs = self.wallet.db.get_burnt_proofs()?;
+        let db_burnt_proofs = self.wallet.db.fetch_burnt_proofs()?;
         let mut ui_proofs: Vec<UiBurntProof> = vec![];
 
         for proof in db_burnt_proofs {
@@ -1288,7 +1294,7 @@ pub enum UiTransactionSendStatus {
 #[derive(Clone, Debug)]
 pub enum UiTransactionBurnStatus {
     Initiated,
-    TransactionComplete((i32, String, String, NaiveDateTime)),
+    TransactionComplete((u32, String, String)),
     Error(String),
 }
 

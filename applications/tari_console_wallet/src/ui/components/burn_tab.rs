@@ -20,7 +20,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::ui::{
     components::{balance::Balance, Component, KeyHandled},
     state::{AppState, UiTransactionBurnStatus},
-    types::UiBurntProof,
+    ui_burnt_proof::UiBurntProof,
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
@@ -205,7 +205,6 @@ impl BurnTab {
         }
     }
 
-    #[allow(dead_code)]
     fn draw_proofs<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
@@ -419,10 +418,13 @@ impl BurnTab {
     }
 
     fn on_key_show_proofs(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-      if !self.show_proofs || (c != 'd'  || c != 'o'){
-           return KeyHandled::NotHandled;
-      }
-                 if let Some(proof) = self
+        if !self.show_proofs {
+            return KeyHandled::NotHandled;
+        }
+
+        match c {
+            'd' => {
+                if let Some(proof) = self
                     .proofs_list_state
                     .selected()
                     .and_then(|i| app_state.get_burnt_proof_by_index(i))
@@ -431,23 +433,40 @@ impl BurnTab {
                     if self.proofs_list_state.selected().is_none() {
                         return KeyHandled::NotHandled;
                     }
-                   if c == 'd' {
+
                     self.confirmation_dialog = Some(BurnConfirmationDialogType::DeleteBurntProof(proof.id));
-                     }
-                     else
-                     {
-                       if let Err(e) = fs::write(format!("{}.json", proof.id), proof.payload) {
+                }
+
+                return KeyHandled::Handled;
+            },
+
+            'o' => {
+                if let Some(proof) = self
+                    .proofs_list_state
+                    .selected()
+                    .and_then(|i| app_state.get_burnt_proof_by_index(i))
+                    .cloned()
+                {
+                    if self.proofs_list_state.selected().is_none() {
+                        return KeyHandled::NotHandled;
+                    }
+
+                    if let Err(e) = fs::write(format!("{}.json", proof.id), proof.payload) {
                         self.error_message = Some(format!(
                             "Failed to save burnt proof payload to file {}.json: {}, Press Enter to continue.",
                             proof.id, e
                         ));
                     }
-                    }
+                }
 
                 return KeyHandled::Handled;
             },
 
-            return KeyHandled::Handled;
+            _ => {},
+        }
+
+        KeyHandled::NotHandled
+    }
 }
 
 impl<B: Backend> Component<B> for BurnTab {
@@ -486,7 +505,6 @@ impl<B: Backend> Component<B> for BurnTab {
                     _proof_id,
                     _reciprocal_claim_public_key,
                     _serialized_proof,
-                    _burned_at,
                 )) => {
                     self.success_message =
                         Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
@@ -598,7 +616,6 @@ impl<B: Backend> Component<B> for BurnTab {
                 self.show_proofs = !self.show_proofs;
             },
             's' => {
-
                 if self.claim_public_key_field.is_empty() {
                     self.error_message = Some("Claim Public Key is empty\nPress Enter to continue.".to_string());
                     return;
@@ -670,5 +687,5 @@ pub enum BurnInputMode {
 #[derive(PartialEq, Debug)]
 pub enum BurnConfirmationDialogType {
     Normal,
-    DeleteBurntProof(i32),
+    DeleteBurntProof(u32),
 }

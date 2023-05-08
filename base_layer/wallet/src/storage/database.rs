@@ -62,6 +62,16 @@ pub trait WalletBackend: Send + Sync + Clone {
 
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
+
+    fn create_burnt_proof(
+        &self,
+        id: u32,
+        reciprocal_claim_public_key: String,
+        payload: String,
+    ) -> Result<(), WalletStorageError>;
+    fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError>;
+    fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError>;
+    fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,8 +90,6 @@ pub enum DbKey {
     WalletBirthday,
     LastAccessedNetwork,
     LastAccessedVersion,
-    BurntProofId(i32),
-    ListBurntProofs,
 }
 
 impl DbKey {
@@ -101,8 +109,6 @@ impl DbKey {
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
             DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
             DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
-            DbKey::BurntProofId(id) => format!("BurntProof.{}", id),
-            DbKey::ListBurntProofs => "ListBurntProofs".to_string(),
         }
     }
 }
@@ -123,8 +129,6 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    BurntProofs(Vec<(i32, String, String, NaiveDateTime)>),
-    BurntProof((i32, String, String, NaiveDateTime)),
 }
 
 #[derive(Clone)]
@@ -137,7 +141,6 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    BurntProof((i32, String, String, NaiveDateTime)),
 }
 
 pub enum WriteOperation {
@@ -360,39 +363,26 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    // ----------------------------------------------------------------------------
-    // burnt proofs
-
-    pub fn insert_burnt_proof(
+    pub fn create_burnt_proof(
         &self,
-        id: i32,
+        id: u32,
         reciprocal_claim_public_key: String,
-        proof: String,
-        burned_at: NaiveDateTime,
+        payload: String,
     ) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::BurntProof((
-            id,
-            reciprocal_claim_public_key,
-            proof,
-            burned_at,
-        ))))?;
+        self.db.create_burnt_proof(id, reciprocal_claim_public_key, payload)?;
         Ok(())
     }
 
-    pub fn remove_burnt_proof(&self, id: i32) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Remove(DbKey::BurntProofId(id)))?;
-        Ok(())
+    pub fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError> {
+        self.db.fetch_burnt_proof(id)
     }
 
-    pub fn get_burnt_proofs(&self) -> Result<Vec<(i32, String, String, NaiveDateTime)>, WalletStorageError> {
-        let proofs = match self.db.fetch(&DbKey::ListBurntProofs) {
-            Ok(None) => Ok(vec![]),
-            Ok(Some(DbValue::BurntProofs(proofs))) => Ok(proofs),
-            Ok(Some(other)) => unexpected_result(DbKey::ListBurntProofs, other),
-            Err(e) => log_error(DbKey::ListBurntProofs, e),
-        }?;
+    pub fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError> {
+        self.db.fetch_burnt_proofs()
+    }
 
-        Ok(proofs)
+    pub fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
+        self.db.delete_burnt_proof(id)
     }
 }
 
@@ -414,8 +404,6 @@ impl Display for DbValue {
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
-            DbValue::BurntProofs(proofs) => f.write_str(&format!("BurntProofs: {:?}", proofs)),
-            DbValue::BurntProof((id, _, _, _)) => f.write_str(&format!("BurntProof: {}", id)),
         }
     }
 }

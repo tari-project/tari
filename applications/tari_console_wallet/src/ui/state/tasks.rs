@@ -22,8 +22,6 @@
 
 use std::path::PathBuf;
 
-use chrono::Utc;
-use log::error;
 use rand::random;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
@@ -36,8 +34,8 @@ use tari_wallet::{
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{
-    app::UiError,
     state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
+    ui_error::UiError,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
@@ -271,23 +269,21 @@ pub async fn send_burn_transaction_task(
                                 let serialized_proof = serde_json::to_string_pretty(&wrapped_proof)
                                     .expect("failed to serialize burn proof");
 
-                                let filepath = burn_proof_filepath
-                                    .unwrap_or_else(|| PathBuf::from(format!("{}.json", burn_tx_id.as_u64())));
+                                let proof_id = random::<u32>();
+                                let filepath =
+                                    burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
 
                                 std::fs::write(filepath, serialized_proof.as_bytes())
                                     .expect("failed to save burn proof");
 
-                                let proof_id = random::<i32>().abs();
-                                let ts = Utc::now().naive_utc();
-
-                                if let Err(e) = db.insert_burnt_proof(
+                                let result = db.create_burnt_proof(
                                     proof_id,
                                     original_proof.reciprocal_claim_public_key.to_hex(),
                                     serialized_proof.clone(),
-                                    ts,
-                                ) {
-                                    error!("failed to save burnt proof to the database: {:#?}", e);
-                                    return;
+                                );
+
+                                if let Err(err) = result {
+                                    log::error!("failed to create database entry for the burnt proof: {:?}", err);
                                 }
 
                                 result_tx
@@ -295,7 +291,6 @@ pub async fn send_burn_transaction_task(
                                         proof_id,
                                         original_proof.reciprocal_claim_public_key.to_hex(),
                                         serialized_proof,
-                                        ts,
                                     )))
                                     .unwrap();
 

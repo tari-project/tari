@@ -29,7 +29,9 @@ use crate::utils::crossterm_events::CrosstermEvents;
 mod app;
 mod components;
 pub mod state;
-pub mod types;
+mod ui_burnt_proof;
+mod ui_contact;
+mod ui_error;
 mod widgets;
 
 use std::io::{stdout, Stdout};
@@ -43,6 +45,7 @@ use crossterm::{
 use log::*;
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
+use ui_error::UiError;
 
 use crate::utils::events::{Event, EventStream};
 

@@ -30,9 +30,6 @@ use tari_common_types::serde_with;
 
 pub use self::app_state::*;
 
-// ----------------------------------------------------------------------------
-// TODO: re-implement in a clean way
-
 #[derive(Serialize, Deserialize)]
 pub struct CommitmentSignatureBase64 {
     #[serde(with = "serde_with::base64")]
