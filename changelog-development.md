@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.50.0-pre.1](https://github.com/tari-project/tari/compare/v0.50.0-pre.0...v0.50.0-pre.1) (2023-05-08)
+
+
+### Features
+
+* add miner timeout config option ([#5331](https://github.com/tari-project/tari/issues/5331)) ([aea14f6](https://github.com/tari-project/tari/commit/aea14f6bf302801c85efa9f304a8f442aaf9a3ff))
+* chat ffi ([#5349](https://github.com/tari-project/tari/issues/5349)) ([f7cece2](https://github.com/tari-project/tari/commit/f7cece27c02ae3b668e1ffbd6629828d0432debf))
+* chat scaffold ([#5244](https://github.com/tari-project/tari/issues/5244)) ([5b09f8e](https://github.com/tari-project/tari/commit/5b09f8e2b630685d9ff748eae772b9798954f6ff))
+* improve message encryption ([#5288](https://github.com/tari-project/tari/issues/5288)) ([7a80716](https://github.com/tari-project/tari/commit/7a80716c71987bae14d83994d7402f96c190242d))
+* **p2p:** allow listener bind to differ from the tor forward address ([#5357](https://github.com/tari-project/tari/issues/5357)) ([857fb55](https://github.com/tari-project/tari/commit/857fb55520145ece48b4b5cca0aa5d7fd8f6c69e))
+
+
+### Bug Fixes
+
+* add SECURITY.md Vulnerability Disclosure Policy ([#5351](https://github.com/tari-project/tari/issues/5351)) ([72daaf5](https://github.com/tari-project/tari/commit/72daaf5ef614ceb805f690db12c7fefc642d5453))
+* added missing log4rs features ([#5356](https://github.com/tari-project/tari/issues/5356)) ([b9031bb](https://github.com/tari-project/tari/commit/b9031bbbece1988c1de180cabbf4e3acfcb50836))
+* allow public addresses from command line ([#5303](https://github.com/tari-project/tari/issues/5303)) ([349ac89](https://github.com/tari-project/tari/commit/349ac8957bc513cd4110eaac69550ffa0816862b))
+* clippy issues with config ([#5334](https://github.com/tari-project/tari/issues/5334)) ([026f0d5](https://github.com/tari-project/tari/commit/026f0d5e33d524ad302e7edd0c82e108a17800b6))
+* default network selection ([#5333](https://github.com/tari-project/tari/issues/5333)) ([cf4b2c8](https://github.com/tari-project/tari/commit/cf4b2c8a4f5849ba51dab61595dfed1a9249c580))
+* make the first output optional in the wallet ([#5352](https://github.com/tari-project/tari/issues/5352)) ([bf16140](https://github.com/tari-project/tari/commit/bf16140ecd1ad0ae25f8a9b8cde9c3e4f1d12a02))
+* remove wallet panic ([#5338](https://github.com/tari-project/tari/issues/5338)) ([536d16d](https://github.com/tari-project/tari/commit/536d16d2feea283ac1b8f546f479b76465938c4b))
+* wallet .h file for lib wallets ([#5330](https://github.com/tari-project/tari/issues/5330)) ([22a3a17](https://github.com/tari-project/tari/commit/22a3a17db6ef8889cb3a73dfe2db081a0691a68c))
+
 ## [0.50.0-pre.0](https://github.com/tari-project/tari/compare/v0.49.0-pre.6...v0.50.0-pre.0) (2023-04-12)
 
 
