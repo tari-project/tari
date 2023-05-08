@@ -305,9 +305,9 @@ pub async fn send_burn_transaction_task(
                             .unwrap();
 
                         return;
-                    } else {
-                        //
                     }
+                } else {
+                    //
                 }
             },
 
