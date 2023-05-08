@@ -238,83 +238,165 @@ pub async fn send_burn_transaction_task(
     result_tx.send(UiTransactionBurnStatus::Initiated).unwrap();
     let mut event_stream = transaction_service_handle.get_event_stream();
 
-    match transaction_service_handle
+    // ----------------------------------------------------------------------------
+    // burning minotari
+    // ----------------------------------------------------------------------------
+
+    let (burn_tx_id, original_proof) = transaction_service_handle
         .burn_tari(amount, selection_criteria, fee_per_gram, message, claim_public_key)
         .await
-    {
-        Err(e) => {
+        .map_err(|err| {
+            log::error!("failed to burn minotari: {:?}", err);
+
             result_tx
-                .send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()))
+                .send(UiTransactionBurnStatus::Error(UiError::from(err).to_string()))
                 .unwrap();
-        },
-        Ok((burn_tx_id, original_proof)) => {
-            loop {
-                match event_stream.recv().await {
-                    Ok(event) => {
-                        if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                            if burn_tx_id == *completed_tx_id {
-                                let wrapped_proof = BurntProofBase64 {
-                                    reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
-                                    commitment: original_proof.commitment.to_vec(),
-                                    ownership_proof: original_proof.ownership_proof.map(|x| {
-                                        CommitmentSignatureBase64 {
-                                            public_nonce: x.public_nonce().to_vec(),
-                                            u: x.u().to_vec(),
-                                            v: x.v().to_vec(),
-                                        }
-                                    }),
-                                    range_proof: original_proof.range_proof.0,
-                                };
+        })
+        .unwrap();
 
-                                let serialized_proof = serde_json::to_string_pretty(&wrapped_proof)
-                                    .expect("failed to serialize burn proof");
+    // ----------------------------------------------------------------------------
+    // starting a feedback loop to wait for the answer from the transaction service
+    // ----------------------------------------------------------------------------
 
-                                let proof_id = random::<u32>();
-                                let filepath =
-                                    burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
+    loop {
+        let original_proof = original_proof.clone();
+        let burn_proof_filepath = burn_proof_filepath.clone();
 
-                                std::fs::write(filepath, serialized_proof.as_bytes())
-                                    .expect("failed to save burn proof");
+        match event_stream.recv().await {
+            Ok(event) => {
+                if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
+                    if burn_tx_id == *completed_tx_id {
+                        let wrapped_proof = BurntProofBase64 {
+                            reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
+                            commitment: original_proof.commitment.to_vec(),
+                            ownership_proof: original_proof.ownership_proof.map(|x| CommitmentSignatureBase64 {
+                                public_nonce: x.public_nonce().to_vec(),
+                                u: x.u().to_vec(),
+                                v: x.v().to_vec(),
+                            }),
+                            range_proof: original_proof.range_proof.0,
+                        };
 
-                                let result = db.create_burnt_proof(
-                                    proof_id,
-                                    original_proof.reciprocal_claim_public_key.to_hex(),
-                                    serialized_proof.clone(),
-                                );
+                        let serialized_proof =
+                            serde_json::to_string_pretty(&wrapped_proof).expect("failed to serialize burn proof");
 
-                                if let Err(err) = result {
-                                    log::error!("failed to create database entry for the burnt proof: {:?}", err);
-                                }
+                        let proof_id = random::<u32>();
+                        let filepath =
+                            burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
 
-                                result_tx
-                                    .send(UiTransactionBurnStatus::TransactionComplete((
-                                        proof_id,
-                                        original_proof.reciprocal_claim_public_key.to_hex(),
-                                        serialized_proof,
-                                    )))
-                                    .unwrap();
+                        std::fs::write(filepath, serialized_proof.as_bytes()).expect("failed to save burn proof");
 
-                                return;
-                            }
+                        let result = db.create_burnt_proof(
+                            proof_id,
+                            original_proof.reciprocal_claim_public_key.to_hex(),
+                            serialized_proof.clone(),
+                        );
+
+                        if let Err(err) = result {
+                            log::error!("failed to create database entry for the burnt proof: {:?}", err);
                         }
-                    },
 
-                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                        continue;
-                    },
+                        result_tx
+                            .send(UiTransactionBurnStatus::TransactionComplete((
+                                proof_id,
+                                original_proof.reciprocal_claim_public_key.to_hex(),
+                                serialized_proof,
+                            )))
+                            .unwrap();
 
-                    Err(broadcast::error::RecvError::Closed) => {
-                        break;
-                    },
+                        return;
+                    } else {
+                        //
+                    }
                 }
-            }
+            },
 
-            result_tx
-                .send(UiTransactionBurnStatus::Error(
-                    "failed to send burn transaction".to_string(),
-                ))
-                .unwrap();
-        },
+            Err(e @ broadcast::error::RecvError::Lagged(_)) => {
+                log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                continue;
+            },
+
+            Err(broadcast::error::RecvError::Closed) => {
+                break;
+            },
+        }
     }
+
+    // {
+    //     Err(e) => {
+    //         result_tx
+    //             .send(UiTransactionBurnStatus::Error(UiError::from(e).to_string()))
+    //             .unwrap();
+    //     },
+    //     Ok((burn_tx_id, original_proof)) => {
+    //         loop {
+    //             match event_stream.recv().await {
+    //                 Ok(event) => {
+    //                     if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
+    //                         if burn_tx_id == *completed_tx_id {
+    //                             let wrapped_proof = BurntProofBase64 {
+    //                                 reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
+    //                                 commitment: original_proof.commitment.to_vec(),
+    //                                 ownership_proof: original_proof.ownership_proof.map(|x| {
+    //                                     CommitmentSignatureBase64 {
+    //                                         public_nonce: x.public_nonce().to_vec(),
+    //                                         u: x.u().to_vec(),
+    //                                         v: x.v().to_vec(),
+    //                                     }
+    //                                 }),
+    //                                 range_proof: original_proof.range_proof.0,
+    //                             };
+    //
+    //                             let serialized_proof = serde_json::to_string_pretty(&wrapped_proof)
+    //                                 .expect("failed to serialize burn proof");
+    //
+    //                             let proof_id = random::<u32>();
+    //                             let filepath =
+    //                                 burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json",
+    // proof_id)));
+    //
+    //                             std::fs::write(filepath, serialized_proof.as_bytes())
+    //                                 .expect("failed to save burn proof");
+    //
+    //                             let result = db.create_burnt_proof(
+    //                                 proof_id,
+    //                                 original_proof.reciprocal_claim_public_key.to_hex(),
+    //                                 serialized_proof.clone(),
+    //                             );
+    //
+    //                             if let Err(err) = result {
+    //                                 log::error!("failed to create database entry for the burnt proof: {:?}", err);
+    //                             }
+    //
+    //                             result_tx
+    //                                 .send(UiTransactionBurnStatus::TransactionComplete((
+    //                                     proof_id,
+    //                                     original_proof.reciprocal_claim_public_key.to_hex(),
+    //                                     serialized_proof,
+    //                                 )))
+    //                                 .unwrap();
+    //
+    //                             return;
+    //                         }
+    //                     }
+    //                 },
+    //
+    //                 Err(e @ broadcast::error::RecvError::Lagged(_)) => {
+    //                     log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+    //                     continue;
+    //                 },
+    //
+    //                 Err(broadcast::error::RecvError::Closed) => {
+    //                     break;
+    //                 },
+    //             }
+    //         }
+    //
+    //         result_tx
+    //             .send(UiTransactionBurnStatus::Error(
+    //                 "failed to send burn transaction".to_string(),
+    //             ))
+    //             .unwrap();
+    //     },
+    // }
 }
