@@ -491,7 +491,7 @@ impl AppState {
     }
 
     pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
-        if self.cached_data.burnt_proofs.is_empty() || start >= end || end > self.cached_data.burnt_proofs.len() {
+        if self.cached_data.burnt_proofs.is_empty() || start >= end {
             return &[];
         }
 
@@ -886,11 +886,7 @@ impl AppStateInner {
             });
         }
 
-        ui_proofs.sort_by(|a, b| {
-            a.burned_at
-                .partial_cmp(&b.burned_at)
-                .expect("Should be able to compare burn timestamps")
-        });
+        ui_proofs.sort_by(|a, b| a.burned_at.cmp(&b.burned_at));
 
         self.data.burnt_proofs = ui_proofs;
         self.updated = true;
