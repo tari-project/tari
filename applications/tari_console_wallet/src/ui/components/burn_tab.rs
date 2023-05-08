@@ -419,9 +419,10 @@ impl BurnTab {
     }
 
     fn on_key_show_proofs(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-        match (self.show_proofs, c) {
-            (true, 'd') => {
-                if let Some(proof) = self
+      if !self.show_proofs || (c != 'd'  || c != 'o'){
+           return KeyHandled::NotHandled;
+      }
+                 if let Some(proof) = self
                     .proofs_list_state
                     .selected()
                     .and_then(|i| app_state.get_burnt_proof_by_index(i))
@@ -430,40 +431,23 @@ impl BurnTab {
                     if self.proofs_list_state.selected().is_none() {
                         return KeyHandled::NotHandled;
                     }
-
+                   if c == 'd' {
                     self.confirmation_dialog = Some(BurnConfirmationDialogType::DeleteBurntProof(proof.id));
-                }
-
-                return KeyHandled::Handled;
-            },
-
-            (true, 'o') => {
-                if let Some(proof) = self
-                    .proofs_list_state
-                    .selected()
-                    .and_then(|i| app_state.get_burnt_proof_by_index(i))
-                    .cloned()
-                {
-                    if self.proofs_list_state.selected().is_none() {
-                        return KeyHandled::NotHandled;
-                    }
-
-                    if let Err(e) = fs::write(format!("{}.json", proof.id), proof.payload) {
+                     }
+                     else
+                     {
+                       if let Err(e) = fs::write(format!("{}.json", proof.id), proof.payload) {
                         self.error_message = Some(format!(
                             "Failed to save burnt proof payload to file {}.json: {}, Press Enter to continue.",
                             proof.id, e
                         ));
                     }
-                }
+                    }
 
                 return KeyHandled::Handled;
             },
 
-            _ => {},
-        }
-
-        KeyHandled::NotHandled
-    }
+            return KeyHandled::Handled;
 }
 
 impl<B: Backend> Component<B> for BurnTab {
