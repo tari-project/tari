@@ -26,27 +26,27 @@ mod tasks;
 mod wallet_event_monitor;
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::serde_with;
+use tari_common_types::serializers;
 
 pub use self::app_state::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct CommitmentSignatureBase64 {
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub public_nonce: Vec<u8>,
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub u: Vec<u8>,
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub v: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct BurntProofBase64 {
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub reciprocal_claim_public_key: Vec<u8>,
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub commitment: Vec<u8>,
     pub ownership_proof: Option<CommitmentSignatureBase64>,
-    #[serde(with = "serde_with::base64")]
+    #[serde(with = "serializers::base64")]
     pub range_proof: Vec<u8>,
 }

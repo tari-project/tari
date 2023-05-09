@@ -22,6 +22,7 @@
 
 use std::path::PathBuf;
 
+use log::warn;
 use rand::random;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
@@ -307,12 +308,13 @@ pub async fn send_burn_transaction_task(
                         return;
                     }
                 } else {
-                    //
+                    warn!(target: LOG_TARGET, "Encountered an unexpected event");
+                    todo!()
                 }
             },
 
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
                 continue;
             },
 
