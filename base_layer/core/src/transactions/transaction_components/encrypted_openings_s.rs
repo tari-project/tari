@@ -26,12 +26,15 @@
 //! Encrypted openings using the the standard variant ChaCha20-Poly1305 encryption with a fixed zero nonce to save
 //! space - this design assumes a unique `encryption_key` every time and therefore uses a fixed nonce.
 
+use std::mem::size_of;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{Aead, Error, Payload},
     ChaCha20Poly1305,
     KeyInit,
     Nonce,
+    Tag,
 };
 use digest::{generic_array::GenericArray, FixedOutput};
 use serde::{Deserialize, Serialize};
@@ -42,16 +45,17 @@ use thiserror::Error;
 use zeroize::Zeroize;
 
 use super::EncryptedOpeningsKey;
-use crate::transactions::{tari_amount::MicroTari, TransactionKdfDomain};
+use crate::transactions::{tari_amount::MicroTari, TransactionFixedNonceKdfDomain};
 
-const VALUE_SIZE: usize = 8;
-const KEY_SIZE: usize = 32;
-const TAG_SIZE: usize = 16;
+const VALUE_SIZE: usize = size_of::<u64>();
+const KEY_SIZE: usize = size_of::<PrivateKey>();
+const TAG_SIZE: usize = size_of::<Tag>();
 const SIZE: usize = VALUE_SIZE + KEY_SIZE + TAG_SIZE;
 const BORSH_32: usize = 32;
 const BORSH_X: usize = SIZE - BORSH_32;
 
 /// Encrypted openings for the standard variant ChaCha20-Poly1305 encryption
+/// Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
 pub struct EncryptedOpeningsS {
     #[serde(with = "tari_utilities::serde::hex")]
@@ -122,10 +126,13 @@ impl From<Error> for EncryptedOpeningsError {
 }
 
 impl EncryptedOpeningsS {
-    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK";
+    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_STANDARD_VARIANT";
 
     /// Encrypt the value and mask (with fixed length) using ChaCha20-Poly1305 with a fixed zero nonce to save space -
     /// this design assumes a unique `encryption_key` every time and therefore uses a fixed nonce
+    /// Notes: - `encryption_key`-`commitment` input pairs must be unique, or the value and mask will leak
+    ///        - `commitment` is used used here to ensure uniqueness of the key as well as to bind the encrypted value
+    ///           and mask to the commitment
     pub fn encrypt_openings(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
@@ -146,6 +153,8 @@ impl EncryptedOpeningsS {
     }
 
     /// Authenticate and decrypt the value and mask
+    /// Note: This design (similar to other AEADs) is not key committing, thus the caller must not rely on successful
+    ///       decryption to assert that the expected key was used
     pub fn decrypt_openings(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
@@ -172,7 +181,7 @@ impl EncryptedOpeningsS {
 // Generate a ChaCha20-Poly1305 key from a private key and commitment using Blake2b
 fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedOpeningsKey {
     let mut aead_key = EncryptedOpeningsKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake256, TransactionKdfDomain>::new_with_label("encrypted_value_and_mask")
+    DomainSeparatedHasher::<Blake256, TransactionFixedNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
         .chain(encryption_key.as_bytes())
         .chain(commitment.as_bytes())
         .finalize_into(GenericArray::from_mut_slice(aead_key.reveal_mut()));
@@ -187,6 +196,18 @@ mod test {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 
     use super::*;
+
+    #[test]
+    fn const_sizes_for_serialization_is_optimized() {
+        const BORSH_64: usize = 64;
+        const BORSH_32: usize = 32;
+        if SIZE >= BORSH_64 {
+            panic!("SIZE is not optimized for serialization");
+        }
+        if BORSH_X >= BORSH_32 {
+            panic!("BORSH_X is not optimized for serialization");
+        }
+    }
 
     #[test]
     fn it_encrypts_and_decrypts_correctly() {

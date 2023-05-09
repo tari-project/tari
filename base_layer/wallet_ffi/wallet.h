@@ -78,6 +78,7 @@ struct EmojiSet;
 
 /**
  * Encrypted openings for the extended-nonce variant XChaCha20-Poly1305 encryption
+ * Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
  */
 struct EncryptedOpeningsX;
 
