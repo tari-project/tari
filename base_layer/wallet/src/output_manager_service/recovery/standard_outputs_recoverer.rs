@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, OutputType, TransactionOutput, UnblindedOutput},
+    transaction_components::{EncryptedOpenings, OutputType, TransactionOutput, UnblindedOutput},
     transaction_protocol::RewindData,
     CryptoFactories,
 };
@@ -136,7 +136,7 @@ where
                 output.metadata_signature,
                 0,
                 output.covenant,
-                output.encrypted_value,
+                output.encrypted_openings,
                 output.minimum_value_promise,
             );
 
@@ -204,20 +204,18 @@ where
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
-        let committed_value = EncryptedValue::decrypt_value(
+        let openings = EncryptedOpenings::decrypt_openings(
             &self.rewind_data.encryption_key,
             &output.commitment,
-            &output.encrypted_value,
+            &output.encrypted_openings,
         );
-        let committed_value = match committed_value {
+        let (committed_value, blinding_factor) = match openings {
             Ok(value) => value,
             Err(_) => {
                 return Ok(None);
             },
         };
 
-        let blinding_factor =
-            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
         if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
             return Ok(None);
         }
@@ -242,11 +240,12 @@ where
         let blinding_factor =
             output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
 
+        // TODO: Hansie change the logic here; the encryption key should not be a function of `blinding_factor`
         let shard_encryption_key = derive_burn_claim_encryption_key(&blinding_factor, &output.commitment);
 
-        let committed_value =
-            EncryptedValue::decrypt_value(&shard_encryption_key, &output.commitment, &output.encrypted_value);
-        let committed_value = match committed_value {
+        let openings =
+            EncryptedOpenings::decrypt_openings(&shard_encryption_key, &output.commitment, &output.encrypted_openings);
+        let (committed_value, _spending_key) = match openings {
             Ok(value) => value,
             Err(_) => {
                 return Ok(None);

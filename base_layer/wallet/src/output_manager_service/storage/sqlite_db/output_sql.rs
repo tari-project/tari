@@ -36,7 +36,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
+    transaction_components::{EncryptedOpenings, OutputFeatures, OutputType, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
@@ -101,7 +101,7 @@ pub struct OutputSql {
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
     pub mined_timestamp: Option<NaiveDateTime>,
-    pub encrypted_value: Vec<u8>,
+    pub encrypted_openings: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
     pub last_validation_timestamp: Option<NaiveDateTime>,
@@ -659,7 +659,7 @@ impl OutputSql {
             }
         })?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
+        let encrypted_openings = EncryptedOpenings::from_bytes(&o.encrypted_openings)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -741,7 +741,7 @@ impl OutputSql {
             ),
             o.script_lock_height as u64,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             MicroTari::from(o.minimum_value_promise as u64),
         );
 

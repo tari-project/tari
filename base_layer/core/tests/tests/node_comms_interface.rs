@@ -295,7 +295,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &OutputFeatures::default(),
         &offset,
         &Covenant::default(),
-        &utxo.encrypted_value,
+        &utxo.encrypted_openings,
         utxo.minimum_value_promise,
     )
     .unwrap();
@@ -310,7 +310,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         metadata_signature,
         0,
         Covenant::default(),
-        utxo.encrypted_value.clone(),
+        utxo.encrypted_openings,
         utxo.minimum_value_promise,
     );
     let mut txn = DbTransaction::new();

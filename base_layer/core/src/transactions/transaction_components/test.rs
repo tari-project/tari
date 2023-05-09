@@ -47,7 +47,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedValue, OutputFeatures},
+        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedOpenings, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -284,7 +284,7 @@ fn check_timelocks() {
         script_signature,
         offset_pub_key,
         Covenant::default(),
-        EncryptedValue::default(),
+        EncryptedOpenings::default(),
         MicroTari::zero(),
     );
 

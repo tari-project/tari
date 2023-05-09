@@ -23,7 +23,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_core::transactions::transaction_components::{
-    EncryptedOpeningsX,
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
@@ -41,11 +40,6 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .sidechain_feature
             .and_then(|f| f.side_chain_feature)
             .map(SideChainFeature::try_from)
-            .transpose()?;
-
-        let encrypted_openings = features
-            .encrypted_openings
-            .map(EncryptedOpeningsX::try_from)
             .transpose()?;
 
         let output_type = features
@@ -66,7 +60,6 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
-            encrypted_openings,
             RangeProofType::from_byte(range_proof_type)
                 .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
@@ -81,7 +74,6 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
-            encrypted_openings: features.encrypted_openings.map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }

@@ -47,7 +47,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -394,10 +394,17 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
 
-                        let encrypted_value = self
+                        let encrypted_openings = self
                             .rewind_data
                             .as_ref()
-                            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, v))
+                            .map(|rd| {
+                                EncryptedOpenings::encrypt_openings(
+                                    &rd.encryption_key,
+                                    &commitment,
+                                    v,
+                                    &change_key.clone(),
+                                )
+                            })
                             .transpose()
                             .map_err(|e| e.to_string())?
                             .unwrap_or_default();
@@ -412,7 +419,7 @@ impl SenderTransactionInitializer {
                             &output_features,
                             &change_sender_offset_private_key,
                             &self.change_covenant,
-                            &encrypted_value,
+                            &encrypted_openings,
                             minimum_value_promise,
                         )
                         .map_err(|e| e.to_string())?;
@@ -434,7 +441,7 @@ impl SenderTransactionInitializer {
                             metadata_signature,
                             0,
                             self.change_covenant.clone(),
-                            encrypted_value,
+                            encrypted_openings,
                             minimum_value_promise,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))

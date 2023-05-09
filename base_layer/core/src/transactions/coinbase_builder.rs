@@ -42,7 +42,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -234,10 +234,10 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
-        let encrypted_value = self
+        let encrypted_openings = self
             .rewind_data
             .as_ref()
-            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, total_reward))
+            .map(|rd| EncryptedOpenings::encrypt_openings(&rd.encryption_key, &commitment, total_reward, &spending_key))
             .transpose()
             .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
             .unwrap_or_default();
@@ -252,7 +252,7 @@ impl CoinbaseBuilder {
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_value_promise,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -268,7 +268,7 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
@@ -318,7 +318,7 @@ mod test {
             tari_amount::uT,
             test_helpers::TestParams,
             transaction_components::{
-                EncryptedValue,
+                EncryptedOpenings,
                 KernelFeatures,
                 OutputFeatures,
                 OutputType,
@@ -411,12 +411,12 @@ mod test {
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
 
         let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
+            rewind_blinding_key,
             encryption_key: PrivateKey::random(&mut OsRng),
         };
 
         let p = TestParams::new();
-        let (builder, rules, factories) = get_builder();
+        let (builder, rules, _factories) = get_builder();
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
@@ -429,13 +429,13 @@ mod test {
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
         let output = &tx.body.outputs()[0];
-        let committed_value =
-            EncryptedValue::decrypt_value(&rewind_data.encryption_key, &output.commitment, &output.encrypted_value)
-                .unwrap();
+        let (committed_value, blinding_factor) = EncryptedOpenings::decrypt_openings(
+            &rewind_data.encryption_key,
+            &output.commitment,
+            &output.encrypted_openings,
+        )
+        .unwrap();
         assert_eq!(committed_value, block_reward);
-        let blinding_factor = output
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
     }
 

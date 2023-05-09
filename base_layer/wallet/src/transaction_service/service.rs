@@ -49,7 +49,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -1128,7 +1128,8 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, amount.into());
-        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_openings =
+            EncryptedOpenings::encrypt_openings(&rewind_data.encryption_key, &commitment, amount, &spending_key)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -1143,7 +1144,7 @@ where
             output.metadata_signature.clone(),
             height,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         );
 

@@ -62,7 +62,7 @@ use crate::{
         transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
-            EncryptedValue,
+            EncryptedOpenings,
             OutputFeatures,
             TransactionError,
             TransactionInputVersion,
@@ -89,7 +89,7 @@ pub struct UnblindedOutput {
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
-    pub encrypted_value: EncryptedValue,
+    pub encrypted_openings: EncryptedOpenings,
     pub minimum_value_promise: MicroTari,
 }
 
@@ -109,7 +109,7 @@ impl UnblindedOutput {
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_openings: EncryptedOpenings,
         minimum_value_promise: MicroTari,
     ) -> Self {
         Self {
@@ -124,7 +124,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         }
     }
@@ -140,7 +140,7 @@ impl UnblindedOutput {
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_openings: EncryptedOpenings,
         minimum_value_promise: MicroTari,
     ) -> Self {
         Self::new(
@@ -155,7 +155,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         )
     }
@@ -198,7 +198,7 @@ impl UnblindedOutput {
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
                 version: self.version,
-                encrypted_value: self.encrypted_value.clone(),
+                encrypted_openings: self.encrypted_openings,
                 minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
@@ -241,7 +241,7 @@ impl UnblindedOutput {
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
-            self.encrypted_value.clone(),
+            self.encrypted_openings,
             self.minimum_value_promise,
         );
 
@@ -327,7 +327,7 @@ impl UnblindedOutput {
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
-            self.encrypted_value.clone(),
+            self.encrypted_openings,
             self.minimum_value_promise,
         );
 
@@ -348,7 +348,7 @@ impl UnblindedOutput {
             &commitment,
             &self.script,
             &self.covenant,
-            &self.encrypted_value,
+            &self.encrypted_openings,
             &self.sender_offset_public_key,
             self.minimum_value_promise,
         )

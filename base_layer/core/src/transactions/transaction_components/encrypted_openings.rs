@@ -23,48 +23,54 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-//! Encrypted openings using the the standard variant ChaCha20-Poly1305 encryption with a fixed zero nonce to save
-//! space - this design assumes a unique `encryption_key` every time and therefore uses a fixed nonce.
+//! Encrypted openings using the the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
 use std::mem::size_of;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{Aead, Error, Payload},
-    ChaCha20Poly1305,
     KeyInit,
-    Nonce,
     Tag,
+    XChaCha20Poly1305,
+    XNonce,
 };
 use digest::{generic_array::GenericArray, FixedOutput};
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
-use tari_utilities::{safe_array::SafeArray, ByteArray, ByteArrayError};
+use tari_utilities::{
+    hex::{from_hex, to_hex, Hex, HexError},
+    safe_array::SafeArray,
+    ByteArray,
+    ByteArrayError,
+};
 use thiserror::Error;
 use zeroize::Zeroize;
 
 use super::EncryptedOpeningsKey;
-use crate::transactions::{tari_amount::MicroTari, TransactionFixedNonceKdfDomain};
+use crate::transactions::{tari_amount::MicroTari, TransactionSecureNonceKdfDomain};
 
-const VALUE_SIZE: usize = size_of::<u64>();
-const KEY_SIZE: usize = size_of::<PrivateKey>();
-const TAG_SIZE: usize = size_of::<Tag>();
-const SIZE: usize = VALUE_SIZE + KEY_SIZE + TAG_SIZE;
-const BORSH_32: usize = 32;
-const BORSH_X: usize = SIZE - BORSH_32;
+const VALUE_SIZE: usize = size_of::<u64>(); // 8 bytes
+const KEY_SIZE: usize = size_of::<PrivateKey>(); // 32 bytes
+const SIZE: usize = VALUE_SIZE + KEY_SIZE + size_of::<Tag>() + size_of::<XNonce>(); // 80 bytes
+const BORSH_64: usize = 64;
+const BORSH_X: usize = SIZE - BORSH_64; // 16 bytes
 
-/// Encrypted openings for the standard variant ChaCha20-Poly1305 encryption
+/// Encrypted openings for the extended-nonce variant XChaCha20-Poly1305 encryption
 /// Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
-pub struct EncryptedOpeningsS {
+#[derive(
+    Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize,
+)]
+pub struct EncryptedOpenings {
     #[serde(with = "tari_utilities::serde::hex")]
-    data_1: [u8; BORSH_32],
+    data_1: [u8; BORSH_64],
     #[serde(with = "tari_utilities::serde::hex")]
     data_2: [u8; BORSH_X],
 }
 
-impl EncryptedOpeningsS {
+impl EncryptedOpenings {
     /// Custom convert `EncryptedOpenings` to bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedOpeningsError> {
         if bytes.len() != SIZE {
@@ -74,17 +80,17 @@ impl EncryptedOpeningsS {
                 bytes.len()
             )));
         }
-        let mut data_1: [u8; BORSH_32] = [0u8; BORSH_32];
-        data_1.copy_from_slice(bytes.get(..BORSH_32).ok_or_else(|| EncryptedOpeningsError::IncorrectLength(
-            "Out of bounds 'data_1'".to_string(),
-        ))?);
+        let mut data_1: [u8; BORSH_64] = [0u8; BORSH_64];
+        data_1.copy_from_slice(
+            bytes
+                .get(..BORSH_64)
+                .ok_or_else(|| EncryptedOpeningsError::IncorrectLength("Out of bounds 'data_1'".to_string()))?,
+        );
         let mut data_2: [u8; BORSH_X] = [0u8; BORSH_X];
         data_2.copy_from_slice(
             bytes
-                .get(BORSH_32..SIZE)
-                .ok_or_else(|| EncryptedOpeningsError::IncorrectLength(
-                    "Out of bounds 'data_2'".to_string(),
-                ))?,
+                .get(BORSH_64..SIZE)
+                .ok_or_else(|| EncryptedOpeningsError::IncorrectLength("Out of bounds 'data_2'".to_string()))?,
         );
         Ok(Self { data_1, data_2 })
     }
@@ -98,10 +104,21 @@ impl EncryptedOpeningsS {
     }
 }
 
-impl Default for EncryptedOpeningsS {
+impl Hex for EncryptedOpenings {
+    fn from_hex(hex: &str) -> Result<Self, HexError> {
+        let v = from_hex(hex)?;
+        Self::from_bytes(&v).map_err(|_| HexError::HexConversionError)
+    }
+
+    fn to_hex(&self) -> String {
+        to_hex(&self.as_byte_vector())
+    }
+}
+
+impl Default for EncryptedOpenings {
     fn default() -> Self {
         Self {
-            data_1: [0u8; BORSH_32],
+            data_1: [0u8; BORSH_64],
             data_2: [0u8; BORSH_X],
         }
     }
@@ -125,31 +142,38 @@ impl From<Error> for EncryptedOpeningsError {
     }
 }
 
-impl EncryptedOpeningsS {
-    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_STANDARD_VARIANT";
+impl EncryptedOpenings {
+    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
-    /// Encrypt the value and mask (with fixed length) using ChaCha20-Poly1305 with a fixed zero nonce to save space -
-    /// this design assumes a unique `encryption_key` every time and therefore uses a fixed nonce
-    /// Notes: - `encryption_key`-`commitment` input pairs must be unique, or the value and mask will leak
-    ///        - `commitment` is used used here to ensure uniqueness of the key as well as to bind the encrypted value
-    ///           and mask to the commitment
+    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
+    /// Notes: - This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`
+    ///        - With the use of a secure random nonce, there's no added security benefit in using the commitment in the
+    ///          internal key derivation; but it binds the encrypted openings to the commitment
     pub fn encrypt_openings(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         value: MicroTari,
         mask: &PrivateKey,
-    ) -> Result<EncryptedOpeningsS, EncryptedOpeningsError> {
+    ) -> Result<EncryptedOpenings, EncryptedOpeningsError> {
         let mut openings = value.as_u64().to_le_bytes().to_vec();
         openings.append(&mut mask.to_vec());
         let aead_payload = Payload {
             msg: openings.as_slice(),
             aad: Self::TAG,
         };
-        let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
-        let ciphertext = cipher.encrypt(&Nonce::default(), aead_payload)?;
 
-        EncryptedOpeningsX::from_bytes(ciphertext.as_slice())
+        // Produce a secure random nonce
+        let mut nonce = [0u8; size_of::<XNonce>()];
+        OsRng.fill_bytes(&mut nonce);
+        let nonce_ga = XNonce::from_slice(&nonce);
+
+        let aead_key = kdf_aead(encryption_key, commitment);
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+        let mut ciphertext = cipher.encrypt(nonce_ga, aead_payload)?;
+        let mut ciphertext_integral_nonce = nonce.to_vec();
+        ciphertext_integral_nonce.append(&mut ciphertext);
+
+        EncryptedOpenings::from_bytes(ciphertext_integral_nonce.as_slice())
     }
 
     /// Authenticate and decrypt the value and mask
@@ -158,15 +182,20 @@ impl EncryptedOpeningsS {
     pub fn decrypt_openings(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
-        encrypted_openings: &EncryptedOpeningsS,
+        encrypted_openings: &EncryptedOpenings,
     ) -> Result<(MicroTari, PrivateKey), EncryptedOpeningsError> {
+        // Extract the nonce and ciphertext
+        let binding = encrypted_openings.as_byte_vector();
+        let (nonce, ciphertext) = binding.split_at(size_of::<XNonce>());
+        let nonce_ga = XNonce::from_slice(nonce);
+
         let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
         let aead_payload = Payload {
-            msg: &encrypted_openings.as_byte_vector(),
+            msg: ciphertext,
             aad: Self::TAG,
         };
-        let decrypted_bytes = cipher.decrypt(&Nonce::default(), aead_payload)?;
+        let decrypted_bytes = cipher.decrypt(nonce_ga, aead_payload)?;
         let mut value_bytes = [0u8; VALUE_SIZE];
         value_bytes.clone_from_slice(&decrypted_bytes[0..VALUE_SIZE]);
         let mut mask_bytes = [0u8; KEY_SIZE];
@@ -181,7 +210,7 @@ impl EncryptedOpeningsS {
 // Generate a ChaCha20-Poly1305 key from a private key and commitment using Blake2b
 fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedOpeningsKey {
     let mut aead_key = EncryptedOpeningsKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake256, TransactionFixedNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
+    DomainSeparatedHasher::<Blake256, TransactionSecureNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
         .chain(encryption_key.as_bytes())
         .chain(commitment.as_bytes())
         .finalize_into(GenericArray::from_mut_slice(aead_key.reveal_mut()));
@@ -199,9 +228,13 @@ mod test {
 
     #[test]
     fn const_sizes_for_serialization_is_optimized() {
+        const BORSH_128: usize = 128;
         const BORSH_64: usize = 64;
         const BORSH_32: usize = 32;
-        if SIZE >= BORSH_64 {
+        if SIZE >= BORSH_128 {
+            panic!("SIZE is not optimized for serialization");
+        }
+        if SIZE <= BORSH_64 {
             panic!("SIZE is not optimized for serialization");
         }
         if BORSH_X >= BORSH_32 {
@@ -222,9 +255,9 @@ mod test {
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroTari::from(value);
             let encrypted_openings =
-                EncryptedOpeningsX::encrypt_openings(&encryption_key, &commitment, amount, &mask).unwrap();
+                EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, amount, &mask).unwrap();
             let (decrypted_value, decrypted_mask) =
-                EncryptedOpeningsX::decrypt_openings(&encryption_key, &commitment, &encrypted_openings).unwrap();
+                EncryptedOpenings::decrypt_openings(&encryption_key, &commitment, &encrypted_openings).unwrap();
             assert_eq!(amount, decrypted_value);
             assert_eq!(mask, decrypted_mask);
         }

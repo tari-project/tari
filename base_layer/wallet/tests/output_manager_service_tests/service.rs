@@ -43,7 +43,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
+        transaction_components::{EncryptedOpenings, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -1358,13 +1358,13 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let output = tx3.body.outputs()[0].clone();
 
-    let decrypted = EncryptedValue::decrypt_value(
+    let (decrypted_value, _) = EncryptedOpenings::decrypt_openings(
         &oms.rewind_data.encryption_key,
         &output.commitment,
-        &output.encrypted_value,
+        &output.encrypted_openings,
     )
     .unwrap();
-    assert_eq!(decrypted, value3);
+    assert_eq!(decrypted_value, value3);
 }
 
 #[tokio::test]
@@ -2186,7 +2186,9 @@ async fn scan_for_recovery_test() {
             .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
             .await
             .unwrap();
-        let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, amount.into()).unwrap();
+        let encrypted_openings =
+            EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, amount.into(), &spending_key_result.key)
+                .unwrap();
 
         let uo = UnblindedOutput::new_current_version(
             MicroTari::from(amount),
@@ -2199,7 +2201,7 @@ async fn scan_for_recovery_test() {
             ComAndPubSignature::default(),
             0,
             Covenant::new(),
-            encrypted_value,
+            encrypted_openings,
             MicroTari::zero(),
         );
         rewindable_unblinded_outputs.push(uo);

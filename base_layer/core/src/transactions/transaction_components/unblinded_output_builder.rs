@@ -30,7 +30,7 @@ use crate::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
@@ -57,7 +57,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-    encrypted_value: EncryptedValue,
+    encrypted_openings: EncryptedOpenings,
     rewind_data: Option<RewindData>,
     minimum_value_promise: MicroTari,
 }
@@ -76,7 +76,7 @@ impl UnblindedOutputBuilder {
             metadata_signature: None,
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
-            encrypted_value: EncryptedValue::default(),
+            encrypted_openings: EncryptedOpenings::default(),
             rewind_data: None,
             minimum_value_promise: MicroTari::zero(),
         }
@@ -143,7 +143,7 @@ impl UnblindedOutputBuilder {
             &self.features,
             sender_offset_private_key,
             &self.covenant,
-            &self.encrypted_value,
+            &self.encrypted_openings,
             self.minimum_value_promise,
         )?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
@@ -180,7 +180,7 @@ impl UnblindedOutputBuilder {
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
             0,
             self.covenant,
-            self.encrypted_value,
+            self.encrypted_openings,
             self.minimum_value_promise,
         );
         Ok(ub)

@@ -756,7 +756,7 @@ async fn test_import_utxo() {
             &p.sender_offset_public_key,
             0,
             Covenant::default(),
-            output.encrypted_value,
+            output.encrypted_openings,
             utxo.minimum_value_promise,
         )
         .await

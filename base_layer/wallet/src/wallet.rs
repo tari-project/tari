@@ -49,7 +49,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, UnblindedOutput},
+        transaction_components::{EncryptedOpenings, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -437,7 +437,7 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_openings: EncryptedOpenings,
         minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
@@ -451,7 +451,7 @@ where
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         );
         self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)

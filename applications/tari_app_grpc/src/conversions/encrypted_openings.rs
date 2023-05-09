@@ -22,21 +22,21 @@
 
 use std::convert::TryFrom;
 
-use tari_core::transactions::transaction_components::EncryptedOpeningsX;
+use tari_core::transactions::transaction_components::EncryptedOpenings;
 
 use crate::tari_rpc as grpc;
 
-impl TryFrom<grpc::EncryptedOpenings> for EncryptedOpeningsX {
+impl TryFrom<grpc::EncryptedOpenings> for EncryptedOpenings {
     type Error = String;
 
     fn try_from(encrypted_openings: grpc::EncryptedOpenings) -> Result<Self, Self::Error> {
-        EncryptedOpeningsX::from_bytes(encrypted_openings.value_and_mask.as_slice())
+        EncryptedOpenings::from_bytes(encrypted_openings.value_and_mask.as_slice())
             .map_err(|err| format!("Could not convert encrypted openings: {:?}", err))
     }
 }
 
-impl From<EncryptedOpeningsX> for grpc::EncryptedOpenings {
-    fn from(encrypted_openings: EncryptedOpeningsX) -> Self {
+impl From<EncryptedOpenings> for grpc::EncryptedOpenings {
+    fn from(encrypted_openings: EncryptedOpenings) -> Self {
         encrypted_openings.into()
     }
 }

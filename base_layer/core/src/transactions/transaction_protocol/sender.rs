@@ -485,7 +485,7 @@ impl SenderTransactionProtocol {
             sender_offset_private_key,
             Some(private_commitment_nonce),
             &output.covenant,
-            &output.encrypted_value,
+            &output.encrypted_openings,
             output.minimum_value_promise,
         )?;
         // Create aggregated metadata signature
@@ -773,7 +773,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionOutput, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -874,7 +874,8 @@ mod test {
 
         // Encrypted value
         let encryption_key = PrivateKey::random(&mut OsRng);
-        let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into()).unwrap();
+        let encrypted_openings =
+            EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, value.into(), &spending_key).unwrap();
 
         let minimum_value_promise = MicroTari::zero();
 
@@ -887,7 +888,7 @@ mod test {
             &sender_offset_public_key,
             &sender_ephemeral_public_nonce,
             &covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_value_promise,
         )
         .unwrap();
@@ -900,7 +901,7 @@ mod test {
             sender_offset_public_key,
             partial_metadata_signature.clone(),
             covenant.clone(),
-            encrypted_value.clone(),
+            encrypted_openings,
             minimum_value_promise,
         );
         assert!(output.verify_metadata_signature().is_err());
@@ -915,7 +916,7 @@ mod test {
             &sender_offset_private_key,
             Some(&ephemeral_private_nonce),
             &covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_value_promise,
         )
         .unwrap();
@@ -1289,38 +1290,26 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 2);
 
         // If the first output isn't alice's then the second must be
-        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        // TODO: Fix this logic when 'encrypted_openings.todo_decrypt()' is fixed only one of these will be possible
         let output_0 = &tx.body.outputs()[0];
         let output_1 = &tx.body.outputs()[1];
 
-        if let Ok(committed_value) = EncryptedValue::decrypt_value(
+        if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
             &alice_test_params.rewind_data.encryption_key,
             &output_0.commitment,
-            &output_0.encrypted_value,
+            &output_0.encrypted_openings,
         ) {
-            let blinding_factor = output_0
-                .recover_mask(
-                    &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
-                )
-                .unwrap();
             assert_eq!(
                 factories
                     .commitment
                     .commit_value(&blinding_factor, committed_value.as_u64()),
                 output_0.commitment
             );
-        } else if let Ok(committed_value) = EncryptedValue::decrypt_value(
+        } else if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
             &alice_test_params.rewind_data.encryption_key,
             &output_1.commitment,
-            &output_1.encrypted_value,
+            &output_1.encrypted_openings,
         ) {
-            let blinding_factor = output_1
-                .recover_mask(
-                    &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
-                )
-                .unwrap();
             assert_eq!(
                 factories
                     .commitment

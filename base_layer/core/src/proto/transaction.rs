@@ -39,8 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpeningsX,
-            EncryptedValue,
+            EncryptedOpenings,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -147,7 +146,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
-                EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
+                EncryptedOpenings::from_bytes(&input.encrypted_openings).map_err(|err| err.to_string())?,
                 input.minimum_value_promise.into(),
             ))
         } else {
@@ -215,10 +214,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 output_hash: Vec::new(),
                 covenant,
                 version: input.version as u32,
-                encrypted_value: input
-                    .encrypted_value()
+                encrypted_openings: input
+                    .encrypted_openings()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
-                    .to_vec(),
+                    .as_byte_vector(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
@@ -259,7 +258,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let mut buffer = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|e| e.to_string())?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+        let encrypted_openings =
+            EncryptedOpenings::from_bytes(&output.encrypted_openings).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = output.minimum_value_promise.into();
 
@@ -274,7 +274,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         ))
     }
@@ -295,7 +295,7 @@ impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
             metadata_signature: Some(output.metadata_signature.into()),
             covenant,
             version: output.version as u32,
-            encrypted_value: output.encrypted_value.to_vec(),
+            encrypted_openings: output.encrypted_openings.as_byte_vector(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }
@@ -311,11 +311,6 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .sidechain_feature
             .and_then(|features| features.side_chain_feature)
             .map(SideChainFeature::try_from)
-            .transpose()?;
-
-        let encrypted_openings = features
-            .encrypted_openings
-            .map(EncryptedOpeningsX::try_from)
             .transpose()?;
 
         let output_type = features
@@ -336,7 +331,6 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
-            encrypted_openings,
             RangeProofType::from_byte(range_proof_type)
                 .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
@@ -351,7 +345,6 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             coinbase_extra: features.coinbase_extra,
             version: features.version as u32,
             sidechain_feature: features.sidechain_feature.map(Into::into),
-            encrypted_openings: features.encrypted_openings.map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }
@@ -359,17 +352,17 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
 
 //---------------------------------- EncryptedOpenings --------------------------------------------//
 
-impl TryFrom<proto::types::EncryptedOpenings> for EncryptedOpeningsX {
+impl TryFrom<proto::types::EncryptedOpenings> for EncryptedOpenings {
     type Error = String;
 
     fn try_from(encrypted_openings: proto::types::EncryptedOpenings) -> Result<Self, Self::Error> {
-        EncryptedOpeningsX::from_bytes(encrypted_openings.value_and_mask.as_slice())
+        EncryptedOpenings::from_bytes(encrypted_openings.value_and_mask.as_slice())
             .map_err(|err| format!("Could not convert encrypted openings: {:?}", err))
     }
 }
 
-impl From<EncryptedOpeningsX> for proto::types::EncryptedOpenings {
-    fn from(encrypted_openings: EncryptedOpeningsX) -> Self {
+impl From<EncryptedOpenings> for proto::types::EncryptedOpenings {
+    fn from(encrypted_openings: EncryptedOpenings) -> Self {
         encrypted_openings.into()
     }
 }

@@ -126,7 +126,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.encrypted_value,
+                        output.encrypted_openings,
                         output.minimum_value_promise,
                     );
                 },

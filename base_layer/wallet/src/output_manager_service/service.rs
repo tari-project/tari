@@ -42,7 +42,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -821,10 +821,11 @@ where
             .commitment
             .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
         let features = single_round_sender_data.features.clone();
-        let encrypted_value = EncryptedValue::encrypt_value(
+        let encrypted_openings = EncryptedOpenings::encrypt_openings(
             &self.resources.rewind_data.encryption_key,
             &commitment,
             single_round_sender_data.amount,
+            &spending_key,
         )?;
         let minimum_value_promise = single_round_sender_data.minimum_value_promise;
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -847,12 +848,12 @@ where
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.ephemeral_public_nonce,
                     &single_round_sender_data.covenant,
-                    &encrypted_value,
+                    &encrypted_openings,
                     minimum_value_promise,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
-                encrypted_value,
+                encrypted_openings,
                 minimum_value_promise,
             ),
             &self.resources.factories,
@@ -1317,8 +1318,12 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_openings = EncryptedOpenings::encrypt_openings(
+            &self.resources.rewind_data.encryption_key,
+            &commitment,
+            amount,
+            &spending_key,
+        )?;
         let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -1328,7 +1333,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_amount_promise,
         )?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -1343,7 +1348,7 @@ where
                 metadata_signature,
                 0,
                 covenant,
-                encrypted_value,
+                encrypted_openings,
                 minimum_amount_promise,
             ),
             &self.resources.factories,
@@ -1810,10 +1815,11 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_value = EncryptedValue::encrypt_value(
+            let encrypted_openings = EncryptedOpenings::encrypt_openings(
                 &self.resources.rewind_data.encryption_key,
                 &commitment,
                 amount_per_split,
+                &spending_key,
             )?;
 
             let minimum_amount_promise = MicroTari::zero();
@@ -1825,7 +1831,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_value,
+                &encrypted_openings,
                 minimum_amount_promise,
             )?;
 
@@ -1841,7 +1847,7 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_value,
+                    encrypted_openings,
                     minimum_amount_promise,
                 ),
                 &self.resources.factories,
@@ -2028,10 +2034,11 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_value = EncryptedValue::encrypt_value(
+            let encrypted_openings = EncryptedOpenings::encrypt_openings(
                 &self.resources.rewind_data.encryption_key,
                 &commitment,
                 amount_per_split,
+                &spending_key,
             )?;
             let minimum_value_promise = MicroTari::zero();
             let commitment_signature = TransactionOutput::create_metadata_signature(
@@ -2042,7 +2049,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_value,
+                &encrypted_openings,
                 minimum_value_promise,
             )?;
 
@@ -2058,7 +2065,7 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_value,
+                    encrypted_openings,
                     minimum_value_promise,
                 ),
                 &self.resources.factories,
@@ -2238,8 +2245,12 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, aftertax_amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
+        let encrypted_openings = EncryptedOpenings::encrypt_openings(
+            &self.resources.rewind_data.encryption_key,
+            &commitment,
+            aftertax_amount,
+            &spending_key,
+        )?;
         let minimum_value_promise = MicroTari::zero();
         let commitment_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -2249,7 +2260,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_value_promise,
         )?;
 
@@ -2265,7 +2276,7 @@ where
                 commitment_signature,
                 0,
                 covenant.clone(),
-                encrypted_value,
+                encrypted_openings,
                 minimum_value_promise,
             ),
             &self.resources.factories,
@@ -2356,11 +2367,10 @@ where
             self.node_identity.as_ref().secret_key(),
             &output.sender_offset_public_key,
         );
-        let blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
+        if let Ok((amount, blinding_factor)) =
+            EncryptedOpenings::decrypt_openings(&encryption_key, &output.commitment, &output.encrypted_openings)
         {
-            let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
             if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
                 let rewound_output = UnblindedOutput::new(
                     output.version,
@@ -2376,7 +2386,7 @@ where
                     // to to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
-                    output.encrypted_value,
+                    output.encrypted_openings,
                     output.minimum_value_promise,
                 );
 
@@ -2639,15 +2649,11 @@ where
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
-            let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            let committed_value =
-                EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
+            let openings =
+                EncryptedOpenings::decrypt_openings(&encryption_key, &output.commitment, &output.encrypted_openings);
 
-            if let Ok(committed_value) = committed_value {
-                let blinding_factor =
-                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-
+            if let Ok((committed_value, blinding_factor)) = openings {
                 if output.verify_mask(
                     &self.resources.factories.range_proof,
                     &blinding_factor,
@@ -2665,11 +2671,12 @@ where
                         output.metadata_signature,
                         0,
                         output.covenant,
-                        output.encrypted_value,
+                        output.encrypted_openings,
                         output.minimum_value_promise,
                     );
 
                     let tx_id = TxId::new_random();
+                    let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                         rewound_output.clone(),
                         &self.resources.factories,

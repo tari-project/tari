@@ -217,7 +217,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction_components::{EncryptedValue, OutputFeatures, TransactionKernel, TransactionKernelVersion},
+            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionKernel, TransactionKernelVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 RewindData,
@@ -280,7 +280,7 @@ mod test {
         // Rewind params
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
         let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
+            rewind_blinding_key,
             encryption_key: PrivateKey::random(&mut OsRng),
         };
         let amount = MicroTari(500);
@@ -314,13 +314,13 @@ mod test {
         let data = receiver.get_signed_data().unwrap();
 
         let output = &data.output;
-        let committed_value =
-            EncryptedValue::decrypt_value(&rewind_data.encryption_key, &output.commitment, &output.encrypted_value)
-                .unwrap();
+        let (committed_value, blinding_factor) = EncryptedOpenings::decrypt_openings(
+            &rewind_data.encryption_key,
+            &output.commitment,
+            &output.encrypted_openings,
+        )
+        .unwrap();
         assert_eq!(committed_value, amount);
-        let blinding_factor = output
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
     }
 }

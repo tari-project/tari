@@ -42,7 +42,7 @@ use crate::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedOpenings,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -176,10 +176,11 @@ impl TestParams {
             .commitment_factory
             .commit_value(&self.spend_key, params.value.as_u64());
 
-        let encrypted_value = if let Some(rewind_data) = rewind_data {
-            EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, params.value).unwrap()
+        let encrypted_openings = if let Some(rewind_data) = rewind_data {
+            EncryptedOpenings::encrypt_openings(&rewind_data.encryption_key, &commitment, params.value, &self.spend_key)
+                .unwrap()
         } else {
-            EncryptedValue::default()
+            EncryptedOpenings::default()
         };
         let version = match params.output_version {
             Some(v) => v,
@@ -193,7 +194,7 @@ impl TestParams {
             &params.features,
             &self.sender_offset_private_key,
             &params.covenant,
-            &encrypted_value,
+            &encrypted_openings,
             params.minimum_value_promise,
         )
         .unwrap();
@@ -212,7 +213,7 @@ impl TestParams {
             metadata_signature,
             0,
             params.covenant,
-            encrypted_value,
+            encrypted_openings,
             params.minimum_value_promise,
         )
     }
@@ -716,7 +717,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
                 sender_offset_public_key: input.sender_offset_public_key.clone(),
                 covenant: input.covenant.clone(),
                 version: input.version,
-                encrypted_value: input.encrypted_value.clone(),
+                encrypted_openings: input.encrypted_openings,
                 minimum_value_promise: input.minimum_value_promise,
             },
             input.input_data.clone(),
@@ -752,7 +753,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.features,
             &test_params.sender_offset_private_key,
             &utxo.covenant,
-            &utxo.encrypted_value,
+            &utxo.encrypted_openings,
             utxo.minimum_value_promise,
         )
         .unwrap();
@@ -772,7 +773,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     let covenant = Covenant::default();
     let change_features = OutputFeatures::default();
 
-    let encrypted_value = EncryptedValue::default();
+    let encrypted_openings = EncryptedOpenings::default();
 
     let minimum_value_promise = MicroTari::zero();
 
@@ -784,7 +785,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &change_features,
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
-        &encrypted_value,
+        &encrypted_openings,
         minimum_value_promise,
     )
     .unwrap();
@@ -802,7 +803,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         change_metadata_sig,
         0,
         covenant,
-        encrypted_value,
+        encrypted_openings,
         minimum_value_promise,
     );
     outputs.push(change_output);
@@ -855,7 +856,7 @@ pub fn create_utxo(
         features,
         &offset_keys.k,
         covenant,
-        &EncryptedValue::default(),
+        &EncryptedOpenings::default(),
         minimum_value_promise,
     )
     .unwrap();
@@ -868,7 +869,7 @@ pub fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         covenant.clone(),
-        EncryptedValue::default(),
+        EncryptedOpenings::default(),
         minimum_value_promise,
     );
     utxo.verify_range_proof(&CryptoFactories::default().range_proof)

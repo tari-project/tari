@@ -1107,7 +1107,6 @@ async fn consensus_validation_versions() {
         0,
         Default::default(),
         None,
-        None,
         RangeProofType::BulletProofPlus,
     );
 

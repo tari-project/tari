@@ -33,7 +33,7 @@ use tari_crypto::{
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction_components::{
-        EncryptedValue,
+        EncryptedOpenings,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -124,9 +124,11 @@ impl SingleReceiverTransactionProtocol {
 
         let sender_features = sender_info.features.clone();
 
-        let encrypted_value = rewind_data
+        let encrypted_openings = rewind_data
             .as_ref()
-            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, sender_info.amount))
+            .map(|rd| {
+                EncryptedOpenings::encrypt_openings(&rd.encryption_key, &commitment, sender_info.amount, spending_key)
+            })
             .transpose()
             .map_err(|_| TPE::EncryptionError)?
             .unwrap_or_default();
@@ -142,7 +144,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.sender_offset_public_key,
             &sender_info.ephemeral_public_nonce,
             &sender_info.covenant,
-            &encrypted_value,
+            &encrypted_openings,
             minimum_value_promise,
         )?;
 
@@ -158,7 +160,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
             sender_info.covenant.clone(),
-            encrypted_value,
+            encrypted_openings,
             minimum_value_promise,
         );
         Ok(output)

@@ -106,7 +106,7 @@ diesel::table! {
         spending_priority -> Integer,
         covenant -> Binary,
         mined_timestamp -> Nullable<Timestamp>,
-        encrypted_value -> Binary,
+        encrypted_openings -> Binary,
         minimum_value_promise -> BigInt,
         source -> Integer,
         last_validation_timestamp -> Nullable<Timestamp>,

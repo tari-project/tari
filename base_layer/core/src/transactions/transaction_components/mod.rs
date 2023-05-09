@@ -24,8 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use chacha20poly1305::Key;
-pub use encrypted_openings_x::{EncryptedOpeningsErrorX, EncryptedOpeningsX};
-pub use encrypted_value::{EncryptedValue, EncryptionError};
+pub use encrypted_openings::{EncryptedOpenings, EncryptedOpeningsError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
@@ -50,8 +49,7 @@ pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 use zeroize::Zeroize;
 
-mod encrypted_openings_x;
-mod encrypted_value;
+mod encrypted_openings;
 mod error;
 mod kernel_builder;
 mod kernel_features;
@@ -103,7 +101,7 @@ pub(super) fn hash_output(
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
-    encrypted_value: &EncryptedValue,
+    encrypted_openings: &EncryptedOpenings,
     sender_offset_public_key: &PublicKey,
     minimum_value_promise: MicroTari,
 ) -> FixedHash {
@@ -113,7 +111,7 @@ pub(super) fn hash_output(
         .chain(commitment)
         .chain(script)
         .chain(covenant)
-        .chain(encrypted_value)
+        .chain(encrypted_openings)
         .chain(sender_offset_public_key)
         .chain(&minimum_value_promise);
 

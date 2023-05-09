@@ -32,7 +32,6 @@ use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
 use crate::transactions::transaction_components::{
-    encrypted_openings_x::EncryptedOpeningsX,
     range_proof_type::RangeProofType,
     side_chain::SideChainFeature,
     CodeTemplateRegistration,
@@ -59,8 +58,6 @@ pub struct OutputFeatures {
     pub coinbase_extra: Vec<u8>,
     /// Features that are specific to a side chain
     pub sidechain_feature: Option<SideChainFeature>,
-    /// Encrypted Pedersen commitment openings (value and mask) for the output
-    pub encrypted_openings: Option<EncryptedOpeningsX>,
     /// The type of range proof used in the output
     pub range_proof_type: RangeProofType,
 }
@@ -72,7 +69,6 @@ impl OutputFeatures {
         maturity: u64,
         coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
-        encrypted_openings: Option<EncryptedOpeningsX>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         OutputFeatures {
@@ -81,7 +77,6 @@ impl OutputFeatures {
             maturity,
             coinbase_extra,
             sidechain_feature,
-            encrypted_openings,
             range_proof_type,
         }
     }
@@ -91,7 +86,6 @@ impl OutputFeatures {
         maturity: u64,
         coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
-        encrypted_openings: Option<EncryptedOpeningsX>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         OutputFeatures::new(
@@ -100,7 +94,6 @@ impl OutputFeatures {
             maturity,
             coinbase_extra,
             sidechain_feature,
-            encrypted_openings,
             range_proof_type,
         )
     }
@@ -172,7 +165,7 @@ impl OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, None, RangeProofType::default())
+        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, RangeProofType::default())
     }
 }
 
