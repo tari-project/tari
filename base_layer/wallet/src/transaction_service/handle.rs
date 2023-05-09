@@ -474,13 +474,15 @@ impl TransactionServiceHandle {
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::RegisterValidatorNode {
-                amount,
-                validator_node_public_key,
-                validator_node_signature,
-                selection_criteria,
-                fee_per_gram,
-                message,
+            .call(TransactionServiceRequest::RegisterCodeTemplate {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
             })
             .await??
         {
