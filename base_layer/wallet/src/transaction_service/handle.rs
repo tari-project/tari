@@ -463,34 +463,6 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn register_validator_node(
-        &mut self,
-        amount: MicroTari,
-        validator_node_public_key: PublicKey,
-        validator_node_signature: Signature,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
-        message: String,
-    ) -> Result<TxId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-            })
-            .await??
-        {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn send_one_sided_transaction(
         &mut self,
         destination: TariAddress,
