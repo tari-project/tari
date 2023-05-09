@@ -34,6 +34,7 @@ use crate::{
     ui::{
         components::{
             base_node::BaseNode,
+            burn_tab::BurnTab,
             contacts_tab::ContactsTab,
             events_component::EventsComponent,
             log_tab::LogTab,
@@ -88,6 +89,7 @@ impl<B: Backend> App<B> {
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
             .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
+            .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Events".into(), Box::new(EventsComponent::new()))

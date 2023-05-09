@@ -20,40 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::connectivity::ConnectivityError;
-use tari_contacts::contacts_service::error::ContactsServiceError;
-use tari_utilities::hex::HexError;
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
-    transaction_service::error::TransactionServiceError,
-};
-use thiserror::Error;
+use chrono::NaiveDateTime;
 
-#[derive(Error, Debug)]
-pub enum UiError {
-    #[error(transparent)]
-    TransactionService(#[from] TransactionServiceError),
-    #[error(transparent)]
-    OutputManager(#[from] OutputManagerError),
-    #[error(transparent)]
-    ContactsService(#[from] ContactsServiceError),
-    #[error(transparent)]
-    Connectivity(#[from] ConnectivityError),
-    #[error(transparent)]
-    HexError(#[from] HexError),
-    #[error(transparent)]
-    WalletError(#[from] WalletError),
-    #[error(transparent)]
-    WalletStorageError(#[from] WalletStorageError),
-    #[error("Could not convert string into Public Key")]
-    PublicKeyParseError,
-    #[error("Could not convert string into Net Address")]
-    AddressParseError,
-    #[error("Peer did not include an address")]
-    NoAddress,
-    #[error("Specified burn proof file already exists")]
-    BurntProofFileExists,
-    #[error("Channel send error: `{0}`")]
-    SendError(String),
+#[derive(Debug, Clone)]
+pub struct UiBurntProof {
+    pub id: u32,
+    pub reciprocal_claim_public_key: String,
+    pub payload: String,
+    pub burned_at: NaiveDateTime,
 }

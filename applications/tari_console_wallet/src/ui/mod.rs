@@ -29,9 +29,11 @@ use crate::utils::crossterm_events::CrosstermEvents;
 mod app;
 mod components;
 pub mod state;
+mod ui_burnt_proof;
 mod ui_contact;
 mod ui_error;
 mod widgets;
+
 use std::io::{stdout, Stdout};
 
 pub use app::*;
@@ -43,8 +45,7 @@ use crossterm::{
 use log::*;
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
-pub use ui_contact::*;
-pub use ui_error::*;
+use ui_error::UiError;
 
 use crate::utils::events::{Event, EventStream};
 
@@ -58,6 +59,8 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.refresh_transaction_state().await?;
             trace!(target: LOG_TARGET, "Refreshing contacts state");
             app.app_state.refresh_contacts_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
+            app.app_state.refresh_burnt_proofs_state().await?;
             trace!(target: LOG_TARGET, "Refreshing connected peers state");
             app.app_state.refresh_connected_peers_state().await?;
             trace!(target: LOG_TARGET, "Checking connectivity");

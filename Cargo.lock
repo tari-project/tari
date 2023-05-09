@@ -5336,6 +5336,7 @@ dependencies = [
 name = "tari_common_types"
 version = "0.50.0-pre.1"
 dependencies = [
+ "base64 0.21.0",
  "borsh",
  "chacha20poly1305 0.10.1",
  "digest 0.9.0",

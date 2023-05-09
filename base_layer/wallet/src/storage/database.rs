@@ -25,6 +25,7 @@ use std::{
     sync::Arc,
 };
 
+use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -61,6 +62,16 @@ pub trait WalletBackend: Send + Sync + Clone {
 
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
+
+    fn create_burnt_proof(
+        &self,
+        id: u32,
+        reciprocal_claim_public_key: String,
+        payload: String,
+    ) -> Result<(), WalletStorageError>;
+    fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError>;
+    fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError>;
+    fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -350,6 +361,28 @@ where T: WalletBackend + 'static
     ) -> Result<(), WalletStorageError> {
         self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
         Ok(())
+    }
+
+    pub fn create_burnt_proof(
+        &self,
+        id: u32,
+        reciprocal_claim_public_key: String,
+        payload: String,
+    ) -> Result<(), WalletStorageError> {
+        self.db.create_burnt_proof(id, reciprocal_claim_public_key, payload)?;
+        Ok(())
+    }
+
+    pub fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError> {
+        self.db.fetch_burnt_proof(id)
+    }
+
+    pub fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError> {
+        self.db.fetch_burnt_proofs()
+    }
+
+    pub fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
+        self.db.delete_burnt_proof(id)
     }
 }
 
