@@ -193,6 +193,7 @@ impl BaseNodeBuilder {
             consensus_manager.clone(),
             Box::new(mempool_validator),
         );
+
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
             node_identity,
@@ -361,6 +362,7 @@ async fn setup_comms_services(
 ) -> (CommsNode, Dht, MessagingEventSender, Shutdown) {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
     let shutdown = Shutdown::new();
+
     let (comms, dht, messaging_events) = initialize_local_test_comms(
         node_identity,
         publisher,

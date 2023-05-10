@@ -5562,6 +5562,7 @@ dependencies = [
  "futures 0.3.26",
  "hex",
  "integer-encoding",
+ "libsqlite3-sys",
  "lmdb-zero",
  "log",
  "log-mdc",

@@ -1,24 +1,24 @@
-// Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
 //
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
 //
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 
@@ -66,8 +66,6 @@ use crate::helpers::{
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
 
-mod helpers;
-
 async fn setup() -> (
     BaseNodeWalletRpcService<TempDatabase>,
     BaseNodeSyncRpcService<TempDatabase>,
@@ -84,13 +82,11 @@ async fn setup() -> (
         .build();
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
-
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();
-
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
         .start(temp_dir.path().to_str().unwrap())
@@ -124,7 +120,6 @@ async fn setup() -> (
         temp_dir,
     )
 }
-
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn test_base_node_wallet_rpc() {
@@ -335,7 +330,6 @@ async fn test_get_height_at_time() {
     let resp = service.get_height_at_time(req).await.unwrap().into_message();
     assert_eq!(resp, 10);
 }
-
 #[tokio::test]
 async fn test_sync_utxos_by_block() {
     let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
