@@ -155,7 +155,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()
-        .with_listener_address(node_identity.first_public_address())
+        .with_listener_address(node_identity.first_public_address().unwrap())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_user_agent(&"/test/1.0")

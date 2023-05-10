@@ -37,7 +37,7 @@ async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: 
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -48,7 +48,7 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
     let seed_node = world.get_node(&seed_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         seed_node.identity.public_key().to_hex(),
-        seed_node.identity.first_public_address().to_string(),
+        seed_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -57,7 +57,7 @@ async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: Str
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -469,7 +469,7 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -481,7 +481,7 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
