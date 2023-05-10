@@ -24,6 +24,8 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -46,14 +48,16 @@ use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::storage::models::DbUnblindedOutput,
+    output_manager_service::storage::{models::DbUnblindedOutput, OutputSource},
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     },
+    transaction_service::handle::TransactionServiceRequest,
+    util::{wallet_identity::WalletIdentity, watch::Watch},
     utxo_scanner_service::{
-        handle::UtxoScannerEvent,
+        handle::{UtxoScannerEvent, UtxoScannerHandle},
         service::{ScannedBlock, UtxoScannerService},
         uxto_scanner_service_builder::UtxoScannerMode,
     },
@@ -65,25 +69,13 @@ use tokio::{
     time,
 };
 
-pub mod support;
-
-use support::{
+use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
-    transaction_service_mock::make_transaction_service_mock,
+    transaction_service_mock::{make_transaction_service_mock, TransactionServiceMockState},
     utils::make_input,
 };
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
-use tari_wallet::{
-    output_manager_service::storage::OutputSource,
-    transaction_service::handle::TransactionServiceRequest,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
-    utxo_scanner_service::handle::UtxoScannerHandle,
-};
-
-use crate::support::transaction_service_mock::TransactionServiceMockState;
 
 pub struct UtxoScannerTestInterface {
     scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityMock>>,

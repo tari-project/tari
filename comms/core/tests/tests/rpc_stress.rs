@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,14 +24,9 @@
 // Run as normal, --nocapture for some extra output
 // cargo test --package tari_comms --test rpc_stress run  --all-features --release -- --exact --nocapture
 
-mod greeting_service;
-use greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest};
-
-mod helpers;
 use std::{future::Future, time::Duration};
 
 use futures::{future, StreamExt};
-use helpers::create_comms;
 use tari_comms::{
     protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,
@@ -39,6 +34,11 @@ use tari_comms::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time::Instant};
+
+use crate::tests::{
+    greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest},
+    helpers::create_comms,
+};
 
 async fn spawn_node(signal: ShutdownSignal) -> CommsNode {
     let rpc_server = RpcServer::builder()
@@ -190,7 +190,6 @@ async fn basic() {
     .await;
 }
 
-#[allow(dead_code)]
 async fn many_small_messages() {
     run_stress_test(Params {
         num_tasks: 10,
@@ -213,7 +212,6 @@ async fn few_large_messages() {
     .await;
 }
 
-#[allow(dead_code)]
 async fn payload_limit() {
     run_stress_test(Params {
         num_tasks: 50,
@@ -225,7 +223,6 @@ async fn payload_limit() {
     .await;
 }
 
-#[allow(dead_code)]
 async fn high_contention() {
     run_stress_test(Params {
         num_tasks: 1000,
@@ -237,7 +234,6 @@ async fn high_contention() {
     .await;
 }
 
-#[allow(dead_code)]
 async fn high_concurrency() {
     run_stress_test(Params {
         num_tasks: 1000,
@@ -249,7 +245,6 @@ async fn high_concurrency() {
     .await;
 }
 
-#[allow(dead_code)]
 async fn high_contention_high_concurrency() {
     run_stress_test(Params {
         num_tasks: 2000,
@@ -270,7 +265,7 @@ async fn run() {
         log_timing("many_small_messages", many_small_messages()).await;
         log_timing("few_large_messages", few_large_messages()).await;
     }
-    // log_timing("payload_limit", payload_limit()).await;
+    log_timing("payload_limit", payload_limit()).await;
     // log_timing("high_contention", high_contention()).await;
     // log_timing("high_concurrency", high_concurrency()).await;
     // log_timing("high_contention_high_concurrency", high_contention_high_concurrency()).await;

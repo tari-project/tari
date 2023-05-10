@@ -24,7 +24,6 @@ use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
-use support::utils::make_input;
 use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -80,7 +79,10 @@ use tari_test_utils::{collect_recv, comms_and_services::get_next_memory_address,
 use tari_utilities::{Hidden, SafePassword};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
+    output_manager_service::{
+        storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
+        UtxoSelectionCriteria,
+    },
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -100,8 +102,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
 
-pub mod support;
-use tari_wallet::output_manager_service::{storage::database::OutputManagerDatabase, UtxoSelectionCriteria};
+use crate::support::utils::make_input;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(

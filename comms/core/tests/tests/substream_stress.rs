@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod helpers;
 use std::time::Duration;
 
 use futures::{future, SinkExt, StreamExt};
-use helpers::create_comms;
 use tari_comms::{
     framing,
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},
@@ -36,6 +34,8 @@ use tari_comms::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::unpack_enum;
 use tokio::{sync::mpsc, task, time::Instant};
+
+use crate::tests::helpers::create_comms;
 
 const PROTOCOL_NAME: &[u8] = b"test/dummy/protocol";
 

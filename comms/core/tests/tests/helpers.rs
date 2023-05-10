@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -45,7 +45,6 @@ pub fn create_peer_storage() -> CommsDatabase {
     LMDBWrapper::new(Arc::new(peer_database))
 }
 
-#[cfg(test)]
 pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,

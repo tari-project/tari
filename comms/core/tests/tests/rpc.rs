@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,15 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![cfg(feature = "rpc")]
-
-mod greeting_service;
-use greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest};
-
-mod helpers;
 use std::time::Duration;
 
 use futures::StreamExt;
-use helpers::create_comms;
 use tari_comms::{
     protocol::rpc::{RpcServer, RpcServerHandle},
     transports::TcpTransport,
@@ -37,6 +31,11 @@ use tari_comms::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::async_assert_eventually;
 use tokio::time;
+
+use crate::tests::{
+    greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest},
+    helpers::create_comms,
+};
 
 async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, RpcServerHandle) {
     let rpc_server = RpcServer::builder()
