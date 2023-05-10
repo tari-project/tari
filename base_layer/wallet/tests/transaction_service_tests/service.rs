@@ -1875,7 +1875,7 @@ async fn discovery_async_return_test() {
     carol_comms.wait_until_shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn test_power_mode_updates() {
     let factories = CryptoFactories::default();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
