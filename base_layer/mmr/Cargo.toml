@@ -29,6 +29,7 @@ rand="0.8.0"
 blake2 = "0.9.0"
 serde_json = "1.0"
 bincode = "1.1"
+
 [lib]
 # Disable libtest from intercepting Criterion bench arguments
 bench = false
@@ -36,3 +37,8 @@ bench = false
 [[bench]]
 name = "bench"
 harness = false
+
+[[test]]
+name="tari_mmr_integration_tests"
+path="tests/mmr_integration_tests.rs"
+required-features=["native_bitmap"]

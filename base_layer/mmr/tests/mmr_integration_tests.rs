@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,20 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
 mod support;
-
-use croaring::Bitmap;
-use tari_mmr::MerkleCheckPoint;
-
-#[test]
-fn serialize_deserialize() {
-    let h1 = support::int_to_hash(1);
-    let mut checkpoint = MerkleCheckPoint::new(vec![h1.clone()], Bitmap::create(), 0);
-    checkpoint.push_deletion(1);
-    let bytes = bincode::serialize(&checkpoint).unwrap();
-    let der_checkpoint = bincode::deserialize::<MerkleCheckPoint>(&bytes).unwrap();
-    assert_eq!(der_checkpoint.nodes_added(), &[h1]);
-    assert!(der_checkpoint.nodes_deleted().contains(1));
-    assert_eq!(der_checkpoint.accumulated_nodes_added_count(), 1);
-}
+pub mod tests;
