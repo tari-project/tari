@@ -34,7 +34,7 @@ use crate::transactions::{
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
-        RewindData,
+        RecoveryData,
         TransactionMetadata,
         TransactionProtocolError,
     },
@@ -124,19 +124,18 @@ impl ReceiverTransactionProtocol {
         ReceiverTransactionProtocol { state }
     }
 
-    /// This function creates a new Receiver Transaction Protocol where the resulting receiver output range proof is
-    /// rewindable
-    pub fn new_with_rewindable_output(
+    /// This function creates a new Receiver Transaction Protocol where the resulting receiver output can be recovered
+    pub fn new_with_recoverable_output(
         info: TransactionSenderMessage,
         nonce: PrivateKey,
         spending_key: PrivateKey,
         factories: &CryptoFactories,
-        rewind_data: &RewindData,
+        recovery_data: &RecoveryData,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, Some(rewind_data))
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, Some(recovery_data))
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -175,9 +174,9 @@ impl ReceiverTransactionProtocol {
         key: PrivateKey,
         data: &SD,
         factories: &CryptoFactories,
-        rewind_data: Option<&RewindData>,
+        recovery_data: Option<&RecoveryData>,
     ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, rewind_data);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, recovery_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -220,7 +219,7 @@ mod test {
             transaction_components::{EncryptedOpenings, OutputFeatures, TransactionKernel, TransactionKernelVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
-                RewindData,
+                RecoveryData,
                 TransactionMetadata,
             },
             ReceiverTransactionProtocol,
@@ -274,13 +273,11 @@ mod test {
     }
 
     #[test]
-    fn single_round_recipient_with_rewinding_bulletproofs() {
+    fn single_round_recipient_with_recovery() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Rewind params
-        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_data = RewindData {
-            rewind_blinding_key,
+        let recovery_data = RecoveryData {
             encryption_key: PrivateKey::random(&mut OsRng),
         };
         let amount = MicroTari(500);
@@ -303,19 +300,19 @@ mod test {
             minimum_value_promise: MicroTari::zero(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
-        let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let receiver = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
             &factories,
-            &rewind_data,
+            &recovery_data,
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
 
         let output = &data.output;
         let (committed_value, blinding_factor) = EncryptedOpenings::decrypt_openings(
-            &rewind_data.encryption_key,
+            &recovery_data.encryption_key,
             &output.commitment,
             &output.encrypted_openings,
         )

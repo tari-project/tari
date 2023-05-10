@@ -172,9 +172,7 @@ impl TransactionMetadata {
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
-pub struct RewindData {
-    #[derivative(Debug = "ignore")]
-    pub rewind_blinding_key: PrivateKey,
+pub struct RecoveryData {
     pub encryption_key: PrivateKey,
 }
 

@@ -71,6 +71,69 @@ pub struct EncryptedOpenings {
 }
 
 impl EncryptedOpenings {
+    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
+
+    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
+    /// Notes: - This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`
+    ///        - With the use of a secure random nonce, there's no added security benefit in using the commitment in the
+    ///          internal key derivation; but it binds the encrypted openings to the commitment
+    pub fn encrypt_openings(
+        encryption_key: &PrivateKey,
+        commitment: &Commitment,
+        value: MicroTari,
+        mask: &PrivateKey,
+    ) -> Result<EncryptedOpenings, EncryptedOpeningsError> {
+        let mut openings = value.as_u64().to_le_bytes().to_vec();
+        openings.append(&mut mask.to_vec());
+        let aead_payload = Payload {
+            msg: openings.as_slice(),
+            aad: Self::TAG,
+        };
+
+        // Produce a secure random nonce
+        let mut nonce = [0u8; size_of::<XNonce>()];
+        OsRng.fill_bytes(&mut nonce);
+        let nonce_ga = XNonce::from_slice(&nonce);
+
+        let aead_key = kdf_aead(encryption_key, commitment);
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+        let mut ciphertext = cipher.encrypt(nonce_ga, aead_payload)?;
+        let mut ciphertext_integral_nonce = nonce.to_vec();
+        ciphertext_integral_nonce.append(&mut ciphertext);
+
+        EncryptedOpenings::from_bytes(ciphertext_integral_nonce.as_slice())
+    }
+
+    /// Authenticate and decrypt the value and mask
+    /// Note: This design (similar to other AEADs) is not key committing, thus the caller must not rely on successful
+    ///       decryption to assert that the expected key was used
+    pub fn decrypt_openings(
+        encryption_key: &PrivateKey,
+        commitment: &Commitment,
+        encrypted_openings: &EncryptedOpenings,
+    ) -> Result<(MicroTari, PrivateKey), EncryptedOpeningsError> {
+        // Extract the nonce and ciphertext
+        let binding = encrypted_openings.as_byte_vector();
+        let (nonce, ciphertext) = binding.split_at(size_of::<XNonce>());
+        let nonce_ga = XNonce::from_slice(nonce);
+
+        let aead_key = kdf_aead(encryption_key, commitment);
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+        let aead_payload = Payload {
+            msg: ciphertext,
+            aad: Self::TAG,
+        };
+        let decrypted_bytes = cipher.decrypt(nonce_ga, aead_payload)?;
+        let mut value_bytes = [0u8; VALUE_SIZE];
+        value_bytes.clone_from_slice(&decrypted_bytes[0..VALUE_SIZE]);
+        let mut mask_bytes = [0u8; KEY_SIZE];
+        mask_bytes.clone_from_slice(&decrypted_bytes[VALUE_SIZE..VALUE_SIZE + KEY_SIZE]);
+        Ok((
+            u64::from_le_bytes(value_bytes).into(),
+            PrivateKey::from_bytes(&mask_bytes)?,
+        ))
+    }
+
     /// Custom convert `EncryptedOpenings` to bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedOpeningsError> {
         if bytes.len() != SIZE {
@@ -142,71 +205,6 @@ impl From<Error> for EncryptedOpeningsError {
     }
 }
 
-impl EncryptedOpenings {
-    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
-
-    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
-    /// Notes: - This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`
-    ///        - With the use of a secure random nonce, there's no added security benefit in using the commitment in the
-    ///          internal key derivation; but it binds the encrypted openings to the commitment
-    pub fn encrypt_openings(
-        encryption_key: &PrivateKey,
-        commitment: &Commitment,
-        value: MicroTari,
-        mask: &PrivateKey,
-    ) -> Result<EncryptedOpenings, EncryptedOpeningsError> {
-        let mut openings = value.as_u64().to_le_bytes().to_vec();
-        openings.append(&mut mask.to_vec());
-        let aead_payload = Payload {
-            msg: openings.as_slice(),
-            aad: Self::TAG,
-        };
-
-        // Produce a secure random nonce
-        let mut nonce = [0u8; size_of::<XNonce>()];
-        OsRng.fill_bytes(&mut nonce);
-        let nonce_ga = XNonce::from_slice(&nonce);
-
-        let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
-        let mut ciphertext = cipher.encrypt(nonce_ga, aead_payload)?;
-        let mut ciphertext_integral_nonce = nonce.to_vec();
-        ciphertext_integral_nonce.append(&mut ciphertext);
-
-        EncryptedOpenings::from_bytes(ciphertext_integral_nonce.as_slice())
-    }
-
-    /// Authenticate and decrypt the value and mask
-    /// Note: This design (similar to other AEADs) is not key committing, thus the caller must not rely on successful
-    ///       decryption to assert that the expected key was used
-    pub fn decrypt_openings(
-        encryption_key: &PrivateKey,
-        commitment: &Commitment,
-        encrypted_openings: &EncryptedOpenings,
-    ) -> Result<(MicroTari, PrivateKey), EncryptedOpeningsError> {
-        // Extract the nonce and ciphertext
-        let binding = encrypted_openings.as_byte_vector();
-        let (nonce, ciphertext) = binding.split_at(size_of::<XNonce>());
-        let nonce_ga = XNonce::from_slice(nonce);
-
-        let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
-        let aead_payload = Payload {
-            msg: ciphertext,
-            aad: Self::TAG,
-        };
-        let decrypted_bytes = cipher.decrypt(nonce_ga, aead_payload)?;
-        let mut value_bytes = [0u8; VALUE_SIZE];
-        value_bytes.clone_from_slice(&decrypted_bytes[0..VALUE_SIZE]);
-        let mut mask_bytes = [0u8; KEY_SIZE];
-        mask_bytes.clone_from_slice(&decrypted_bytes[VALUE_SIZE..VALUE_SIZE + KEY_SIZE]);
-        Ok((
-            u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_bytes(&mask_bytes)?,
-        ))
-    }
-}
-
 // Generate a ChaCha20-Poly1305 key from a private key and commitment using Blake2b
 fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedOpeningsKey {
     let mut aead_key = EncryptedOpeningsKey::from(SafeArray::default());
@@ -260,6 +258,32 @@ mod test {
                 EncryptedOpenings::decrypt_openings(&encryption_key, &commitment, &encrypted_openings).unwrap();
             assert_eq!(amount, decrypted_value);
             assert_eq!(mask, decrypted_mask);
+            if let Ok((decrypted_value, decrypted_mask)) =
+                EncryptedOpenings::decrypt_openings(&PrivateKey::random(&mut OsRng), &commitment, &encrypted_openings)
+            {
+                assert_ne!(amount, decrypted_value);
+                assert_ne!(mask, decrypted_mask);
+            }
+        }
+    }
+
+    #[test]
+    fn it_converts_correctly() {
+        for (value, mask) in [
+            (0, PrivateKey::default()),
+            (0, PrivateKey::random(&mut OsRng)),
+            (123456, PrivateKey::default()),
+            (654321, PrivateKey::random(&mut OsRng)),
+            (u64::MAX, PrivateKey::random(&mut OsRng)),
+        ] {
+            let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+            let encryption_key = PrivateKey::random(&mut OsRng);
+            let amount = MicroTari::from(value);
+            let encrypted_openings =
+                EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, amount, &mask).unwrap();
+            let bytes = encrypted_openings.as_byte_vector();
+            let encrypted_openings_from_bytes = EncryptedOpenings::from_bytes(&bytes).unwrap();
+            assert_eq!(encrypted_openings, encrypted_openings_from_bytes);
         }
     }
 }

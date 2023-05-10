@@ -74,7 +74,7 @@ use crate::support::{
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
     transaction_service_mock::{make_transaction_service_mock, TransactionServiceMockState},
-    utils::make_input,
+    utils::make_non_recoverable_input,
 };
 
 pub struct UtxoScannerTestInterface {
@@ -243,7 +243,7 @@ async fn generate_block_headers_and_utxos(
         let mut block_outputs = Vec::new();
 
         for _j in 0..=i + 1 {
-            let (_ti, uo) = make_input(
+            let (_ti, uo) = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
@@ -258,7 +258,7 @@ async fn generate_block_headers_and_utxos(
         let transaction_outputs = block_outputs
             .clone()
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap())
+            .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
             .collect();
         let utxos = UtxosByBlock {
             height: i,
@@ -320,6 +320,7 @@ async fn test_utxo_scanner_recovery() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
+                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -419,6 +420,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
+                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -583,6 +585,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                 output.clone(),
                 &factories,
                 None,
+                None,
                 OutputSource::Unknown,
                 None,
                 None,
@@ -658,6 +661,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
+                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -871,6 +875,7 @@ async fn test_utxo_scanner_one_sided_payments() {
                 output.clone(),
                 &factories,
                 None,
+                None,
                 OutputSource::Unknown,
                 None,
                 None,
@@ -937,19 +942,19 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
+    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&factories).unwrap()],
+        utxos: vec![uo.as_transaction_output(&factories, None).unwrap()],
     };
 
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
     db_unblinded_outputs.push(
-        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap(),
+        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, None,OutputSource::Unknown, None, None).unwrap(),
     );
     test_interface
         .oms_mock_state

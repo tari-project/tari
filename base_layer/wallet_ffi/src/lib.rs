@@ -8528,7 +8528,7 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
+        transactions::test_helpers::{create_test_input, create_non_recoverable_unblinded_output, TestParams},
     };
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -10673,12 +10673,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -10803,12 +10804,13 @@ mod test {
             );
 
             // Test the consistent features case
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -10887,12 +10889,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));

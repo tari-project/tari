@@ -32,12 +32,13 @@ use crate::{
         transaction_components::{
             EncryptedOpenings,
             OutputFeatures,
+            RangeProofType,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
         },
-        transaction_protocol::RewindData,
+        transaction_protocol::RecoveryData,
     },
 };
 
@@ -58,7 +59,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_openings: EncryptedOpenings,
-    rewind_data: Option<RewindData>,
+    recovery_data: Option<RecoveryData>,
     minimum_value_promise: MicroTari,
 }
 
@@ -77,7 +78,7 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
             encrypted_openings: EncryptedOpenings::default(),
-            rewind_data: None,
+            recovery_data: None,
             minimum_value_promise: MicroTari::zero(),
         }
     }
@@ -101,8 +102,8 @@ impl UnblindedOutputBuilder {
         self
     }
 
-    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
-        self.rewind_data = Some(rewind_data);
+    pub fn with_recovery_data(mut self, recovery_data: RecoveryData) -> Self {
+        self.recovery_data = Some(recovery_data);
         self
     }
 
@@ -145,6 +146,8 @@ impl UnblindedOutputBuilder {
             &self.covenant,
             &self.encrypted_openings,
             self.minimum_value_promise,
+            // TODO: Provide user options to use `RangeProofType::RevealedValue`
+            RangeProofType::BulletProofPlus,
         )?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
         self.metadata_signature = Some(metadata_signature);

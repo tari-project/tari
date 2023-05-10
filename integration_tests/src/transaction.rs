@@ -180,7 +180,7 @@ impl TestTransactionBuilder {
             .expect("sign as sender and receiver");
         let unblinded = builder.try_build().expect("Get output from unblinded output");
         let utxo = unblinded
-            .as_transaction_output(&self.factories)
+            .as_transaction_output(&self.factories, None)
             .expect("unblinded into output");
 
         self.output = Some((utxo, unblinded));

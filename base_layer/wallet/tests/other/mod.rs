@@ -24,6 +24,7 @@ use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
+use support::utils::make_non_recoverable_input;
 use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -50,7 +51,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_unblinded_output, TestParams},
+        test_helpers::{create_non_recoverable_unblinded_output, TestParams},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },
@@ -282,7 +283,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -587,7 +588,7 @@ async fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -731,8 +732,8 @@ async fn test_import_utxo() {
     let temp_features = OutputFeatures::create_coinbase(50, None);
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);
-    let output = utxo.as_transaction_output(&factories).unwrap();
+    let utxo = create_non_recoverable_unblinded_output(script.clone(), temp_features, &p, 20000 * uT).unwrap();
+    let output = utxo.as_transaction_output(&factories, None).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet

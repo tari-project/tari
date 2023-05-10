@@ -772,8 +772,14 @@ mod test {
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
-            test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+            test_helpers::{create_test_input, create_non_recoverable_unblinded_output, TestParams},
+            transaction_components::{
+                EncryptedOpenings,
+                OutputFeatures,
+                RangeProofType,
+                TransactionOutput,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -890,6 +896,8 @@ mod test {
             &covenant,
             &encrypted_openings,
             minimum_value_promise,
+            // TODO: Provide user options to use `RangeProofType::RevealedValue`
+            RangeProofType::BulletProofPlus,
         )
         .unwrap();
 
@@ -942,12 +950,12 @@ mod test {
             .with_change_secret(p1.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
-                create_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)),
+                create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)).unwrap(),
                 p1.sender_offset_private_key.clone(),
             )
             .unwrap()
             .with_output(
-                create_unblinded_output(script, output_features, &p2, MicroTari(400)),
+                create_non_recoverable_unblinded_output(script, output_features, &p2, MicroTari(400)).unwrap(),
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
@@ -1235,7 +1243,7 @@ mod test {
             .with_offset(alice_test_params.offset.clone())
             .with_private_nonce(alice_test_params.nonce.clone())
             .with_change_secret(alice_test_params.change_spend_key.clone())
-            .with_rewindable_outputs(alice_test_params.rewind_data.clone())
+            .with_recoverable_outputs(alice_test_params.recovery_data.clone())
             .with_input(utxo, input)
             .with_amount(0, MicroTari(5000))
             .with_recipient_data(
@@ -1295,7 +1303,7 @@ mod test {
         let output_1 = &tx.body.outputs()[1];
 
         if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
-            &alice_test_params.rewind_data.encryption_key,
+            &alice_test_params.recovery_data.encryption_key,
             &output_0.commitment,
             &output_0.encrypted_openings,
         ) {
@@ -1306,7 +1314,7 @@ mod test {
                 output_0.commitment
             );
         } else if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
-            &alice_test_params.rewind_data.encryption_key,
+            &alice_test_params.recovery_data.encryption_key,
             &output_1.commitment,
             &output_1.encrypted_openings,
         ) {

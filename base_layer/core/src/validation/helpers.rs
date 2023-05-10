@@ -500,7 +500,7 @@ mod test {
             let test_params = TestParams::new();
             let rules = test_helpers::create_consensus_manager();
             let coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default(), None).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -518,7 +518,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
             coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default(), None).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -539,7 +539,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
             coinbase.value = 123.into();
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default(), None).unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);

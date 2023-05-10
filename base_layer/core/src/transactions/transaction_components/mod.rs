@@ -49,7 +49,7 @@ pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 use zeroize::Zeroize;
 
-mod encrypted_openings;
+pub mod encrypted_openings;
 mod error;
 mod kernel_builder;
 mod kernel_features;

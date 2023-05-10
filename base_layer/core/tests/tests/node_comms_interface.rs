@@ -41,7 +41,13 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, UnblindedOutput},
+        transaction_components::{
+            OutputFeatures,
+            RangeProofType,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
     txn_schema,
@@ -297,6 +303,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         &utxo.encrypted_openings,
         utxo.minimum_value_promise,
+        RangeProofType::BulletProofPlus,
     )
     .unwrap();
     let unblinded_output = UnblindedOutput::new_current_version(

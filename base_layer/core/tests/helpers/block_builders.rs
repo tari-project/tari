@@ -43,7 +43,7 @@ use tari_core::{
         test_helpers::{
             create_random_signature_from_s_key,
             create_signature,
-            create_unblinded_output,
+            create_non_recoverable_unblinded_output,
             create_utxo,
             spend_utxos,
             TestParams,
@@ -88,13 +88,14 @@ pub fn create_coinbase(
         .build()
         .unwrap();
 
-    let unblinded_output = create_unblinded_output(
+    let unblinded_output = create_non_recoverable_unblinded_output(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, extra),
         &p,
         value,
-    );
-    let output = unblinded_output.as_transaction_output(factories).unwrap();
+    )
+    .unwrap();
+    let output = unblinded_output.as_transaction_output(factories, None).unwrap();
 
     (output, kernel, unblinded_output)
 }
@@ -350,9 +351,9 @@ pub fn create_genesis_block_with_utxos(
     let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let p = TestParams::new();
-        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), &p, *v);
+        let unblinded_output = create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p, *v).unwrap();
         secrets.push(unblinded_output.clone());
-        let output = unblinded_output.as_transaction_output(factories).unwrap();
+        let output = unblinded_output.as_transaction_output(factories, None).unwrap();
         template.body.add_output(output);
         secrets
     });

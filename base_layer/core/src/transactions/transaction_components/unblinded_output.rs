@@ -67,7 +67,6 @@ use crate::{
             TransactionError,
             TransactionInputVersion,
         },
-        transaction_protocol::RewindData,
         CryptoFactories,
     },
 };
@@ -221,84 +220,7 @@ impl UnblindedOutput {
         ))
     }
 
-    pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
-        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
-        {
-            return Err(TransactionError::ValidationError(
-                "Value provided is outside the range allowed by the range proof".into(),
-            ));
-        }
-        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-
-        let range_proof = self.construct_range_proof(factories, None)?;
-
-        let output = TransactionOutput::new(
-            self.version,
-            self.features.clone(),
-            commitment,
-            range_proof,
-            self.script.clone(),
-            self.sender_offset_public_key.clone(),
-            self.metadata_signature.clone(),
-            self.covenant.clone(),
-            self.encrypted_openings,
-            self.minimum_value_promise,
-        );
-
-        Ok(output)
-    }
-
-    fn construct_range_proof(
-        &self,
-        factories: &CryptoFactories,
-        seed_nonce: Option<PrivateKey>,
-    ) -> Result<RangeProof, TransactionError> {
-        let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
-            match seed_nonce {
-                Some(nonce) => factories.range_proof.construct_proof_with_recovery_seed_nonce(
-                    &self.spending_key,
-                    self.value.into(),
-                    &nonce,
-                ),
-                None => factories
-                    .range_proof
-                    .construct_proof(&self.spending_key, self.value.into()),
-            }
-        } else {
-            let extended_mask =
-                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
-
-            let extended_witness = RistrettoExtendedWitness {
-                mask: extended_mask,
-                value: self.value.into(),
-                minimum_value_promise: self.minimum_value_promise.as_u64(),
-            };
-
-            factories
-                .range_proof
-                .construct_extended_proof(vec![extended_witness], seed_nonce)
-        };
-
-        let proof_bytes = proof_bytes_result.map_err(|err| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
-                "Failed to construct range proof: {}",
-                err
-            )))
-        })?;
-
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                "Rangeproof factory returned invalid range proof bytes".to_string(),
-            ))
-        })
-    }
-
-    pub fn as_rewindable_transaction_output(
-        &self,
-        factories: &CryptoFactories,
-        rewind_data: &RewindData,
-        range_proof: Option<&BulletRangeProof>,
-    ) -> Result<TransactionOutput, TransactionError> {
+    pub fn as_transaction_output(&self, factories: &CryptoFactories, range_proof: Option<&BulletRangeProof>) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
             return Err(TransactionError::ValidationError(
@@ -310,12 +232,7 @@ impl UnblindedOutput {
         let proof = if let Some(proof) = range_proof {
             proof.clone()
         } else {
-            self.construct_range_proof(factories, Some(rewind_data.rewind_blinding_key.clone()))
-                .map_err(|_| {
-                    TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                        "Creating rewindable transaction output".to_string(),
-                    ))
-                })?
+            self.construct_range_proof(factories)?
         };
 
         let output = TransactionOutput::new(
@@ -332,6 +249,43 @@ impl UnblindedOutput {
         );
 
         Ok(output)
+    }
+
+    fn construct_range_proof(
+        &self,
+        factories: &CryptoFactories,
+    ) -> Result<RangeProof, TransactionError> {
+        let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
+            factories
+                .range_proof
+                .construct_proof(&self.spending_key, self.value.into())
+        } else {
+            let extended_mask =
+                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
+
+            let extended_witness = RistrettoExtendedWitness {
+                mask: extended_mask,
+                value: self.value.into(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            };
+
+            factories
+                .range_proof
+                .construct_extended_proof(vec![extended_witness], None)
+        };
+
+        let proof_bytes = proof_bytes_result.map_err(|err| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
+                "Failed to construct range proof: {}",
+                err
+            )))
+        })?;
+
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                "Rangeproof factory returned invalid range proof bytes".to_string(),
+            ))
+        })
     }
 
     pub fn features_and_scripts_byte_size(&self) -> usize {

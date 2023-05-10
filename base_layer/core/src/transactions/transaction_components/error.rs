@@ -75,6 +75,8 @@ pub enum TransactionError {
     NonCoinbaseHasOutputFeaturesCoinbaseExtra,
     #[error("Coinbase extra size is {len} but the maximum is {max}")]
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
+    #[error("Invalid revealed value : {0}")]
+    InvalidRevealedValue(String),
 }
 
 impl From<CovenantError> for TransactionError {

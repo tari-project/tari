@@ -24,7 +24,6 @@ use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signatur
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    extended_range_proof::ExtendedRangeProofService,
     keys::PublicKey as PK,
     range_proof::RangeProofService as RPS,
     tari_utilities::byte_array::ByteArray,
@@ -34,6 +33,7 @@ use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction_components::{
         EncryptedOpenings,
+        RangeProofType,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -42,7 +42,7 @@ use crate::transactions::{
     transaction_protocol::{
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
-        RewindData,
+        RecoveryData,
         TransactionProtocolError as TPE,
     },
 };
@@ -61,11 +61,11 @@ impl SingleReceiverTransactionProtocol {
         nonce: SK,
         spending_key: SK,
         factories: &CryptoFactories,
-        rewind_data: Option<&RewindData>,
+        recovery_data: Option<&RecoveryData>,
     ) -> Result<RD, TPE> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
         let output =
-            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, rewind_data)?;
+            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, recovery_data)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let tx_meta = if output.is_burned() {
             let mut meta = sender_info.metadata.clone();
@@ -104,27 +104,19 @@ impl SingleReceiverTransactionProtocol {
         sender_info: &SD,
         spending_key: &SK,
         factories: &CryptoFactories,
-        rewind_data: Option<&RewindData>,
+        recovery_data: Option<&RecoveryData>,
     ) -> Result<TransactionOutput, TPE> {
         let commitment = factories
             .commitment
             .commit_value(spending_key, sender_info.amount.into());
 
-        let proof = if let Some(rewind_data) = rewind_data {
-            factories.range_proof.construct_proof_with_recovery_seed_nonce(
-                spending_key,
-                sender_info.amount.into(),
-                &rewind_data.rewind_blinding_key,
-            )?
-        } else {
-            factories
-                .range_proof
-                .construct_proof(spending_key, sender_info.amount.into())?
-        };
+        let proof = factories
+            .range_proof
+            .construct_proof(spending_key, sender_info.amount.into())?;
 
         let sender_features = sender_info.features.clone();
 
-        let encrypted_openings = rewind_data
+        let encrypted_openings = recovery_data
             .as_ref()
             .map(|rd| {
                 EncryptedOpenings::encrypt_openings(&rd.encryption_key, &commitment, sender_info.amount, spending_key)
@@ -146,6 +138,8 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.covenant,
             &encrypted_openings,
             minimum_value_promise,
+            // TODO: Provide user options to use `RangeProofType::RevealedValue`
+            RangeProofType::BulletProofPlus,
         )?;
 
         let output = TransactionOutput::new_current_version(

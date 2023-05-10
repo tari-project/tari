@@ -752,7 +752,7 @@ impl OutputSql {
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories)?.hash()
+                unblinded_output.as_transaction_output(&factories, None)?.hash()
             },
             Some(v) => match v.try_into() {
                 Ok(v) => v,

@@ -37,7 +37,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
+    types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -60,7 +60,7 @@ use tari_core::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
-            RewindData,
+            RecoveryData,
             TransactionMetadata,
         },
         CryptoFactories,
@@ -121,11 +121,9 @@ use crate::{
     },
     types::ConfidentialOutputHasher,
     util::{
-        burn_proof::{derive_burn_claim_encryption_key, derive_diffie_hellman_burn_claim_spend_key},
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
-            shared_secret_to_output_rewind_key,
             shared_secret_to_output_spending_key,
             stealth_address_script_spending_key,
         },
@@ -1105,20 +1103,18 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
-        let rewind_data = RewindData {
-            rewind_blinding_key,
+        let recovery_data = RecoveryData {
             encryption_key,
         };
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key.clone(),
             &self.resources.factories,
-            &rewind_data,
+            &recovery_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -1129,7 +1125,7 @@ where
             .commitment
             .commit_value(&spending_key, amount.into());
         let encrypted_openings =
-            EncryptedOpenings::encrypt_openings(&rewind_data.encryption_key, &commitment, amount, &spending_key)?;
+            EncryptedOpenings::encrypt_openings(&recovery_data.encryption_key, &commitment, amount, &spending_key)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -1179,11 +1175,10 @@ where
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.output_manager_service
-            .add_rewindable_output_with_tx_id(
+            .add_output_with_tx_id(
                 tx_id,
                 unblinded_output,
                 Some(SpendingPriority::HtlcSpendAsap),
-                Some(rewind_data),
             )
             .await?;
         self.submit_transaction(
@@ -1263,19 +1258,17 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let rewind_data = RewindData {
-            rewind_blinding_key,
+        let recovery_data = RecoveryData {
             encryption_key,
         };
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key,
             &self.resources.factories,
-            &rewind_data,
+            &recovery_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -1432,33 +1425,29 @@ where
             .await?;
         let public_spend_key = PublicKey::from_secret_key(&spend_key);
 
-        let rewind_data = self.resources.output_manager_service.get_rewind_data().await?;
+        let recovery_data = self.resources.output_manager_service.get_recovery_data().await?;
 
-        let (shared_spend_key, rewind_data) = match claim_public_key {
+        let recovery_data = match claim_public_key {
             Some(ref claim_public_key) => {
-                // For claimable L2 burn transactions, we derive a shared mask and encryption key from a nonce (in this
-                // case a new spend key from the key manager) and the provided claim public key. The public
+                // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
+                // this case a new spend key from the key manager) and the provided claim public key. The public
                 // nonce/spend_key is returned back to the caller.
-                let shared_spend_key = derive_diffie_hellman_burn_claim_spend_key(&spend_key, claim_public_key);
-                let commitment = CommitmentFactory::default().commit_value(&shared_spend_key, amount.into());
-                let shared_encryption_key = derive_burn_claim_encryption_key(&shared_spend_key, &commitment);
-
-                let shared_rewind_data = RewindData {
-                    rewind_blinding_key: rewind_data.rewind_blinding_key,
-                    encryption_key: shared_encryption_key,
-                };
-                (shared_spend_key, shared_rewind_data)
+                let shared_secret = CommsDHKE::new(&spend_key, claim_public_key);
+                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                RecoveryData {
+                    encryption_key,
+                }
             },
-            // No claim key provided, no shared mask is required
-            None => (spend_key, rewind_data),
+            // No claim key provided, no shared secret or encryption key needed
+            None => recovery_data,
         };
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            shared_spend_key.clone(),
+            spend_key.clone(),
             &self.resources.factories,
-            &rewind_data,
+            &recovery_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -1479,7 +1468,7 @@ where
 
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
-                &shared_spend_key,
+                &spend_key,
                 &nonce_a,
                 &nonce_x,
                 &challenge,

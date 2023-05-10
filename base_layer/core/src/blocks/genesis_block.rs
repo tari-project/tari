@@ -82,27 +82,27 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 fn get_stagenet_genesis_block_raw() -> Block {
     // Note: Use 'print_new_genesis_block_stagenet' in core/tests/helpers/block_builders.rs to generate the required
     // fields below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
+    let extra = "Tokenized and connected";
     let excess_sig = Signature::new(
-        PublicKey::from_hex("d87ce1422fc23d82c06b135b52277cebe1025358fdfee4cae2893b25c19b7828").unwrap(),
-        PrivateKey::from_hex("3e64e11e3b0b81046b1f4fb56bfcce5f7ff2e86bddbe4ab4f2d13235d7543707").unwrap(),
+        PublicKey::from_hex("7ab3a213c054673e5d1979e9fa40e7e6907e4b0125a3a4873edd74b14c355952").unwrap(),
+        PrivateKey::from_hex("93274d3f4075247d90571de1f438e3fdfb0b32b85cb4b519a251707394cb440d").unwrap(),
     );
     let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("a81361c40952ad0ce2f44241763812a749b81b04bdcec6158944bcc3d8790b1d").unwrap(),
-        PublicKey::from_hex("76524b1c0d5b0a178685051aff743183573ed558cdfd79adbc474284f749ab57").unwrap(),
-        PrivateKey::from_hex("7d28834c491c8e59b5d27744388ea676da1b8ddd509af805529f6537f0649907").unwrap(),
-        PrivateKey::from_hex("64ebca6a4183b75a9c9c38819618fb3b4755cc80ef85ca83ddcc64e106af1002").unwrap(),
-        PrivateKey::from_hex("e3e5d36ed2599f18ca875f14d403938a9d6408e38c790799a42a6182c4fbef00").unwrap(),
+        Commitment::from_hex("acb033fd6fdab1495a67bd23fb4c96cb0c003f4f8d6ffb48a767e5bd8b56cd58").unwrap(),
+        PublicKey::from_hex("58708bbd6955572c096fe763d82fd92a55659900351dc0572d52dbb516e8902a").unwrap(),
+        PrivateKey::from_hex("d712e8efa25d3b01f1aeadbec3e28ac03b13b6d4b46f21d7ca3d05d861002405").unwrap(),
+        PrivateKey::from_hex("50cf3fb2c61f4c901b84fbc7f8dadf7cdeba59a32b5423bbe116542d4f075a0d").unwrap(),
+        PrivateKey::from_hex("50ed11b7f26a38fd2c3e36ab3ffbdab4ffb997a5641204933bd7816bc0261f07").unwrap(),
     );
-    let extra = "Tokenized and connected";
     let coinbase = TransactionOutput::new(
         TransactionOutputVersion::get_current_version(),
         OutputFeatures::create_coinbase(360, Some(extra.as_bytes().to_vec())),
-        Commitment::from_hex("982e1066148ee81eab6c5091aea9c2db6720bf527467e49b5a5b907d8f8b356c").unwrap(),
-        BulletRangeProof::from_hex("015c29e512011a1d49e48d1e13c30be365f42c5637a5093fa42cbd41591e532013702cfe24c9fe28c9a8b8beed587fb8164837c231567d9d8d1b67421474f4eb099238bdb64e48b182f6b199fa6f3b34d873a579a29a86a27108ceeba12efafa1f789300500d6f388491a1e7a1483c8bafbe518d9254128ef208aa3fbb119c0712f670524c920daa06327dc8bcbc0ed3a4184ec691d43677f6c33fa0a952bf2d4d0a5f825dc383e89ff5d58b5b2b115c3b30cec96115a789595fe04e67d54f31710cfbbf5e05d56f62777c9cd96d531335288a37da53d67fc51eb8dfdf94f1af4c84ab76ffa97dcf60199e53a131510506c9ea44688114bc112ced41d3eda7a118542c4f0538afbfae5396b06bfdeb5136c8b881ed70f08d184f7d36e5c2a19f7a12e46d10d77eeec741ca7041e36dad0add61dca5ecf701071d095b9578130f101c4455f02e1cff31449403523e5a68fc9b7861e52f03cc113ff2fd03794e13340ad726b3880ef6c573f93c5e1c023c3b75741d7572bc94bb7811332b384e856d2eae81901d0b7ad2408e5eac6edb709e12afec090de89b3e5d4d5308f12b8a3a44dfe67fb027597ae823bc7d2f6a39b0a99713ce6f16e8d9247c706a3938296a141929ecd44ab804b4281a87aebb900359131b0d6d8bf0471b4b74354d3373389115c5971f5499f4830c50f9d8a92e2e467d3a37a0f86c7b8c810189876d2409cc7b4a54cc0c3d2045b8dfe09be5b8742f78f4dc6fa030a44a547671f083f2017c322722b8da5bbefdb56a2de43db3c7bbb9c47358d982dce0ce757e41ed140a").unwrap(),
+        Commitment::from_hex("e4ce1206396a4f37505519e44437654956fd7c59c6daaafff768711fea650250").unwrap(),
+        BulletRangeProof::from_hex("0134f43e17fd21a325258ecb5fa0f87c114c8ab87d08a832134cc9c9d6d15b177d7ad675ef08208d3996bdc247f6915d6ccc27b19cf16822946df0530fb26a196dca260fc9a945ab69f617ae0a0f048411905639ac69e94ff313138616a28c0520b4bec841ca0e082e33e1f054a1ebdba3a7e9e828e6ed74a14fc51458d06b93002a82793a3304b6a9c858ca1cd71102fedd6d02aa01ca32fde47abdb5e2c42230fcea91a9574f37df4ffee07f6b42b02afe94498e0b12c27c36144a7a471b723a58a2d6a4f6a2b68fc88804e2a40c22ec1f6d0366becd57e0aa79fc8243c39d72304ca0084335f866b95e4f1f15ff10bc39cd36f0e61c654dd287111bf228f12bdc7323521e5ea6fdf935eee653f05755e4f018d4cb329e629df2c3d720c1587ace55556a86fd5d823b94e31da3942d46d35a647f132e1def31dac506b129155ba0d7f375187035ef08f6b4e3ae8b0dfc6eed9c659ab89f64c132e725d95fd0058a0d8362633316717610cf6b9f5f338686efb955b8bb525d35a68d914b298c72acb9a9575004af7856e37ccd88a88d0a3eafbd6768111c8a7c11e040f6b775561aab7c338ca214b62028f920cd6d70d38e6d35b257820ad5683b22339b5d7c77141233aea969db6def15198d641fffb33f56a0263ce006bcf0b558f4db256971ca92669fa97fa59d4594d59e1e50d965a83dc80c38529a1e59dc5dfb618c420d6ad695f74581f92677b1f38d9c59a2acc25f79c02708792a7ae217e70ca6d40a3585f92033657384834a24a676273e7d944a7a73cc1e8a7b7a1ea345824ed204").unwrap(),
         // A default script can never be spent, intentionally
         script!(Nop),
         // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("721205a842d2bce5bbc32c275b4f675c1d1087c1557d8775df7e596e7b29641c").unwrap(),
+        PublicKey::from_hex("d0e6cc878838d120329706e182d2b8522ed12e57235df9eee9490e65bc693829").unwrap(),
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
@@ -115,7 +115,7 @@ fn get_stagenet_genesis_block_raw() -> Block {
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("86bbb9891de4027fe1d97f27c20b85a839377f7c3cb7c7c922de3c8784aec737").unwrap(),
+        Commitment::from_hex("503cea1ff2e8dcfca0f01de4ef98d6c1a06cd555737cbdc2bcb3f1cdb9e89e08").unwrap(),
         excess_sig,
         None,
     );
@@ -131,12 +131,14 @@ fn get_stagenet_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("61f9287751dc57b026405b1da3b05da338d67a782877db26dfa89f9ea94d9c27").unwrap(),
-            witness_mr: FixedHash::from_hex("5c44e634ef48c00a5b83a9f5690d61676366556bfe6efe94f308f486c529edd3")
+            output_mr: FixedHash::from_hex("718c9c26d870ffee6ce21e4dfbc9eaa59f18781e4111891b09c4a0f307f42445").unwrap(),
+            witness_mr: FixedHash::from_hex("4124123eaa05c2cc0f746aa7c9a4900611e12dafa26b2f0210f19270b0493723")
                 .unwrap(),
             output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("47dfdf2b2b860ff85b0ea1a1a8ac1a77ac436dec71d20674d1a9b87aa1db096e").unwrap(),
+            kernel_mr: FixedHash::from_hex("37d92c887c3622147f829c30408cd701220a98e23222dfa45cef8528968cfa73").unwrap(),
             kernel_mmr_size: 1,
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -151,8 +153,6 @@ fn get_stagenet_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
-                .unwrap(),
         },
         body,
     }
@@ -231,6 +231,8 @@ fn get_nextnet_genesis_block_raw() -> Block {
             output_mmr_size: 1,
             kernel_mr: FixedHash::from_hex("7ace5bbe51e4cb7a029b9078cf496d91eace481345fadf96e0c9c8e7902b780c").unwrap(),
             kernel_mmr_size: 1,
+            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+                .unwrap(),
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -245,8 +247,6 @@ fn get_nextnet_genesis_block_raw() -> Block {
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
-            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
-                .unwrap(),
         },
         body,
     }
