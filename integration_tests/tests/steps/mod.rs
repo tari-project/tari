@@ -44,7 +44,12 @@ async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
 }
 
 #[then(regex = r"I receive an error containing '(.*)'")]
-async fn receive_an_error(_world: &mut TariWorld, _error: String) {
+async fn receive_an_error(world: &mut TariWorld, error: String) {
+    match world.errors.back() {
+        Some(err) => assert_eq!(err, &error),
+        None => panic!("Should have received an error"),
+    };
+
     // No-op.
     // Was not implemented in previous suite, gave it a quick try but missing other peices
 

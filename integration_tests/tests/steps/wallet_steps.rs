@@ -58,7 +58,11 @@ use tari_core::{
 };
 use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
 use tari_integration_tests::{
-    transaction::{build_transaction_with_output, build_transaction_with_output_and_fee},
+    transaction::{
+        build_transaction_with_output,
+        build_transaction_with_output_and_fee,
+        build_transaction_with_output_and_lockheight,
+    },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
@@ -557,6 +561,25 @@ async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs
         .collect::<Vec<_>>();
 
     let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    world.utxos.insert(output, utxo);
+    world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
+async fn create_tx_custom_lock(
+    world: &mut TariWorld,
+    transaction: String,
+    inputs: String,
+    output: String,
+    lockheight: u64,
+) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
+        .collect::<Vec<_>>();
+
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
