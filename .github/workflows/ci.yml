@@ -13,7 +13,7 @@ name: CI
       - opened
       - reopened
       - synchronize
-  merge_group:    
+  merge_group:
 
 env:
   toolchain: nightly-2022-11-03
@@ -179,6 +179,12 @@ jobs:
         with:
           command: test
           args: -v --all-features --release --workspace --exclude tari_integration_tests
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            integration_tests/cucumber-output.json    
 
   # Allows other workflows to know the PR number
   artifacts:
