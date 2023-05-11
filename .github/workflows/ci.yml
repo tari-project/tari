@@ -184,6 +184,12 @@ jobs:
         with:
           command: nextest
           args: run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results
+        if: always()
+        with:
+          name: test-results
+          path: ${{ github.workspace }}/target/nextest/ci/junit.xml
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
