@@ -126,8 +126,8 @@ impl NodeIdentity {
         acquire_read_lock!(self.public_addresses).clone()
     }
 
-    pub fn first_public_address(&self) -> Multiaddr {
-        acquire_read_lock!(self.public_addresses)[0].clone()
+    pub fn first_public_address(&self) -> Option<Multiaddr> {
+        acquire_read_lock!(self.public_addresses).get(0).cloned()
     }
 
     /// Modify the public address.

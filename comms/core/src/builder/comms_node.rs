@@ -244,17 +244,14 @@ impl UnspawnedCommsNode {
         );
 
         // Spawn liveness check now that we have the final address
-        let liveness_watch = connection_manager_config
-            .liveness_self_check_interval
-            .map(|interval| {
-                LivenessCheck::spawn(
-                    transport,
-                    node_identity.first_public_address(),
-                    interval,
-                    shutdown_signal.clone(),
-                )
-            })
-            .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1);
+        let liveness_watch = if let Some(public_address) = node_identity.first_public_address() {
+            connection_manager_config
+                .liveness_self_check_interval
+                .map(|interval| LivenessCheck::spawn(transport, public_address, interval, shutdown_signal.clone()))
+                .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1)
+        } else {
+            watch::channel(LivenessStatus::Disabled).1
+        };
 
         Ok(CommsNode {
             shutdown_signal,

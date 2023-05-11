@@ -72,7 +72,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {
-                listener_address: node_identity.first_public_address(),
+                listener_address: node_identity.first_public_address().unwrap(),
             },
             ..Default::default()
         },

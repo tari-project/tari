@@ -131,7 +131,7 @@ async fn create_wallet(
         override_from: None,
         public_addresses: MultiaddrList::default(),
         transport: TransportConfig::new_memory(MemoryTransportConfig {
-            listener_address: node_identity.first_public_address(),
+            listener_address: node_identity.first_public_address().unwrap(),
         }),
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
@@ -256,7 +256,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             bob_identity.public_key().clone(),
-            bob_identity.first_public_address(),
+            bob_identity.first_public_address().unwrap(),
         ))
         .await
         .unwrap();
@@ -266,7 +266,7 @@ async fn test_wallet() {
         .peer_manager()
         .add_peer(create_peer(
             alice_identity.public_key().clone(),
-            alice_identity.first_public_address(),
+            alice_identity.first_public_address().unwrap(),
         ))
         .await
         .unwrap();
@@ -274,7 +274,7 @@ async fn test_wallet() {
     alice_wallet
         .set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            base_node_identity.first_public_address().clone(),
+            base_node_identity.first_public_address().unwrap(),
         )
         .await
         .unwrap();
@@ -736,7 +736,10 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
-        .set_base_node_peer(node_identity.public_key().clone(), node_identity.first_public_address())
+        .set_base_node_peer(
+            node_identity.public_key().clone(),
+            node_identity.first_public_address().unwrap(),
+        )
         .await
         .unwrap();
     let tx_id = alice_wallet

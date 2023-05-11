@@ -194,11 +194,11 @@ fn test_config(base_dir: &PathBuf, identity: &NodeIdentity) -> P2pConfig {
             ..DhtConfig::default_local_test()
         },
         transport: TransportConfig::new_tcp(TcpTransportConfig {
-            listener_address: identity.first_public_address(),
+            listener_address: identity.first_public_address().expect("No public address"),
             ..TcpTransportConfig::default()
         }),
         allow_test_addresses: true,
-        public_addresses: MultiaddrList::from(vec![identity.first_public_address()]),
+        public_addresses: MultiaddrList::from(vec![identity.first_public_address().expect("No public address")]),
         user_agent: "tari/chat-client/0.0.1".to_string(),
         ..P2pConfig::default()
     };
