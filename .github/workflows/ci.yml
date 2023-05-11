@@ -190,7 +190,7 @@ jobs:
         if: always()
         with:
           files: |
-            target/nextest/*.xml    
+            target/nextest/ci/*.xml    
 
   # Allows other workflows to know the PR number
   artifacts:
