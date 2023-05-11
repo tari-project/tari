@@ -22,7 +22,6 @@
 
 use std::{
     convert::TryFrom,
-    io::Write,
     sync::{Arc, RwLock},
 };
 
@@ -203,7 +202,7 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + S
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, io::Write};
+    use std::convert::TryFrom;
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};

@@ -1378,7 +1378,7 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::{io::Write, mem::size_of};
+    use std::mem::size_of;
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
