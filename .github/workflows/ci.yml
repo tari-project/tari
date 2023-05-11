@@ -183,7 +183,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: nextest run
-          args: --all-features --release --workspace --exclude tari_integration_tests --profile ci
+          args: --all-features --release -E "not package(tari_integration_tests)" --profile ci
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
