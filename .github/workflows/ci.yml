@@ -190,7 +190,7 @@ jobs:
         if: always()
         with:
           files: |
-            target/nextest/ci/*.xml    
+            ${{ github.workspace }}/target/nextest/ci/*.xml    
 
   # Allows other workflows to know the PR number
   artifacts:

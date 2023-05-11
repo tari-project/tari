@@ -106,7 +106,7 @@ jobs:
         if: always()
         with:
           files: |
-            integration_tests/cucumber-output-junit.xml          
+            ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml          
 
   ffi:
     name: Cucumber tests / FFI
@@ -181,4 +181,4 @@ jobs:
         if: always()
         with:
           files: |
-            integration_tests/cucumber-output-junit.xml       
+            ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml       
