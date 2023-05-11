@@ -173,7 +173,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: install
-          args: cargo-nextest
+          args: cargo-nextest --locked
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
@@ -182,8 +182,8 @@ jobs:
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: nextest run
-          args: --all-features --release -E "not package(tari_integration_tests)" --profile ci
+          command: nextest
+          args: run --all-features --release -E "not package(tari_integration_tests)" --profile ci
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
