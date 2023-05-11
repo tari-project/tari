@@ -1,14 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite id="0" name="Feature: BlockTemplate: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature" package="testsuite/Feature: BlockTemplate: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:19.2046347Z" time="1.3182794"><testcase name="Scenario: Verify UTXO and kernel MMR size in header: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature:8:1" time="1.3182794"><system-out><![CDATA[  Scenario: Verify UTXO and kernel MMR size in header
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite id="0" name="Feature: BlockTemplate: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature" package="testsuite/Feature: BlockTemplate: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:10.0615255Z" time="1.7337428"><testcase name="Scenario: Verify UTXO and kernel MMR size in header: ?\C:\projects\tari\integration_tests\tests\features\BlockTemplate.feature:8:1" time="1.7337428"><system-out><![CDATA[  Scenario: Verify UTXO and kernel MMR size in header
    ✔  Given I have a seed node SEED_A
    ✔  When I have 1 base nodes connected to all seed nodes
    ✔  Then meddling with block template data from node SEED_A is not allowed
-]]></system-out></testcase></testsuite><testsuite id="1" name="Feature: Chat FFI messaging: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature" package="testsuite/Feature: Chat FFI messaging: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:19.2046354Z" time="3.9804677"><testcase name="Scenario: A message is propagated between clients via 3rd party: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature:7:3" time="1.2376466"><system-out><![CDATA[  Scenario: A message is propagated between clients via 3rd party
+]]></system-out></testcase></testsuite><testsuite id="1" name="Feature: Chat FFI messaging: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature" package="testsuite/Feature: Chat FFI messaging: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:10.0615257Z" time="4.681987"><testcase name="Scenario: A message is propagated between clients via 3rd party: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature:7:3" time="1.5811876"><system-out><![CDATA[  Scenario: A message is propagated between clients via 3rd party
    ✔  Given I have a seed node SEED_A
    ✔  When I have a chat FFI client CHAT_A connected to seed node SEED_A
    ✔  When I have a chat FFI client CHAT_B connected to seed node SEED_A
    ✔  When I use CHAT_A to send a message 'Hey there' to CHAT_B
    ✔  Then CHAT_B will have 1 message with CHAT_A
-]]></system-out></testcase><testcase name="Scenario: A message is sent directly between two FFI clients: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature:14:3" time="2.7428211"><system-out><![CDATA[  Scenario: A message is sent directly between two FFI clients
+]]></system-out></testcase><testcase name="Scenario: A message is sent directly between two FFI clients: ?\C:\projects\tari\integration_tests\tests\features\ChatFFI.feature:14:3" time="3.1007994"><system-out><![CDATA[  Scenario: A message is sent directly between two FFI clients
    ✔  Given I have a seed node SEED_A
    ✔  When I have a chat FFI client CHAT_A connected to seed node SEED_A
    ✔  When I have a chat FFI client CHAT_B connected to seed node SEED_A
@@ -17,7 +17,7 @@
    ✔  When CHAT_A waits for contact CHAT_B to be online
    ✔  When I use CHAT_A to send a message 'Hey there' to CHAT_B
    ✔  Then CHAT_B will have 1 message with CHAT_A
-]]></system-out></testcase></testsuite><testsuite id="2" name="Feature: Mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature" package="testsuite/Feature: Mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature" tests="3" errors="0" failures="1" hostname="localhost" timestamp="2023-05-11T10:41:19.2046358Z" time="80.3254927"><testcase name="Scenario: Transactions are propagated through a network: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:8:3" time="51.5461571"><failure type="Step Panicked" message="Step panicked. Captured output: More than 1% (1 node(s)) failed to get TX1 in MEMPOOL, {&quot;seed_node_0&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_1&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_2&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_3&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_4&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_5&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_6&quot;: &quot;NOT_STORED&quot;, &quot;seed_node_7&quot;: &quot;NOT_STORED&quot;, &quot;SENDER&quot;: &quot;MEMPOOL&quot;, &quot;Node_0&quot;: &quot;NOT_STORED&quot;, &quot;Node_1&quot;: &quot;NOT_STORED&quot;, &quot;Node_2&quot;: &quot;NOT_STORED&quot;, &quot;Node_3&quot;: &quot;NOT_STORED&quot;, &quot;Node_4&quot;: &quot;NOT_STORED&quot;, &quot;Node_5&quot;: &quot;NOT_STORED&quot;, &quot;Node_6&quot;: &quot;NOT_STORED&quot;, &quot;Node_7&quot;: &quot;NOT_STORED&quot;}"><![CDATA[  Scenario: Transactions are propagated through a network
+]]></system-out></testcase></testsuite><testsuite id="2" name="Feature: Mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature" package="testsuite/Feature: Mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature" tests="3" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:10.0615259Z" time="50.1573437"><testcase name="Scenario: Transactions are propagated through a network: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:8:3" time="20.596589"><system-out><![CDATA[  Scenario: Transactions are propagated through a network
    ✔  Given I have 8 seed nodes
    ✔  When I have a base node SENDER connected to all seed nodes
    ✔  When I have 8 base nodes connected to all seed nodes
@@ -27,866 +27,8 @@
    ✔  When I create a transaction TX1 spending CB1 to UTX1
    ✔  When I submit transaction TX1 to SENDER
    ✔  Then SENDER has TX1 in MEMPOOL state
-   ✘  Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
-      Step failed:
-      Defined: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:22:5
-      Matched: integration_tests\tests\steps\node_steps.rs:346:1
-      Step panicked. Captured output: More than 1% (1 node(s)) failed to get TX1 in MEMPOOL, {"seed_node_0": "NOT_STORED", "seed_node_1": "NOT_STORED", "seed_node_2": "NOT_STORED", "seed_node_3": "NOT_STORED", "seed_node_4": "NOT_STORED", "seed_node_5": "NOT_STORED", "seed_node_6": "NOT_STORED", "seed_node_7": "NOT_STORED", "SENDER": "MEMPOOL", "Node_0": "NOT_STORED", "Node_1": "NOT_STORED", "Node_2": "NOT_STORED", "Node_3": "NOT_STORED", "Node_4": "NOT_STORED", "Node_5": "NOT_STORED", "Node_6": "NOT_STORED", "Node_7": "NOT_STORED"}
-      Client {
-          base_nodes: {},
-          blocks: {},
-          miners: {},
-          ffi_wallets: {},
-          wallets: {},
-          merge_mining_proxies: {},
-          transactions: {
-              "TX1": Transaction {
-                  offset: RistrettoSecretKey(***),
-                  body: AggregateBody {
-                      sorted: true,
-                      inputs: [
-                          TransactionInput {
-                              version: V0,
-                              spent_output: OutputData {
-                                  version: V0,
-                                  features: OutputFeatures {
-                                      version: V0,
-                                      output_type: Coinbase,
-                                      maturity: 3,
-                                      coinbase_extra: [],
-                                      sidechain_feature: None,
-                                  },
-                                  commitment: HomomorphicCommitment(
-                                      a858c8710c237718d4fd79cfd171db69bb507cb1466c5949555d57857ec3050c,
-                                  ),
-                                  script: TariScript {
-                                      script: [
-                                          Nop,
-                                      ],
-                                  },
-                                  sender_offset_public_key: 38a3c51743da01606d0588b8d94f34abd9c899de23814d8967a58699a3ee647b,
-                                  covenant: Covenant {
-                                      tokens: [],
-                                  },
-                                  encrypted_value: EncryptedValue(
-                                      [
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                          0,
-                                      ],
-                                  ),
-                                  minimum_value_promise: MicroTari(
-                                      0,
-                                  ),
-                              },
-                              input_data: ExecutionStack {
-                                  items: [
-                                      PublicKey(
-                                          3ee70701b1f083b9ba8ef9c64a4a4a72e11695ca6640295d0c948b165a8df763,
-                                      ),
-                                  ],
-                              },
-                              script_signature: CommitmentAndPublicKeySignature {
-                                  ephemeral_commitment: HomomorphicCommitment(
-                                      6647720ccd56dd941e5ebd727a6199ff5dd3e6ff5f2b1cb4bd838ccef8bddc55,
-                                  ),
-                                  ephemeral_pubkey: 7ee6a8655509fdb547fe45d79da2cebee83eb72813e73123d89409bc213c6661,
-                                  u_a: RistrettoSecretKey(***),
-                                  u_x: RistrettoSecretKey(***),
-                                  u_y: RistrettoSecretKey(***),
-                              },
-                          },
-                      ],
-                      outputs: [
-                          TransactionOutput {
-                              version: V0,
-                              features: OutputFeatures {
-                                  version: V0,
-                                  output_type: Standard,
-                                  maturity: 0,
-                                  coinbase_extra: [],
-                                  sidechain_feature: None,
-                              },
-                              commitment: HomomorphicCommitment(
-                                  18836e3b9d063f321ea95a844c4db2214ce4dbedf1974e6794db836e78992874,
-                              ),
-                              proof: BulletRangeProof(
-                                  [
-                                      1,
-                                      132,
-                                      65,
-                                      170,
-                                      185,
-                                      139,
-                                      85,
-                                      231,
-                                      74,
-                                      3,
-                                      217,
-                                      184,
-                                      219,
-                                      56,
-                                      123,
-                                      113,
-                                      248,
-                                      201,
-                                      249,
-                                      16,
-                                      58,
-                                      108,
-                                      202,
-                                      1,
-                                      213,
-                                      126,
-                                      183,
-                                      138,
-                                      68,
-                                      96,
-                                      118,
-                                      30,
-                                      74,
-                                      196,
-                                      157,
-                                      181,
-                                      53,
-                                      107,
-                                      240,
-                                      240,
-                                      143,
-                                      124,
-                                      187,
-                                      60,
-                                      61,
-                                      56,
-                                      167,
-                                      41,
-                                      15,
-                                      91,
-                                      151,
-                                      34,
-                                      92,
-                                      94,
-                                      217,
-                                      191,
-                                      138,
-                                      151,
-                                      206,
-                                      217,
-                                      147,
-                                      166,
-                                      131,
-                                      173,
-                                      111,
-                                      66,
-                                      113,
-                                      206,
-                                      210,
-                                      64,
-                                      133,
-                                      159,
-                                      14,
-                                      115,
-                                      130,
-                                      146,
-                                      82,
-                                      147,
-                                      22,
-                                      64,
-                                      184,
-                                      185,
-                                      253,
-                                      144,
-                                      32,
-                                      50,
-                                      23,
-                                      100,
-                                      81,
-                                      180,
-                                      141,
-                                      124,
-                                      51,
-                                      44,
-                                      77,
-                                      158,
-                                      83,
-                                      132,
-                                      99,
-                                      77,
-                                      79,
-                                      46,
-                                      240,
-                                      132,
-                                      111,
-                                      150,
-                                      30,
-                                      186,
-                                      90,
-                                      214,
-                                      163,
-                                      250,
-                                      169,
-                                      41,
-                                      231,
-                                      234,
-                                      192,
-                                      191,
-                                      4,
-                                      11,
-                                      221,
-                                      247,
-                                      110,
-                                      2,
-                                      178,
-                                      52,
-                                      124,
-                                      43,
-                                      45,
-                                      212,
-                                      45,
-                                      165,
-                                      173,
-                                      158,
-                                      129,
-                                      52,
-                                      214,
-                                      149,
-                                      132,
-                                      220,
-                                      133,
-                                      176,
-                                      23,
-                                      207,
-                                      10,
-                                      153,
-                                      255,
-                                      55,
-                                      218,
-                                      179,
-                                      253,
-                                      153,
-                                      171,
-                                      165,
-                                      12,
-                                      231,
-                                      218,
-                                      129,
-                                      41,
-                                      2,
-                                      93,
-                                      200,
-                                      117,
-                                      160,
-                                      44,
-                                      36,
-                                      40,
-                                      213,
-                                      126,
-                                      9,
-                                      186,
-                                      172,
-                                      208,
-                                      29,
-                                      35,
-                                      117,
-                                      112,
-                                      189,
-                                      92,
-                                      244,
-                                      30,
-                                      109,
-                                      98,
-                                      126,
-                                      13,
-                                      244,
-                                      28,
-                                      128,
-                                      16,
-                                      33,
-                                      139,
-                                      192,
-                                      47,
-                                      86,
-                                      130,
-                                      178,
-                                      206,
-                                      26,
-                                      91,
-                                      229,
-                                      87,
-                                      229,
-                                      181,
-                                      45,
-                                      145,
-                                      80,
-                                      126,
-                                      121,
-                                      6,
-                                      9,
-                                      72,
-                                      49,
-                                      238,
-                                      158,
-                                      41,
-                                      249,
-                                      211,
-                                      30,
-                                      140,
-                                      42,
-                                      10,
-                                      112,
-                                      65,
-                                      50,
-                                      47,
-                                      28,
-                                      227,
-                                      193,
-                                      165,
-                                      132,
-                                      140,
-                                      6,
-                                      23,
-                                      36,
-                                      250,
-                                      214,
-                                      254,
-                                      146,
-                                      26,
-                                      233,
-                                      52,
-                                      40,
-                                      1,
-                                      71,
-                                      164,
-                                      190,
-                                      103,
-                                      108,
-                                      125,
-                                      208,
-                                      232,
-                                      182,
-                                      203,
-                                      120,
-                                      116,
-                                      41,
-                                      0,
-                                      244,
-                                      62,
-                                      19,
-                                      57,
-                                      88,
-                                      120,
-                                      30,
-                                      196,
-                                      210,
-                                      86,
-                                      33,
-                                      110,
-                                      247,
-                                      23,
-                                      133,
-                                      46,
-                                      60,
-                                      241,
-                                      157,
-                                      19,
-                                      157,
-                                      29,
-                                      90,
-                                      104,
-                                      51,
-                                      144,
-                                      108,
-                                      161,
-                                      118,
-                                      203,
-                                      159,
-                                      15,
-                                      242,
-                                      185,
-                                      244,
-                                      19,
-                                      76,
-                                      238,
-                                      224,
-                                      107,
-                                      243,
-                                      201,
-                                      235,
-                                      84,
-                                      172,
-                                      125,
-                                      31,
-                                      23,
-                                      1,
-                                      1,
-                                      151,
-                                      74,
-                                      30,
-                                      48,
-                                      56,
-                                      100,
-                                      15,
-                                      56,
-                                      174,
-                                      123,
-                                      25,
-                                      150,
-                                      98,
-                                      90,
-                                      138,
-                                      60,
-                                      182,
-                                      40,
-                                      178,
-                                      100,
-                                      169,
-                                      53,
-                                      54,
-                                      78,
-                                      50,
-                                      40,
-                                      13,
-                                      228,
-                                      38,
-                                      80,
-                                      52,
-                                      29,
-                                      209,
-                                      208,
-                                      166,
-                                      202,
-                                      133,
-                                      16,
-                                      134,
-                                      214,
-                                      96,
-                                      11,
-                                      39,
-                                      192,
-                                      164,
-                                      23,
-                                      166,
-                                      67,
-                                      56,
-                                      9,
-                                      245,
-                                      109,
-                                      116,
-                                      83,
-                                      150,
-                                      167,
-                                      33,
-                                      40,
-                                      114,
-                                      180,
-                                      253,
-                                      213,
-                                      100,
-                                      180,
-                                      32,
-                                      164,
-                                      70,
-                                      247,
-                                      149,
-                                      64,
-                                      45,
-                                      65,
-                                      243,
-                                      72,
-                                      249,
-                                      199,
-                                      10,
-                                      21,
-                                      90,
-                                      245,
-                                      233,
-                                      6,
-                                      34,
-                                      95,
-                                      208,
-                                      203,
-                                      22,
-                                      167,
-                                      17,
-                                      137,
-                                      197,
-                                      101,
-                                      221,
-                                      189,
-                                      177,
-                                      207,
-                                      188,
-                                      250,
-                                      47,
-                                      30,
-                                      253,
-                                      124,
-                                      144,
-                                      110,
-                                      234,
-                                      59,
-                                      35,
-                                      75,
-                                      11,
-                                      86,
-                                      130,
-                                      210,
-                                      53,
-                                      41,
-                                      191,
-                                      219,
-                                      208,
-                                      197,
-                                      121,
-                                      211,
-                                      70,
-                                      111,
-                                      50,
-                                      100,
-                                      150,
-                                      60,
-                                      98,
-                                      74,
-                                      19,
-                                      171,
-                                      251,
-                                      78,
-                                      62,
-                                      158,
-                                      197,
-                                      36,
-                                      74,
-                                      16,
-                                      24,
-                                      236,
-                                      231,
-                                      0,
-                                      236,
-                                      167,
-                                      112,
-                                      86,
-                                      184,
-                                      230,
-                                      247,
-                                      255,
-                                      138,
-                                      147,
-                                      26,
-                                      73,
-                                      179,
-                                      141,
-                                      13,
-                                      114,
-                                      42,
-                                      205,
-                                      197,
-                                      19,
-                                      104,
-                                      248,
-                                      254,
-                                      26,
-                                      150,
-                                      54,
-                                      215,
-                                      191,
-                                      39,
-                                      46,
-                                      214,
-                                      98,
-                                      181,
-                                      106,
-                                      14,
-                                      15,
-                                      58,
-                                      85,
-                                      243,
-                                      72,
-                                      30,
-                                      0,
-                                      59,
-                                      177,
-                                      48,
-                                      166,
-                                      108,
-                                      77,
-                                      98,
-                                      115,
-                                      231,
-                                      54,
-                                      7,
-                                      237,
-                                      57,
-                                      231,
-                                      231,
-                                      162,
-                                      69,
-                                      109,
-                                      132,
-                                      152,
-                                      67,
-                                      10,
-                                      247,
-                                      4,
-                                      193,
-                                      161,
-                                      19,
-                                      61,
-                                      204,
-                                      60,
-                                      192,
-                                      122,
-                                      195,
-                                      120,
-                                      77,
-                                      216,
-                                      185,
-                                      101,
-                                      19,
-                                      242,
-                                      207,
-                                      44,
-                                      45,
-                                      186,
-                                      55,
-                                      152,
-                                      31,
-                                      159,
-                                      217,
-                                      165,
-                                      202,
-                                      124,
-                                      15,
-                                      6,
-                                      75,
-                                      249,
-                                      50,
-                                      156,
-                                      209,
-                                      169,
-                                      23,
-                                      17,
-                                      7,
-                                      229,
-                                      13,
-                                      244,
-                                      193,
-                                      182,
-                                      104,
-                                      20,
-                                      145,
-                                      54,
-                                      27,
-                                      55,
-                                      147,
-                                      164,
-                                      251,
-                                      7,
-                                      98,
-                                      151,
-                                      198,
-                                      178,
-                                      200,
-                                      227,
-                                      206,
-                                      6,
-                                  ],
-                              ),
-                              script: TariScript {
-                                  script: [
-                                      Nop,
-                                  ],
-                              },
-                              sender_offset_public_key: 3addbb1c459cf3a23dac67545e665b148af4a7f9530d3596ca913e4b1d948d43,
-                              metadata_signature: CommitmentAndPublicKeySignature {
-                                  ephemeral_commitment: HomomorphicCommitment(
-                                      deec93286b739c95f4ec1bfb5a948343cddb846b22d9a13cc672f24cd52c1777,
-                                  ),
-                                  ephemeral_pubkey: 68bf9a046589a9c90787d2f41c2f47b0aa81b828a07a4360a986ef9cca00a105,
-                                  u_a: RistrettoSecretKey(***),
-                                  u_x: RistrettoSecretKey(***),
-                                  u_y: RistrettoSecretKey(***),
-                              },
-                              covenant: Covenant {
-                                  tokens: [],
-                              },
-                              encrypted_value: EncryptedValue(
-                                  [
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                      0,
-                                  ],
-                              ),
-                              minimum_value_promise: MicroTari(
-                                  0,
-                              ),
-                          },
-                      ],
-                      kernels: [
-                          TransactionKernel {
-                              version: V0,
-                              features: (empty),
-                              fee: MicroTari(
-                                  0,
-                              ),
-                              lock_height: 0,
-                              excess: HomomorphicCommitment(
-                                  c2335d0aaaaa8b9b419df571e066030bb8ef5ba6a1bf4c3748fe8a4a5463ad7e,
-                              ),
-                              excess_sig: SchnorrSignature {
-                                  public_nonce: a6ee2aa04779b5a1dfec86761c73cbbcf2fa1e04039bae24c8c1e14e7f081a5d,
-                                  signature: RistrettoSecretKey(***),
-                                  _phantom: PhantomData<tari_crypto::signatures::schnorr::SchnorrSigChallenge>,
-                              },
-                              burn_commitment: None,
-                          },
-                      ],
-                  },
-                  script_offset: RistrettoSecretKey(***),
-              },
-          },
-          wallet_addresses: {},
-          utxos: {
-              "CB1": UnblindedOutput {
-                  version: V0,
-                  value: MicroTari(
-                      18462800098,
-                  ),
-                  spending_key: "<secret>",
-                  features: OutputFeatures {
-                      version: V0,
-                      output_type: Coinbase,
-                      maturity: 3,
-                      coinbase_extra: [],
-                      sidechain_feature: None,
-                  },
-                  script: TariScript {
-                      script: [
-                          Nop,
-                      ],
-                  },
-                  covenant: Covenant {
-                      tokens: [],
-                  },
-                  input_data: ExecutionStack {
-                      items: [
-                          PublicKey(
-                              3ee70701b1f083b9ba8ef9c64a4a4a72e11695ca6640295d0c948b165a8df763,
-                          ),
-                      ],
-                  },
-                  script_private_key: "<secret>",
-                  sender_offset_public_key: 38a3c51743da01606d0588b8d94f34abd9c899de23814d8967a58699a3ee647b,
-                  metadata_signature: CommitmentAndPublicKeySignature {
-                      ephemeral_commitment: HomomorphicCommitment(
-                          66ac7092cf0f941b1c6b7884f6d8c094b5e11cda227c53c9f42568f9f7dc9c24,
-                      ),
-                      ephemeral_pubkey: 523212e7ae3434ce837aded0e817ca2c7d6db968711d78422cd55b28dc273f71,
-                      u_a: RistrettoSecretKey(***),
-                      u_x: RistrettoSecretKey(***),
-                      u_y: RistrettoSecretKey(***),
-                  },
-                  script_lock_height: 0,
-                  minimum_value_promise: MicroTari(
-                      0,
-                  ),
-              },
-              "UTX1": UnblindedOutput {
-                  version: V0,
-                  value: MicroTari(
-                      18462800098,
-                  ),
-                  spending_key: "<secret>",
-                  features: OutputFeatures {
-                      version: V0,
-                      output_type: Standard,
-                      maturity: 0,
-                      coinbase_extra: [],
-                      sidechain_feature: None,
-                  },
-                  script: TariScript {
-                      script: [
-                          Nop,
-                      ],
-                  },
-                  covenant: Covenant {
-                      tokens: [],
-                  },
-                  input_data: ExecutionStack {
-                      items: [
-                          PublicKey(
-                              be2c37fca40a6e6da640dd24ffdd1bda57415c9a5312ae0bbaf40f262197bc1a,
-                          ),
-                      ],
-                  },
-                  script_private_key: "<secret>",
-                  sender_offset_public_key: 3addbb1c459cf3a23dac67545e665b148af4a7f9530d3596ca913e4b1d948d43,
-                  metadata_signature: CommitmentAndPublicKeySignature {
-                      ephemeral_commitment: HomomorphicCommitment(
-                          deec93286b739c95f4ec1bfb5a948343cddb846b22d9a13cc672f24cd52c1777,
-                      ),
-                      ephemeral_pubkey: 68bf9a046589a9c90787d2f41c2f47b0aa81b828a07a4360a986ef9cca00a105,
-                      u_a: RistrettoSecretKey(***),
-                      u_x: RistrettoSecretKey(***),
-                      u_y: RistrettoSecretKey(***),
-                  },
-                  script_lock_height: 0,
-                  minimum_value_promise: MicroTari(
-                      0,
-                  ),
-              },
-          },
-          output_hash: None,
-          pre_image: None,
-          wallet_connected_to_base_node: {},
-          seed_nodes: [],
-          wallet_tx_ids: {},
-          errors: [],
-          last_imported_tx_ids: [],
-          last_merge_miner_response: Null,
-      }
-]]></failure></testcase><testcase name="Scenario: Clear out mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:44:3" time="17.4445837"><system-out><![CDATA[  Scenario: Clear out mempool
+   ✔  Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
+]]></system-out></testcase><testcase name="Scenario: Clear out mempool: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:44:3" time="18.0481043"><system-out><![CDATA[  Scenario: Clear out mempool
    ✔  Given I have 1 seed nodes
    ✔  When I have a base node SENDER connected to all seed nodes
    ✔  When I mine a block on SENDER with coinbase CB1
@@ -910,7 +52,7 @@
    ✔  Then SENDER has TX1 in MEMPOOL state
    ✔  Then SENDER has TX2 in MINED state
    ✔  Then SENDER has TX3 in MINED state
-]]></system-out></testcase><testcase name="Scenario: Zero-conf transactions: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:122:3" time="11.3347519"><system-out><![CDATA[  Scenario: Zero-conf transactions
+]]></system-out></testcase><testcase name="Scenario: Zero-conf transactions: ?\C:\projects\tari\integration_tests\tests\features\Mempool.feature:122:3" time="11.5126504"><system-out><![CDATA[  Scenario: Zero-conf transactions
    ✔  Given I have 1 seed nodes
    ✔  When I have a base node SENDER connected to all seed nodes
    ✔  When I mine a block on SENDER with coinbase CB1
@@ -941,20 +83,20 @@
    ✔  Then SENDER has TX11 in MINED state
    ✔  Then SENDER has TX12 in MINED state
    ✔  Then SENDER has TX13 in MINED state
-]]></system-out></testcase></testsuite><testsuite id="3" name="Feature: Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature" package="testsuite/Feature: Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:20.5232696Z" time="12.9357341"><testcase name="Scenario: Simple Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature:36:3" time="12.9357341"><system-out><![CDATA[  Scenario: Simple Merge Mining
+]]></system-out></testcase></testsuite><testsuite id="3" name="Feature: Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature" package="testsuite/Feature: Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:11.7956354Z" time="12.5043981"><testcase name="Scenario: Simple Merge Mining: ?\C:\projects\tari\integration_tests\tests\features\MergeMining.feature:36:3" time="12.5043981"><system-out><![CDATA[  Scenario: Simple Merge Mining
    ✔  Given I have a seed node NODE
    ✔  When I have wallet WALLET connected to all seed nodes
    ✔  And I have a merge mining proxy PROXY connected to NODE and WALLET with default config
    ✔  When I merge mine 2 blocks via PROXY
    ✔  Then all nodes are at height 2
-]]></system-out></testcase></testsuite><testsuite id="4" name="Feature: Block Propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature" package="testsuite/Feature: Block Propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:21.95357Z" time="39.1112297"><testcase name="Scenario: Simple propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature:26:3" time="16.6083501"><system-out><![CDATA[  Scenario: Simple propagation
+]]></system-out></testcase></testsuite><testsuite id="4" name="Feature: Block Propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature" package="testsuite/Feature: Block Propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:13.1677071Z" time="39.8641733"><testcase name="Scenario: Simple propagation: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature:26:3" time="17.2422693"><system-out><![CDATA[  Scenario: Simple propagation
    ✔  Given I have 2 seed nodes
    ✔  When I have 4 base nodes connected to all seed nodes
    ✔  When I have a SHA3 miner MINER connected to all seed nodes
    ✔  When mining node MINER mines 5 blocks
    ✔  Then node MINER is at height 5
    ✔  Then all nodes are at height 5
-]]></system-out></testcase><testcase name="Scenario: Pruned node should prune outputs: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature:95:3" time="22.5028796"><system-out><![CDATA[  Scenario: Pruned node should prune outputs
+]]></system-out></testcase><testcase name="Scenario: Pruned node should prune outputs: ?\C:\projects\tari\integration_tests\tests\features\Propagation.feature:95:3" time="22.621904"><system-out><![CDATA[  Scenario: Pruned node should prune outputs
    ✔  Given I have 1 seed nodes
    ✔  When I have a base node SENDER connected to all seed nodes
    ✔  When I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
@@ -967,7 +109,7 @@
    ✔  When I mine 17 blocks on SENDER
    ✔  Then all nodes are on the same chain at height 21
    ✔  Then node PNODE1 has a pruned height of 16
-]]></system-out></testcase></testsuite><testsuite id="5" name="Feature: Reorgs: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature" package="testsuite/Feature: Reorgs: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature" tests="3" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:33.4590299Z" time="91.0863492"><testcase name="Scenario: Simple reorg to stronger chain: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:8:3" time="30.6185033"><system-out><![CDATA[  Scenario: Simple reorg to stronger chain
+]]></system-out></testcase></testsuite><testsuite id="5" name="Feature: Reorgs: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature" package="testsuite/Feature: Reorgs: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature" tests="3" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:24.3000596Z" time="91.2420627"><testcase name="Scenario: Simple reorg to stronger chain: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:8:3" time="30.5817411"><system-out><![CDATA[  Scenario: Simple reorg to stronger chain
    ✔  Given I have a seed node SEED_B
    ✔  When I have a base node B connected to seed SEED_B
    ✔  When I have wallet WB connected to base node B
@@ -984,7 +126,7 @@
    ✔  Then node SA is at height 10
    ✔  Then node B is at height 10
    ✔  Then node C is at height 10
-]]></system-out></testcase><testcase name="Scenario: Simple reorg with burned output: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:33:3" time="60.4678459"><system-out><![CDATA[  Scenario: Simple reorg with burned output
+]]></system-out></testcase><testcase name="Scenario: Simple reorg with burned output: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:33:3" time="60.6603216"><system-out><![CDATA[  Scenario: Simple reorg with burned output
    ✔  Given I have a seed node SEED_B
    ✔  When I have a base node B connected to seed SEED_B
    ✔  When I have wallet WB connected to base node B
@@ -1004,13 +146,13 @@
    ✔  Then node SA is at height 17
    ✔  Then node B is at height 17
    ✔  Then node C is at height 17
-]]></system-out></testcase><testcase name="Scenario: Node rolls back reorg on invalid block: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:63:3" time="0"><skipped/></testcase></testsuite><testsuite id="6" name="Feature: Block Sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature" package="testsuite/Feature: Block Sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature" tests="6" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:41:44.73311Z" time="189.7468578"><testcase name="Scenario: Simple block sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:26:3" time="15.3983625"><system-out><![CDATA[  Scenario: Simple block sync
+]]></system-out></testcase><testcase name="Scenario: Node rolls back reorg on invalid block: ?\C:\projects\tari\integration_tests\tests\features\Reorgs.feature:63:3" time="0"><skipped/></testcase></testsuite><testsuite id="6" name="Feature: Block Sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature" package="testsuite/Feature: Block Sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature" tests="6" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:15:30.6639672Z" time="190.8327484"><testcase name="Scenario: Simple block sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:26:3" time="15.602751"><system-out><![CDATA[  Scenario: Simple block sync
    ✔  Given I have 1 seed nodes
    ✔  When I have a SHA3 miner MINER connected to all seed nodes
    ✔  When mining node MINER mines 20 blocks
    ✔  When I have 2 base nodes connected to all seed nodes
    ✔  Then all nodes are at height 20
-]]></system-out></testcase><testcase name="Scenario: Sync burned output: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:34:3" time="31.0496067"><system-out><![CDATA[  Scenario: Sync burned output
+]]></system-out></testcase><testcase name="Scenario: Sync burned output: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:34:3" time="30.2412368"><system-out><![CDATA[  Scenario: Sync burned output
    ✔  Given I have a seed node NODE
    ✔  When I have a base node NODE1 connected to all seed nodes
    ✔  When I have 2 base nodes connected to all seed nodes
@@ -1024,7 +166,7 @@
    ✔  Then all nodes are at height 25
    ✔  When I have a base node NODE2 connected to all seed nodes
    ✔  Then all nodes are at height 25
-]]></system-out></testcase><testcase name="Scenario: Pruned mode simple sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:50:3" time="45.8525359"><system-out><![CDATA[  Scenario: Pruned mode simple sync
+]]></system-out></testcase><testcase name="Scenario: Pruned mode simple sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:50:3" time="45.9529445"><system-out><![CDATA[  Scenario: Pruned mode simple sync
    ✔  Given I have 1 seed nodes
    ✔  When I have a SHA3 miner NODE1 connected to all seed nodes
    ✔  When I mine a block on NODE1 with coinbase CB1
@@ -1033,7 +175,7 @@
    ✔  When mining node NODE1 mines 15 blocks
    ✔  When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
    ✔  Then all nodes are at height 20
-]]></system-out></testcase><testcase name="Scenario: Pruned node should handle burned output: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:61:3" time="60.3899455"><system-out><![CDATA[  Scenario: Pruned node should handle burned output
+]]></system-out></testcase><testcase name="Scenario: Pruned node should handle burned output: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:61:3" time="61.1897761"><system-out><![CDATA[  Scenario: Pruned node should handle burned output
    ✔  Given I have a seed node NODE
    ✔  When I have a base node NODE1 connected to all seed nodes
    ✔  When I have 2 base nodes connected to all seed nodes
@@ -1047,14 +189,14 @@
    ✔  Then all nodes are at height 25
    ✔  When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
    ✔  Then all nodes are at height 25
-]]></system-out></testcase><testcase name="Scenario: When a new node joins the network, it receives all peers: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:77:3" time="3.0719588"><system-out><![CDATA[  Scenario: When a new node joins the network, it receives all peers
+]]></system-out></testcase><testcase name="Scenario: When a new node joins the network, it receives all peers: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:77:3" time="3.3694665"><system-out><![CDATA[  Scenario: When a new node joins the network, it receives all peers
    ✔  Given I have 10 seed nodes
    ✔  When I have a base node NODE1 connected to all seed nodes
    ✔  When I wait for NODE1 to have 10 connections
    ✔  When I have a base node NODE2 connected to node NODE1
    ✔  Then NODE1 has at least 11 peers
    ✔  Then NODE2 has at least 11 peers
-]]></system-out></testcase><testcase name="Scenario: Syncing node while also mining before tip sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:143:5" time="33.9844484"><system-out><![CDATA[  Scenario Outline: Syncing node while also mining before tip sync
+]]></system-out></testcase><testcase name="Scenario: Syncing node while also mining before tip sync: ?\C:\projects\tari\integration_tests\tests\features\Sync.feature:143:5" time="34.4765735"><system-out><![CDATA[  Scenario Outline: Syncing node while also mining before tip sync
    ✔  Given I have a seed node SEED
    ✔  When I have wallet WALLET1 connected to seed node SEED
    ✔  When I have wallet WALLET2 connected to seed node SEED
@@ -1067,7 +209,7 @@
    ✔  When I start base node SYNCER
    ✔  When mining node MINER2 mines 10 blocks with min difficulty 1 and max difficulty 2
    ✔  Then node SYNCER is at the same height as node SEED
-]]></system-out></testcase></testsuite><testsuite id="7" name="Feature: Wallet CLI: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature" package="testsuite/Feature: Wallet CLI: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:42:25.335884Z" time="45.1036401"><testcase name="Scenario: As a user I want to burn tari via command line: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature:47:5" time="45.1036401"><system-out><![CDATA[  Scenario: As a user I want to burn tari via command line
+]]></system-out></testcase></testsuite><testsuite id="7" name="Feature: Wallet CLI: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature" package="testsuite/Feature: Wallet CLI: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:16:06.8694917Z" time="45.2509183"><testcase name="Scenario: As a user I want to burn tari via command line: ?\C:\projects\tari\integration_tests\tests\features\WalletCli.feature:47:5" time="45.2509183"><system-out><![CDATA[  Scenario: As a user I want to burn tari via command line
    ✔  Given I have a seed node SEED
    ✔  When I have a base node BASE connected to seed SEED
    ✔  When I have wallet WALLET connected to base node BASE
@@ -1080,7 +222,7 @@
    ✔  When I mine 5 blocks on BASE
    ✔  Then all nodes are at height 20
    ✔  Then I get balance of wallet WALLET is at least 20000000000 uT via command line
-]]></system-out></testcase></testsuite><testsuite id="8" name="Feature: Wallet FFI: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature" package="testsuite/Feature: Wallet FFI: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature" tests="6" errors="0" failures="3" hostname="localhost" timestamp="2023-05-11T10:42:37.1239319Z" time="853.9237726"><testcase name="Scenario: As a client I want to retrieve the mnemonic word list for a given language: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:24:5" time="0.0077528"><system-out><![CDATA[  Scenario: As a client I want to retrieve the mnemonic word list for a given language
+]]></system-out></testcase></testsuite><testsuite id="8" name="Feature: Wallet FFI: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature" package="testsuite/Feature: Wallet FFI: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature" tests="6" errors="0" failures="3" hostname="localhost" timestamp="2023-05-11T11:16:28.7758096Z" time="860.237319"><testcase name="Scenario: As a client I want to retrieve the mnemonic word list for a given language: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:24:5" time="0.0071234"><system-out><![CDATA[  Scenario: As a client I want to retrieve the mnemonic word list for a given language
    ✔  Then I retrieve the mnemonic word list for CHINESE_SIMPLIFIED
    ✔  Then I retrieve the mnemonic word list for ENGLISH
    ✔  Then I retrieve the mnemonic word list for FRENCH
@@ -1088,7 +230,7 @@
    ✔  Then I retrieve the mnemonic word list for JAPANESE
    ✔  Then I retrieve the mnemonic word list for KOREAN
    ✔  Then I retrieve the mnemonic word list for SPANISH
-]]></system-out></testcase><testcase name="Scenario: As a client I want to receive contact liveness events: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:72:5" time="142.0048838"><failure type="Step Panicked" message="Step panicked. Captured output: FFI_WALLET doesn&apos;t have at least 2 contacts with status Online!"><![CDATA[  Scenario: As a client I want to receive contact liveness events
+]]></system-out></testcase><testcase name="Scenario: As a client I want to receive contact liveness events: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:72:5" time="141.8666836"><failure type="Step Panicked" message="Step panicked. Captured output: FFI_WALLET doesn&apos;t have at least 2 contacts with status Online!"><![CDATA[  Scenario: As a client I want to receive contact liveness events
    ✔  Given I have a seed node SEED
    ✔  And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
    ✔  And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
@@ -1126,22 +268,22 @@
           },
           seed_nodes: [],
           wallet_tx_ids: {
-              "b4fc935fbaab498820b4d7ad03f583d253568f69bf7589a6256061a84a900971dd": [
-                  688045722650699387,
+              "f005a092c438c3a3cf9270d5bb134d866561b809a093fe331965a255e351227d2e": [
+                  9610612459298902498,
               ],
-              "70cb3cefa548a96be05d74e07b04425282bb1f60fa72a4ecf8cc48dd62c2d9511c": [
-                  688045722650699387,
-                  11356279350112304874,
+              "7688a81e63886c1eda9a1a19109c1884efcf401bac1ff83f38d2bde2e69cb6718d": [
+                  9610612459298902498,
+                  8796089081661507410,
               ],
-              "f289e879bef7bdd1b37fe0604702774172c404173269135dae8c0676e5b2076a6d": [
-                  11356279350112304874,
+              "e0c6eefee85a8be6a4e95846058b74b9bf0c3db1f36f3c164223913c24988568fc": [
+                  8796089081661507410,
               ],
           },
           errors: [],
           last_imported_tx_ids: [],
           last_merge_miner_response: Null,
       }
-]]></failure></testcase><testcase name="Scenario: As a client I want to retrieve a list of transactions I have made and received: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:95:5" time="536.2240181"><failure type="Step Panicked" message="Step panicked. Captured output: wallet RECEIVER failed to get balance of at least amount 1000000, current amount is 0"><![CDATA[  Scenario: As a client I want to retrieve a list of transactions I have made and received
+]]></failure></testcase><testcase name="Scenario: As a client I want to retrieve a list of transactions I have made and received: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:95:5" time="57.4440342"><system-out><![CDATA[  Scenario: As a client I want to retrieve a list of transactions I have made and received
    ✔  Given I have a seed node SEED
    ✔  When I have a base node BASE1 connected to all seed nodes
    ✔  When I have a base node BASE2 connected to all seed nodes
@@ -1160,41 +302,14 @@
    ✔  Then I wait until base node BASE2 has 1 unconfirmed transactions in its mempool
    ✔  When mining node MINER mines 4 blocks
    ✔  Then all nodes are at height 24
-   ✘  Then I wait for wallet RECEIVER to have at least 1000000 uT
-      Step failed:
-      Defined: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:116:9
-      Matched: integration_tests\tests\steps\wallet_steps.rs:98:1
-      Step panicked. Captured output: wallet RECEIVER failed to get balance of at least amount 1000000, current amount is 0
-      Client {
-          base_nodes: {},
-          blocks: {},
-          miners: {},
-          ffi_wallets: {},
-          wallets: {},
-          merge_mining_proxies: {},
-          transactions: {},
-          wallet_addresses: {},
-          utxos: {},
-          output_hash: None,
-          pre_image: None,
-          wallet_connected_to_base_node: {
-              "SENDER": "BASE1",
-              "RECEIVER": "BASE2",
-          },
-          seed_nodes: [],
-          wallet_tx_ids: {
-              "bacb85329d5162b121cfa2a90ea189b209e90187a6f30faa45899843e90ea901eb": [
-                  9192290905027421192,
-              ],
-              "1e23eb81183c560c9e95fa5c088f7443deba66027a51873e86c5dfb608232c3655": [
-                  9192290905027421192,
-              ],
-          },
-          errors: [],
-          last_imported_tx_ids: [],
-          last_merge_miner_response: Null,
-      }
-]]></failure></testcase><testcase name="Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:126:5" time="79.6454717"><failure type="Step Panicked" message="Step panicked. Captured output: Wallet doesn&apos;t have enough available funds 0"><![CDATA[  Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
+   ✔  Then I wait for wallet RECEIVER to have at least 1000000 uT
+   ✔  And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
+   ✔  And I start TXO validation on ffi wallet FFI_WALLET
+   ✔  And I start TX validation on ffi wallet FFI_WALLET
+   ✔  Then I wait for ffi wallet FFI_WALLET to receive 2 mined
+   ✔  Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
+   ✔  And I stop ffi wallet FFI_WALLET
+]]></system-out></testcase><testcase name="Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:126:5" time="80.3632667"><failure type="Step Panicked" message="Step panicked. Captured output: Wallet doesn&apos;t have enough available funds 0"><![CDATA[  Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
    ✔  Given I have a seed node SEED
    ✔  When I have a base node BASE1 connected to all seed nodes
    ✔  When I have a base node BASE2 connected to all seed nodes
@@ -1225,7 +340,7 @@
           merge_mining_proxies: {},
           transactions: {},
           wallet_addresses: {
-              "FFI_WALLET": "7057a0b8ca42f3c3ecf86984c7f05998b86f35bbce5a494e656dfb74631f5a53dd",
+              "FFI_WALLET": "148c6c3708862a96ad78b16c1657444566ef87a0c5ba806ade7768dfa3d51b7b37",
           },
           utxos: {},
           output_hash: None,
@@ -1235,18 +350,18 @@
           },
           seed_nodes: [],
           wallet_tx_ids: {
-              "945c0ebd014ceeff523d33352554affc7daa3cf4efd2597353e4a116ddeeeb6f41": [
-                  8964716606045782101,
+              "50fec1ba253c122140440a8fb3c085c4bed79fbc3d4ac14e86b8ceea2627a025e5": [
+                  17505091350136725362,
               ],
-              "7057a0b8ca42f3c3ecf86984c7f05998b86f35bbce5a494e656dfb74631f5a53dd": [
-                  8964716606045782101,
+              "148c6c3708862a96ad78b16c1657444566ef87a0c5ba806ade7768dfa3d51b7b37": [
+                  17505091350136725362,
               ],
           },
           errors: [],
           last_imported_tx_ids: [],
           last_merge_miner_response: Null,
       }
-]]></failure></testcase><testcase name="Scenario: As a client I want to send a one-sided transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:148:5" time="44.90191"><system-out><![CDATA[  Scenario: As a client I want to send a one-sided transaction
+]]></failure></testcase><testcase name="Scenario: As a client I want to send a one-sided transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:148:5" time="516.7488314"><failure type="Step Panicked" message="Step panicked. Captured output: Transaction from SENDER to FFI_WALLET with amount 2400000 at fee 5 failed to be broadcasted"><![CDATA[  Scenario: As a client I want to send a one-sided transaction
    ✔  Given I have a seed node SEED
    ✔  When I have a base node BASE1 connected to all seed nodes
    ✔  When I have a base node BASE2 connected to all seed nodes
@@ -1256,21 +371,34 @@
    ✔  When I have mining node MINER connected to base node BASE1 and wallet SENDER
    ✔  When mining node MINER mines 10 blocks
    ✔  Then I wait for wallet SENDER to have at least 5000000 uT
-   ✔  And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
-   ✔  And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
-   ✔  Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-   ✔  When mining node MINER mines 10 blocks
-   ✔  Then I wait for ffi wallet FFI_WALLET to have at least 4000000 uT
-   ✔  And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 5 via one-sided transactions
-   ✔  Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-   ✔  When mining node MINER mines 2 blocks
-   ✔  Then all nodes are at height 22
-   ✔  Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_UNCONFIRMED and not cancelled
-   ✔  When mining node MINER mines 5 blocks
-   ✔  Then all nodes are at height 27
-   ✔  Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and not cancelled
-   ✔  And I stop ffi wallet FFI_WALLET
-]]></system-out></testcase><testcase name="Scenario: As a client I want to receive a one-sided transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:174:5" time="51.1397362"><system-out><![CDATA[  Scenario: As a client I want to receive a one-sided transaction
+   ✘  And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+      Step failed:
+      Defined: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:158:9
+      Matched: integration_tests\tests\steps\wallet_steps.rs:791:1
+      Step panicked. Captured output: Transaction from SENDER to FFI_WALLET with amount 2400000 at fee 5 failed to be broadcasted
+      Client {
+          base_nodes: {},
+          blocks: {},
+          miners: {},
+          ffi_wallets: {},
+          wallets: {},
+          merge_mining_proxies: {},
+          transactions: {},
+          wallet_addresses: {},
+          utxos: {},
+          output_hash: None,
+          pre_image: None,
+          wallet_connected_to_base_node: {
+              "SENDER": "BASE1",
+              "RECEIVER": "BASE2",
+          },
+          seed_nodes: [],
+          wallet_tx_ids: {},
+          errors: [],
+          last_imported_tx_ids: [],
+          last_merge_miner_response: Null,
+      }
+]]></failure></testcase><testcase name="Scenario: As a client I want to receive a one-sided transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletFFI.feature:174:5" time="63.8073797"><system-out><![CDATA[  Scenario: As a client I want to receive a one-sided transaction
    ✔  Given I have a seed node SEED
    ✔  When I have a base node BASE1 connected to all seed nodes
    ✔  When I have a base node BASE2 connected to all seed nodes
@@ -1289,9 +417,9 @@
    ✔  Then all nodes are at height 17
    ✔  Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
    ✔  And I stop ffi wallet FFI_RECEIVER
-]]></system-out></testcase></testsuite><testsuite id="9" name="Feature: Wallet Querying: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature" package="testsuite/Feature: Wallet Querying: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:43:49.3700506Z" time="0.0014744"><testcase name="Scenario: As a wallet I want to submit a transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature:14:3" time="0.0003352"><system-out><![CDATA[  Scenario: As a wallet I want to submit a transaction
-]]></system-out></testcase><testcase name="Scenario: As a wallet I cannot submit a locked coinbase transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature:26:3" time="0.0011392"><system-out><![CDATA[  Scenario: As a wallet I cannot submit a locked coinbase transaction
-]]></system-out></testcase></testsuite><testsuite id="10" name="Feature: Wallet Recovery: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature" package="testsuite/Feature: Wallet Recovery: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:43:49.3717348Z" time="53.9301538"><testcase name="Scenario: Wallet recovery with connected base node staying online: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature:8:5" time="38.7042991"><system-out><![CDATA[  Scenario: Wallet recovery with connected base node staying online
+]]></system-out></testcase></testsuite><testsuite id="9" name="Feature: Wallet Querying: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature" package="testsuite/Feature: Wallet Querying: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:17:29.1803476Z" time="0.0029677"><testcase name="Scenario: As a wallet I want to submit a transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature:14:3" time="0.002083"><system-out><![CDATA[  Scenario: As a wallet I want to submit a transaction
+]]></system-out></testcase><testcase name="Scenario: As a wallet I cannot submit a locked coinbase transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletQuery.feature:26:3" time="0.0008847"><system-out><![CDATA[  Scenario: As a wallet I cannot submit a locked coinbase transaction
+]]></system-out></testcase></testsuite><testsuite id="10" name="Feature: Wallet Recovery: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature" package="testsuite/Feature: Wallet Recovery: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature" tests="2" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:17:29.1835205Z" time="54.1816046"><testcase name="Scenario: Wallet recovery with connected base node staying online: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature:8:5" time="38.8199596"><system-out><![CDATA[  Scenario: Wallet recovery with connected base node staying online
    ✔  Given I have a seed node NODE
    ✔  When I have wallet WALLET_A connected to all seed nodes
    ✔  When I have wallet WALLET_B connected to all seed nodes
@@ -1306,7 +434,7 @@
    ✔  When I have wallet WALLET_D connected to all seed nodes
    ✔  When I mine 5 blocks on NODE
    ✔  Then all nodes are at height 27
-]]></system-out></testcase><testcase name="Scenario: Recover one-sided payments: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature:55:5" time="15.2258547"><system-out><![CDATA[  Scenario: Recover one-sided payments
+]]></system-out></testcase><testcase name="Scenario: Recover one-sided payments: ?\C:\projects\tari\integration_tests\tests\features\WalletRecovery.feature:55:5" time="15.361645"><system-out><![CDATA[  Scenario: Recover one-sided payments
    ✔  Given I have a seed node NODE
    ✔  When I have wallet WALLET_A connected to all seed nodes
    ✔  When I have wallet WALLET_B connected to all seed nodes
@@ -1319,7 +447,7 @@
    ✔  Then all nodes are at height 20
    ✔  When mining node MINER mines 5 blocks
    ✔  Then all nodes are at height 25
-]]></system-out></testcase></testsuite><testsuite id="11" name="Feature: Wallet Transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature" package="testsuite/Feature: Wallet Transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature" tests="3" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:44:07.4627531Z" time="162.1957607"><testcase name="Scenario: Wallet sending and receiving one-sided transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:8:3" time="62.9333318"><system-out><![CDATA[  Scenario: Wallet sending and receiving one-sided transactions
+]]></system-out></testcase></testsuite><testsuite id="11" name="Feature: Wallet Transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature" package="testsuite/Feature: Wallet Transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature" tests="3" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T11:17:55.9280611Z" time="148.1673522"><testcase name="Scenario: Wallet sending and receiving one-sided transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:8:3" time="63.1665177"><system-out><![CDATA[  Scenario: Wallet sending and receiving one-sided transactions
    ✔  Given I have a seed node NODE
    ✔  When I have 1 base nodes connected to all seed nodes
    ✔  When I have wallet WALLET_A connected to all seed nodes
@@ -1345,7 +473,7 @@
    ✔  When mining node MINER mines 5 blocks
    ✔  Then all nodes are at height 30
    ✔  Then I wait for wallet WALLET_C to have at least 1500000 uT
-]]></system-out></testcase><testcase name="Scenario: Wallet sending and receiving one-sided stealth transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:38:3" time="62.9742515"><system-out><![CDATA[  Scenario: Wallet sending and receiving one-sided stealth transactions
+]]></system-out></testcase><testcase name="Scenario: Wallet sending and receiving one-sided stealth transactions: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:38:3" time="58.2137451"><system-out><![CDATA[  Scenario: Wallet sending and receiving one-sided stealth transactions
    ✔  Given I have a seed node NODE
    ✔  When I have 1 base nodes connected to all seed nodes
    ✔  When I have wallet WALLET_A connected to all seed nodes
@@ -1370,7 +498,7 @@
    ✔  When mining node MINER mines 5 blocks
    ✔  Then all nodes are at height 30
    ✔  Then I wait for wallet WALLET_C to have at least 1500000 uT
-]]></system-out></testcase><testcase name="Scenario: Create burn transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:407:3" time="36.2881774"><system-out><![CDATA[  Scenario: Create burn transaction
+]]></system-out></testcase><testcase name="Scenario: Create burn transaction: ?\C:\projects\tari\integration_tests\tests\features\WalletTransactions.feature:407:3" time="26.7870894"><system-out><![CDATA[  Scenario: Create burn transaction
    ✔  Given I have a seed node NODE
    ✔  When I have 2 base nodes connected to all seed nodes
    ✔  When I have wallet WALLET_A connected to all seed nodes
@@ -1386,7 +514,7 @@
    ✔  Then all nodes are at height 20
    ✔  Then wallet WALLET_A detects all transactions as Mined_Confirmed
    ✔  When I wait for wallet WALLET_A to have at least 20000000000 uT
-]]></system-out></testcase></testsuite><testsuite id="12" name="Feature: Wallet Transfer: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature" package="testsuite/Feature: Wallet Transfer: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature" tests="1" errors="0" failures="0" hostname="localhost" timestamp="2023-05-11T10:44:59.1383162Z" time="40.854233"><testcase name="Scenario: As a wallet send to a wallet connected to a different base node: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature:9:3" time="40.854233"><system-out><![CDATA[  Scenario: As a wallet send to a wallet connected to a different base node
+]]></system-out></testcase></testsuite><testsuite id="12" name="Feature: Wallet Transfer: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature" package="testsuite/Feature: Wallet Transfer: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature" tests="1" errors="0" failures="1" hostname="localhost" timestamp="2023-05-11T11:18:35.2407514Z" time="526.2892537"><testcase name="Scenario: As a wallet send to a wallet connected to a different base node: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature:9:3" time="526.2892537"><failure type="Step Panicked" message="Step panicked. Captured output: Transaction from WALLET_A to WALLET_B with amount 5 at fee 10 failed to be broadcasted"><![CDATA[  Scenario: As a wallet send to a wallet connected to a different base node
    ✔  Given I have a seed node SEED_A
    ✔  When I have a seed node SEED_B
    ✔  When I have a base node NODE_A connected to all seed nodes
@@ -1394,9 +522,31 @@
    ✔  When I have wallet WALLET_A with 10T connected to base node NODE_A
    ✔  When I have wallet WALLET_B connected to base node NODE_B
    ✔  When I wait 5 seconds
-   ✔  When I transfer 5T from WALLET_A to WALLET_B
-   ✔  When I mine 4 blocks on SEED_A
-   ✔  Then wallet WALLET_A has 5T
-   ✔  When I wait 5 seconds
-   ✔  When wallet WALLET_B has 5T
-]]></system-out></testcase></testsuite></testsuites>
+   ✘  When I transfer 5T from WALLET_A to WALLET_B
+      Step failed:
+      Defined: ?\C:\projects\tari\integration_tests\tests\features\WalletTransfer.feature:17:5
+      Matched: integration_tests\tests\steps\wallet_steps.rs:1357:1
+      Step panicked. Captured output: Transaction from WALLET_A to WALLET_B with amount 5 at fee 10 failed to be broadcasted
+      Client {
+          base_nodes: {},
+          blocks: {},
+          miners: {},
+          ffi_wallets: {},
+          wallets: {},
+          merge_mining_proxies: {},
+          transactions: {},
+          wallet_addresses: {},
+          utxos: {},
+          output_hash: None,
+          pre_image: None,
+          wallet_connected_to_base_node: {
+              "WALLET_A": "NODE_A",
+              "WALLET_B": "NODE_B",
+          },
+          seed_nodes: [],
+          wallet_tx_ids: {},
+          errors: [],
+          last_imported_tx_ids: [],
+          last_merge_miner_response: Null,
+      }
+]]></failure></testcase></testsuite></testsuites>

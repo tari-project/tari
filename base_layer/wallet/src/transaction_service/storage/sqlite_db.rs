@@ -2319,9 +2319,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -2810,9 +2810,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -2957,9 +2957,9 @@ mod test {
                     v.into_iter()
                         .map(|b| {
                             let m = format!("Running migration {}", b);
-                            std::io::stdout()
-                                .write_all(m.as_ref())
-                                .expect("Couldn't write migration number to stdout");
+                            // std::io::stdout()
+                            //     .write_all(m.as_ref())
+                            //     .expect("Couldn't write migration number to stdout");
                             m
                         })
                         .collect::<Vec<String>>()
@@ -3093,9 +3093,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()

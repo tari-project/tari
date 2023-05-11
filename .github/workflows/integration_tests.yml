@@ -1,13 +1,13 @@
 ---
 name: Integration tests
 
-'on':
+"on":
   pull_request:
     types:
       - opened
       - reopened
       - synchronize
-  merge_group:    
+  merge_group:
   push:
     paths-ignore:
       - '**/*.md'
@@ -101,6 +101,12 @@ jobs:
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)"
             -c 5
             --retry 2
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            integration_tests/cucumber-output-junit.xml          
 
   ffi:
     name: Cucumber tests / FFI
@@ -170,3 +176,9 @@ jobs:
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)"
             -c 1
             --retry 2
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            integration_tests/cucumber-output-junit.xml       

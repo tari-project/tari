@@ -103,12 +103,12 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
-        let file = fs::File::create("cucumber-output.json").unwrap();
+        let file = fs::File::create("cucumber-output-junit.xml").unwrap();
         world
             // .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
             .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
-                                          writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString)))
+                                          writer::Summarize::new(writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString))))
             .run("tests/features/")
             .await;
     });

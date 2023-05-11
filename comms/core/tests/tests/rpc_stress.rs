@@ -223,38 +223,38 @@ async fn payload_limit() {
     .await;
 }
 
-async fn high_contention() {
-    run_stress_test(Params {
-        num_tasks: 1000,
-        num_concurrent_sessions: 10,
-        deadline: Duration::from_secs(15),
-        payload_size: 1024 * 1024,
-        num_items: 4,
-    })
-    .await;
-}
-
-async fn high_concurrency() {
-    run_stress_test(Params {
-        num_tasks: 1000,
-        num_concurrent_sessions: 1000,
-        deadline: Duration::from_secs(15),
-        payload_size: 1024 * 1024,
-        num_items: 4,
-    })
-    .await;
-}
-
-async fn high_contention_high_concurrency() {
-    run_stress_test(Params {
-        num_tasks: 2000,
-        num_concurrent_sessions: 1000,
-        deadline: Duration::from_secs(15),
-        payload_size: 1024 * 1024,
-        num_items: 4,
-    })
-    .await;
-}
+// async fn high_contention() {
+//     run_stress_test(Params {
+//         num_tasks: 1000,
+//         num_concurrent_sessions: 10,
+//         deadline: Duration::from_secs(15),
+//         payload_size: 1024 * 1024,
+//         num_items: 4,
+//     })
+//     .await;
+// }
+//
+// async fn high_concurrency() {
+//     run_stress_test(Params {
+//         num_tasks: 1000,
+//         num_concurrent_sessions: 1000,
+//         deadline: Duration::from_secs(15),
+//         payload_size: 1024 * 1024,
+//         num_items: 4,
+//     })
+//     .await;
+// }
+//
+// async fn high_contention_high_concurrency() {
+//     run_stress_test(Params {
+//         num_tasks: 2000,
+//         num_concurrent_sessions: 1000,
+//         deadline: Duration::from_secs(15),
+//         payload_size: 1024 * 1024,
+//         num_items: 4,
+//     })
+//     .await;
+// }
 
 #[tokio::test]
 async fn run() {
