@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 
 /// The type of range proof used in the output
 #[derive(
-    Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, FromPrimitive, BorshDeserialize,
+    Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, FromPrimitive, BorshDeserialize,
 )]
 #[repr(u8)]
 pub enum RangeProofType {

@@ -920,6 +920,7 @@ async fn receive_and_propagate_transaction() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
@@ -978,8 +979,13 @@ async fn consensus_validation_large_tx() {
         } else {
             amount_for_last_output
         };
-        let output =
-            create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, output_amount).unwrap();
+        let output = create_non_recoverable_unblinded_output(
+            script!(Nop),
+            OutputFeatures::default(),
+            &test_params,
+            output_amount,
+        )
+        .unwrap();
 
         script_offset_pvt = script_offset_pvt - test_params.sender_offset_private_key;
         unblinded_outputs.push(output.clone());

@@ -56,7 +56,8 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     factory: &CommitmentFactory,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let utxo = create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val).unwrap();
+    let utxo =
+        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val).unwrap();
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
@@ -71,7 +72,8 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     features: Option<OutputFeatures>,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let utxo = create_non_recoverable_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value).unwrap();
+    let utxo = create_non_recoverable_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value)
+        .unwrap();
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),

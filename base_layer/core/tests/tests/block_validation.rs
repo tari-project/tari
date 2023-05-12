@@ -41,7 +41,13 @@ use tari_core::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
-        test_helpers::{create_non_recoverable_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
+        test_helpers::{
+            create_non_recoverable_unblinded_output,
+            schema_to_transaction,
+            spend_utxos,
+            TestParams,
+            UtxoTestParams,
+        },
         transaction_components::{OutputFeatures, TransactionError},
         CryptoFactories,
     },
@@ -442,10 +448,20 @@ OutputFeatures::default()),
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
-    let unblinded_utxo =
-        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value).unwrap();
-    let unblinded_utxo2 =
-        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value).unwrap();
+    let unblinded_utxo = create_non_recoverable_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        &test_params1,
+        outputs[1].value,
+    )
+    .unwrap();
+    let unblinded_utxo2 = create_non_recoverable_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        &test_params2,
+        outputs[2].value,
+    )
+    .unwrap();
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
@@ -773,10 +789,20 @@ async fn test_block_sync_body_validator() {
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
-    let unblinded_utxo =
-        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value).unwrap();
-    let unblinded_utxo2 =
-        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value).unwrap();
+    let unblinded_utxo = create_non_recoverable_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        &test_params1,
+        outputs[1].value,
+    )
+    .unwrap();
+    let unblinded_utxo2 = create_non_recoverable_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        &test_params2,
+        outputs[2].value,
+    )
+    .unwrap();
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),

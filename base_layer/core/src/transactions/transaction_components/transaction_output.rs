@@ -85,7 +85,7 @@ pub struct TransactionOutput {
     /// The homomorphic commitment representing the output amount
     pub commitment: Commitment,
     /// A proof that the commitment is in the right range
-    pub proof: RangeProof,
+    pub proof: Option<RangeProof>,
     /// The script that will be executed when spending this output
     pub script: TariScript,
     /// Tari script offset pubkey, K_O
@@ -110,7 +110,7 @@ impl TransactionOutput {
         version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
-        proof: RangeProof,
+        proof: Option<RangeProof>,
         script: TariScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
@@ -135,7 +135,7 @@ impl TransactionOutput {
     pub fn new_current_version(
         features: OutputFeatures,
         commitment: Commitment,
-        proof: RangeProof,
+        proof: Option<RangeProof>,
         script: TariScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
@@ -163,8 +163,34 @@ impl TransactionOutput {
     }
 
     /// Accessor method for the range proof contained in an output
-    pub fn proof(&self) -> &RangeProof {
-        &self.proof
+    pub fn proof_result(&self) -> Result<&RangeProof, RangeProofError> {
+        if let Some(proof) = self.proof.as_ref() {
+            Ok(proof)
+        } else {
+            Err(RangeProofError::InvalidRangeProof("Range proof not found".to_string()))
+        }
+    }
+
+    /// Accessor method for the range proof hex option display
+    pub fn proof_hex_display(&self, full: bool) -> String {
+        if let Some(proof) = self.proof.as_ref() {
+            if full {
+                "Some(".to_owned() + &proof.to_hex() + ")"
+            } else {
+                let proof_hex = proof.to_hex();
+                if proof_hex.len() > 32 {
+                    format!(
+                        "Some({}..{})",
+                        &proof_hex[0..16],
+                        &proof_hex[proof_hex.len() - 16..proof_hex.len()]
+                    )
+                } else {
+                    "Some(".to_owned() + &proof_hex + ")"
+                }
+            }
+        } else {
+            "None".to_string()
+        }
     }
 
     /// Accessor method for the TariScript contained in an output
@@ -203,7 +229,7 @@ impl TransactionOutput {
                         minimum_value_promise: self.minimum_value_promise.as_u64(),
                     }],
                 };
-                match prover.verify_batch(vec![&self.proof.0], vec![&statement]) {
+                match prover.verify_batch(vec![&self.proof_result()?.0], vec![&statement]) {
                     Ok(_) => Ok(()),
                     Err(e) => Err(TransactionError::ValidationError(format!(
                         "Recipient output BulletProofPlus range proof for commitment {} failed to verify ({})",
@@ -551,7 +577,7 @@ impl Default for TransactionOutput {
         TransactionOutput::new_current_version(
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
-            RangeProof::default(),
+            Some(RangeProof::default()),
             TariScript::default(),
             PublicKey::default(),
             ComAndPubSignature::default(),
@@ -564,12 +590,6 @@ impl Default for TransactionOutput {
 
 impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let proof = self.proof.to_hex();
-        let proof = if proof.len() > 32 {
-            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
-        } else {
-            proof
-        };
         write!(
             fmt,
             "{} [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}, {}, {}), Proof: {}",
@@ -582,7 +602,7 @@ impl Display for TransactionOutput {
             self.metadata_signature.u_y().to_hex(),
             self.metadata_signature.ephemeral_commitment().to_hex(),
             self.metadata_signature.ephemeral_pubkey().to_hex(),
-            proof
+            self.proof_hex_display(false),
         )
     }
 }
@@ -619,22 +639,16 @@ pub fn batch_verify_range_proofs(
                     minimum_value_promise: output.minimum_value_promise.into(),
                 }],
             });
-            proofs.push(output.proof.to_vec().clone());
+            proofs.push(output.proof_result()?.to_vec().clone());
         }
         if let Err(err_1) = prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
             for output in &bulletproof_plus_proofs {
                 if let Err(err_2) = output.verify_range_proof(prover) {
-                    let proof = output.proof.to_hex();
-                    let proof = if proof.len() > 32 {
-                        format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
-                    } else {
-                        proof
-                    };
                     return Err(RangeProofError::InvalidRangeProof(format!(
                         "commitment {}, minimum_value_promise {}, proof {} ({:?})",
                         output.commitment.to_hex(),
                         output.minimum_value_promise,
-                        proof,
+                        output.proof_hex_display(false),
                         err_2,
                     )));
                 }

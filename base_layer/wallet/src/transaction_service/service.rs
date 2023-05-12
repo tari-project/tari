@@ -1105,9 +1105,7 @@ where
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
-        let recovery_data = RecoveryData {
-            encryption_key,
-        };
+        let recovery_data = RecoveryData { encryption_key };
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
@@ -1175,11 +1173,7 @@ where
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.output_manager_service
-            .add_output_with_tx_id(
-                tx_id,
-                unblinded_output,
-                Some(SpendingPriority::HtlcSpendAsap),
-            )
+            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1259,9 +1253,7 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let recovery_data = RecoveryData {
-            encryption_key,
-        };
+        let recovery_data = RecoveryData { encryption_key };
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
@@ -1434,9 +1426,7 @@ where
                 // nonce/spend_key is returned back to the caller.
                 let shared_secret = CommsDHKE::new(&spend_key, claim_public_key);
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                RecoveryData {
-                    encryption_key,
-                }
+                RecoveryData { encryption_key }
             },
             // No claim key provided, no shared secret or encryption key needed
             None => recovery_data,
@@ -1452,7 +1442,7 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let commitment = recipient_reply.output.commitment.clone();
-        let range_proof = recipient_reply.output.proof.clone();
+        let range_proof = recipient_reply.output.proof_result()?.clone();
         let mut ownership_proof = None;
 
         if let Some(claim_public_key) = claim_public_key {

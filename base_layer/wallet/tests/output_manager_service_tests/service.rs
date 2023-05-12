@@ -105,7 +105,7 @@ use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
-    utils::{make_non_recoverable_input, make_input_with_features, TestParams},
+    utils::{make_input_with_features, make_non_recoverable_input, TestParams},
 };
 
 fn default_features_and_scripts_size_byte_size() -> usize {
@@ -209,9 +209,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         .get_key_at_index(OutputManagerKeyManagerBranch::OpeningsEncryption.get_branch_key(), 0)
         .await
         .unwrap();
-    let recovery_data = RecoveryData {
-        encryption_key,
-    };
+    let recovery_data = RecoveryData { encryption_key };
 
     task::spawn(async move { output_manager_service.start().await.unwrap() });
 
@@ -702,9 +700,7 @@ async fn test_utxo_selection_with_tx_priority() {
         Some(OutputFeatures::create_coinbase(1, None)),
     )
     .await;
-    oms.add_output(uo, Some(SpendingPriority::HtlcSpendAsap))
-        .await
-        .unwrap();
+    oms.add_output(uo, Some(SpendingPriority::HtlcSpendAsap)).await.unwrap();
     let (_, uo) = make_input_with_features(
         &mut OsRng.clone(),
         amount,
@@ -1393,7 +1389,8 @@ async fn test_txo_validation() {
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
-    let (_, output1) = make_non_recoverable_input(&mut OsRng, MicroTari::from(output1_value), &factories.commitment).await;
+    let (_, output1) =
+        make_non_recoverable_input(&mut OsRng, MicroTari::from(output1_value), &factories.commitment).await;
     let output1_tx_output = output1.as_transaction_output(&factories, None).unwrap();
 
     oms.output_manager_handle
@@ -1402,7 +1399,8 @@ async fn test_txo_validation() {
         .unwrap();
 
     let output2_value = 2_000_000;
-    let (_, output2) = make_non_recoverable_input(&mut OsRng, MicroTari::from(output2_value), &factories.commitment).await;
+    let (_, output2) =
+        make_non_recoverable_input(&mut OsRng, MicroTari::from(output2_value), &factories.commitment).await;
     let output2_tx_output = output2.as_transaction_output(&factories, None).unwrap();
 
     oms.output_manager_handle
@@ -1411,7 +1409,8 @@ async fn test_txo_validation() {
         .unwrap();
 
     let output3_value = 4_000_000;
-    let (_, output3) = make_non_recoverable_input(&mut OsRng, MicroTari::from(output3_value), &factories.commitment).await;
+    let (_, output3) =
+        make_non_recoverable_input(&mut OsRng, MicroTari::from(output3_value), &factories.commitment).await;
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(3u64), output3.clone(), None)
@@ -1532,9 +1531,18 @@ async fn test_txo_validation() {
     let output6 = outputs.remove(o6_pos);
     let output4 = outputs[0].clone();
 
-    let output4_tx_output = output4.unblinded_output.as_transaction_output(&factories, None).unwrap();
-    let output5_tx_output = output5.unblinded_output.as_transaction_output(&factories, None).unwrap();
-    let output6_tx_output = output6.unblinded_output.as_transaction_output(&factories, None).unwrap();
+    let output4_tx_output = output4
+        .unblinded_output
+        .as_transaction_output(&factories, None)
+        .unwrap();
+    let output5_tx_output = output5
+        .unblinded_output
+        .as_transaction_output(&factories, None)
+        .unwrap();
+    let output6_tx_output = output6
+        .unblinded_output
+        .as_transaction_output(&factories, None)
+        .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -1718,9 +1726,7 @@ async fn test_txo_validation() {
     assert_eq!(utxo_query_calls[0].len(), 2);
     assert_eq!(
         utxo_query_calls[0][1],
-        output3.as_transaction_output(&factories, None).unwrap()
-            .hash()
-            .to_vec()
+        output3.as_transaction_output(&factories, None).unwrap().hash().to_vec()
     );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
@@ -2096,13 +2102,15 @@ async fn test_get_status_by_tx_id() {
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
-    let (_ti, uo1) = make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
+    let (_ti, uo1) =
+        make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
     oms.output_manager_handle
         .add_unvalidated_output(TxId::from(1u64), uo1, None)
         .await
         .unwrap();
 
-    let (_ti, uo2) = make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
+    let (_ti, uo2) =
+        make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
     oms.output_manager_handle
         .add_unvalidated_output(TxId::from(2u64), uo2, None)
         .await
@@ -2188,26 +2196,21 @@ async fn scan_for_recovery_test() {
     let mut non_recoverable_unblinded_outputs = Vec::new();
 
     for i in 1..=NUM_NON_RECOVERABLE {
-        let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(1000 * i as u64), &factories.commitment).await;
+        let (_ti, uo) =
+            make_non_recoverable_input(&mut OsRng, MicroTari::from(1000 * i as u64), &factories.commitment).await;
         non_recoverable_unblinded_outputs.push(uo)
     }
 
     let recoverable_outputs: Vec<TransactionOutput> = recoverable_unblinded_outputs
         .clone()
         .into_iter()
-        .map(|uo| {
-            uo.as_transaction_output(&factories, None)
-                .unwrap()
-        })
+        .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
         .collect();
 
     let non_recoverable_outputs: Vec<TransactionOutput> = non_recoverable_unblinded_outputs
         .clone()
         .into_iter()
-        .map(|uo| {
-            uo.as_transaction_output(&factories,  None)
-                .unwrap()
-        })
+        .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
         .collect();
 
     oms.output_manager_handle
@@ -2254,9 +2257,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(1000u64), &factories.commitment).await;
 
-    let rewindable_output = uo
-        .as_transaction_output(&factories, None)
-        .unwrap();
+    let rewindable_output = uo.as_transaction_output(&factories, None).unwrap();
 
     let result = oms
         .output_manager_handle

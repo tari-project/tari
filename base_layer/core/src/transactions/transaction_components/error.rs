@@ -53,6 +53,8 @@ pub enum TransactionError {
     MoreThanOneCoinbase,
     #[error("No coinbase in body")]
     NoCoinbase,
+    #[error("Missing range proof")]
+    MissingRangeProof,
     #[error("Input maturity not reached")]
     InputMaturity,
     #[error("Tari script error : {0}")]

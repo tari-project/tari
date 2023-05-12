@@ -5509,9 +5509,12 @@ async fn test_update_faux_tx_on_oms_validation() {
         .await
         .unwrap();
 
-    let (_ti, uo_1) = make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
-    let (_ti, uo_2) = make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(20000), &factories.commitment).await;
-    let (_ti, uo_3) = make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(30000), &factories.commitment).await;
+    let (_ti, uo_1) =
+        make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment).await;
+    let (_ti, uo_2) =
+        make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(20000), &factories.commitment).await;
+    let (_ti, uo_3) =
+        make_non_recoverable_input(&mut OsRng.clone(), MicroTari::from(30000), &factories.commitment).await;
     for (tx_id, uo) in [(tx_id_1, uo_1), (tx_id_2, uo_2), (tx_id_3, uo_3)] {
         alice_ts_interface
             .output_manager_service_handle

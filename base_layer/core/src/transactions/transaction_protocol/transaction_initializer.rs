@@ -561,7 +561,7 @@ impl SenderTransactionInitializer {
 
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 
-            let change_output =  match change_unblinded_output.as_transaction_output(factories,  None) {
+            let change_output = match change_unblinded_output.as_transaction_output(factories, None) {
                 Ok(o) => o,
                 Err(e) => {
                     return self.build_err(e.to_string().as_str());
@@ -700,7 +700,7 @@ mod test {
             crypto_factories::CryptoFactories,
             fee::Fee,
             tari_amount::*,
-            test_helpers::{create_test_input, create_non_recoverable_unblinded_output, TestParams, UtxoTestParams},
+            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
@@ -733,7 +733,8 @@ mod test {
             .with_private_nonce(p.nonce.clone());
         builder
             .with_output(
-                create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100)).unwrap(),
+                create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100))
+                    .unwrap(),
                 PrivateKey::random(&mut OsRng),
             )
             .unwrap();
@@ -887,8 +888,13 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
 
-        let output =
-            create_non_recoverable_unblinded_output(TariScript::default(), OutputFeatures::default(), &p, MicroTari(500)).unwrap();
+        let output = create_non_recoverable_unblinded_output(
+            TariScript::default(),
+            OutputFeatures::default(),
+            &p,
+            MicroTari(500),
+        )
+        .unwrap();
         let constants = create_consensus_constants(0);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -918,7 +924,9 @@ mod test {
             .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_features_and_scripts(1));
         let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500)).unwrap();
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -952,7 +960,9 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400)).unwrap();
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -989,7 +999,9 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000)).unwrap();
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(2, &constants);

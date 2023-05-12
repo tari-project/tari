@@ -30,6 +30,7 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
+use tari_crypto::errors::RangeProofError;
 use tari_key_manager::{
     error::{KeyManagerError, MnemonicError},
     key_manager_service::KeyManagerServiceError,
@@ -140,6 +141,8 @@ pub enum OutputManagerError {
     InvalidArgument(String),
     #[error("Validation in progress")]
     ValidationInProgress,
+    #[error("Invalid data: `{0}`")]
+    RangeProofError(#[from] RangeProofError),
 }
 
 #[derive(Debug, Error)]

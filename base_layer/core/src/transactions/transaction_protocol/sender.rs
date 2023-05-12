@@ -772,7 +772,7 @@ mod test {
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
-            test_helpers::{create_test_input, create_non_recoverable_unblinded_output, TestParams},
+            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
             transaction_components::{
                 EncryptedOpenings,
                 OutputFeatures,
@@ -904,7 +904,7 @@ mod test {
         let mut output = TransactionOutput::new_current_version(
             Default::default(),
             commitment,
-            proof,
+            Some(proof),
             script.clone(),
             sender_offset_public_key,
             partial_metadata_signature.clone(),
@@ -950,7 +950,8 @@ mod test {
             .with_change_secret(p1.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
-                create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)).unwrap(),
+                create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500))
+                    .unwrap(),
                 p1.sender_offset_private_key.clone(),
             )
             .unwrap()

@@ -8528,7 +8528,7 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_test_input, create_non_recoverable_unblinded_output, TestParams},
+        transactions::test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
     };
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};

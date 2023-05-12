@@ -74,7 +74,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
-            range_proof_type: u32::from(features.range_proof_type.as_byte()),
+            range_proof_type: i32::from(features.range_proof_type.as_byte()),
         }
     }
 }

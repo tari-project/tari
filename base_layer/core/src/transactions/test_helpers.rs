@@ -186,8 +186,13 @@ impl TestParams {
             .commit_value(&self.spend_key, params.value.as_u64());
 
         let encrypted_openings = if let Some(recovery_data) = recovery_data {
-            EncryptedOpenings::encrypt_openings(&recovery_data.encryption_key, &commitment, params.value, &self.spend_key)
-                .map_err(|e| format!("{:?}", e))?
+            EncryptedOpenings::encrypt_openings(
+                &recovery_data.encryption_key,
+                &commitment,
+                params.value,
+                &self.spend_key,
+            )
+            .map_err(|e| format!("{:?}", e))?
         } else {
             EncryptedOpenings::default()
         };
@@ -889,7 +894,7 @@ pub fn create_utxo(
     let utxo = TransactionOutput::new_current_version(
         features.clone(),
         commitment,
-        proof.into(),
+        Some(proof.into()),
         script.clone(),
         offset_keys.pk,
         metadata_sig,

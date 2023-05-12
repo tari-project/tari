@@ -28,10 +28,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey},
 };
-use tari_core::transactions::{
-    transaction_components::UnblindedOutput,
-    CryptoFactories,
-};
+use tari_core::transactions::{transaction_components::UnblindedOutput, CryptoFactories};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::output_manager_service::{

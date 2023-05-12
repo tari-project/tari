@@ -2086,8 +2086,8 @@ mod malleability {
         fn test_proof() {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
-                let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
-                output.proof = mod_proof;
+                let mod_proof = RangeProof::from_hex(&(output.proof.as_ref().unwrap().to_hex() + "00")).unwrap();
+                output.proof = Some(mod_proof);
             });
         }
 

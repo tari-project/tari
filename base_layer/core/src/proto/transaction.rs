@@ -247,6 +247,12 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let sender_offset_public_key =
             PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+        let range_proof = if let Some(proof) = output.range_proof {
+            Some(BulletRangeProof::from_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
+        } else {
+            None
+        };
+
         let script = TariScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
 
         let metadata_signature = output
@@ -269,7 +275,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             )?,
             features,
             commitment,
-            BulletRangeProof(output.range_proof),
+            range_proof,
             script,
             sender_offset_public_key,
             metadata_signature,
@@ -286,10 +292,13 @@ impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
     fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        let range_proof = output.proof.map(|proof| proto::types::RangeProof {
+            proof_bytes: proof.to_vec(),
+        });
         Ok(Self {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
-            range_proof: output.proof.to_vec(),
+            range_proof,
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
@@ -347,23 +356,6 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_feature: features.sidechain_feature.map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
-    }
-}
-
-//---------------------------------- EncryptedOpenings --------------------------------------------//
-
-impl TryFrom<proto::types::EncryptedOpenings> for EncryptedOpenings {
-    type Error = String;
-
-    fn try_from(encrypted_openings: proto::types::EncryptedOpenings) -> Result<Self, Self::Error> {
-        EncryptedOpenings::from_bytes(encrypted_openings.value_and_mask.as_slice())
-            .map_err(|err| format!("Could not convert encrypted openings: {:?}", err))
-    }
-}
-
-impl From<EncryptedOpenings> for proto::types::EncryptedOpenings {
-    fn from(encrypted_openings: EncryptedOpenings) -> Self {
-        encrypted_openings.into()
     }
 }
 

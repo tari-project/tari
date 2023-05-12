@@ -220,7 +220,11 @@ impl UnblindedOutput {
         ))
     }
 
-    pub fn as_transaction_output(&self, factories: &CryptoFactories, range_proof: Option<&BulletRangeProof>) -> Result<TransactionOutput, TransactionError> {
+    pub fn as_transaction_output(
+        &self,
+        factories: &CryptoFactories,
+        range_proof: Option<&BulletRangeProof>,
+    ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
             return Err(TransactionError::ValidationError(
@@ -239,7 +243,7 @@ impl UnblindedOutput {
             self.version,
             self.features.clone(),
             commitment,
-            proof,
+            Some(proof),
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
@@ -251,10 +255,7 @@ impl UnblindedOutput {
         Ok(output)
     }
 
-    fn construct_range_proof(
-        &self,
-        factories: &CryptoFactories,
-    ) -> Result<RangeProof, TransactionError> {
+    fn construct_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
         let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
             factories
                 .range_proof

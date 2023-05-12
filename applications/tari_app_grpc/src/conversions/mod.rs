@@ -28,7 +28,6 @@ mod chain_metadata;
 mod com_and_pub_signature;
 mod commitment_signature;
 mod consensus_constants;
-mod encrypted_openings;
 mod historical_block;
 mod new_block_template;
 mod output_features;

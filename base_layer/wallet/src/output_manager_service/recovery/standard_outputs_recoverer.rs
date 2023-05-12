@@ -112,6 +112,7 @@ where
                 let key = PrivateKey::random(&mut OsRng);
                 (inputs!(PublicKey::from_secret_key(&key)), key)
             };
+            let proof = output.proof_result()?.clone();
             let uo = UnblindedOutput::new(
                 output.version,
                 committed_value,
@@ -128,7 +129,7 @@ where
                 output.minimum_value_promise,
             );
 
-            rewound_outputs.push((uo, output.proof));
+            rewound_outputs.push((uo, proof));
         }
 
         let rewind_time = start.elapsed();

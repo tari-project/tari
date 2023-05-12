@@ -139,7 +139,7 @@ fn test_utxo_order() {
             version,
             features.clone(),
             commitment,
-            proof.clone(),
+            Some(proof.clone()),
             script.clone(),
             pub_key,
             sig.clone(),

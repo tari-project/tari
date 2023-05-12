@@ -954,7 +954,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     block_headers.insert(NUM_BLOCKS, block_header11);
 
     db_unblinded_outputs.push(
-        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, None,OutputSource::Unknown, None, None).unwrap(),
+        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, None, OutputSource::Unknown, None, None)
+            .unwrap(),
     );
     test_interface
         .oms_mock_state

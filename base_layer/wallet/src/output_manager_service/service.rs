@@ -147,9 +147,7 @@ where
         let encryption_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::OpeningsEncryption.get_branch_key(), 0)
             .await?;
-        let recovery_data = RecoveryData {
-            encryption_key,
-        };
+        let recovery_data = RecoveryData { encryption_key };
 
         let resources = OutputManagerResources {
             config,
@@ -450,9 +448,9 @@ where
                 let (spend_key, script_key) = self.get_spend_and_script_keys().await?;
                 Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
             },
-            OutputManagerRequest::GetRecoveryData => {
-                Ok(OutputManagerResponse::RecoveryData(self.resources.recovery_data.clone()))
-            }
+            OutputManagerRequest::GetRecoveryData => Ok(OutputManagerResponse::RecoveryData(
+                self.resources.recovery_data.clone(),
+            )),
         }
     }
 
@@ -2604,7 +2602,7 @@ where
                         rewound_output.clone(),
                         &self.resources.factories,
                         None,
-                        Some(&output.proof),
+                        output.proof.as_ref(),
                         output_source,
                         Some(tx_id),
                         None,

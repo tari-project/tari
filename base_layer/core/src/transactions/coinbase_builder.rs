@@ -275,7 +275,7 @@ impl CoinbaseBuilder {
             minimum_value_promise,
         );
         let output = unblinded_output
-            .as_transaction_output(&self.factories,  None)
+            .as_transaction_output(&self.factories, None)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)

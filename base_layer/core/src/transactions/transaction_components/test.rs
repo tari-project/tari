@@ -59,7 +59,9 @@ fn input_and_output_and_unblinded_output_hash_match() {
     let test_params = TestParams::new();
     let factory = CommitmentFactory::default();
 
-    let i = test_params.create_unblinded_output_not_recoverable(Default::default()).unwrap();
+    let i = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
     let output = i.as_transaction_output(&CryptoFactories::default(), None).unwrap();
     let input = i.as_transaction_input(&factory).unwrap();
     assert_eq!(output.hash(), input.output_hash());
@@ -71,7 +73,9 @@ fn unblinded_input() {
     let test_params = TestParams::new();
     let factory = CommitmentFactory::default();
 
-    let i = test_params.create_unblinded_output_not_recoverable(Default::default()).unwrap();
+    let i = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
     let input = i
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
@@ -223,7 +227,9 @@ fn range_proof_verification_batch() {
 fn sender_signature_verification() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
-    let unblinded_output = test_params.create_unblinded_output_not_recoverable(Default::default()).unwrap();
+    let unblinded_output = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
 
     let mut tx_output = unblinded_output.as_transaction_output(&factories, None).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());

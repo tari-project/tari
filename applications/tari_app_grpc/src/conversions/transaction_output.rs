@@ -47,6 +47,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
+        let range_proof = if let Some(proof) = output.range_proof {
+            Some(BulletRangeProof::from_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
+        } else {
+            None
+        };
+
         let script = TariScript::from_bytes(output.script.as_slice())
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
 
@@ -66,7 +72,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             )?,
             features,
             commitment,
-            BulletRangeProof(output.range_proof),
+            range_proof,
             script,
             sender_offset_public_key,
             metadata_signature,
@@ -84,11 +90,14 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
         let hash = output.hash().to_vec();
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        let range_proof = output.proof.map(|proof| grpc::RangeProof {
+            proof_bytes: proof.to_vec(),
+        });
         Ok(grpc::TransactionOutput {
             hash,
             features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
-            range_proof: Vec::from(output.proof.as_bytes()),
+            range_proof,
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(grpc::ComAndPubSignature {
