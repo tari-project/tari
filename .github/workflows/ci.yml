@@ -217,3 +217,14 @@ jobs:
         with:
           name: pr_num
           path: ./pr_num.txt
+
+# needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}
