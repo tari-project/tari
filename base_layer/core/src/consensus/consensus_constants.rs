@@ -626,7 +626,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: 0.into(),
+            faucet_value: 5_025_126_665_742_480.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
