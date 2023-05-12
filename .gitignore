@@ -64,3 +64,4 @@ clients/wallet_grpc_client/package-lock.json
 pie/
 /integration_tests/.husky/_/husky.sh
 /integration_tests/tests/temp
+integration_tests/cucumber-output-junit.xml

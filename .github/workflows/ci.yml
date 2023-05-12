@@ -13,7 +13,7 @@ name: CI
       - opened
       - reopened
       - synchronize
-  merge_group:    
+  merge_group:
 
 env:
   toolchain: nightly-2022-11-03
@@ -153,6 +153,9 @@ jobs:
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]
+    permissions:
+      checks: write
+      pull-requests: write
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -169,6 +172,11 @@ jobs:
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test
+      - name: Install cargo-nextest
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: cargo-nextest --locked
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
@@ -177,8 +185,21 @@ jobs:
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: test
-          args: -v --all-features --release --workspace --exclude tari_integration_tests
+          command: nextest
+          args: run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: test-results.xml
+          path: ${{ github.workspace }}/target/nextest/ci/junit.xml
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            ${{ github.workspace }}/target/nextest/ci/junit.xml    
 
   # Allows other workflows to know the PR number
   artifacts:
@@ -196,3 +217,14 @@ jobs:
         with:
           name: pr_num
           path: ./pr_num.txt
+
+# needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

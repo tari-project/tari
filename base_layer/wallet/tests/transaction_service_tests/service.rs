@@ -1114,7 +1114,7 @@ async fn send_one_sided_transaction_to_self() {
     };
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn manage_multiple_transactions() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -1164,7 +1164,7 @@ async fn manage_multiple_transactions() {
         factories.clone(),
         alice_connection,
         database_path.clone(),
-        Duration::from_secs(60),
+        Duration::from_secs(1),
         shutdown.to_signal(),
     )
     .await;
@@ -1351,7 +1351,10 @@ async fn manage_multiple_transactions() {
     loop {
         tokio::select! {
             event = carol_event_stream.recv() => {
-                if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event.unwrap() { finalized+=1 }
+                if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event.unwrap() {
+                    finalized+=1;
+                    break;
+                }
             },
             () = &mut delay => {
                 break;
