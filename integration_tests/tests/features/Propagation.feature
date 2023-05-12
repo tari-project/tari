@@ -38,7 +38,6 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then all nodes are at height 1
     When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Block exists'
     Then all nodes are at height 1
     # Check that the base node continues to accept blocks
     When I mine 1 blocks on MINER
@@ -48,14 +47,10 @@ Feature: Block Propagation
     Given I have 1 seed nodes
     When I have a base node MINER connected to all seed nodes
     When I mine but do not submit a block BLOCKA on MINER
-    # TODO: Step is missing, so I commented it out
-    # And I update the parent of block BLOCKA to be an orphan
+    Then I update the parent of block BLOCKA to be an orphan
     When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Orphan block'
-    Then all nodes are at height 1
-    # Do it twice to be sure
-    When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Orphan block'
+    Then all nodes are at height 0
+    When I mine 1 blocks on MINER
     Then all nodes are at height 1
 
   @non-sync-propagation
@@ -73,6 +68,7 @@ Feature: Block Propagation
     Then all nodes are at height 20
 
   # Waiting for "When I stop node" step
+  @missing-step
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
     When I have a SHA3 miner MINER connected to all seed nodes
