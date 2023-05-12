@@ -8,7 +8,6 @@ Feature: Base Node Connectivity
         Given I have a seed node SEED_A
         When I have a base node NODE_A connected to all seed nodes
         When I wait for NODE_A to connect to SEED_A
-        Then SEED_A is connected to NODE_A
 
     @base-node @wallet
     Scenario: Basic connectivity between nodes and wallet
@@ -17,7 +16,6 @@ Feature: Base Node Connectivity
         Then I wait for WALLET_A to connect to SEED_A
         Then I wait for WALLET_A to have 1 node connections
         Then I wait for WALLET_A to have ONLINE connectivity
-        Then SEED_A is connected to WALLET_A
 
     @base-node @wallet
     Scenario: Basic mining

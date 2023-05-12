@@ -78,7 +78,6 @@ Feature: Block Sync
     Given I have 10 seed nodes
     When I have a base node NODE1 connected to all seed nodes
     When I wait for NODE1 to have 10 connections
-#    Then NODE1 has at least 10 peers
     When I have a base node NODE2 connected to node NODE1
     Then NODE1 has at least 11 peers
     Then NODE2 has at least 11 peers
