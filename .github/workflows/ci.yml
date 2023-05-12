@@ -153,6 +153,9 @@ jobs:
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]
+    permissions:
+      checks: write
+      pull-requests: write
     steps:
       - name: checkout
         uses: actions/checkout@v3
