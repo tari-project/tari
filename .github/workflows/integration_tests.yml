@@ -101,12 +101,14 @@ jobs:
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)"
             -c 5
             --retry 2
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
         with:
-          files: |
-            ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml          
+          name: junit-ffi.xml
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+                  - name: Publish Test Results
 
   ffi:
     name: Cucumber tests / FFI
@@ -176,9 +178,9 @@ jobs:
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)"
             -c 1
             --retry 2
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
         with:
-          files: |
-            ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml       
+          name: junit-ffi.xml
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
