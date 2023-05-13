@@ -194,7 +194,7 @@ jobs:
           name: test-results.xml
           path: ${{ github.workspace }}/target/nextest/ci/junit.xml
 
-      - name: Publish Test Results
+      - name: Publish Test Results # todo: remove
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
