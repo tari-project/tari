@@ -136,7 +136,7 @@ impl TestTransactionBuilder {
         let script_offset_pvt = input.script_private_key.clone() - self.keys.sender_offset_private_key.clone();
         let excess_blinding_factor = output.spending_key.clone() - input.spending_key.clone();
 
-        let tx_meta = TransactionMetadata::new(fee, 0);
+        let tx_meta = TransactionMetadata::new(fee, self.lock_height);
 
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let offset_blinding_factor = &excess_blinding_factor - &offset;
@@ -193,6 +193,19 @@ pub fn build_transaction_with_output_and_fee(utxos: Vec<UnblindedOutput>, fee: u
         builder.add_input(unblinded_output);
     }
     builder.change_fee(MicroTari(fee));
+
+    builder.build()
+}
+
+pub fn build_transaction_with_output_and_lockheight(
+    utxos: Vec<UnblindedOutput>,
+    lockheight: u64,
+) -> (Transaction, UnblindedOutput) {
+    let mut builder = TestTransactionBuilder::new();
+    for unblinded_output in utxos {
+        builder.add_input(unblinded_output);
+    }
+    builder.lock_height = lockheight;
 
     builder.build()
 }

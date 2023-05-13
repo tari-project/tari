@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io::Write, sync::Arc};
+use std::{convert::TryFrom, sync::Arc};
 
 use diesel::result::Error as DieselError;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
@@ -70,9 +70,9 @@ impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()

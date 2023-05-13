@@ -22,12 +22,14 @@
 #![feature(internal_output_capture)]
 
 use std::{
+    fs,
+    io,
     path::PathBuf,
     str::{self},
     sync::{Arc, Mutex},
 };
 
-use cucumber::{event::ScenarioFinished, World as _};
+use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
 use log::*;
 use tari_common::initialize_logging;
 use tari_integration_tests::TariWorld;
@@ -101,10 +103,13 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
+        let file = fs::File::create("cucumber-output-junit.xml").unwrap();
         world
             // .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
-            .run_and_exit("tests/features/")
+            .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
+                                          writer::Summarize::new(writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString))))
+            .run("tests/features/")
             .await;
     });
 

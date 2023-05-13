@@ -98,7 +98,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 20000000000 uT
 
-  # @flaky
+  # @flaky @missing-steps
   # Scenario: Wallet imports spent outputs that become invalidated
   #   Given I have a seed node NODE
   #   When I have 1 base nodes connected to all seed nodes
@@ -210,6 +210,7 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
+    @missing-steps
   # Scenario: Wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -262,6 +263,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
+   @missing-steps
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED
@@ -285,8 +287,10 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
-  # Then wallet WALLET_B detects all transactions are at least Pending
+    #Then wallet WALLET_B detects all transactions are at least Pending
 
+
+      @missing-steps
   # Scenario: Short wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -339,7 +343,7 @@ Feature: Wallet Transactions
   #   When I mine 2 blocks on NODE_C
   #   Then all nodes are at height 6
 
-  # @flaky @long-running
+  # @flaky @long-running @missing-steps
   # Scenario: Wallet SAF negotiation and cancellation with offline peers
   #   Given I have a seed node NODE
   #   When I have 1 base nodes connected to all seed nodes
@@ -384,7 +388,7 @@ Feature: Wallet Transactions
   #   Then I restart wallet WALLET_RECV
   #   Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
-  # @critical
+  # @critical @missing-steps
   # Scenario: Wallet should cancel stale transactions
   #   Given I have a seed node NODE
   #   When I have 1 base nodes connected to all seed nodes

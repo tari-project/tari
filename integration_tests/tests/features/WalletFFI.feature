@@ -38,7 +38,6 @@ Feature: Wallet FFI
         Given I set base node BASE2 for ffi wallet FFI_WALLET
         Then I wait for ffi wallet FFI_WALLET to connect to BASE2
 
-    @broken
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE
         When I have wallet SENDER connected to base node BASE
@@ -56,6 +55,7 @@ Feature: Wallet FFI
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then I wait for ffi wallet FFI_WALLET to have 1 pending outbound transaction
         Then I cancel all outbound transactions on ffi wallet FFI_WALLET and it will cancel 1 transaction
+        Then I wait for ffi wallet FFI_WALLET to have 0 pending outbound transaction
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to manage contacts
