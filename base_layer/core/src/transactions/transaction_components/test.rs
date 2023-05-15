@@ -90,7 +90,7 @@ fn unblinded_input_with_recovery_data() {
     let factory = CommitmentFactory::default();
 
     let i = test_params
-        .create_unblinded_output_with_recovery_data(Default::default(), RangeProofType::BulletProofPlus)
+        .create_unblinded_output_with_recovery_data(Default::default())
         .unwrap();
     let input = i
         .as_transaction_input(&factory)
@@ -463,13 +463,10 @@ fn test_output_recover_openings() {
     let random_key = PrivateKey::random(&mut OsRng);
 
     let unblinded_output = test_params
-        .create_unblinded_output_with_recovery_data(
-            UtxoTestParams {
-                value: v,
-                ..Default::default()
-            },
-            RangeProofType::BulletProofPlus,
-        )
+        .create_unblinded_output_with_recovery_data(UtxoTestParams {
+            value: v,
+            ..Default::default()
+        })
         .unwrap();
     let output = unblinded_output.as_transaction_output(&factories, None).unwrap();
 

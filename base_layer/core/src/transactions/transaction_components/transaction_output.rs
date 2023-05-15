@@ -418,9 +418,8 @@ impl TransactionOutput {
         covenant: &Covenant,
         encrypted_openings: &EncryptedOpenings,
         minimum_value_promise: MicroTari,
-        range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let nonce_a = TransactionOutput::nonce_a(range_proof_type, value, minimum_value_promise)?;
+        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
         let nonce_b = PrivateKey::random(&mut OsRng);
         let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
         let pk_value = PrivateKey::from(value.as_u64());
@@ -525,9 +524,8 @@ impl TransactionOutput {
         covenant: &Covenant,
         encrypted_openings: &EncryptedOpenings,
         minimum_value_promise: MicroTari,
-        range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let nonce_a = TransactionOutput::nonce_a(range_proof_type, value, minimum_value_promise)?;
+        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
         let nonce_b = PrivateKey::random(&mut OsRng);
         let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
         let nonce_x = PrivateKey::random(&mut OsRng);
@@ -679,7 +677,7 @@ mod test {
     use crate::transactions::{
         tari_amount::MicroTari,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::RangeProofType,
+        transaction_components::{OutputFeatures, RangeProofType},
         CryptoFactories,
     };
 
@@ -859,14 +857,15 @@ mod test {
         minimum_value_promise: MicroTari,
         range_proof_type: RangeProofType,
     ) -> Result<TransactionOutput, String> {
-        let utxo = test_params.create_unblinded_output_with_recovery_data(
-            UtxoTestParams {
-                value,
-                minimum_value_promise,
+        let utxo = test_params.create_unblinded_output_with_recovery_data(UtxoTestParams {
+            value,
+            minimum_value_promise,
+            features: OutputFeatures {
+                range_proof_type,
                 ..Default::default()
             },
-            range_proof_type,
-        );
+            ..Default::default()
+        });
         utxo?.as_transaction_output(factories, None).map_err(|e| e.to_string())
     }
 

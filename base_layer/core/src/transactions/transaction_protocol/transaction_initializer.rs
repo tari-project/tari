@@ -49,7 +49,6 @@ use crate::{
         transaction_components::{
             EncryptedOpenings,
             OutputFeatures,
-            RangeProofType,
             TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
@@ -422,8 +421,6 @@ impl SenderTransactionInitializer {
                             &self.change_covenant,
                             &encrypted_openings,
                             minimum_value_promise,
-                            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-                            RangeProofType::BulletProofPlus,
                         )
                         .map_err(|e| e.to_string())?;
 

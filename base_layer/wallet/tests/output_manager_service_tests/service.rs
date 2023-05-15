@@ -1645,14 +1645,14 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(utxo_query_calls[0].len(), 5);
+    assert_eq!(utxo_query_calls[0].len(), 4);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 4);
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1692,14 +1692,14 @@ async fn test_txo_validation() {
         .unwrap();
 
     // The spent transaction is not checked during this second validation
-    assert_eq!(utxo_query_calls[0].len(), 5);
+    assert_eq!(utxo_query_calls[0].len(), 4);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 4);
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1710,7 +1710,7 @@ async fn test_txo_validation() {
                 MicroTari::from(8_000_000) +    //output 5
                 MicroTari::from(16_000_000) // output 6
     );
-    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1723,9 +1723,9 @@ async fn test_txo_validation() {
         .await
         .unwrap();
     assert_eq!(utxo_query_calls.len(), 1);
-    assert_eq!(utxo_query_calls[0].len(), 2);
+    assert_eq!(utxo_query_calls[0].len(), 1);
     assert_eq!(
-        utxo_query_calls[0][1],
+        utxo_query_calls[0][0],
         output3.as_transaction_output(&factories, None).unwrap().hash().to_vec()
     );
 
@@ -1907,7 +1907,7 @@ async fn test_txo_validation() {
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
             MicroTari::from(901_280)
     );
-    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 }

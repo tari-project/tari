@@ -32,7 +32,6 @@ use crate::{
         transaction_components::{
             EncryptedOpenings,
             OutputFeatures,
-            RangeProofType,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
@@ -146,8 +145,6 @@ impl UnblindedOutputBuilder {
             &self.covenant,
             &self.encrypted_openings,
             self.minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
         self.metadata_signature = Some(metadata_signature);

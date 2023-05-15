@@ -46,7 +46,6 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
-            RangeProofType,
             Transaction,
             TransactionBuilder,
             TransactionKernel,
@@ -255,8 +254,6 @@ impl CoinbaseBuilder {
             &covenant,
             &encrypted_openings,
             minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 

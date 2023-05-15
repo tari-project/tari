@@ -45,7 +45,6 @@ use tari_core::{
             EncryptedOpenings,
             KernelFeatures,
             OutputFeatures,
-            RangeProofType,
             Transaction,
             TransactionError,
             TransactionInput,
@@ -776,8 +775,6 @@ where
                     &single_round_sender_data.covenant,
                     &encrypted_openings,
                     minimum_value_promise,
-                    // TODO: Provide user options to use `RangeProofType::RevealedValue`
-                    RangeProofType::BulletProofPlus,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
@@ -1258,8 +1255,6 @@ where
             &covenant,
             &encrypted_openings,
             minimum_amount_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1756,8 +1751,6 @@ where
                 &covenant,
                 &encrypted_openings,
                 minimum_amount_promise,
-                // TODO: Provide user options to use `RangeProofType::RevealedValue`
-                RangeProofType::BulletProofPlus,
             )?;
 
             let output = DbUnblindedOutput::from_unblinded_output(
@@ -1975,8 +1968,6 @@ where
                 &covenant,
                 &encrypted_openings,
                 minimum_value_promise,
-                // TODO: Provide user options to use `RangeProofType::RevealedValue`
-                RangeProofType::BulletProofPlus,
             )?;
 
             let output = DbUnblindedOutput::from_unblinded_output(
@@ -2186,8 +2177,6 @@ where
             &covenant,
             &encrypted_openings,
             minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )?;
 
         let output = DbUnblindedOutput::from_unblinded_output(

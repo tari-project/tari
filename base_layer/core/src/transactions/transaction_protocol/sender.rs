@@ -773,13 +773,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
-            transaction_components::{
-                EncryptedOpenings,
-                OutputFeatures,
-                RangeProofType,
-                TransactionOutput,
-                TransactionOutputVersion,
-            },
+            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionOutput, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -896,8 +890,6 @@ mod test {
             &covenant,
             &encrypted_openings,
             minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )
         .unwrap();
 

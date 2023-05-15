@@ -47,7 +47,6 @@ use crate::{
             KernelFeatures,
             OutputFeatures,
             OutputType,
-            RangeProofType,
             SpentOutput,
             Transaction,
             TransactionInput,
@@ -164,22 +163,20 @@ impl TestParams {
     }
 
     pub fn create_unblinded_output_not_recoverable(&self, params: UtxoTestParams) -> Result<UnblindedOutput, String> {
-        self.create_output(params, None, RangeProofType::BulletProofPlus)
+        self.create_output(params, None)
     }
 
     pub fn create_unblinded_output_with_recovery_data(
         &self,
         params: UtxoTestParams,
-        range_proof_type: RangeProofType,
     ) -> Result<UnblindedOutput, String> {
-        self.create_output(params, Some(&self.recovery_data), range_proof_type)
+        self.create_output(params, Some(&self.recovery_data))
     }
 
     fn create_output(
         &self,
         params: UtxoTestParams,
         recovery_data: Option<&RecoveryData>,
-        range_proof_type: RangeProofType,
     ) -> Result<UnblindedOutput, String> {
         let commitment = self
             .commitment_factory
@@ -210,7 +207,6 @@ impl TestParams {
             &params.covenant,
             &encrypted_openings,
             params.minimum_value_promise,
-            range_proof_type,
         )
         .map_err(|e| format!("{:?}", e))?;
 
@@ -359,15 +355,12 @@ pub fn create_unblinded_output_with_recovery_data(
     test_params: &TestParams,
     value: MicroTari,
 ) -> Result<UnblindedOutput, String> {
-    test_params.create_unblinded_output_with_recovery_data(
-        UtxoTestParams {
-            value,
-            script,
-            features: output_features,
-            ..Default::default()
-        },
-        RangeProofType::BulletProofPlus,
-    )
+    test_params.create_unblinded_output_with_recovery_data(UtxoTestParams {
+        value,
+        script,
+        features: output_features,
+        ..Default::default()
+    })
 }
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
@@ -779,8 +772,6 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.covenant,
             &utxo.encrypted_openings,
             utxo.minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -813,8 +804,6 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &covenant,
         &encrypted_openings,
         minimum_value_promise,
-        // TODO: Provide user options to use `RangeProofType::RevealedValue`
-        RangeProofType::BulletProofPlus,
     )
     .unwrap();
 
@@ -886,8 +875,6 @@ pub fn create_utxo(
         covenant,
         &EncryptedOpenings::default(),
         minimum_value_promise,
-        // TODO: Provide user options to use `RangeProofType::RevealedValue`
-        RangeProofType::BulletProofPlus,
     )
     .unwrap();
 

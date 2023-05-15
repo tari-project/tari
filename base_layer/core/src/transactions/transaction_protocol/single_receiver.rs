@@ -33,7 +33,6 @@ use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction_components::{
         EncryptedOpenings,
-        RangeProofType,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -138,8 +137,6 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.covenant,
             &encrypted_openings,
             minimum_value_promise,
-            // TODO: Provide user options to use `RangeProofType::RevealedValue`
-            RangeProofType::BulletProofPlus,
         )?;
 
         let output = TransactionOutput::new_current_version(

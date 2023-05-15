@@ -41,13 +41,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{
-            OutputFeatures,
-            RangeProofType,
-            TransactionOutput,
-            TransactionOutputVersion,
-            UnblindedOutput,
-        },
+        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
@@ -293,6 +287,18 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         MicroTari::zero(),
     );
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(
+        utxo.clone(),
+        *block0.hash(),
+        0,
+        block0.header().output_mmr_size as u32,
+        0,
+    );
+    if let Err(e) = store.commit(txn) {
+        panic!("{}", e);
+    }
+
     let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         amount,
@@ -303,7 +309,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         &utxo.encrypted_openings,
         utxo.minimum_value_promise,
-        RangeProofType::BulletProofPlus,
     )
     .unwrap();
     let unblinded_output = UnblindedOutput::new_current_version(
@@ -320,11 +325,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.encrypted_openings,
         utxo.minimum_value_promise,
     );
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 1, 0);
-    if let Err(e) = store.commit(txn) {
-        panic!("{}", e);
-    }
 
     let txn = txn_schema!(
         from: vec![unblinded_output],
