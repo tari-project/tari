@@ -51,3 +51,8 @@ jobs:
           event_file: artifacts/Event File/event.json
           event_name: ${{ github.event.workflow_run.event }}
           files: "artifacts/**/*.xml"
+
+      - name: Publish Test Report 2
+        uses: mikepenz/action-junit-report@v3
+        with:
+          report_paths: "artifacts/**/*.xml"
