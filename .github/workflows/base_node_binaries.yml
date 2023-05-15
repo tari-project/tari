@@ -471,7 +471,6 @@ jobs:
         with:
           artifacts: "tari_*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
-          #bodyFile: changelog.md
           prerelease: true
           draft: true
           allowUpdates: true
