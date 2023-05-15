@@ -106,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
         with:
-          name: junit.xml
+          name: junit-cucumber
           path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
 
   ffi:
@@ -181,7 +181,7 @@ jobs:
         uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
         with:
-          name: junit-ffi.xml
+          name: junit-ffi-cucumber
           path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
 
   # needed for test results

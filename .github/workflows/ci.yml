@@ -191,7 +191,7 @@ jobs:
         uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
         with:
-          name: test-results.xml
+          name: test-results
           path: ${{ github.workspace }}/target/nextest/ci/junit.xml
 
 
