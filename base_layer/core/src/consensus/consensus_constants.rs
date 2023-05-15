@@ -891,6 +891,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_permitted_range_proof_types(mut self, permitted_range_proof_types: &'static [RangeProofType]) -> Self {
+        self.consensus.permitted_range_proof_types = permitted_range_proof_types;
+        self
+    }
+
     pub fn with_blockchain_version(mut self, version: u16) -> Self {
         self.consensus.blockchain_version = version;
         self

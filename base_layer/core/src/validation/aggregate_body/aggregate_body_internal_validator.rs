@@ -58,6 +58,7 @@ use crate::{
     validation::{
         helpers::{
             check_permitted_output_types,
+            check_permitted_range_proof_types,
             check_tari_script_byte_size,
             is_all_unique_and_sorted,
             validate_input_version,
@@ -141,6 +142,7 @@ impl AggregateBodyInternalConsistencyValidator {
         // check_sorting_and_duplicates(body)?;
         for output in body.outputs() {
             check_permitted_output_types(constants, output)?;
+            check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
         }
         check_total_burned(body)?;

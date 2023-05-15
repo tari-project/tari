@@ -342,6 +342,22 @@ pub fn check_permitted_output_types(
     Ok(())
 }
 
+pub fn check_permitted_range_proof_types(
+    constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if !constants
+        .permitted_range_proof_types()
+        .contains(&output.features.range_proof_type)
+    {
+        return Err(ValidationError::RangeProofTypeNotPermitted {
+            range_proof_type: output.features.range_proof_type,
+        });
+    }
+
+    Ok(())
+}
+
 pub fn validate_input_version(
     consensus_constants: &ConsensusConstants,
     input: &TransactionInput,

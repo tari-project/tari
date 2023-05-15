@@ -315,7 +315,7 @@ mod body_only {
 mod orphan_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::OutputType,
+        transactions::transaction_components::{OutputType, RangeProofType},
         txn_schema,
         validation::block_body::BlockBodyInternalConsistencyValidator,
     };
@@ -377,5 +377,30 @@ mod orphan_validator {
         let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
         assert_eq!(output_type, OutputType::Standard);
+    }
+
+    #[test]
+    fn it_rejects_unpermitted_range_proof_types() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_permitted_range_proof_types(&[RangeProofType::RevealedValue])
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
+        let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).unwrap();
+
+        let schema = txn_schema!(from: vec![coinbase], to: vec![201 * T]);
+        let (tx, _) = schema_to_transaction(&[schema]);
+
+        let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
+
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
+        let err = validator.validate(&unmined).unwrap_err();
+        unpack_enum!(ValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
+        assert_eq!(range_proof_type, RangeProofType::BulletProofPlus);
     }
 }
