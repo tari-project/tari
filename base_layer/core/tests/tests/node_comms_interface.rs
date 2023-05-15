@@ -322,7 +322,9 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     );
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 1, 0);
-    assert!(store.commit(txn).is_ok());
+    if let Err(e) = store.commit(txn) {
+        panic!("{}", e);
+    }
 
     let txn = txn_schema!(
         from: vec![unblinded_output],
