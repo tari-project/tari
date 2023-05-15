@@ -3177,7 +3177,7 @@ dependencies = [
 [[package]]
 name = "monero"
 version = "0.17.2"
-source = "git+https://github.com/tari-project/monero-rs.git?branch=main#7aebfd0aa037025cac6cbded3f72d73bf3c18123"
+source = "git+https://github.com/tari-project/monero-rs.git?rev=7aebfd0aa037025cac6cbded3f72d73bf3c18123#7aebfd0aa037025cac6cbded3f72d73bf3c18123"
 dependencies = [
  "base58-monero 1.0.0",
  "curve25519-dalek 3.2.0",
