@@ -3139,7 +3139,7 @@ dependencies = [
 [[package]]
 name = "monero"
 version = "0.18.2"
-source = "git+https://github.com/monero-rs/monero-rs.git?rev=894ccd6b15d768bc261a224952a6d32b2a9dbbf7#894ccd6b15d768bc261a224952a6d32b2a9dbbf7"
+source = "git+https://github.com/monero-rs/monero-rs.git#894ccd6b15d768bc261a224952a6d32b2a9dbbf7"
 dependencies = [
  "base58-monero 1.0.0",
  "curve25519-dalek 3.2.0",
