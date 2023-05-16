@@ -243,7 +243,8 @@ mod test {
                 extra: ExtraField(vec![
                     SubField::TxPublicKey(PublicKey::from_slice(pk_extra.as_slice()).unwrap()),
                     SubField::Nonce(vec![196, 37, 4, 0, 27, 37, 187, 163, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                ]).into(),
+                ])
+                .into(),
             },
             signatures: vec![],
             rct_signatures: RctSig {
