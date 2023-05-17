@@ -202,7 +202,7 @@ where
         let mut lock = self.state.write().await;
         let (new_block_detected, height) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
             (Some(new_metadata), Some(old_metadata)) => (
-                new_metadata.height_of_longest_chain() != old_metadata.height_of_longest_chain(),
+                new_metadata.best_block() != old_metadata.best_block(),
                 new_metadata.height_of_longest_chain(),
             ),
             (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain()),
