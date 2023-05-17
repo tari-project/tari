@@ -47,7 +47,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -394,16 +394,11 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
 
-                        let encrypted_openings = self
+                        let encrypted_data = self
                             .recovery_data
                             .as_ref()
                             .map(|rd| {
-                                EncryptedOpenings::encrypt_openings(
-                                    &rd.encryption_key,
-                                    &commitment,
-                                    v,
-                                    &change_key.clone(),
-                                )
+                                EncryptedData::encrypt_data(&rd.encryption_key, &commitment, v, &change_key.clone())
                             })
                             .transpose()
                             .map_err(|e| e.to_string())?
@@ -419,7 +414,7 @@ impl SenderTransactionInitializer {
                             &output_features,
                             &change_sender_offset_private_key,
                             &self.change_covenant,
-                            &encrypted_openings,
+                            &encrypted_data,
                             minimum_value_promise,
                         )
                         .map_err(|e| e.to_string())?;
@@ -441,7 +436,7 @@ impl SenderTransactionInitializer {
                             metadata_signature,
                             0,
                             self.change_covenant.clone(),
-                            encrypted_openings,
+                            encrypted_data,
                             minimum_value_promise,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
@@ -541,7 +536,7 @@ impl SenderTransactionInitializer {
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
-            .map(|o| o.as_transaction_output(factories, None))
+            .map(|o| o.as_transaction_output(factories))
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,
@@ -558,7 +553,7 @@ impl SenderTransactionInitializer {
 
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 
-            let change_output = match change_unblinded_output.as_transaction_output(factories, None) {
+            let change_output = match change_unblinded_output.as_transaction_output(factories) {
                 Ok(o) => o,
                 Err(e) => {
                     return self.build_err(e.to_string().as_str());

@@ -485,7 +485,7 @@ impl SenderTransactionProtocol {
             sender_offset_private_key,
             Some(private_commitment_nonce),
             &output.covenant,
-            &output.encrypted_openings,
+            &output.encrypted_data,
             output.minimum_value_promise,
         )?;
         // Create aggregated metadata signature
@@ -773,7 +773,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
-            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+            transaction_components::{EncryptedData, OutputFeatures, TransactionOutput, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -874,8 +874,8 @@ mod test {
 
         // Encrypted value
         let encryption_key = PrivateKey::random(&mut OsRng);
-        let encrypted_openings =
-            EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, value.into(), &spending_key).unwrap();
+        let encrypted_data =
+            EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &spending_key).unwrap();
 
         let minimum_value_promise = MicroTari::zero();
 
@@ -888,7 +888,7 @@ mod test {
             &sender_offset_public_key,
             &sender_ephemeral_public_nonce,
             &covenant,
-            &encrypted_openings,
+            &encrypted_data,
             minimum_value_promise,
         )
         .unwrap();
@@ -901,7 +901,7 @@ mod test {
             sender_offset_public_key,
             partial_metadata_signature.clone(),
             covenant.clone(),
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         assert!(output.verify_metadata_signature().is_err());
@@ -916,7 +916,7 @@ mod test {
             &sender_offset_private_key,
             Some(&ephemeral_private_nonce),
             &covenant,
-            &encrypted_openings,
+            &encrypted_data,
             minimum_value_promise,
         )
         .unwrap();
@@ -996,8 +996,14 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let mut bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+        let mut bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        )
+        .unwrap(); // Alice gets message back, deserializes it, etc
         alice.add_single_recipient_info(bob_info.clone()).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
@@ -1072,7 +1078,14 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        )
+        .unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -1135,7 +1148,13 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None); // Alice gets message back, deserializes it, etc
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        ); // Alice gets message back, deserializes it, etc
         match bob_info {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1273,7 +1292,7 @@ mod test {
             bob_test_params.nonce,
             bob_test_params.spend_key,
             &factories,
-            None,
+            &EncryptedData::default(),
         )
         .unwrap();
 
@@ -1291,14 +1310,14 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 2);
 
         // If the first output isn't alice's then the second must be
-        // TODO: Fix this logic when 'encrypted_openings.todo_decrypt()' is fixed only one of these will be possible
+        // TODO: Fix this logic when 'encrypted_data.todo_decrypt()' is fixed only one of these will be possible
         let output_0 = &tx.body.outputs()[0];
         let output_1 = &tx.body.outputs()[1];
 
-        if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
+        if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
             &alice_test_params.recovery_data.encryption_key,
             &output_0.commitment,
-            &output_0.encrypted_openings,
+            &output_0.encrypted_data,
         ) {
             assert_eq!(
                 factories
@@ -1306,10 +1325,10 @@ mod test {
                     .commit_value(&blinding_factor, committed_value.as_u64()),
                 output_0.commitment
             );
-        } else if let Ok((committed_value, blinding_factor)) = EncryptedOpenings::decrypt_openings(
+        } else if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
             &alice_test_params.recovery_data.encryption_key,
             &output_1.commitment,
-            &output_1.encrypted_openings,
+            &output_1.encrypted_data,
         ) {
             assert_eq!(
                 factories

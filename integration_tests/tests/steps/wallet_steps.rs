@@ -48,7 +48,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             OutputFeatures,
             OutputType,
             RangeProofType,
@@ -2217,7 +2217,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_openings = EncryptedOpenings::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
         let features =
@@ -2241,7 +2241,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -2321,7 +2321,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_openings = EncryptedOpenings::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
         let features =
@@ -2345,7 +2345,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -2425,7 +2425,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_openings = EncryptedOpenings::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
         let features =
@@ -2449,7 +2449,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
 

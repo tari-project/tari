@@ -95,7 +95,7 @@ pub fn create_coinbase(
         value,
     )
     .unwrap();
-    let output = unblinded_output.as_transaction_output(factories, None).unwrap();
+    let output = unblinded_output.as_transaction_output(factories).unwrap();
 
     (output, kernel, unblinded_output)
 }
@@ -354,7 +354,7 @@ pub fn create_genesis_block_with_utxos(
         let unblinded_output =
             create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p, *v).unwrap();
         secrets.push(unblinded_output.clone());
-        let output = unblinded_output.as_transaction_output(factories, None).unwrap();
+        let output = unblinded_output.as_transaction_output(factories).unwrap();
         template.body.add_output(output);
         secrets
     });

@@ -26,7 +26,7 @@ use chrono::NaiveDateTime;
 use derivative::Derivative;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey},
 };
 use tari_core::transactions::{transaction_components::UnblindedOutput, CryptoFactories};
 use tari_script::{ExecutionStack, TariScript};
@@ -59,15 +59,13 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
         spend_priority: Option<SpendingPriority>,
-        proof: Option<&BulletRangeProof>,
         source: OutputSource,
         received_in_tx_id: Option<TxId>,
         spent_in_tx_id: Option<TxId>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_transaction_output(factory, proof)?;
         Ok(DbUnblindedOutput {
-            hash: tx_out.hash(),
-            commitment: tx_out.commitment,
+            hash: output.hash(factory),
+            commitment: output.commitment(factory),
             unblinded_output: output,
             status: OutputStatus::NotStored,
             mined_height: None,

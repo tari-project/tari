@@ -30,11 +30,10 @@ use tari_common_types::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::TransactionOutput,
+    transaction_components::{EncryptedData, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
-        RecoveryData,
         TransactionMetadata,
         TransactionProtocolError,
     },
@@ -117,7 +116,7 @@ impl ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, None)
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, &EncryptedData::default())
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -130,12 +129,12 @@ impl ReceiverTransactionProtocol {
         nonce: PrivateKey,
         spending_key: PrivateKey,
         factories: &CryptoFactories,
-        recovery_data: &RecoveryData,
+        encrypted_data: &EncryptedData,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, Some(recovery_data))
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, encrypted_data)
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -174,9 +173,9 @@ impl ReceiverTransactionProtocol {
         key: PrivateKey,
         data: &SD,
         factories: &CryptoFactories,
-        recovery_data: Option<&RecoveryData>,
+        encrypted_data: &EncryptedData,
     ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, recovery_data);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, encrypted_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -216,7 +215,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction_components::{EncryptedOpenings, OutputFeatures, TransactionKernel, TransactionKernelVersion},
+            transaction_components::{EncryptedData, OutputFeatures, TransactionKernel, TransactionKernelVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 RecoveryData,
@@ -299,22 +298,29 @@ mod test {
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };
+        let encrypted_data = EncryptedData::encrypt_data(
+            &recovery_data.encryption_key,
+            &factories.commitment.commit_value(&p.spend_key, amount.into()),
+            amount,
+            &p.spend_key,
+        )
+        .unwrap();
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let receiver = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
             &factories,
-            &recovery_data,
+            &encrypted_data,
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
 
         let output = &data.output;
-        let (committed_value, blinding_factor) = EncryptedOpenings::decrypt_openings(
+        let (committed_value, blinding_factor) = EncryptedData::decrypt_data(
             &recovery_data.encryption_key,
             &output.commitment,
-            &output.encrypted_openings,
+            &output.encrypted_data,
         )
         .unwrap();
         assert_eq!(committed_value, amount);

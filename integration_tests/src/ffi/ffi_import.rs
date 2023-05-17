@@ -134,7 +134,7 @@ extern "C" {
         sender_offset_public_key: *mut TariPublicKey,
         script_private_key: *mut TariPrivateKey,
         covenant: *mut TariCovenant,
-        encrypted_openings: *mut TariEncryptedOpenings,
+        encrypted_data: *mut TariEncryptedOpenings,
         minimum_value_promise: c_ulonglong,
         script_lock_height: c_ulonglong,
         error_out: *mut c_int,
@@ -162,15 +162,15 @@ extern "C" {
     pub fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPrivateKey;
     pub fn covenant_create_from_bytes(covenant_bytes: *const ByteVector, error_out: *mut c_int) -> *mut TariCovenant;
     pub fn covenant_destroy(covenant: *mut TariCovenant);
-    pub fn encrypted_openings_create_from_bytes(
-        encrypted_openings_bytes: *const ByteVector,
+    pub fn encrypted_data_create_from_bytes(
+        encrypted_data_bytes: *const ByteVector,
         error_out: *mut c_int,
     ) -> *mut TariEncryptedOpenings;
-    pub fn encrypted_openings_as_bytes(
-        encrypted_openings: *const TariEncryptedOpenings,
+    pub fn encrypted_data_as_bytes(
+        encrypted_data: *const TariEncryptedOpenings,
         error_out: *mut c_int,
     ) -> *mut ByteVector;
-    pub fn encrypted_openings_destroy(encrypted_openings: *mut TariEncryptedOpenings);
+    pub fn encrypted_data_destroy(encrypted_data: *mut TariEncryptedOpenings);
     pub fn output_features_create_from_bytes(
         version: c_uchar,
         output_type: c_ushort,

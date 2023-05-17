@@ -258,7 +258,7 @@ async fn generate_block_headers_and_utxos(
         let transaction_outputs = block_outputs
             .clone()
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
+            .map(|uo| uo.as_transaction_output(&factories).unwrap())
             .collect();
         let utxos = UtxosByBlock {
             height: i,
@@ -320,7 +320,6 @@ async fn test_utxo_scanner_recovery() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
-                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -420,7 +419,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
-                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -585,7 +583,6 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                 output.clone(),
                 &factories,
                 None,
-                None,
                 OutputSource::Unknown,
                 None,
                 None,
@@ -661,7 +658,6 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
             let dbo = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &factories,
-                None,
                 None,
                 OutputSource::Unknown,
                 None,
@@ -875,7 +871,6 @@ async fn test_utxo_scanner_one_sided_payments() {
                 output.clone(),
                 &factories,
                 None,
-                None,
                 OutputSource::Unknown,
                 None,
                 None,
@@ -947,15 +942,14 @@ async fn test_utxo_scanner_one_sided_payments() {
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&factories, None).unwrap()],
+        utxos: vec![uo.as_transaction_output(&factories).unwrap()],
     };
 
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
     db_unblinded_outputs.push(
-        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, None, OutputSource::Unknown, None, None)
-            .unwrap(),
+        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap(),
     );
     test_interface
         .oms_mock_state

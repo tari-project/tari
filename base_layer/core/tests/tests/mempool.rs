@@ -999,7 +999,7 @@ async fn consensus_validation_large_tx() {
 
     let outputs = unblinded_outputs
         .iter()
-        .map(|o| o.as_transaction_output(&factories, None))
+        .map(|o| o.as_transaction_output(&factories))
         .collect::<Result<Vec<TransactionOutput>, _>>()
         .unwrap();
 

@@ -115,7 +115,7 @@ async fn it_checks_exactly_one_coinbase() {
 
     block.body.add_output(
         coinbase_output
-            .as_transaction_output(&CryptoFactories::default(), None)
+            .as_transaction_output(&CryptoFactories::default())
             .unwrap(),
     );
     let block = blockchain.mine_block("GB", block, 1.into());

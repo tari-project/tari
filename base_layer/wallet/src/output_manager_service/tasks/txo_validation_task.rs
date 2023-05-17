@@ -522,6 +522,11 @@ where
         OutputManagerError,
     > {
         let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
+        trace!(
+            target: LOG_TARGET,
+            "UTXO hashes queried from base node: {:?}",
+            batch.iter().map(|o| o.hash.to_hex()).collect::<Vec<String>>()
+        );
 
         let batch_response = base_node_client
             .utxo_query(UtxoQueryRequest {

@@ -26,7 +26,7 @@ use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction_components::{EncryptedOpeningsError, TransactionError},
+    transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
@@ -134,7 +134,7 @@ pub enum OutputManagerError {
     #[error("Key manager service error : {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Value can't be encrypted/decrypted")]
-    ValueEncryptionError(#[from] EncryptedOpeningsError),
+    ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
     NoCommitmentsProvided,
     #[error("Invalid argument: {0}")]
@@ -200,7 +200,7 @@ pub enum OutputManagerStorageError {
     #[error("Error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Encryption error: `{0}`")]
-    EncryptedOpeningsError(#[from] EncryptedOpeningsError),
+    EncryptedOpeningsError(#[from] EncryptedDataError),
 }
 
 impl From<OutputManagerError> for ExitError {

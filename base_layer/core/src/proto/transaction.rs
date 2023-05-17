@@ -39,7 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -146,7 +146,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
-                EncryptedOpenings::from_bytes(&input.encrypted_openings).map_err(|err| err.to_string())?,
+                EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?,
                 input.minimum_value_promise.into(),
             ))
         } else {
@@ -214,10 +214,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 output_hash: Vec::new(),
                 covenant,
                 version: input.version as u32,
-                encrypted_openings: input
-                    .encrypted_openings()
+                encrypted_data: input
+                    .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
-                    .as_byte_vector(),
+                    .to_byte_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
@@ -264,8 +264,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let mut buffer = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|e| e.to_string())?;
 
-        let encrypted_openings =
-            EncryptedOpenings::from_bytes(&output.encrypted_openings).map_err(|err| err.to_string())?;
+        let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = output.minimum_value_promise.into();
 
@@ -280,7 +279,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         ))
     }
@@ -304,7 +303,7 @@ impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
             metadata_signature: Some(output.metadata_signature.into()),
             covenant,
             version: output.version as u32,
-            encrypted_openings: output.encrypted_openings.as_byte_vector(),
+            encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }

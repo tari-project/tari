@@ -107,7 +107,7 @@ impl TestTransactionBuilder {
     }
 
     pub fn build(mut self) -> (Transaction, UnblindedOutput) {
-        self.create_utxo();
+        self.create_non_recoverable_utxo();
 
         let (script_offset_pvt, offset, kernel) = &self.build_kernel();
 
@@ -166,7 +166,7 @@ impl TestTransactionBuilder {
         MicroTari(self.amount.0 - self.fee.0)
     }
 
-    fn create_utxo(&mut self) {
+    fn create_non_recoverable_utxo(&mut self) {
         let input_data: RistrettoPublicKey = PublicKey::from_secret_key(&self.keys.script_private_key);
 
         let mut builder = UnblindedOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
@@ -180,7 +180,7 @@ impl TestTransactionBuilder {
             .expect("sign as sender and receiver");
         let unblinded = builder.try_build().expect("Get output from unblinded output");
         let utxo = unblinded
-            .as_transaction_output(&self.factories, None)
+            .as_transaction_output(&self.factories)
             .expect("unblinded into output");
 
         self.output = Some((utxo, unblinded));

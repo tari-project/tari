@@ -36,7 +36,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             TransactionKernel,
@@ -179,7 +179,7 @@ fn get_stagenet_genesis_block_raw() -> Block {
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
-        EncryptedOpenings::default(),
+        EncryptedData::default(),
         // Genesis blocks don't need to prove a minimum value
         MicroTari::zero(),
     );
@@ -291,7 +291,7 @@ fn get_nextnet_genesis_block_raw() -> Block {
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
-        EncryptedOpenings::default(),
+        EncryptedData::default(),
         // Genesis blocks don't need to prove a minimum value
         MicroTari::zero(),
     );
@@ -413,7 +413,7 @@ fn get_igor_genesis_block_raw() -> Block {
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
-        EncryptedOpenings::default(),
+        EncryptedData::default(),
         // Genesis blocks don't need to prove a minimum value
         MicroTari::zero(),
     );
@@ -530,7 +530,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         coinbase_meta_sig,
         // Covenant
         Covenant::default(),
-        EncryptedOpenings::default(),
+        EncryptedData::default(),
         // Genesis blocks don't need to prove a minimum value
         MicroTari::zero(),
     );

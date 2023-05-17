@@ -26,11 +26,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, BulletRangeProof, PrivateKey, PublicKey},
+    types::{BlindingFactor, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedOpenings, TransactionOutput, UnblindedOutput},
+    transaction_components::{EncryptedData, TransactionOutput, UnblindedOutput},
     transaction_protocol::RecoveryData,
     CryptoFactories,
 };
@@ -91,7 +91,7 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
+        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
@@ -112,7 +112,6 @@ where
                 let key = PrivateKey::random(&mut OsRng);
                 (inputs!(PublicKey::from_secret_key(&key)), key)
             };
-            let proof = output.proof_result()?.clone();
             let uo = UnblindedOutput::new(
                 output.version,
                 committed_value,
@@ -125,11 +124,11 @@ where
                 output.metadata_signature,
                 0,
                 output.covenant,
-                output.encrypted_openings,
+                output.encrypted_data,
                 output.minimum_value_promise,
             );
 
-            rewound_outputs.push((uo, proof));
+            rewound_outputs.push(uo);
         }
 
         let rewind_time = start.elapsed();
@@ -141,7 +140,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, proof) in &mut rewound_outputs {
+        for output in &mut rewound_outputs {
             // Attempting to recognize output source by i.e., standard MimbleWimble, simple or stealth one-sided
             let output_source = match *output.script.as_slice() {
                 [Opcode::Nop] => OutputSource::Standard,
@@ -154,7 +153,6 @@ where
                 output.clone(),
                 &self.factories,
                 None,
-                Some(proof),
                 output_source,
                 None,
                 None,
@@ -192,10 +190,10 @@ where
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
-        let (committed_value, blinding_factor) = match EncryptedOpenings::decrypt_openings(
+        let (committed_value, blinding_factor) = match EncryptedData::decrypt_data(
             &self.recovery_data.encryption_key,
             &output.commitment,
-            &output.encrypted_openings,
+            &output.encrypted_data,
         ) {
             Ok(value) => value,
             Err(_) => return Ok(None),

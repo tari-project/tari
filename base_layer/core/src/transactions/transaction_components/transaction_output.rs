@@ -61,7 +61,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             OutputFeatures,
             OutputType,
             RangeProofType,
@@ -71,8 +71,6 @@ use crate::{
         TransactionHashDomain,
     },
 };
-
-pub const LOG_TARGET: &str = "c::transactions::transaction_output";
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
@@ -96,7 +94,7 @@ pub struct TransactionOutput {
     #[serde(default)]
     pub covenant: Covenant,
     /// Encrypted value.
-    pub encrypted_openings: EncryptedOpenings,
+    pub encrypted_data: EncryptedData,
     /// The minimum value of the commitment that is proven by the range proof
     #[serde(default)]
     pub minimum_value_promise: MicroTari,
@@ -115,7 +113,7 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         covenant: Covenant,
-        encrypted_openings: EncryptedOpenings,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput {
@@ -127,7 +125,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         }
     }
@@ -140,7 +138,7 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         covenant: Covenant,
-        encrypted_openings: EncryptedOpenings,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput::new(
@@ -152,7 +150,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         )
     }
@@ -205,7 +203,7 @@ impl TransactionOutput {
             &self.commitment,
             &self.script,
             &self.covenant,
-            &self.encrypted_openings,
+            &self.encrypted_data,
             &self.sender_offset_public_key,
             self.minimum_value_promise,
         )
@@ -260,7 +258,7 @@ impl TransactionOutput {
             self.metadata_signature.ephemeral_pubkey(),
             &self.commitment,
             &self.covenant,
-            &self.encrypted_openings,
+            &self.encrypted_data,
             self.minimum_value_promise,
         );
         let e = PrivateKey::from_bytes(&e_bytes).unwrap();
@@ -287,7 +285,7 @@ impl TransactionOutput {
             self.metadata_signature.ephemeral_pubkey(),
             &self.commitment,
             &self.covenant,
-            &self.encrypted_openings,
+            &self.encrypted_data,
             self.minimum_value_promise,
         );
         if !self.metadata_signature.verify_challenge(
@@ -360,7 +358,7 @@ impl TransactionOutput {
         ephemeral_pubkey: &PublicKey,
         commitment: &Commitment,
         covenant: &Covenant,
-        encrypted_openings: &EncryptedOpenings,
+        encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
@@ -370,7 +368,7 @@ impl TransactionOutput {
             script,
             features,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
@@ -391,7 +389,7 @@ impl TransactionOutput {
         script: &TariScript,
         features: &OutputFeatures,
         covenant: &Covenant,
-        encrypted_openings: &EncryptedOpenings,
+        encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
@@ -399,7 +397,7 @@ impl TransactionOutput {
             .chain(script)
             .chain(features)
             .chain(covenant)
-            .chain(encrypted_openings)
+            .chain(encrypted_data)
             .chain(&minimum_value_promise);
         match version {
             TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
@@ -416,7 +414,7 @@ impl TransactionOutput {
         sender_offset_public_key: &PublicKey,
         ephemeral_pubkey: &PublicKey,
         covenant: &Covenant,
-        encrypted_openings: &EncryptedOpenings,
+        encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
@@ -433,7 +431,7 @@ impl TransactionOutput {
             ephemeral_pubkey,
             &commitment,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         Ok(ComAndPubSignature::sign(
@@ -458,7 +456,7 @@ impl TransactionOutput {
         sender_offset_private_key: &PrivateKey,
         ephemeral_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
-        encrypted_openings: &EncryptedOpenings,
+        encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
@@ -477,7 +475,7 @@ impl TransactionOutput {
             &ephemeral_pubkey,
             commitment,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         Ok(ComAndPubSignature::sign(
@@ -522,7 +520,7 @@ impl TransactionOutput {
         output_features: &OutputFeatures,
         sender_offset_private_key: &PrivateKey,
         covenant: &Covenant,
-        encrypted_openings: &EncryptedOpenings,
+        encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
@@ -542,7 +540,7 @@ impl TransactionOutput {
             &ephemeral_pubkey,
             &commitment,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         Ok(ComAndPubSignature::sign(
@@ -580,7 +578,7 @@ impl Default for TransactionOutput {
             PublicKey::default(),
             ComAndPubSignature::default(),
             Covenant::default(),
-            EncryptedOpenings::default(),
+            EncryptedData::default(),
             MicroTari::zero(),
         )
     }
@@ -590,8 +588,10 @@ impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
             fmt,
-            "{} [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}, {}, {}), Proof: {}",
+            "({}, {}) [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}, {}, {}), Encrypted \
+             data ({}), Proof: {}",
             self.commitment.to_hex(),
+            self.hash().to_hex(),
             self.features,
             self.script,
             self.sender_offset_public_key.to_hex(),
@@ -600,6 +600,7 @@ impl Display for TransactionOutput {
             self.metadata_signature.u_y().to_hex(),
             self.metadata_signature.ephemeral_commitment().to_hex(),
             self.metadata_signature.ephemeral_pubkey().to_hex(),
+            self.encrypted_data.hex_display(false),
             self.proof_hex_display(false),
         )
     }
@@ -866,7 +867,7 @@ mod test {
             },
             ..Default::default()
         });
-        utxo?.as_transaction_output(factories, None).map_err(|e| e.to_string())
+        utxo?.as_transaction_output(factories).map_err(|e| e.to_string())
     }
 
     fn create_invalid_output(

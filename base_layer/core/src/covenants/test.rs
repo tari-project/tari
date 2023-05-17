@@ -43,7 +43,7 @@ pub fn create_outputs(n: usize, utxo_params: UtxoTestParams) -> Vec<TransactionO
         let output = params
             .create_unblinded_output_not_recoverable(utxo_params.clone())
             .unwrap();
-        output.as_transaction_output(&Default::default(), None).unwrap()
+        output.as_transaction_output(&Default::default()).unwrap()
     })
     .take(n)
     .collect()

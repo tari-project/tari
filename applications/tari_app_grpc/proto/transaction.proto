@@ -78,8 +78,8 @@ message TransactionInput {
     bytes covenant = 10;
     // Version
     uint32 version = 11;
-    // The encrypted openings
-    bytes encrypted_openings = 12;
+    // The encrypted data
+    bytes encrypted_data = 12;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 13;
 }
@@ -108,7 +108,7 @@ message TransactionOutput {
     // Version
     uint32 version = 9;
     // Encrypted Pedersen commitment openings (value and mask) for the output
-    bytes encrypted_openings = 10;
+    bytes encrypted_data = 10;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 11;
 }
@@ -127,7 +127,7 @@ message OutputFeatures {
     // Features that are specific to a side chain
     SideChainFeature sidechain_feature = 5;
     // The type of range proof used in the output
-    RangeProofType range_proof_type = 6;
+    uint32 range_proof_type = 6;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
@@ -170,8 +170,8 @@ message UnblindedOutput {
     uint64 script_lock_height = 10;
     // Covenant
     bytes covenant = 11;
-    // Encrypted openings
-    bytes encrypted_openings = 12;
+    // Encrypted data
+    bytes encrypted_data = 12;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 13;
 }

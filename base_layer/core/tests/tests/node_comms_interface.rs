@@ -307,7 +307,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &OutputFeatures::default(),
         &offset,
         &Covenant::default(),
-        &utxo.encrypted_openings,
+        &utxo.encrypted_data,
         utxo.minimum_value_promise,
     )
     .unwrap();
@@ -322,7 +322,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         metadata_signature,
         0,
         Covenant::default(),
-        utxo.encrypted_openings,
+        utxo.encrypted_data,
         utxo.minimum_value_promise,
     );
 

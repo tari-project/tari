@@ -61,6 +61,8 @@ pub enum TransactionError {
     ScriptError(#[from] ScriptError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
+    #[error("Error performing encryption: {0}")]
+    EncryptionError(String),
     #[error("The script offset in body does not balance")]
     ScriptOffset,
     #[error("Error executing script: {0}")]

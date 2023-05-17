@@ -1,5 +1,5 @@
 -- Any old 'outputs' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE outputs;
 CREATE TABLE outputs
@@ -35,7 +35,7 @@ CREATE TABLE outputs
     spending_priority                       UNSIGNED INTEGER    NOT NULL DEFAULT 500,
     covenant                                BLOB                NOT NULL,
     mined_timestamp                         DATETIME            NULL,
-    encrypted_openings                      BLOB                NOT NULL,
+    encrypted_data                          BLOB                NOT NULL,
     minimum_value_promise                   BIGINT              NOT NULL,
     source                                  INTEGER             NOT NULL DEFAULT 0,
     last_validation_timestamp               DATETIME            NULL,
@@ -43,7 +43,7 @@ CREATE TABLE outputs
 );
 
 -- Any old 'completed_transactions' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE completed_transactions;
 CREATE TABLE completed_transactions
@@ -71,7 +71,7 @@ CREATE TABLE completed_transactions
 );
 
 -- Any old 'inbound_transactions' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE inbound_transactions;
 CREATE TABLE inbound_transactions
@@ -89,7 +89,7 @@ CREATE TABLE inbound_transactions
 );
 
 -- Any old 'outbound_transactions' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE outbound_transactions;
 CREATE TABLE outbound_transactions
@@ -108,7 +108,7 @@ CREATE TABLE outbound_transactions
 );
 
 -- Any old 'scanned_blocks' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE scanned_blocks;
 CREATE TABLE scanned_blocks
@@ -121,7 +121,7 @@ CREATE TABLE scanned_blocks
 );
 
 -- Any old 'burnt_proofs' will not be valid due to the new genesis block and changing 'encrypted_value' to
--- 'encrypted_openings' in the 'outputs' table, so we drop and recreate the table.
+-- 'encrypted_data' in the 'outputs' table, so we drop and recreate the table.
 
 DROP TABLE burnt_proofs;
 CREATE TABLE burnt_proofs

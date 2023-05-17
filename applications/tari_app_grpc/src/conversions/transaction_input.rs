@@ -27,7 +27,7 @@ use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
     borsh::FromBytes,
     covenants::Covenant,
-    transactions::transaction_components::{EncryptedOpenings, TransactionInput, TransactionInputVersion},
+    transactions::transaction_components::{EncryptedData, TransactionInput, TransactionInputVersion},
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
@@ -68,8 +68,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
-            let encrypted_openings =
-                EncryptedOpenings::from_bytes(&input.encrypted_openings).map_err(|err| err.to_string())?;
+            let encrypted_data = EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?;
             let minimum_value_promise = input.minimum_value_promise.into();
 
             Ok(TransactionInput::new_with_output_data(
@@ -83,7 +82,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 Covenant::borsh_from_bytes(&mut input.covenant.as_bytes()).map_err(|err| err.to_string())?,
-                encrypted_openings,
+                encrypted_data,
                 minimum_value_promise,
             ))
         }
@@ -138,10 +137,10 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .try_to_vec()
                     .map_err(|err| err.to_string())?,
                 version: input.version as u32,
-                encrypted_openings: input
-                    .encrypted_openings()
+                encrypted_data: input
+                    .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
-                    .as_byte_vector(),
+                    .to_byte_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?

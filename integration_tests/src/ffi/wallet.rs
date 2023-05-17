@@ -174,7 +174,7 @@ impl Wallet {
                 comms_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 50,
-                102400,
+                104857600, // 100 MB
                 CString::new("kensentme").unwrap().into_raw(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),

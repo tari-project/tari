@@ -37,7 +37,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -49,7 +49,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -1105,25 +1105,23 @@ where
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
-        let recovery_data = RecoveryData { encryption_key };
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, amount.into());
+        let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &spending_key)?;
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key.clone(),
             &self.resources.factories,
-            &recovery_data,
+            &encrypted_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_openings =
-            EncryptedOpenings::encrypt_openings(&recovery_data.encryption_key, &commitment, amount, &spending_key)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -1138,7 +1136,7 @@ where
             output.metadata_signature.clone(),
             height,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -1253,14 +1251,19 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let recovery_data = RecoveryData { encryption_key };
+        let encrypted_data = EncryptedData::encrypt_data(
+            &encryption_key,
+            &CommitmentFactory::default().commit_value(&spending_key, amount.into()),
+            amount,
+            &spending_key,
+        )?;
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key,
             &self.resources.factories,
-            &recovery_data,
+            &encrypted_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -1431,17 +1434,23 @@ where
             // No claim key provided, no shared secret or encryption key needed
             None => recovery_data,
         };
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spend_key, amount.into());
+        let encrypted_data =
+            EncryptedData::encrypt_data(&recovery_data.encryption_key, &commitment, amount, &spend_key)?;
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key.clone(),
             &self.resources.factories,
-            &recovery_data,
+            &encrypted_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
-        let commitment = recipient_reply.output.commitment.clone();
         let range_proof = recipient_reply.output.proof_result()?.clone();
         let mut ownership_proof = None;
 

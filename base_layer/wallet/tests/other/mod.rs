@@ -733,7 +733,7 @@ async fn test_import_utxo() {
 
     let p = TestParams::new();
     let utxo = create_non_recoverable_unblinded_output(script.clone(), temp_features, &p, 20000 * uT).unwrap();
-    let output = utxo.as_transaction_output(&factories, None).unwrap();
+    let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
@@ -757,7 +757,7 @@ async fn test_import_utxo() {
             &p.sender_offset_public_key,
             0,
             Covenant::default(),
-            output.encrypted_openings,
+            output.encrypted_data,
             utxo.minimum_value_promise,
         )
         .await

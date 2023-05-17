@@ -57,7 +57,7 @@ message TransactionInput {
     // Version
     uint32 version = 10;
     // The encrypted value
-    bytes encrypted_openings = 11;
+    bytes encrypted_data = 11;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 12;
 }
@@ -83,7 +83,7 @@ message TransactionOutput {
     // Version
     uint32 version = 8;
     // Encrypted Pedersen commitment openings (value and mask) for the output
-    bytes encrypted_openings = 9;
+    bytes encrypted_data = 9;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 10;
 }

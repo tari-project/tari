@@ -42,7 +42,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -234,10 +234,10 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
-        let encrypted_openings = self
+        let encrypted_data = self
             .recovery_data
             .as_ref()
-            .map(|rd| EncryptedOpenings::encrypt_openings(&rd.encryption_key, &commitment, total_reward, &spending_key))
+            .map(|rd| EncryptedData::encrypt_data(&rd.encryption_key, &commitment, total_reward, &spending_key))
             .transpose()
             .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
             .unwrap_or_default();
@@ -252,7 +252,7 @@ impl CoinbaseBuilder {
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_openings,
+            &encrypted_data,
             minimum_value_promise,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -268,11 +268,11 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         );
         let output = unblinded_output
-            .as_transaction_output(&self.factories, None)
+            .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
@@ -312,7 +312,7 @@ mod test {
             tari_amount::uT,
             test_helpers::TestParams,
             transaction_components::{
-                EncryptedOpenings,
+                EncryptedData,
                 KernelFeatures,
                 OutputFeatures,
                 OutputType,
@@ -420,10 +420,10 @@ mod test {
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
         let output = &tx.body.outputs()[0];
-        let (committed_value, blinding_factor) = EncryptedOpenings::decrypt_openings(
+        let (committed_value, blinding_factor) = EncryptedData::decrypt_data(
             &recovery_data.encryption_key,
             &output.commitment,
-            &output.encrypted_openings,
+            &output.encrypted_data,
         )
         .unwrap();
         assert_eq!(committed_value, block_reward);

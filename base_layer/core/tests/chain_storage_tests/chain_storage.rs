@@ -2025,7 +2025,7 @@ mod malleability {
                     output.script.clone(),
                     output.sender_offset_public_key.clone(),
                     output.covenant.clone(),
-                    output.encrypted_openings,
+                    output.encrypted_data,
                     output.minimum_value_promise,
                 );
             });

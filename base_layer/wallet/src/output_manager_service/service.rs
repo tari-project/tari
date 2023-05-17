@@ -42,7 +42,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedOpenings,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -632,7 +632,6 @@ where
             output,
             &self.resources.factories,
             spend_priority,
-            None,
             OutputSource::default(),
             tx_id,
             None,
@@ -665,7 +664,6 @@ where
             output,
             &self.resources.factories,
             spend_priority,
-            None,
             OutputSource::default(),
             Some(tx_id),
             None,
@@ -713,7 +711,7 @@ where
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
-            .with_recovery_data(self.resources.recovery_data.clone())
+            .with_recovery_and_encrypted_data(self.resources.recovery_data.clone())?
             .with_script_private_key(script_private_key))
     }
 
@@ -746,7 +744,7 @@ where
             .commitment
             .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
         let features = single_round_sender_data.features.clone();
-        let encrypted_openings = EncryptedOpenings::encrypt_openings(
+        let encrypted_data = EncryptedData::encrypt_data(
             &self.resources.recovery_data.encryption_key,
             &commitment,
             single_round_sender_data.amount,
@@ -773,16 +771,15 @@ where
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.ephemeral_public_nonce,
                     &single_round_sender_data.covenant,
-                    &encrypted_openings,
+                    &encrypted_data,
                     minimum_value_promise,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
-                encrypted_openings,
+                encrypted_data,
                 minimum_value_promise,
             ),
             &self.resources.factories,
-            None,
             None,
             OutputSource::default(),
             Some(single_round_sender_data.tx_id),
@@ -800,7 +797,7 @@ where
             nonce,
             spending_key,
             &self.resources.factories,
-            &self.resources.recovery_data,
+            &encrypted_data,
         );
 
         Ok(rtp)
@@ -987,7 +984,6 @@ where
                 unblinded_output,
                 &self.resources.factories,
                 None,
-                None,
                 OutputSource::default(),
                 Some(tx_id),
                 None,
@@ -1051,7 +1047,6 @@ where
         let output = DbUnblindedOutput::from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            None,
             None,
             OutputSource::Coinbase,
             Some(tx_id),
@@ -1146,7 +1141,6 @@ where
                 ub,
                 &self.resources.factories,
                 None,
-                None,
                 OutputSource::default(),
                 None,
                 None,
@@ -1161,7 +1155,6 @@ where
             db_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -1238,7 +1231,7 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, amount.into());
-        let encrypted_openings = EncryptedOpenings::encrypt_openings(
+        let encrypted_data = EncryptedData::encrypt_data(
             &self.resources.recovery_data.encryption_key,
             &commitment,
             amount,
@@ -1253,7 +1246,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_openings,
+            &encrypted_data,
             minimum_amount_promise,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
@@ -1268,11 +1261,10 @@ where
                 metadata_signature,
                 0,
                 covenant,
-                encrypted_openings,
+                encrypted_data,
                 minimum_amount_promise,
             ),
             &self.resources.factories,
-            None,
             None,
             OutputSource::default(),
             Some(tx_id),
@@ -1312,7 +1304,6 @@ where
             let change_output = DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -1733,7 +1724,7 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_openings = EncryptedOpenings::encrypt_openings(
+            let encrypted_data = EncryptedData::encrypt_data(
                 &self.resources.recovery_data.encryption_key,
                 &commitment,
                 amount_per_split,
@@ -1749,7 +1740,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_openings,
+                &encrypted_data,
                 minimum_amount_promise,
             )?;
 
@@ -1765,11 +1756,10 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_openings,
+                    encrypted_data,
                     minimum_amount_promise,
                 ),
                 &self.resources.factories,
-                None,
                 None,
                 OutputSource::default(),
                 None,
@@ -1951,7 +1941,7 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_openings = EncryptedOpenings::encrypt_openings(
+            let encrypted_data = EncryptedData::encrypt_data(
                 &self.resources.recovery_data.encryption_key,
                 &commitment,
                 amount_per_split,
@@ -1966,7 +1956,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_openings,
+                &encrypted_data,
                 minimum_value_promise,
             )?;
 
@@ -1982,11 +1972,10 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_openings,
+                    encrypted_data,
                     minimum_value_promise,
                 ),
                 &self.resources.factories,
-                None,
                 None,
                 OutputSource::default(),
                 None,
@@ -2045,7 +2034,6 @@ where
             dest_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output_for_change,
                 &self.resources.factories,
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -2160,7 +2148,7 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, aftertax_amount.into());
-        let encrypted_openings = EncryptedOpenings::encrypt_openings(
+        let encrypted_data = EncryptedData::encrypt_data(
             &self.resources.recovery_data.encryption_key,
             &commitment,
             aftertax_amount,
@@ -2175,7 +2163,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_openings,
+            &encrypted_data,
             minimum_value_promise,
         )?;
 
@@ -2191,11 +2179,10 @@ where
                 commitment_signature,
                 0,
                 covenant.clone(),
-                encrypted_openings,
+                encrypted_data,
                 minimum_value_promise,
             ),
             &self.resources.factories,
-            None,
             None,
             OutputSource::default(),
             None,
@@ -2283,7 +2270,7 @@ where
         );
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         if let Ok((amount, blinding_factor)) =
-            EncryptedOpenings::decrypt_openings(&encryption_key, &output.commitment, &output.encrypted_openings)
+            EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
                 let rewound_output = UnblindedOutput::new(
@@ -2300,7 +2287,7 @@ where
                     // to to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
-                    output.encrypted_openings,
+                    output.encrypted_data,
                     output.minimum_value_promise,
                 );
 
@@ -2352,7 +2339,6 @@ where
                 let change_output = DbUnblindedOutput::from_unblinded_output(
                     unblinded_output,
                     &self.resources.factories,
-                    None,
                     None,
                     OutputSource::AtomicSwap,
                     Some(tx_id),
@@ -2439,7 +2425,6 @@ where
         let change_output = DbUnblindedOutput::from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            None,
             None,
             OutputSource::Refund,
             Some(tx_id),
@@ -2563,7 +2548,7 @@ where
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
             if let Ok((committed_value, blinding_factor)) =
-                EncryptedOpenings::decrypt_openings(&encryption_key, &output.commitment, &output.encrypted_openings)
+                EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
             {
                 if output.verify_mask(
                     &self.resources.factories.range_proof,
@@ -2582,7 +2567,7 @@ where
                         output.metadata_signature,
                         0,
                         output.covenant,
-                        output.encrypted_openings,
+                        output.encrypted_data,
                         output.minimum_value_promise,
                     );
 
@@ -2591,7 +2576,6 @@ where
                         rewound_output.clone(),
                         &self.resources.factories,
                         None,
-                        output.proof.as_ref(),
                         output_source,
                         Some(tx_id),
                         None,

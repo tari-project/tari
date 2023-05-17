@@ -26,7 +26,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedOpenings, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
 };
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
@@ -63,8 +63,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
         let mut covenant = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut covenant).map_err(|err| err.to_string())?;
-        let encrypted_openings =
-            EncryptedOpenings::from_bytes(&output.encrypted_openings).map_err(|err| err.to_string())?;
+        let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
         Ok(Self::new(
             TransactionOutputVersion::try_from(
@@ -77,7 +76,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         ))
     }
@@ -109,7 +108,7 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
             }),
             covenant,
             version: output.version as u32,
-            encrypted_openings: output.encrypted_openings.as_byte_vector(),
+            encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }

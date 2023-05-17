@@ -32,7 +32,7 @@ use tari_common_types::{
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction_components::{EncryptedOpeningsError, TransactionError},
+    transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
@@ -177,7 +177,7 @@ pub enum TransactionServiceError {
     #[error("Base Node is not synced")]
     BaseNodeNotSynced,
     #[error("Value encryption error: `{0}`")]
-    EncryptionError(#[from] EncryptedOpeningsError),
+    EncryptionError(#[from] EncryptedDataError),
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Commitment signature error: {0}")]

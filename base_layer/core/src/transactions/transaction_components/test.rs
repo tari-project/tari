@@ -46,7 +46,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedOpenings, OutputFeatures},
+        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -62,7 +62,7 @@ fn input_and_output_and_unblinded_output_hash_match() {
     let i = test_params
         .create_unblinded_output_not_recoverable(Default::default())
         .unwrap();
-    let output = i.as_transaction_output(&CryptoFactories::default(), None).unwrap();
+    let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
     let input = i.as_transaction_input(&factory).unwrap();
     assert_eq!(output.hash(), input.output_hash());
     assert_eq!(output.hash(), i.hash(&CryptoFactories::default()));
@@ -114,7 +114,7 @@ fn range_proof_verification() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output1 = unblinded_output1.as_transaction_output(&factories, None).unwrap();
+    let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
     let unblinded_output2 = test_params_2
@@ -123,7 +123,7 @@ fn range_proof_verification() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output2 = unblinded_output2.as_transaction_output(&factories, None);
+    let tx_output2 = unblinded_output2.as_transaction_output(&factories);
     match tx_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
@@ -166,7 +166,7 @@ fn range_proof_verification_batch() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output1 = unblinded_output1.as_transaction_output(&factories, None).unwrap();
+    let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
     let unblinded_output2 = TestParams::new()
@@ -175,7 +175,7 @@ fn range_proof_verification_batch() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output2 = unblinded_output2.as_transaction_output(&factories, None).unwrap();
+    let tx_output2 = unblinded_output2.as_transaction_output(&factories).unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
     let unblinded_output3 = TestParams::new()
@@ -184,7 +184,7 @@ fn range_proof_verification_batch() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output3 = unblinded_output3.as_transaction_output(&factories, None).unwrap();
+    let tx_output3 = unblinded_output3.as_transaction_output(&factories).unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
     let unblinded_output4 = TestParams::new()
@@ -193,7 +193,7 @@ fn range_proof_verification_batch() {
             ..Default::default()
         })
         .unwrap();
-    let tx_output4 = unblinded_output4.as_transaction_output(&factories, None).unwrap();
+    let tx_output4 = unblinded_output4.as_transaction_output(&factories).unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
     let unblinded_output5 = TestParams::new()
@@ -202,7 +202,7 @@ fn range_proof_verification_batch() {
             ..Default::default()
         })
         .unwrap();
-    let mut tx_output5 = unblinded_output5.as_transaction_output(&factories, None).unwrap();
+    let mut tx_output5 = unblinded_output5.as_transaction_output(&factories).unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
@@ -231,17 +231,17 @@ fn sender_signature_verification() {
         .create_unblinded_output_not_recoverable(Default::default())
         .unwrap();
 
-    let mut tx_output = unblinded_output.as_transaction_output(&factories, None).unwrap();
+    let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.script = TariScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = unblinded_output.as_transaction_output(&factories, None).unwrap();
+    tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.features = OutputFeatures::create_coinbase(0, None);
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = unblinded_output.as_transaction_output(&factories, None).unwrap();
+    tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.sender_offset_public_key = PublicKey::default();
     assert!(tx_output.verify_metadata_signature().is_err());
@@ -305,7 +305,7 @@ fn check_timelocks() {
         script_signature,
         offset_pub_key,
         Covenant::default(),
-        EncryptedOpenings::default(),
+        EncryptedData::default(),
         MicroTari::zero(),
     );
 
@@ -468,19 +468,19 @@ fn test_output_recover_openings() {
             ..Default::default()
         })
         .unwrap();
-    let output = unblinded_output.as_transaction_output(&factories, None).unwrap();
+    let output = unblinded_output.as_transaction_output(&factories).unwrap();
 
     if let Ok((value, recovered_mask)) =
-        EncryptedOpenings::decrypt_openings(&random_key, &output.commitment, &output.encrypted_openings)
+        EncryptedData::decrypt_data(&random_key, &output.commitment, &output.encrypted_data)
     {
         assert!(output
             .verify_mask(&factories.range_proof, &recovered_mask, value.as_u64())
             .is_err());
     }
-    let (value, recovered_mask) = EncryptedOpenings::decrypt_openings(
+    let (value, recovered_mask) = EncryptedData::decrypt_data(
         &test_params.recovery_data.encryption_key,
         &output.commitment,
-        &output.encrypted_openings,
+        &output.encrypted_data,
     )
     .unwrap();
     assert!(output

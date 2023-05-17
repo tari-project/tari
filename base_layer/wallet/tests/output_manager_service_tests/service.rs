@@ -43,7 +43,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_non_recoverable_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedOpenings, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
+        transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -1353,10 +1353,10 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let output = tx3.body.outputs()[0].clone();
 
-    let (decrypted_value, _) = EncryptedOpenings::decrypt_openings(
+    let (decrypted_value, _) = EncryptedData::decrypt_data(
         &oms.recovery_data.encryption_key,
         &output.commitment,
-        &output.encrypted_openings,
+        &output.encrypted_data,
     )
     .unwrap();
     assert_eq!(decrypted_value, value3);
@@ -1391,7 +1391,7 @@ async fn test_txo_validation() {
     let output1_value = 1_000_000;
     let (_, output1) =
         make_non_recoverable_input(&mut OsRng, MicroTari::from(output1_value), &factories.commitment).await;
-    let output1_tx_output = output1.as_transaction_output(&factories, None).unwrap();
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
@@ -1401,7 +1401,7 @@ async fn test_txo_validation() {
     let output2_value = 2_000_000;
     let (_, output2) =
         make_non_recoverable_input(&mut OsRng, MicroTari::from(output2_value), &factories.commitment).await;
-    let output2_tx_output = output2.as_transaction_output(&factories, None).unwrap();
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
@@ -1531,18 +1531,9 @@ async fn test_txo_validation() {
     let output6 = outputs.remove(o6_pos);
     let output4 = outputs[0].clone();
 
-    let output4_tx_output = output4
-        .unblinded_output
-        .as_transaction_output(&factories, None)
-        .unwrap();
-    let output5_tx_output = output5
-        .unblinded_output
-        .as_transaction_output(&factories, None)
-        .unwrap();
-    let output6_tx_output = output6
-        .unblinded_output
-        .as_transaction_output(&factories, None)
-        .unwrap();
+    let output4_tx_output = output4.unblinded_output.as_transaction_output(&factories).unwrap();
+    let output5_tx_output = output5.unblinded_output.as_transaction_output(&factories).unwrap();
+    let output6_tx_output = output6.unblinded_output.as_transaction_output(&factories).unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -1726,7 +1717,7 @@ async fn test_txo_validation() {
     assert_eq!(utxo_query_calls[0].len(), 1);
     assert_eq!(
         utxo_query_calls[0][0],
-        output3.as_transaction_output(&factories, None).unwrap().hash().to_vec()
+        output3.as_transaction_output(&factories).unwrap().hash().to_vec()
     );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
@@ -1944,7 +1935,7 @@ async fn test_txo_revalidation() {
         MicroTari::from(output1_value),
     )
     .unwrap();
-    let output1_tx_output = output1.as_transaction_output(&factories, None).unwrap();
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
         .await
@@ -1958,7 +1949,7 @@ async fn test_txo_revalidation() {
         MicroTari::from(output2_value),
     )
     .unwrap();
-    let output2_tx_output = output2.as_transaction_output(&factories, None).unwrap();
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
@@ -2172,9 +2163,8 @@ async fn scan_for_recovery_test() {
             .get_key_at_index(OutputManagerKeyManagerBranch::OpeningsEncryption.get_branch_key(), 0)
             .await
             .unwrap();
-        let encrypted_openings =
-            EncryptedOpenings::encrypt_openings(&encryption_key, &commitment, amount.into(), &spending_key_result.key)
-                .unwrap();
+        let encrypted_data =
+            EncryptedData::encrypt_data(&encryption_key, &commitment, amount.into(), &spending_key_result.key).unwrap();
 
         let uo = UnblindedOutput::new_current_version(
             MicroTari::from(amount),
@@ -2187,7 +2177,7 @@ async fn scan_for_recovery_test() {
             ComAndPubSignature::default(),
             0,
             Covenant::new(),
-            encrypted_openings,
+            encrypted_data,
             MicroTari::zero(),
         );
         recoverable_unblinded_outputs.push(uo);
@@ -2204,13 +2194,13 @@ async fn scan_for_recovery_test() {
     let recoverable_outputs: Vec<TransactionOutput> = recoverable_unblinded_outputs
         .clone()
         .into_iter()
-        .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
+        .map(|uo| uo.as_transaction_output(&factories).unwrap())
         .collect();
 
     let non_recoverable_outputs: Vec<TransactionOutput> = non_recoverable_unblinded_outputs
         .clone()
         .into_iter()
-        .map(|uo| uo.as_transaction_output(&factories, None).unwrap())
+        .map(|uo| uo.as_transaction_output(&factories).unwrap())
         .collect();
 
     oms.output_manager_handle
@@ -2257,7 +2247,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(1000u64), &factories.commitment).await;
 
-    let rewindable_output = uo.as_transaction_output(&factories, None).unwrap();
+    let rewindable_output = uo.as_transaction_output(&factories).unwrap();
 
     let result = oms
         .output_manager_handle

@@ -32,7 +32,8 @@ use tari_crypto::{
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction_components::{
-        EncryptedOpenings,
+        EncryptedData,
+        RangeProofType,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -41,7 +42,6 @@ use crate::transactions::{
     transaction_protocol::{
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
-        RecoveryData,
         TransactionProtocolError as TPE,
     },
 };
@@ -60,11 +60,11 @@ impl SingleReceiverTransactionProtocol {
         nonce: SK,
         spending_key: SK,
         factories: &CryptoFactories,
-        recovery_data: Option<&RecoveryData>,
+        encrypted_data: &EncryptedData,
     ) -> Result<RD, TPE> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
         let output =
-            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, recovery_data)?;
+            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, encrypted_data)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let tx_meta = if output.is_burned() {
             let mut meta = sender_info.metadata.clone();
@@ -103,26 +103,26 @@ impl SingleReceiverTransactionProtocol {
         sender_info: &SD,
         spending_key: &SK,
         factories: &CryptoFactories,
-        recovery_data: Option<&RecoveryData>,
+        encrypted_data: &EncryptedData,
     ) -> Result<TransactionOutput, TPE> {
         let commitment = factories
             .commitment
             .commit_value(spending_key, sender_info.amount.into());
 
-        let proof = factories
-            .range_proof
-            .construct_proof(spending_key, sender_info.amount.into())?;
-
         let sender_features = sender_info.features.clone();
 
-        let encrypted_openings = recovery_data
-            .as_ref()
-            .map(|rd| {
-                EncryptedOpenings::encrypt_openings(&rd.encryption_key, &commitment, sender_info.amount, spending_key)
-            })
-            .transpose()
-            .map_err(|_| TPE::EncryptionError)?
-            .unwrap_or_default();
+        let proof = if sender_features.range_proof_type == RangeProofType::BulletProofPlus {
+            let range_proof = factories
+                .range_proof
+                .construct_proof(spending_key, sender_info.amount.into())?;
+            Some(RangeProof::from_bytes(&range_proof).map_err(|_| {
+                TPE::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating transaction output".to_string(),
+                ))
+            })?)
+        } else {
+            None
+        };
 
         let minimum_value_promise = sender_info.minimum_value_promise;
 
@@ -135,23 +135,19 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.sender_offset_public_key,
             &sender_info.ephemeral_public_nonce,
             &sender_info.covenant,
-            &encrypted_openings,
+            encrypted_data,
             minimum_value_promise,
         )?;
 
         let output = TransactionOutput::new_current_version(
             sender_features,
             commitment,
-            Some(RangeProof::from_bytes(&proof).map_err(|_| {
-                TPE::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating transaction output".to_string(),
-                ))
-            })?),
+            proof,
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
             sender_info.covenant.clone(),
-            encrypted_openings,
+            *encrypted_data,
             minimum_value_promise,
         );
         Ok(output)
@@ -171,7 +167,13 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_components::{OutputFeatures, OutputType, TransactionKernel, TransactionKernelVersion},
+        transaction_components::{
+            EncryptedData,
+            OutputFeatures,
+            OutputType,
+            TransactionKernel,
+            TransactionKernelVersion,
+        },
         transaction_protocol::{
             sender::SingleRoundSenderData,
             single_receiver::SingleReceiverTransactionProtocol,
@@ -193,7 +195,7 @@ mod test {
         let info = SingleRoundSenderData::default();
         let (r, k, _) = generate_output_parms();
         #[allow(clippy::match_wild_err_arm)]
-        match SingleReceiverTransactionProtocol::create(&info, r, k, &factories, None) {
+        match SingleReceiverTransactionProtocol::create(&info, r, k, &factories, &EncryptedData::default()) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -228,7 +230,9 @@ mod test {
             covenant: Default::default(),
             minimum_value_promise: MicroTari::zero(),
         };
-        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, None).unwrap();
+        let prot =
+            SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, &EncryptedData::default())
+                .unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
