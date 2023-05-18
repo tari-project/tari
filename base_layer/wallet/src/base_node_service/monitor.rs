@@ -30,8 +30,9 @@ use std::{
 use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
 use tari_comms::protocol::rpc::RpcError;
+use tari_core::chain_storage::DbKey::BlockHash;
 use tokio::{sync::RwLock, time};
 
 use crate::{
@@ -200,17 +201,22 @@ where
 
     async fn update_state(&self, new_state: BaseNodeState) {
         let mut lock = self.state.write().await;
-        let (new_block_detected, height) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
+        let (new_block_detected, height, hash) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
             (Some(new_metadata), Some(old_metadata)) => (
                 new_metadata.best_block() != old_metadata.best_block(),
                 new_metadata.height_of_longest_chain(),
+                new_metadata.best_block().clone(),
             ),
-            (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain()),
-            (None, _) => (false, 0),
+            (Some(new_metadata), _) => (
+                true,
+                new_metadata.height_of_longest_chain(),
+                new_metadata.best_block().clone(),
+            ),
+            (None, _) => (false, 0, BlockHashType::default()),
         };
 
         if new_block_detected {
-            self.publish_event(BaseNodeEvent::NewBlockDetected(height));
+            self.publish_event(BaseNodeEvent::NewBlockDetected(hash, height));
         }
 
         *lock = new_state.clone();

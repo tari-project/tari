@@ -22,7 +22,7 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -46,7 +46,7 @@ pub enum BaseNodeServiceResponse {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
-    NewBlockDetected(u64),
+    NewBlockDetected(BlockHash, u64),
 }
 
 impl fmt::Display for BaseNodeEvent {
@@ -55,8 +55,8 @@ impl fmt::Display for BaseNodeEvent {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
             },
-            BaseNodeEvent::NewBlockDetected(s) => {
-                write!(f, "NewBlockDetected: {}", s)
+            BaseNodeEvent::NewBlockDetected(hash, height) => {
+                write!(f, "NewBlockDetected: {}", height)
             },
         }
     }
