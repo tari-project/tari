@@ -55,9 +55,6 @@ fn main() {
         process::exit(1);
     }));
 
-    // Uncomment to enable tokio tracing via tokio-console
-    console_subscriber::init();
-
     match main_inner() {
         Ok(_) => process::exit(0),
         Err(err) => {
@@ -87,6 +84,11 @@ fn main_inner() -> Result<(), ExitError> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
+
+    if cli.profile_with_tokio_console {
+        // Uncomment to enable tokio tracing via tokio-console
+        console_subscriber::init();
+    }
 
     let mut config = ApplicationConfig::load_from(&cfg)?;
 

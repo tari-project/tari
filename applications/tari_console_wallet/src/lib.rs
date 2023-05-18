@@ -96,6 +96,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         grpc_enabled: true,
         grpc_address: None,
         command2: None,
+        profile_with_tokio_console: false,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
