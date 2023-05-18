@@ -498,12 +498,14 @@ where
         Ok(tx_id)
     }
 
+    /// Signs a message, but prepends the message with the prefix "tari_signed_message" to prevent unintentional
+    /// signing of transactions, etc.
     pub fn sign_message(
         &mut self,
         secret: &RistrettoSecretKey,
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
-        RistrettoSchnorr::sign_message(secret, message.as_bytes())
+        RistrettoSchnorr::sign_message(secret, format!("tari_signed_message:{}", message).as_bytes())
     }
 
     pub fn verify_message_signature(
