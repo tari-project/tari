@@ -91,7 +91,7 @@ use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PublicKey, Signature},
+    types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -161,7 +161,7 @@ use tari_wallet::{
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
-    wallet::{derive_comms_secret_key, read_or_create_master_seed},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -6163,7 +6163,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
                     let public_nonce = TariPublicKey::from_hex(key2);
                     match public_nonce {
                         Ok(pn) => {
-                            let sig = Signature::new(pn, p);
+                            let sig = SignatureWithDomain::<WalletMessageSigningDomain>::new(pn, p);
                             result = (*wallet).wallet.verify_message_signature(&*public_key, &sig, &message)
                         },
                         Err(e) => {
