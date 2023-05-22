@@ -32,6 +32,7 @@ use tari_crypto::{
         RistrettoComAndPubSig,
         RistrettoPublicKey,
         RistrettoSchnorr,
+        RistrettoSchnorrWithDomain,
         RistrettoSecretKey,
     },
 };
@@ -43,6 +44,8 @@ pub use fixed_hash::{FixedHash, FixedHashSizeError};
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
+/// Define a generic signature type using a hash domain.
+pub type SignatureWithDomain<H> = RistrettoSchnorrWithDomain<H>;
 /// Define the explicit Commitment Signature implementation for the Tari base layer.
 pub type ComAndPubSignature = RistrettoComAndPubSig;
 
