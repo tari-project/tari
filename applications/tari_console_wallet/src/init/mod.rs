@@ -71,6 +71,9 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
+// Maxmimum number of times we prompt for confirmation of a new passphrase, to avoid driving the user insane with an
+// infinite loop
+const PASSPHRASE_SANITY_LIMIT: u8 = 3;
 
 #[derive(Clone, Copy)]
 pub enum WalletBoot {
@@ -98,11 +101,25 @@ pub enum WalletBoot {
 fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitError> {
     // We may need to prompt for a passphrase multiple times
     loop {
-        // Prompt the user for a passphrase and confirm it
-        let passphrase = prompt_password(prompt)?;
-        let confirmed = prompt_password(confirm)?;
-        if passphrase.reveal() != confirmed.reveal() {
-            return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
+        // Prompt the user for a passphrase and confirm it, up to the defined limit
+        // This ensures an unlucky user doesn't get stuck
+        let mut tries = 0;
+        let mut passphrase = SafePassword::from(""); // initial value for scope
+        loop {
+            passphrase = prompt_password(prompt)?;
+            let confirmed = prompt_password(confirm)?;
+
+            // If they match, continue the process
+            if passphrase.reveal() == confirmed.reveal() {
+                break;
+            }
+
+            // If they don't match, keep prompting until we hit the sanity limit
+            tries += 1;
+            if tries == PASSPHRASE_SANITY_LIMIT {
+                return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
+            }
+            println!("Passphrases don't match! Try again.");
         }
 
         // Score the passphrase and provide feedback

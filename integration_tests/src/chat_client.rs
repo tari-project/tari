@@ -30,7 +30,7 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 
 use crate::{base_node_process::get_base_dir, get_port};
@@ -58,6 +58,7 @@ fn test_config(name: &str, port: u64, identity: &NodeIdentity) -> P2pConfig {
     let mut config = P2pConfig {
         datastore_path: temp_dir_path.clone(),
         dht: DhtConfig {
+            database_url: DbConnectionUrl::file("dht.sqlite"),
             network_discovery: NetworkDiscoveryConfig {
                 enabled: true,
                 ..NetworkDiscoveryConfig::default()
