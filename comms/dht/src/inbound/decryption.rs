@@ -239,7 +239,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let sender_masked_public_key = validated_msg
             .authenticated_origin()
             .ok_or(DecryptionError::MessageRejectDecryptionFailed)?;
-        let sender_public_key = mask_inverse * sender_masked_public_key; // TODO: compute this using the mask inverse!
+        let sender_public_key = mask_inverse * sender_masked_public_key;
 
         trace!(
             target: LOG_TARGET,
