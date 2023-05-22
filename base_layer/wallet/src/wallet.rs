@@ -27,7 +27,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -53,12 +53,7 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    hash::blake2::Blake256,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
-};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError, tari_utilities::hex::Hex};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -107,6 +102,12 @@ use crate::{
 const LOG_TARGET: &str = "wallet";
 /// The minimum buffer size for the wallet pubsub_connector channel
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
+
+// Domain separator for signing arbitrary messages with a wallet secret key
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.tari_project.base_layer.wallet.message_signing"
+);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -500,16 +501,16 @@ where
 
     pub fn sign_message(
         &mut self,
-        secret: &RistrettoSecretKey,
+        secret: &PrivateKey,
         message: &str,
-    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
-        RistrettoSchnorr::sign_message(secret, message.as_bytes())
+    ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes())
     }
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: &RistrettoPublicKey,
-        signature: &Signature,
+        public_key: &PublicKey,
+        signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
         signature.verify_message(public_key, message)
