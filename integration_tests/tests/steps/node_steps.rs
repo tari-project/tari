@@ -693,7 +693,7 @@ async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node:
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.state_machine.blocks_behind_before_considered_lagging = delay;
 
-    spawn_base_node_with_config(world, true, delayed_node, vec![node], base_node_config).await;
+    spawn_base_node_with_config(world, false, delayed_node, vec![node], base_node_config).await;
 }
 
 #[then(expr = "node {word} has reached initial sync")]
