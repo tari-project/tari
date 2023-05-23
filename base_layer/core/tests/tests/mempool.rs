@@ -36,7 +36,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari, T},
         test_helpers::{
-            create_unblinded_output,
+            create_non_recoverable_unblinded_output,
             schema_to_transaction,
             spend_utxos,
             TestParams,
@@ -47,6 +47,7 @@ use tari_core::{
             KernelBuilder,
             OutputFeatures,
             OutputType,
+            RangeProofType,
             Transaction,
             TransactionKernel,
             TransactionKernelVersion,
@@ -919,6 +920,7 @@ async fn receive_and_propagate_transaction() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
@@ -977,7 +979,13 @@ async fn consensus_validation_large_tx() {
         } else {
             amount_for_last_output
         };
-        let output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, output_amount);
+        let output = create_non_recoverable_unblinded_output(
+            script!(Nop),
+            OutputFeatures::default(),
+            &test_params,
+            output_amount,
+        )
+        .unwrap();
 
         script_offset_pvt = script_offset_pvt - test_params.sender_offset_private_key;
         unblinded_outputs.push(output.clone());
@@ -1089,14 +1097,14 @@ async fn consensus_validation_versions() {
 
     let test_params = TestParams::new();
     let params = UtxoTestParams::with_value(1 * T);
-    let output_v0_features_v0 = test_params.create_unblinded_output(params);
+    let output_v0_features_v0 = test_params.create_unblinded_output_not_recoverable(params).unwrap();
     assert_eq!(output_v0_features_v0.version, TransactionOutputVersion::V0);
     assert_eq!(output_v0_features_v0.features.version, OutputFeaturesVersion::V0);
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
     params.output_version = Some(TransactionOutputVersion::V1);
-    let output_v1_features_v0 = test_params.create_unblinded_output(params);
+    let output_v1_features_v0 = test_params.create_unblinded_output_not_recoverable(params).unwrap();
     assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
     assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
 
@@ -1106,19 +1114,20 @@ async fn consensus_validation_versions() {
         0,
         Default::default(),
         None,
+        RangeProofType::BulletProofPlus,
     );
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
     params.features = features_v1.clone();
-    let output_v0_features_v1 = test_params.create_unblinded_output(params);
+    let output_v0_features_v1 = test_params.create_unblinded_output_not_recoverable(params).unwrap();
     assert_eq!(output_v0_features_v1.version, TransactionOutputVersion::V0);
     assert_eq!(output_v0_features_v1.features.version, OutputFeaturesVersion::V1);
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
     params.features = features_v1;
-    let mut output_v1_features_v1 = test_params.create_unblinded_output(params);
+    let mut output_v1_features_v1 = test_params.create_unblinded_output_not_recoverable(params).unwrap();
     output_v1_features_v1.version = TransactionOutputVersion::V1;
     assert_eq!(output_v1_features_v1.version, TransactionOutputVersion::V1);
     assert_eq!(output_v1_features_v1.features.version, OutputFeaturesVersion::V1);

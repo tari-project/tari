@@ -67,7 +67,7 @@ pub struct NewOutputSql {
     pub coinbase_block_height: Option<i64>,
     pub features_json: String,
     pub covenant: Vec<u8>,
-    pub encrypted_value: Vec<u8>,
+    pub encrypted_data: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
 }
@@ -114,7 +114,7 @@ impl NewOutputSql {
                 }
             })?,
             covenant,
-            encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
+            encrypted_data: output.unblinded_output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
         };

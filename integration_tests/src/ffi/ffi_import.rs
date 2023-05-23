@@ -52,7 +52,7 @@ pub type TariOutputFeatures = c_void;
 #[allow(dead_code)]
 pub type TariCovenant = c_void;
 #[allow(dead_code)]
-pub type TariEncryptedValue = c_void;
+pub type TariEncryptedOpenings = c_void;
 #[allow(dead_code)]
 pub type TariUnblindedOutput = c_void;
 #[allow(dead_code)]
@@ -134,7 +134,7 @@ extern "C" {
         sender_offset_public_key: *mut TariPublicKey,
         script_private_key: *mut TariPrivateKey,
         covenant: *mut TariCovenant,
-        encrypted_value: *mut TariEncryptedValue,
+        encrypted_data: *mut TariEncryptedOpenings,
         minimum_value_promise: c_ulonglong,
         script_lock_height: c_ulonglong,
         error_out: *mut c_int,
@@ -162,15 +162,15 @@ extern "C" {
     pub fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPrivateKey;
     pub fn covenant_create_from_bytes(covenant_bytes: *const ByteVector, error_out: *mut c_int) -> *mut TariCovenant;
     pub fn covenant_destroy(covenant: *mut TariCovenant);
-    pub fn encrypted_value_create_from_bytes(
-        encrypted_value_bytes: *const ByteVector,
+    pub fn encrypted_data_create_from_bytes(
+        encrypted_data_bytes: *const ByteVector,
         error_out: *mut c_int,
-    ) -> *mut TariEncryptedValue;
-    pub fn encrypted_value_as_bytes(
-        encrypted_value: *const TariEncryptedValue,
+    ) -> *mut TariEncryptedOpenings;
+    pub fn encrypted_data_as_bytes(
+        encrypted_data: *const TariEncryptedOpenings,
         error_out: *mut c_int,
     ) -> *mut ByteVector;
-    pub fn encrypted_value_destroy(encrypted_value: *mut TariEncryptedValue);
+    pub fn encrypted_data_destroy(encrypted_data: *mut TariEncryptedOpenings);
     pub fn output_features_create_from_bytes(
         version: c_uchar,
         output_type: c_ushort,

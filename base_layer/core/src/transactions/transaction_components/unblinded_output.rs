@@ -33,7 +33,6 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
-    BulletRangeProof,
     ComAndPubSignature,
     CommitmentFactory,
     FixedHash,
@@ -47,7 +46,10 @@ use tari_crypto::{
     extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
-    ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
+    ristretto::{
+        bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
+        pedersen::PedersenCommitment,
+    },
     tari_utilities::ByteArray,
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -62,12 +64,12 @@ use crate::{
         transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
-            EncryptedValue,
+            EncryptedData,
             OutputFeatures,
+            RangeProofType,
             TransactionError,
             TransactionInputVersion,
         },
-        transaction_protocol::RewindData,
         CryptoFactories,
     },
 };
@@ -89,7 +91,7 @@ pub struct UnblindedOutput {
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
-    pub encrypted_value: EncryptedValue,
+    pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroTari,
 }
 
@@ -109,7 +111,7 @@ impl UnblindedOutput {
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Self {
         Self {
@@ -124,7 +126,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         }
     }
@@ -140,7 +142,7 @@ impl UnblindedOutput {
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Self {
         Self::new(
@@ -155,7 +157,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         )
     }
@@ -198,7 +200,7 @@ impl UnblindedOutput {
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
                 version: self.version,
-                encrypted_value: self.encrypted_value.clone(),
+                encrypted_data: self.encrypted_data,
                 minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
@@ -230,40 +232,33 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
-        let range_proof = self.construct_range_proof(factories, None)?;
+        let proof = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
+            Some(self.construct_range_proof(factories)?)
+        } else {
+            None
+        };
 
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
             commitment,
-            range_proof,
+            proof,
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
-            self.encrypted_value.clone(),
+            self.encrypted_data,
             self.minimum_value_promise,
         );
 
         Ok(output)
     }
 
-    fn construct_range_proof(
-        &self,
-        factories: &CryptoFactories,
-        seed_nonce: Option<PrivateKey>,
-    ) -> Result<RangeProof, TransactionError> {
+    fn construct_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
         let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
-            match seed_nonce {
-                Some(nonce) => factories.range_proof.construct_proof_with_recovery_seed_nonce(
-                    &self.spending_key,
-                    self.value.into(),
-                    &nonce,
-                ),
-                None => factories
-                    .range_proof
-                    .construct_proof(&self.spending_key, self.value.into()),
-            }
+            factories
+                .range_proof
+                .construct_proof(&self.spending_key, self.value.into())
         } else {
             let extended_mask =
                 RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
@@ -276,7 +271,7 @@ impl UnblindedOutput {
 
             factories
                 .range_proof
-                .construct_extended_proof(vec![extended_witness], seed_nonce)
+                .construct_extended_proof(vec![extended_witness], None)
         };
 
         let proof_bytes = proof_bytes_result.map_err(|err| {
@@ -293,47 +288,6 @@ impl UnblindedOutput {
         })
     }
 
-    pub fn as_rewindable_transaction_output(
-        &self,
-        factories: &CryptoFactories,
-        rewind_data: &RewindData,
-        range_proof: Option<&BulletRangeProof>,
-    ) -> Result<TransactionOutput, TransactionError> {
-        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
-        {
-            return Err(TransactionError::ValidationError(
-                "Value provided is outside the range allowed by the range proof".into(),
-            ));
-        }
-        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-
-        let proof = if let Some(proof) = range_proof {
-            proof.clone()
-        } else {
-            self.construct_range_proof(factories, Some(rewind_data.rewind_blinding_key.clone()))
-                .map_err(|_| {
-                    TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                        "Creating rewindable transaction output".to_string(),
-                    ))
-                })?
-        };
-
-        let output = TransactionOutput::new(
-            self.version,
-            self.features.clone(),
-            commitment,
-            proof,
-            self.script.clone(),
-            self.sender_offset_public_key.clone(),
-            self.metadata_signature.clone(),
-            self.covenant.clone(),
-            self.encrypted_value.clone(),
-            self.minimum_value_promise,
-        );
-
-        Ok(output)
-    }
-
     pub fn features_and_scripts_byte_size(&self) -> usize {
         self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
     }
@@ -341,17 +295,20 @@ impl UnblindedOutput {
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
     // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> FixedHash {
-        let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
         transaction_components::hash_output(
             self.version,
             &self.features,
-            &commitment,
+            &self.commitment(factories),
             &self.script,
             &self.covenant,
-            &self.encrypted_value,
+            &self.encrypted_data,
             &self.sender_offset_public_key,
             self.minimum_value_promise,
         )
+    }
+
+    pub fn commitment(&self, factories: &CryptoFactories) -> PedersenCommitment {
+        factories.commitment.commit_value(&self.spending_key, self.value.into())
     }
 }
 
@@ -390,6 +347,7 @@ impl Debug for UnblindedOutput {
             .field("sender_offset_public_key", &self.sender_offset_public_key)
             .field("metadata_signature", &self.metadata_signature)
             .field("script_lock_height", &self.script_lock_height)
+            .field("encrypted_data", &self.encrypted_data)
             .field("minimum_value_promise", &self.minimum_value_promise)
             .finish()
     }

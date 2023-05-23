@@ -287,6 +287,18 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
         MicroTari::zero(),
     );
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(
+        utxo.clone(),
+        *block0.hash(),
+        0,
+        block0.header().output_mmr_size as u32,
+        0,
+    );
+    if let Err(e) = store.commit(txn) {
+        panic!("{}", e);
+    }
+
     let metadata_signature = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         amount,
@@ -295,7 +307,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &OutputFeatures::default(),
         &offset,
         &Covenant::default(),
-        &utxo.encrypted_value,
+        &utxo.encrypted_data,
         utxo.minimum_value_promise,
     )
     .unwrap();
@@ -310,12 +322,9 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         metadata_signature,
         0,
         Covenant::default(),
-        utxo.encrypted_value.clone(),
+        utxo.encrypted_data,
         utxo.minimum_value_promise,
     );
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 1, 0);
-    assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(
         from: vec![unblinded_output],

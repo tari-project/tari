@@ -23,7 +23,7 @@
 use strum::EnumIter;
 use tari_core::{
     consensus::ConsensusConstants,
-    transactions::{transaction_protocol::RewindData, CryptoFactories},
+    transactions::{transaction_protocol::RecoveryData, CryptoFactories},
 };
 use tari_shutdown::ShutdownSignal;
 
@@ -44,7 +44,7 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
-    pub rewind_data: RewindData,
+    pub recovery_data: RecoveryData,
 }
 
 #[derive(Clone, Copy, EnumIter)]
@@ -53,9 +53,8 @@ pub enum OutputManagerKeyManagerBranch {
     SpendScript,
     Coinbase,
     CoinbaseScript,
-    RecoveryBlinding,
     ContractIssuer,
-    ValueEncryption,
+    OpeningsEncryption,
 }
 
 impl OutputManagerKeyManagerBranch {
@@ -67,9 +66,8 @@ impl OutputManagerKeyManagerBranch {
             OutputManagerKeyManagerBranch::SpendScript => "script".to_string(),
             OutputManagerKeyManagerBranch::Coinbase => "coinbase".to_string(),
             OutputManagerKeyManagerBranch::CoinbaseScript => "coinbase_script".to_string(),
-            OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
             OutputManagerKeyManagerBranch::ContractIssuer => "contract_issuer".to_string(),
-            OutputManagerKeyManagerBranch::ValueEncryption => "value_encryption".to_string(),
+            OutputManagerKeyManagerBranch::OpeningsEncryption => "openings_encryption".to_string(),
         }
     }
 }

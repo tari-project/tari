@@ -27,6 +27,7 @@ use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 use crate::tari_rpc as grpc;
 
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
+    #[allow(clippy::too_many_lines)]
     fn from(cc: ConsensusConstants) -> Self {
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
         let weight_params = cc.transaction_weight().params();
@@ -79,6 +80,12 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             .map(|ot| i32::from(ot.as_byte()))
             .collect::<Vec<i32>>();
 
+        let permitted_range_proof_types = cc.permitted_range_proof_types();
+        let permitted_range_proof_types = permitted_range_proof_types
+            .iter()
+            .map(|rpt| i32::from(rpt.as_byte()))
+            .collect::<Vec<i32>>();
+
         let monero_pow = PowAlgorithm::Monero;
         let sha3_pow = PowAlgorithm::Sha3;
 
@@ -125,6 +132,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max_randomx_seed_height: cc.max_randomx_seed_height(),
             output_version_range: Some(output_version_range),
             permitted_output_types,
+            permitted_range_proof_types,
             validator_node_validity_period: cc.validator_node_validity_period_epochs().as_u64(),
             epoch_length: cc.epoch_length(),
             validator_node_registration_min_deposit_amount: cc
