@@ -126,7 +126,7 @@ Feature: Wallet Transactions
 
   @flaky
   Scenario: Wallet imports reorged outputs that become invalidated
-    # # Chain 1
+    # Chain 1
     Given I have a seed node SEED_B
     When I have a base node B connected to seed SEED_B
     When I have wallet WB connected to base node B
@@ -143,15 +143,15 @@ Feature: Wallet Transactions
     When I wait 30 seconds
     Then I import WALLET_RECEIVE_TX unspent outputs to WALLET_IMPORTED
     Then I wait for wallet WALLET_IMPORTED to have at least 1000000 uT
-    # # This triggers a validation of the imported outputs
+    # This triggers a validation of the imported outputs
     Then I restart wallet WALLET_IMPORTED
-    # # Chain 2
+    # Chain 2
     Given I have a seed node SEED_C
     When I have a base node C connected to seed SEED_C
     When I have wallet WC connected to base node C
     When I have mining node CM connected to base node C and wallet WC
     When mining node CM mines 10 blocks with min difficulty 1000 and max difficulty 9999999999
-    # # Connect chain 1 and 2
+    # Connect chain 1 and 2
     Then node B is at height 8
     When node C is at height 10
     When I have a base node SA connected to nodes B,C

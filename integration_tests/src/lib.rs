@@ -53,7 +53,7 @@ pub fn get_port(range: Range<u16>) -> Option<u64> {
 
 pub async fn wait_for_service(port: u64) {
     // The idea is that if the port is taken it means the service is running.
-    // If it's not taken the port hasn't come up yet
+    // If the port is not taken the service hasn't come up yet
     let max_tries = 40;
     let mut attempts = 0;
 
