@@ -197,7 +197,9 @@ where
             );
 
             // If there's a new block, try again immediately,
-            if !new_block {
+            if new_block {
+                self.backoff_attempts = 0;
+            } else {
                 self.backoff_attempts += 1;
                 let delay = time::sleep(
                     cmp::min(self.max_interval, self.backoff.calculate_backoff(self.backoff_attempts))
@@ -206,8 +208,6 @@ where
                 if interrupt(base_node_watch.changed(), delay).await.is_none() {
                     self.update_state(Default::default()).await;
                 }
-            } else {
-                self.backoff_attempts = 0;
             }
         }
 
