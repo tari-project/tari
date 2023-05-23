@@ -42,7 +42,7 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
 use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 use tari_utilities::message_format::MessageFormat;
@@ -183,6 +183,7 @@ fn test_config(base_dir: &PathBuf, identity: &NodeIdentity) -> P2pConfig {
     let mut config = P2pConfig {
         datastore_path: base_dir.clone(),
         dht: DhtConfig {
+            database_url: DbConnectionUrl::file("dht.sqlite"),
             network_discovery: NetworkDiscoveryConfig {
                 enabled: true,
                 ..NetworkDiscoveryConfig::default()
