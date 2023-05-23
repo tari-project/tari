@@ -35,7 +35,7 @@ use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tokio::task;
@@ -179,6 +179,7 @@ pub async fn spawn_base_node_with_config(
             .listener_address
             .clone()]);
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
+        base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
         base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.storage.orphan_storage_capacity = 10;

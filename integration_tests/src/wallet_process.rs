@@ -26,7 +26,7 @@ use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_console_wallet::{run_wallet_with_cli, Cli};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
@@ -129,7 +129,7 @@ pub async fn spawn_wallet(
         wallet_config.wallet.p2p.public_addresses =
             MultiaddrList::from(vec![wallet_config.wallet.p2p.transport.tcp.listener_address.clone()]);
         wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db").join("wallet");
-        wallet_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        wallet_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
         wallet_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
             wallet_config
