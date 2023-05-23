@@ -44,7 +44,7 @@ use crate::{
         transaction_components,
         transaction_components::{
             transaction_output::TransactionOutput,
-            EncryptedValue,
+            EncryptedData,
             OutputFeatures,
             TransactionError,
             UnblindedOutput,
@@ -115,7 +115,7 @@ impl TransactionInput {
         script_signature: ComAndPubSignature,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> TransactionInput {
         TransactionInput::new(
@@ -127,7 +127,7 @@ impl TransactionInput {
                 sender_offset_public_key,
                 covenant,
                 version: TransactionOutputVersion::get_current_version(),
-                encrypted_value,
+                encrypted_data,
                 minimum_value_promise,
             },
             input_data,
@@ -144,7 +144,7 @@ impl TransactionInput {
         script: TariScript,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) {
         self.spent_output = SpentOutput::OutputData {
@@ -154,7 +154,7 @@ impl TransactionInput {
             script,
             sender_offset_public_key,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         };
     }
@@ -248,12 +248,10 @@ impl TransactionInput {
         }
     }
 
-    pub fn encrypted_value(&self) -> Result<&EncryptedValue, TransactionError> {
+    pub fn encrypted_data(&self) -> Result<&EncryptedData, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
-            SpentOutput::OutputData {
-                ref encrypted_value, ..
-            } => Ok(encrypted_value),
+            SpentOutput::OutputData { ref encrypted_data, .. } => Ok(encrypted_data),
         }
     }
 
@@ -372,7 +370,7 @@ impl TransactionInput {
                 script,
                 features,
                 covenant,
-                encrypted_value,
+                encrypted_data,
                 sender_offset_public_key,
                 minimum_value_promise,
                 ..
@@ -382,7 +380,7 @@ impl TransactionInput {
                 commitment,
                 script,
                 covenant,
-                encrypted_value,
+                encrypted_data,
                 sender_offset_public_key,
                 *minimum_value_promise,
             ),
@@ -450,13 +448,13 @@ impl Display for TransactionInput {
                 ..
             } => write!(
                 fmt,
-                "{} [{:?}], Script: ({}), Offset_Pubkey: ({}), Input Hash: {}, Output: {}",
+                "({}, {}) [{:?}], Script: ({}), Offset_Pubkey: ({}), Input Hash: {}",
                 commitment.to_hex(),
+                self.output_hash().to_hex(),
                 features,
                 script,
                 sender_offset_public_key.to_hex(),
                 self.canonical_hash().to_hex(),
-                self.output_hash().to_hex()
             ),
         }
     }
@@ -496,7 +494,7 @@ pub enum SpentOutput {
         sender_offset_public_key: PublicKey,
         /// The transaction covenant
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     },
 }

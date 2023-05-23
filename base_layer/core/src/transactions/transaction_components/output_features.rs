@@ -32,6 +32,7 @@ use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
 use crate::transactions::transaction_components::{
+    range_proof_type::RangeProofType,
     side_chain::SideChainFeature,
     CodeTemplateRegistration,
     ConfidentialOutputData,
@@ -55,7 +56,10 @@ pub struct OutputFeatures {
     /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
     /// `coinbase_output_features_metadata_max_length`.
     pub coinbase_extra: Vec<u8>,
+    /// Features that are specific to a side chain
     pub sidechain_feature: Option<SideChainFeature>,
+    /// The type of range proof used in the output
+    pub range_proof_type: RangeProofType,
 }
 
 impl OutputFeatures {
@@ -65,6 +69,7 @@ impl OutputFeatures {
         maturity: u64,
         coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
+        range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
@@ -72,6 +77,7 @@ impl OutputFeatures {
             maturity,
             coinbase_extra,
             sidechain_feature,
+            range_proof_type,
         }
     }
 
@@ -80,6 +86,7 @@ impl OutputFeatures {
         maturity: u64,
         coinbase_extra: Vec<u8>,
         sidechain_feature: Option<SideChainFeature>,
+        range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
@@ -87,6 +94,7 @@ impl OutputFeatures {
             maturity,
             coinbase_extra,
             sidechain_feature,
+            range_proof_type,
         )
     }
 
@@ -157,7 +165,7 @@ impl OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None)
+        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, RangeProofType::default())
     }
 }
 

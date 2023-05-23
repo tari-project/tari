@@ -42,7 +42,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -54,7 +54,7 @@ use crate::{
             TransactionOutputVersion,
             UnblindedOutput,
         },
-        transaction_protocol::{RewindData, TransactionMetadata},
+        transaction_protocol::{RecoveryData, TransactionMetadata},
         types::WalletServiceHashingDomain,
     },
 };
@@ -89,7 +89,7 @@ pub struct CoinbaseBuilder {
     script_key: Option<PrivateKey>,
     script: Option<TariScript>,
     private_nonce: Option<PrivateKey>,
-    rewind_data: Option<RewindData>,
+    recovery_data: Option<RecoveryData>,
     covenant: Covenant,
     extra: Option<Vec<u8>>,
 }
@@ -106,7 +106,7 @@ impl CoinbaseBuilder {
             script_key: None,
             script: None,
             private_nonce: None,
-            rewind_data: None,
+            recovery_data: None,
             covenant: Covenant::default(),
             extra: None,
         }
@@ -155,9 +155,9 @@ impl CoinbaseBuilder {
         self
     }
 
-    /// Add the rewind data needed to make this coinbase output rewindable
-    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
-        self.rewind_data = Some(rewind_data);
+    /// Add the recovery data needed to make this coinbase output recoverable.
+    pub fn with_recovery_data(mut self, recovery_data: RecoveryData) -> Self {
+        self.recovery_data = Some(recovery_data);
         self
     }
 
@@ -234,10 +234,10 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
-        let encrypted_value = self
-            .rewind_data
+        let encrypted_data = self
+            .recovery_data
             .as_ref()
-            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, total_reward))
+            .map(|rd| EncryptedData::encrypt_data(&rd.encryption_key, &commitment, total_reward, &spending_key))
             .transpose()
             .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
             .unwrap_or_default();
@@ -252,7 +252,7 @@ impl CoinbaseBuilder {
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_data,
             minimum_value_promise,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -268,18 +268,12 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
-        let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
-            unblinded_output
-                .as_rewindable_transaction_output(&self.factories, rewind_data, None)
-                .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
-        } else {
-            unblinded_output
-                .as_transaction_output(&self.factories)
-                .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
-        };
+        let output = unblinded_output
+            .as_transaction_output(&self.factories)
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
             .with_features(kernel_features)
@@ -318,14 +312,14 @@ mod test {
             tari_amount::uT,
             test_helpers::TestParams,
             transaction_components::{
-                EncryptedValue,
+                EncryptedData,
                 KernelFeatures,
                 OutputFeatures,
                 OutputType,
                 TransactionError,
                 TransactionKernel,
             },
-            transaction_protocol::RewindData,
+            transaction_protocol::RecoveryData,
             CoinbaseBuilder,
         },
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
@@ -407,35 +401,32 @@ mod test {
     }
 
     #[test]
-    fn valid_coinbase_with_rewindable_output() {
-        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-
-        let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
+    fn valid_coinbase_with_recoverable_output() {
+        let recovery_data = RecoveryData {
             encryption_key: PrivateKey::random(&mut OsRng),
         };
 
         let p = TestParams::new();
-        let (builder, rules, factories) = get_builder();
+        let (builder, rules, _factories) = get_builder();
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
-            .with_rewind_data(rewind_data.clone());
+            .with_recovery_data(recovery_data.clone());
         let (tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
         let output = &tx.body.outputs()[0];
-        let committed_value =
-            EncryptedValue::decrypt_value(&rewind_data.encryption_key, &output.commitment, &output.encrypted_value)
-                .unwrap();
+        let (committed_value, blinding_factor) = EncryptedData::decrypt_data(
+            &recovery_data.encryption_key,
+            &output.commitment,
+            &output.encrypted_data,
+        )
+        .unwrap();
         assert_eq!(committed_value, block_reward);
-        let blinding_factor = output
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
     }
 

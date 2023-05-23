@@ -118,7 +118,11 @@ pub async fn spawn_wallet(
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
         wallet_config.wallet.data_dir = temp_dir_path.clone().join("../../data").join("wallet");
         wallet_config.wallet.db_file = temp_dir_path.clone().join("db").join("console_wallet.db");
-        wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(5);
+        wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
+        wallet_config
+            .wallet
+            .base_node_service_config
+            .base_node_monitor_refresh_interval = Duration::from_secs(15);
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();

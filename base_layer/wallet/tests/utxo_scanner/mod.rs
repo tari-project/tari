@@ -74,7 +74,7 @@ use crate::support::{
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
     transaction_service_mock::{make_transaction_service_mock, TransactionServiceMockState},
-    utils::make_input,
+    utils::make_non_recoverable_input,
 };
 
 pub struct UtxoScannerTestInterface {
@@ -243,7 +243,7 @@ async fn generate_block_headers_and_utxos(
         let mut block_outputs = Vec::new();
 
         for _j in 0..=i + 1 {
-            let (_ti, uo) = make_input(
+            let (_ti, uo) = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
@@ -937,7 +937,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
+    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,

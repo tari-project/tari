@@ -68,9 +68,9 @@ impl WalletFFI {
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
         let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./temp/base_nodes/{}", now.format("%Y%m%d-%H%M%S"));
+        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/wallet.log", base_dir);
+        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
         let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
         Self { name, port, wallet }
     }
@@ -173,9 +173,9 @@ impl WalletFFI {
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
         let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./temp/base_nodes/{}", now.format("%Y%m%d-%H%M%S"));
+        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/wallet.log", base_dir);
+        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
         self.wallet = ffi::Wallet::create(comms_config, log_path, null());
     }
 

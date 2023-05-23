@@ -26,12 +26,12 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, BulletRangeProof, PrivateKey, PublicKey},
+    types::{BlindingFactor, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, OutputType, TransactionOutput, UnblindedOutput},
-    transaction_protocol::RewindData,
+    transaction_components::{EncryptedData, TransactionOutput, UnblindedOutput},
+    transaction_protocol::RecoveryData,
     CryptoFactories,
 };
 use tari_crypto::{
@@ -41,25 +41,22 @@ use tari_crypto::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, Opcode};
 
-use crate::{
-    output_manager_service::{
-        error::{OutputManagerError, OutputManagerStorageError},
-        handle::RecoveredOutput,
-        resources::OutputManagerKeyManagerBranch,
-        storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
-            models::DbUnblindedOutput,
-            OutputSource,
-        },
+use crate::output_manager_service::{
+    error::{OutputManagerError, OutputManagerStorageError},
+    handle::RecoveredOutput,
+    resources::OutputManagerKeyManagerBranch,
+    storage::{
+        database::{OutputManagerBackend, OutputManagerDatabase},
+        models::DbUnblindedOutput,
+        OutputSource,
     },
-    util::burn_proof::derive_burn_claim_encryption_key,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
-    rewind_data: RewindData,
+    recovery_data: RecoveryData,
     factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
@@ -71,13 +68,13 @@ where
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
-        rewind_data: RewindData,
+        recovery_data: RecoveryData,
         factories: CryptoFactories,
         db: OutputManagerDatabase<TBackend>,
     ) -> Self {
         Self {
             master_key_manager,
-            rewind_data,
+            recovery_data,
             factories,
             db,
         }
@@ -94,25 +91,16 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
+        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;
             }
 
-            let (blinding_factor, committed_value) = match output.features.output_type {
-                OutputType::Standard |
-                OutputType::Coinbase |
-                OutputType::ValidatorNodeRegistration |
-                OutputType::CodeTemplateRegistration => match self.attempt_standard_output_recovery(&output)? {
-                    Some(recovered) => recovered,
-                    None => continue,
-                },
-                OutputType::Burn => match self.attempt_burn_output_recovery(&output)? {
-                    Some(recovered) => recovered,
-                    None => continue,
-                },
+            let (blinding_factor, committed_value) = match self.attempt_output_recovery(&output)? {
+                Some(recovered) => recovered,
+                None => continue,
             };
 
             let (input_data, script_key) = if let Some(index) = known_script_index {
@@ -136,11 +124,11 @@ where
                 output.metadata_signature,
                 0,
                 output.covenant,
-                output.encrypted_value,
+                output.encrypted_data,
                 output.minimum_value_promise,
             );
 
-            rewound_outputs.push((uo, output.proof));
+            rewound_outputs.push(uo);
         }
 
         let rewind_time = start.elapsed();
@@ -152,7 +140,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, proof) in &mut rewound_outputs {
+        for output in &mut rewound_outputs {
             // Attempting to recognize output source by i.e., standard MimbleWimble, simple or stealth one-sided
             let output_source = match *output.script.as_slice() {
                 [Opcode::Nop] => OutputSource::Standard,
@@ -161,12 +149,10 @@ where
                 _ => OutputSource::RecoveredButUnrecognized,
             };
 
-            let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            let db_output = DbUnblindedOutput::from_unblinded_output(
                 output.clone(),
                 &self.factories,
-                &self.rewind_data,
                 None,
-                Some(proof),
                 output_source,
                 None,
                 None,
@@ -200,57 +186,17 @@ where
         Ok(rewound_outputs_with_tx_id)
     }
 
-    fn attempt_standard_output_recovery(
+    fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
-        let committed_value = EncryptedValue::decrypt_value(
-            &self.rewind_data.encryption_key,
+        let (committed_value, blinding_factor) = match EncryptedData::decrypt_data(
+            &self.recovery_data.encryption_key,
             &output.commitment,
-            &output.encrypted_value,
-        );
-        let committed_value = match committed_value {
+            &output.encrypted_data,
+        ) {
             Ok(value) => value,
-            Err(_) => {
-                return Ok(None);
-            },
-        };
-
-        let blinding_factor =
-            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
-        if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
-            return Ok(None);
-        }
-
-        Ok(Some((blinding_factor, committed_value)))
-    }
-
-    fn attempt_burn_output_recovery(
-        &self,
-        output: &TransactionOutput,
-    ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
-        if output
-            .features
-            .sidechain_feature
-            .as_ref()
-            .and_then(|f| f.confidential_output_data())
-            .is_none()
-        {
-            return self.attempt_standard_output_recovery(output);
-        };
-
-        let blinding_factor =
-            output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
-
-        let shard_encryption_key = derive_burn_claim_encryption_key(&blinding_factor, &output.commitment);
-
-        let committed_value =
-            EncryptedValue::decrypt_value(&shard_encryption_key, &output.commitment, &output.encrypted_value);
-        let committed_value = match committed_value {
-            Ok(value) => value,
-            Err(_) => {
-                return Ok(None);
-            },
+            Err(_) => return Ok(None),
         };
 
         if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {

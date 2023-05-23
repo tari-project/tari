@@ -42,3 +42,8 @@ message ComAndPubSignature {
 message BlindingFactor {
     bytes data = 1;
 }
+
+/// Range proof
+message RangeProof {
+    bytes proof_bytes = 1;
+}
