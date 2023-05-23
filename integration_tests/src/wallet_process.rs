@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, str::FromStr, thread, time::Duration};
+use std::{path::PathBuf, process, str::FromStr, thread, time::Duration};
 
 use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
@@ -32,7 +32,6 @@ use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, Transpor
 use tari_shutdown::Shutdown;
 use tari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
 use tari_wallet_grpc_client::WalletGrpcClient;
-use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
@@ -40,11 +39,12 @@ use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
+    pub config: WalletConfig,
+    pub grpc_port: u64,
+    pub kill_signal: Shutdown,
     pub name: String,
     pub port: u64,
-    pub grpc_port: u64,
     pub temp_dir_path: PathBuf,
-    pub kill_signal: Shutdown,
 }
 
 impl Drop for WalletProcess {
@@ -65,17 +65,24 @@ pub async fn spawn_wallet(
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
+    let wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         port = wallet_ps.port;
         grpc_port = wallet_ps.grpc_port;
         temp_dir_path = wallet_ps.temp_dir_path.clone();
+        wallet_config = wallet_ps.config.clone();
     } else {
         // each spawned wallet will use different ports
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
-        // create a new temporary directory
-        temp_dir_path = tempdir().unwrap().path().to_path_buf();
+
+        temp_dir_path = get_base_dir()
+            .join("wallets")
+            .join(format!("grpc_port_{}", grpc_port))
+            .join(wallet_name.clone());
+
+        wallet_config = WalletConfig::default();
     };
 
     let base_node = base_node_name.map(|name| {
@@ -97,11 +104,14 @@ pub async fn spawn_wallet(
 
     let temp_dir = temp_dir_path.clone();
 
+    let mut common_config = CommonConfig::default();
+    common_config.base_path = temp_dir_path.clone();
+    let wallet_cfg = wallet_config.clone();
     thread::spawn(move || {
-        let mut wallet_config = tari_console_wallet::ApplicationConfig {
-            common: CommonConfig::default(),
+        let mut wallet_app_config = tari_console_wallet::ApplicationConfig {
+            common: common_config,
             auto_update: AutoUpdateConfig::default(),
-            wallet: WalletConfig::default(),
+            wallet: wallet_cfg,
             peer_seeds: PeerSeedsConfig {
                 peer_seeds: peer_addresses.into(),
                 ..Default::default()
@@ -110,37 +120,43 @@ pub async fn spawn_wallet(
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
 
-        wallet_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
-        wallet_config.wallet.network = Network::LocalNet;
-        wallet_config.wallet.password = Some("test".into());
-        wallet_config.wallet.grpc_enabled = true;
-        wallet_config.wallet.grpc_address =
+        wallet_app_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
+        wallet_app_config.wallet.network = Network::LocalNet;
+        wallet_app_config.wallet.password = Some("test".into());
+        wallet_app_config.wallet.grpc_enabled = true;
+        wallet_app_config.wallet.grpc_address =
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
-        wallet_config.wallet.data_dir = temp_dir_path.clone().join("../../data").join("wallet");
-        wallet_config.wallet.db_file = temp_dir_path.clone().join("db").join("console_wallet.db");
-        wallet_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
-        wallet_config
+        wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
+        wallet_app_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
+        wallet_app_config
             .wallet
             .base_node_service_config
             .base_node_monitor_refresh_interval = Duration::from_secs(15);
-        wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
-        wallet_config.wallet.p2p.transport.tcp.listener_address =
+        wallet_app_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
+        wallet_app_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-        wallet_config.wallet.p2p.public_addresses =
-            MultiaddrList::from(vec![wallet_config.wallet.p2p.transport.tcp.listener_address.clone()]);
-        wallet_config.wallet.p2p.datastore_path = temp_dir_path.clone().join("peer_db").join("wallet");
-        wallet_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
-        wallet_config.wallet.p2p.allow_test_addresses = true;
+        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
+            .wallet
+            .p2p
+            .transport
+            .tcp
+            .listener_address
+            .clone()]);
+        wallet_app_config.wallet.p2p.dht = DhtConfig::default_local_test();
+        wallet_app_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
+        wallet_app_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
-            wallet_config
+            wallet_app_config
                 .wallet
                 .transaction_service_config
                 .transaction_routing_mechanism = mech;
         }
 
         // FIXME: wallet doesn't pick up the custom base node for some reason atm
-        wallet_config.wallet.custom_base_node =
+        wallet_app_config.wallet.custom_base_node =
             base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
+
+        wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
         let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
@@ -150,13 +166,14 @@ pub async fn spawn_wallet(
             cli.seed_words_file_name = Some(temp_dir_path.join(file_name));
         }
 
-        if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_config, cli) {
+        if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli) {
             panic!("{:?}", e);
         }
     });
 
     // make the new wallet able to be referenced by other processes
     world.wallets.insert(wallet_name.clone(), WalletProcess {
+        config: wallet_config,
         name: wallet_name.clone(),
         port,
         grpc_port,
@@ -227,4 +244,9 @@ impl WalletProcess {
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
     }
+}
+
+pub fn get_base_dir() -> PathBuf {
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
 }
