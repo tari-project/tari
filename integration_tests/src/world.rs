@@ -223,12 +223,5 @@ impl TariWorld {
         self.seed_nodes.as_slice()
     }
 
-    pub async fn after(&mut self, _scenario: &Scenario) {
-        self.base_nodes.clear();
-        self.chat_clients.clear();
-        self.ffi_wallets.clear();
-        self.miners.clear();
-        self.seed_nodes.clear();
-        self.wallets.clear();
-    }
+    pub async fn after(&mut self, _scenario: &Scenario) {}
 }
