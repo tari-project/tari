@@ -5351,11 +5351,7 @@ pub unsafe extern "C" fn wallet_create(
             direct_send_timeout: (*config).dht.discovery_request_timeout,
             ..Default::default()
         },
-        base_node_service_config: BaseNodeServiceConfig {
-            // TODO: remove
-            base_node_monitor_refresh_interval: Duration::from_millis(100),
-            ..Default::default()
-        },
+        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
         ..Default::default()
     };

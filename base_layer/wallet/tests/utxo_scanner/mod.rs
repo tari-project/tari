@@ -971,14 +971,17 @@ async fn test_utxo_scanner_one_sided_payments() {
     };
 
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
-        metadata: Some(chain_metadata),
+        metadata: Some(chain_metadata.clone()),
         is_synced: true,
     });
     time::sleep(Duration::from_secs(5)).await;
 
     test_interface
         .base_node_service_event_publisher
-        .send(Arc::new(BaseNodeEvent::NewBlockDetected(11)))
+        .send(Arc::new(BaseNodeEvent::NewBlockDetected(
+            chain_metadata.best_block.as_ref().cloned().unwrap().try_into().unwrap(),
+            11,
+        )))
         .unwrap();
 
     let delay = time::sleep(Duration::from_secs(60));

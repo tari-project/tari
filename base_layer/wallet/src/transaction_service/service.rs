@@ -874,10 +874,10 @@ where
         >,
     ) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(state) => {
+            BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
-            BaseNodeEvent::NewBlockDetected(hash, height) => {
+            BaseNodeEvent::NewBlockDetected(_hash, height) => {
                 let _operation_id = self
                     .start_transaction_validation_protocol(transaction_validation_join_handles)
                     .await

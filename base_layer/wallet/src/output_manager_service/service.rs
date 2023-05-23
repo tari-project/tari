@@ -521,7 +521,7 @@ where
 
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(state) => {
+            BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(
                     target: LOG_TARGET,
                     "Received Base Node State Change but no block changes"
