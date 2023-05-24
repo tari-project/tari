@@ -55,8 +55,8 @@ impl fmt::Display for BaseNodeEvent {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
             },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                write!(f, "NewBlockDetected: {}", height)
+            BaseNodeEvent::NewBlockDetected(hash, height) => {
+                write!(f, "NewBlockDetected: {} ({})", height, hash.to_hex())
             },
         }
     }
