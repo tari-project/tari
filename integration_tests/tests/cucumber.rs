@@ -25,6 +25,7 @@ use std::{
     fs,
     io,
     path::PathBuf,
+    process,
     str::{self},
     sync::{Arc, Mutex},
 };
@@ -115,4 +116,16 @@ fn main() {
 
     // If by any chance we have anything in the stdout buffer just log it.
     flush_stdout(&stdout_buffer);
+
+    // Move the logs to the temp dir
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let log_dir = crate_root.join("log");
+    let test_run_dir = crate_root.join(format!("tests/temp/cucumber_{}/logs", process::id()));
+    fs::create_dir_all(&test_run_dir).unwrap();
+
+    for entry in fs::read_dir(log_dir).unwrap() {
+        let file = entry.unwrap();
+        fs::copy(file.path(), test_run_dir.join(file.file_name())).unwrap();
+        fs::remove_file(file.path()).unwrap();
+    }
 }
