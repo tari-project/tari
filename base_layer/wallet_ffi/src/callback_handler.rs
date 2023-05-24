@@ -362,7 +362,7 @@ where TBackend: TransactionBackend + 'static
                                     self.base_node_state_changed(state);
                                 },
 
-                                BaseNodeEvent::NewBlockDetected(_new_block_number) => {
+                                BaseNodeEvent::NewBlockDetected(_hash, _new_block_number) => {
                                     //
                                 },
                             }
