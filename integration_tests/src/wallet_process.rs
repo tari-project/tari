@@ -122,7 +122,7 @@ pub async fn spawn_wallet(
         wallet_config
             .wallet
             .base_node_service_config
-            .base_node_monitor_refresh_interval = Duration::from_secs(15);
+            .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
         wallet_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
