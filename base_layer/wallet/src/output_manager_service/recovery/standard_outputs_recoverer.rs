@@ -64,7 +64,7 @@ pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: KeyManagerInterface,
+    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
@@ -213,28 +213,18 @@ where
         &mut self,
         output: &mut UnblindedOutput,
     ) -> Result<(), OutputManagerError> {
-        let script_key = if output.features.is_coinbase() {
-            let found_index = self
-                .master_key_manager
+        let public_spend_key = PublicKey::from_secret_key(&output.spending_key);
+        let index = if output.features.is_coinbase() {
+            self.master_key_manager
                 .find_key_index(
                     OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
-                    &output.spending_key,
-                )
-                .await?;
-
-            self.master_key_manager
-                .get_key_at_index(
-                    OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
-                    found_index,
+                    &public_spend_key,
                 )
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(
-                    OutputManagerKeyManagerBranch::Spend.get_branch_key(),
-                    &output.spending_key,
-                )
+                .find_key_index(OutputManagerKeyManagerBranch::Spend.get_branch_key(), &public_spend_key)
                 .await?;
 
             self.master_key_manager
@@ -246,13 +236,10 @@ where
                     found_index,
                 )
                 .await?;
-
-            self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript.get_branch_key(), found_index)
-                .await?
+            found_index
         };
 
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_key));
+        output.input_data = inputs!(PublicKey::from_secret_key(&public_spend_key));
         output.script_private_key = script_key;
         Ok(())
     }

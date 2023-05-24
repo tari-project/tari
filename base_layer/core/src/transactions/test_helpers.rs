@@ -54,7 +54,7 @@ use crate::{
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
-            UnblindedOutput,
+            UnblindedOutput2,
         },
         transaction_protocol::{RecoveryData, TransactionMetadata, TransactionProtocolError},
         weight::TransactionWeight,

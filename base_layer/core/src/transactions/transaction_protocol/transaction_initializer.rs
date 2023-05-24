@@ -48,11 +48,11 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             EncryptedData,
+            KeyManagerOutput,
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
-            UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },

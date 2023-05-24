@@ -34,7 +34,9 @@ tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { version="0.4.10", features = ["borsh"] }
+tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 
+async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"

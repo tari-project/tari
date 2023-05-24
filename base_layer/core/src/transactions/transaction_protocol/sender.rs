@@ -44,6 +44,7 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             KernelBuilder,
+            KeyManagerOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
@@ -51,7 +52,6 @@ use crate::{
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
-            UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },

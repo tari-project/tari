@@ -47,7 +47,6 @@ use crate::{
             EncryptedData,
             OutputFeatures,
             TransactionError,
-            UnblindedOutput,
         },
         TransactionHashDomain,
     },
@@ -161,7 +160,7 @@ impl TransactionInput {
 
     /// Convenience function to create the entire script challenge
     pub fn build_script_signature_challenge(
-        version: TransactionInputVersion,
+        version: &TransactionInputVersion,
         ephemeral_commitment: &Commitment,
         ephemeral_pubkey: &PublicKey,
         script: &TariScript,
@@ -172,6 +171,18 @@ impl TransactionInput {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
         let message = TransactionInput::build_script_signature_message(version, script, input_data);
+        TransactionInput::finalize_script_signature_challenge(version, ephemeral_commitment, ephemeral_pubkey, script_public_key, commitment, &message)
+    }
+
+    /// Convenience function to create the finalize script challenge
+    pub fn finalize_script_signature_challenge(
+        version: &TransactionInputVersion,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
+        script_public_key: &PublicKey,
+        commitment: &Commitment,
+        message: &[u8; 32],
+    ) -> [u8; 32] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
@@ -188,14 +199,14 @@ impl TransactionInput {
     /// Convenience function to create the entire script signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
     pub fn build_script_signature_message(
-        version: TransactionInputVersion,
+        version: &TransactionInputVersion,
         script: &TariScript,
         input_data: &ExecutionStack,
     ) -> [u8; 32] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_message")
-                    .chain(&version)
+                    .chain(version)
                     .chain(script)
                     .chain(input_data)
                     .finalize()

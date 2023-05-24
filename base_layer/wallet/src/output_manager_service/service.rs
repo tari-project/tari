@@ -124,7 +124,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: KeyManagerInterface,
+    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -1017,7 +1017,7 @@ where
             target: LOG_TARGET,
             "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
         );
-
+        let spending_key = KeyID{branch: coinbase, index: block_heigh};
         let spending_key = self
             .resources
             .master_key_manager

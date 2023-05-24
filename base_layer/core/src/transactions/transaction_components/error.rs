@@ -25,6 +25,7 @@
 
 use serde::{Deserialize, Serialize};
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
 use thiserror::Error;
 
@@ -81,10 +82,18 @@ pub enum TransactionError {
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
     #[error("Invalid revealed value : {0}")]
     InvalidRevealedValue(String),
+    #[error("KeyManager encountered an error: {0}")]
+    KeyManagerError(String),
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
+    }
+}
+
+impl From<KeyManagerServiceError> for TransactionError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionError::KeyManagerError(err.to_string())
     }
 }

@@ -22,49 +22,47 @@
 
 use derivative::Derivative;
 use tari_common_types::types::{BlindingFactor, ComAndPubSignature, PrivateKey, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
+    core_key_manager::KeyId,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedData,
+            EncryptedValue,
+            KeyManagerOutput,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
-            UnblindedOutput2,
         },
-        transaction_protocol::RecoveryData,
-        CryptoFactories,
+        transaction_protocol::RewindData,
     },
 };
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
-pub struct UnblindedOutputBuilder2 {
+pub struct KeyManagerOutputBuilder {
     value: MicroTari,
-    #[derivative(Debug = "ignore")]
-    spending_key: BlindingFactor,
+    spending_key: KeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
-    #[derivative(Debug = "ignore")]
-    script_private_key: Option<PrivateKey>,
+    script_private_key: Option<KeyId>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-    encrypted_data: EncryptedData,
-    recovery_data: Option<RecoveryData>,
+    encrypted_value: EncryptedValue,
+    rewind_data: Option<RewindData>,
     minimum_value_promise: MicroTari,
 }
 
-impl UnblindedOutputBuilder2 {
-    pub fn new(value: MicroTari, spending_key: BlindingFactor) -> Self {
+impl KeyManagerBuilder {
+    pub fn new(value: MicroTari, spending_key: KeyId) -> Self {
         Self {
             value,
             spending_key,
@@ -77,8 +75,8 @@ impl UnblindedOutputBuilder2 {
             metadata_signature: None,
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
-            encrypted_data: EncryptedData::default(),
-            recovery_data: None,
+            encrypted_value: EncryptedValue::default(),
+            rewind_data: None,
             minimum_value_promise: MicroTari::zero(),
         }
     }
@@ -102,22 +100,12 @@ impl UnblindedOutputBuilder2 {
         self
     }
 
-    pub fn with_recovery_and_encrypted_data(mut self, recovery_data: RecoveryData) -> Result<Self, TransactionError> {
-        self.recovery_data = Some(recovery_data.clone());
-        let commitment = CryptoFactories::default()
-            .commitment
-            .commit_value(&self.spending_key, self.value.as_u64());
-        self.encrypted_data = EncryptedData::encrypt_data(
-            &recovery_data.encryption_key,
-            &commitment,
-            self.value,
-            &self.spending_key,
-        )
-        .map_err(|e| TransactionError::EncryptionError(format!("{}", e)))?;
-        Ok(self)
+    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
+        self.rewind_data = Some(rewind_data);
+        self
     }
 
-    pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
+    pub fn with_script_private_key(mut self, script_private_key: KeyId) -> Self {
         self.script_private_key = Some(script_private_key);
         self
     }
@@ -154,7 +142,7 @@ impl UnblindedOutputBuilder2 {
             &self.features,
             sender_offset_private_key,
             &self.covenant,
-            &self.encrypted_data,
+            &self.encrypted_value,
             self.minimum_value_promise,
         )?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
@@ -191,7 +179,7 @@ impl UnblindedOutputBuilder2 {
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
             0,
             self.covenant,
-            self.encrypted_data,
+            self.encrypted_value,
             self.minimum_value_promise,
         );
         Ok(ub)

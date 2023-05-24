@@ -118,7 +118,7 @@ pub struct Wallet<T, U, V, W, X> {
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
-    pub key_manager_service: KeyManagerHandle<X>,
+    pub key_manager_service: KeyManagerHandle<X, PublicKey>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -139,7 +139,7 @@ where
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    X: KeyManagerBackend + 'static,
+    X: KeyManagerBackend<PublicKey> + 'static,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start(

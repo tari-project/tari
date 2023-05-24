@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2023, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -28,50 +28,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
-
-use tari_crypto::keys::PublicKey;
+use tari_common_types::types::PublicKey;
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::storage::database::{KeyManagerBackend, KeyManagerDatabase},
+};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::database::{KeyManagerBackend, KeyManagerDatabase},
-        KeyManagerHandle,
-    },
-};
+use crate::{core_key_manager::CoreKeyManagerHandle, transactions::CryptoFactories};
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
-pub struct KeyManagerInitializer<T, PK>
-where
-    T: KeyManagerBackend<PK>,
-    PK: PublicKey,
+pub struct CoreKeyManagerInitializer<T>
+where T: KeyManagerBackend<PublicKey>
 {
     backend: Option<T>,
     master_seed: CipherSeed,
-    public_key_type: PhantomData<PK>,
+    crypto_factories: CryptoFactories,
 }
 
-impl<T, PK> KeyManagerInitializer<T, PK>
-where
-    T: KeyManagerBackend<PK> + 'static,
-    PK: PublicKey,
+impl<T> CoreKeyManagerInitializer<T>
+where T: KeyManagerBackend<PublicKey> + 'static
 {
-    /// Creates a new [KeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
-    pub fn new(backend: T, master_seed: CipherSeed) -> Self {
+    /// Creates a new [CoreKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
+    pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories) -> Self {
         Self {
             backend: Some(backend),
             master_seed,
-            public_key_type: PhantomData,
+            crypto_factories,
         }
     }
 }
 
 #[async_trait]
-impl<T, PK> ServiceInitializer for KeyManagerInitializer<T, PK>
-where
-    T: KeyManagerBackend<PK> + 'static,
-    PK: PublicKey + Sync + Send + 'static,
+impl<T> ServiceInitializer for CoreKeyManagerInitializer<T>
+where T: KeyManagerBackend<PublicKey> + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let backend = self
@@ -79,8 +69,11 @@ where
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        let key_manager: KeyManagerHandle<T, PK> =
-            KeyManagerHandle::new(self.master_seed.clone(), KeyManagerDatabase::new(backend));
+        let key_manager: CoreKeyManagerHandle<T> = CoreKeyManagerHandle::new(
+            self.master_seed.clone(),
+            KeyManagerDatabase::new(backend),
+            self.crypto_factories.clone(),
+        );
         context.register_handle(key_manager);
 
         Ok(())
