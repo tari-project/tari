@@ -32,7 +32,7 @@ use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
 use thiserror::Error;
 
-use crate::covenants::CovenantError;
+use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
@@ -89,6 +89,8 @@ pub enum TransactionError {
     InvalidRevealedValue(String),
     #[error("KeyManager encountered an error: {0}")]
     KeyManagerError(String),
+    #[error("EncryptedData error : {0}")]
+    EncryptedDataError(String),
 }
 
 impl From<CovenantError> for TransactionError {
@@ -100,5 +102,11 @@ impl From<CovenantError> for TransactionError {
 impl From<KeyManagerServiceError> for TransactionError {
     fn from(err: KeyManagerServiceError) -> Self {
         TransactionError::KeyManagerError(err.to_string())
+    }
+}
+
+impl From<EncryptedDataError> for TransactionError {
+    fn from(err: EncryptedDataError) -> Self {
+        TransactionError::EncryptedDataError(err.to_string())
     }
 }
