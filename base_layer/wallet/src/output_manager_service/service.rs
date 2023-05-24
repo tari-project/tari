@@ -124,7 +124,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: KeyManagerInterface,
+    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,

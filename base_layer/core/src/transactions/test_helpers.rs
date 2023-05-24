@@ -704,7 +704,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
 
         let challenge = TransactionInput::build_script_signature_challenge(
-            version,
+            &version,
             &ephemeral_commitment,
             &ephemeral_pubkey,
             &input.script,

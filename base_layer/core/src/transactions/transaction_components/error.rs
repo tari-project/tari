@@ -24,7 +24,11 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
+use tari_crypto::{
+    errors::RangeProofError,
+    signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
+};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
 use thiserror::Error;
 
@@ -59,6 +63,8 @@ pub enum TransactionError {
     InputMaturity,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Schnorr signature error : {0}")]
+    SchnorrSignatureError(#[from] SchnorrSignatureError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
     #[error("Error performing encryption: {0}")]
@@ -81,10 +87,18 @@ pub enum TransactionError {
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
     #[error("Invalid revealed value : {0}")]
     InvalidRevealedValue(String),
+    #[error("KeyManager encountered an error: {0}")]
+    KeyManagerError(String),
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
+    }
+}
+
+impl From<KeyManagerServiceError> for TransactionError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionError::KeyManagerError(err.to_string())
     }
 }
