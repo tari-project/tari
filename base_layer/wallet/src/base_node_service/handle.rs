@@ -24,6 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
