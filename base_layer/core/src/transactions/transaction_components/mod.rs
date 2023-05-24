@@ -29,6 +29,7 @@ pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
+pub use key_manager_output::KeyManagerOutput;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
@@ -60,6 +61,8 @@ mod output_type;
 mod range_proof_type;
 mod side_chain;
 
+mod key_manager_output;
+mod key_manager_output_builder;
 mod transaction;
 mod transaction_builder;
 mod transaction_input;

@@ -118,7 +118,7 @@ pub struct Wallet<T, U, V, W, X> {
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
-    pub key_manager_service: KeyManagerHandle<X>,
+    pub key_manager_service: KeyManagerHandle<X, PublicKey>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -139,7 +139,7 @@ where
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    X: KeyManagerBackend + 'static,
+    X: KeyManagerBackend<PublicKey> + 'static,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start(
@@ -250,7 +250,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
-        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
+        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X, PublicKey>>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
@@ -705,12 +705,12 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
-    let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+    let comms_key_manager = KeyManager::<PublicKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );
-    Ok(comms_key_manager.derive_key(0)?.k)
+    Ok(comms_key_manager.derive_key(0)?.key)
 }
 
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided

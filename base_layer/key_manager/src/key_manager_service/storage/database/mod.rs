@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod backend;
-use std::sync::Arc;
+
+use std::{marker::PhantomData, sync::Arc};
 
 pub use backend::KeyManagerBackend;
+use tari_crypto::keys::PublicKey;
 
 use crate::key_manager_service::error::KeyManagerStorageError;
 
@@ -34,19 +36,32 @@ pub struct KeyManagerState {
     pub primary_key_index: u64,
 }
 
+/// Holds the state of the KeyManager for the branch
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportedKey<PK: PublicKey> {
+    pub private_key: PK::K,
+    pub public_key: PK,
+}
+
 /// This structure holds an inner type that implements the `KeyManagerBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
-pub struct KeyManagerDatabase<T> {
+pub struct KeyManagerDatabase<T, PK> {
     db: Arc<T>,
+    public_key: PhantomData<PK>,
 }
 
-impl<T> KeyManagerDatabase<T>
-where T: KeyManagerBackend + 'static
+impl<T, PK> KeyManagerDatabase<T, PK>
+where
+    T: KeyManagerBackend<PK> + 'static,
+    PK: PublicKey,
 {
     /// Creates a new [KeyManagerDatabase] linked to the provided KeyManagerBackend
     pub fn new(db: T) -> Self {
-        Self { db: Arc::new(db) }
+        Self {
+            db: Arc::new(db),
+            public_key: PhantomData,
+        }
     }
 
     /// Retrieves the key manager state of the provided branch
@@ -70,5 +85,15 @@ where T: KeyManagerBackend + 'static
     /// Will error if the branch does not exist.
     pub fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
         self.db.set_key_index(branch, index)
+    }
+
+    /// This will import and save a private public key combo
+    pub fn insert_imported_key(&self, public_key: PK, private_key: PK::K) -> Result<(), KeyManagerStorageError> {
+        self.db.insert_imported_key(public_key, private_key)
+    }
+
+    /// This will import and save a private public key combo
+    pub fn get_imported_key(&self, public_key: &PK) -> Result<PK::K, KeyManagerStorageError> {
+        self.db.get_imported_key(public_key)
     }
 }

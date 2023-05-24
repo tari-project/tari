@@ -234,7 +234,10 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
-        .add_initializer(KeyManagerInitializer::new(kms_backend, cipher))
+        .add_initializer(KeyManagerInitializer::<
+            KeyManagerSqliteDatabase<WalletDbConnection>,
+            PublicKey,
+        >::new(kms_backend, cipher))
         .build()
         .await
         .unwrap();

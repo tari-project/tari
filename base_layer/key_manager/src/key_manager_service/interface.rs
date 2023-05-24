@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+// use tari_common_types::types::{PrivateKey, PublicKey};
+
+use tari_crypto::keys::{PublicKey, SecretKey};
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
@@ -33,20 +34,18 @@ pub enum AddResult {
     AlreadyExists,
 }
 
-pub struct NextKeyResult {
-    pub key: PrivateKey,
+pub struct NextKeyResult<PK: PublicKey> {
+    pub key: PK::K,
     pub index: u64,
-}
-
-impl NextKeyResult {
-    pub fn to_public_key(&self) -> PublicKey {
-        PublicKey::from_secret_key(&self.key)
-    }
 }
 
 /// Behaviour required for the Key manager service
 #[async_trait::async_trait]
-pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
+pub trait KeyManagerInterface<PK>: Clone + Send + Sync + 'static
+where
+    PK: PublicKey + Send + Sync + 'static,
+    PK::K: SecretKey + Send + Sync + 'static,
+{
     /// Creates a new branch for the key manager service to track
     /// If this is an existing branch, that is not yet tracked in memory, the key manager service will load the key
     /// manager from the backend to track in memory, will return `Ok(AddResult::NewEntry)`. If the branch is already
@@ -55,21 +54,20 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
     /// Gets the next key from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError>;
+    async fn get_next_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
 
     /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerServiceError>;
+    ) -> Result<PK::K, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
-    async fn find_key_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        key: &PrivateKey,
-    ) -> Result<u64, KeyManagerServiceError>;
+    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError>;
 
     /// Will update the index of the branch if the index given is higher than the current saved index
     async fn update_current_key_index_if_higher<T: Into<String> + Send>(
@@ -77,4 +75,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
         branch: T,
         index: u64,
     ) -> Result<(), KeyManagerServiceError>;
+
+    /// Add a new key to be tracked
+    async fn import_key(&self, private_key: PK::K) -> Result<(), KeyManagerServiceError>;
 }

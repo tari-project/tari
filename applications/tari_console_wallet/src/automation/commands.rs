@@ -55,7 +55,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoSecretKey};
 use tari_key_manager::key_manager_service::NextKeyResult;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
@@ -1107,7 +1107,7 @@ fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, Com
 }
 
 #[allow(dead_code)]
-fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult) -> Result<(), CommandError> {
+fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult<PublicKey>) -> Result<(), CommandError> {
     let file_exists = path.as_ref().exists();
     let mut root = if file_exists {
         read_json_file::<_, Vec<serde_json::Value>>(&path).map_err(|e| CommandError::JsonFile(e.to_string()))?
@@ -1116,7 +1116,7 @@ fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult) 
     };
     let json = serde_json::json!({
         "name": format!("issuer-key-{}", key_result.index),
-        "public_key": key_result.to_public_key().to_hex(),
+        "public_key": PublicKey::from_secret_key(&key_result.key).to_hex(),
         "secret_key": key_result.key.to_hex(),
     });
     root.push(json);

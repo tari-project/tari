@@ -1,6 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    burnt_proofs (id) {
+        id -> Integer,
+        reciprocal_claim_public_key -> Text,
+        payload -> Text,
+        burned_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     client_key_values (key) {
         key -> Text,
         value -> Text,
@@ -130,16 +139,8 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    burnt_proofs (id) {
-        id -> Integer,
-        reciprocal_claim_public_key -> Text,
-        payload -> Text,
-        burned_at -> Timestamp,
-    }
-}
-
 diesel::allow_tables_to_appear_in_same_query!(
+    burnt_proofs,
     client_key_values,
     completed_transactions,
     inbound_transactions,
@@ -148,5 +149,4 @@ diesel::allow_tables_to_appear_in_same_query!(
     outputs,
     scanned_blocks,
     wallet_settings,
-    burnt_proofs,
 );

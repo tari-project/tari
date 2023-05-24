@@ -120,13 +120,13 @@ struct TestOmsService<U> {
     pub node_id: Arc<NodeIdentity>,
     pub base_node_wallet_rpc_mock_state: BaseNodeWalletRpcMockState,
     pub node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
-    pub key_manager_handler: KeyManagerHandle<U>,
+    pub key_manager_handler: KeyManagerHandle<U, PublicKey>,
     pub recovery_data: RecoveryData,
 }
 
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_lines)]
-async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyManagerBackend + 'static>(
+async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyManagerBackend<PublicKey> + 'static>(
     backend: T,
     ks_backend: U,
     with_connection: bool,

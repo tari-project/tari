@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::PrivateKey;
+use tari_crypto::keys::{PublicKey, SecretKey};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -36,23 +36,26 @@ use crate::{
         KeyManagerInterface,
     },
 };
+
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
 /// for each branch.
 ///
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
-pub struct KeyManagerHandle<TBackend> {
-    key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
+pub struct KeyManagerHandle<TBackend, PK: PublicKey> {
+    key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend, PK>>>,
 }
 
-impl<TBackend> KeyManagerHandle<TBackend>
-where TBackend: KeyManagerBackend + 'static
+impl<TBackend, PK> KeyManagerHandle<TBackend, PK>
+where
+    TBackend: KeyManagerBackend<PK> + 'static,
+    PK: PublicKey,
 {
     /// Creates a new key manager.
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
     /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
-    pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend>) -> Self {
+    pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend, PK>) -> Self {
         KeyManagerHandle {
             key_manager_inner: Arc::new(RwLock::new(KeyManagerInner::new(master_seed, db))),
         }
@@ -60,8 +63,11 @@ where TBackend: KeyManagerBackend + 'static
 }
 
 #[async_trait::async_trait]
-impl<TBackend> KeyManagerInterface for KeyManagerHandle<TBackend>
-where TBackend: KeyManagerBackend + 'static
+impl<TBackend, PK> KeyManagerInterface<PK> for KeyManagerHandle<TBackend, PK>
+where
+    TBackend: KeyManagerBackend<PK> + 'static,
+    PK: PublicKey + Send + Sync + 'static,
+    PK::K: SecretKey + Send + Sync + 'static,
 {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         (*self.key_manager_inner)
@@ -70,7 +76,10 @@ where TBackend: KeyManagerBackend + 'static
             .add_key_manager_branch(branch.into())
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError> {
+    async fn get_next_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 
@@ -78,7 +87,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
+    ) -> Result<PK::K, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -86,11 +95,7 @@ where TBackend: KeyManagerBackend + 'static
             .await
     }
 
-    async fn find_key_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        key: &PrivateKey,
-    ) -> Result<u64, KeyManagerServiceError> {
+    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -108,5 +113,9 @@ where TBackend: KeyManagerBackend + 'static
             .await
             .update_current_key_index_if_higher(branch.into(), index)
             .await
+    }
+
+    async fn import_key(&self, private_key: PK::K) -> Result<(), KeyManagerServiceError> {
+        (*self.key_manager_inner).read().await.import_key(private_key).await
     }
 }

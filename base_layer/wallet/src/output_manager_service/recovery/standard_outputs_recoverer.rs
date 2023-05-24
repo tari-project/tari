@@ -64,7 +64,7 @@ pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: KeyManagerInterface,
+    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
@@ -218,7 +218,7 @@ where
                 .master_key_manager
                 .find_key_index(
                     OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
-                    &output.spending_key,
+                    &PublicKey::from_secret_key(&output.spending_key),
                 )
                 .await?;
 
@@ -233,7 +233,7 @@ where
                 .master_key_manager
                 .find_key_index(
                     OutputManagerKeyManagerBranch::Spend.get_branch_key(),
-                    &output.spending_key,
+                    &PublicKey::from_secret_key(&output.spending_key),
                 )
                 .await?;
 
