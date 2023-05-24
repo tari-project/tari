@@ -1313,7 +1313,7 @@ struct AppStateConfig {
 impl Default for AppStateConfig {
     fn default() -> Self {
         Self {
-            cache_update_cooldown: Duration::from_secs(2),
+            cache_update_cooldown: Duration::from_millis(100),
         }
     }
 }

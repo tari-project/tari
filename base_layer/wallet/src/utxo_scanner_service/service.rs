@@ -148,7 +148,7 @@ where
                     event = base_node_service_event_stream.recv() => {
                         match event {
                             Ok(e) => {
-                                if let BaseNodeEvent::NewBlockDetected(h) = (*e).clone() {
+                                if let BaseNodeEvent::NewBlockDetected(_hash, h) = (*e).clone() {
                                         debug!(target: LOG_TARGET, "New block event received: {}", h);
                                         if local_shutdown.is_triggered() {
                                             debug!(target: LOG_TARGET, "Starting new round of UTXO scanning");

@@ -136,6 +136,7 @@ use tari_utilities::{
     SafePassword,
 };
 use tari_wallet::{
+    base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -5394,6 +5395,7 @@ pub unsafe extern "C" fn wallet_create(
             direct_send_timeout: (*config).dht.discovery_request_timeout,
             ..Default::default()
         },
+        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
         ..Default::default()
     };

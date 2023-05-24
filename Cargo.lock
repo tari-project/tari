@@ -5504,6 +5504,7 @@ dependencies = [
  "chrono",
  "clap 3.2.25",
  "config",
+ "console-subscriber",
  "crossterm 0.25.0",
  "digest 0.9.0",
  "futures 0.3.28",

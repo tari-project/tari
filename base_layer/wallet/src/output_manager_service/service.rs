@@ -494,21 +494,19 @@ where
 
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(state) => {
-                let trigger_validation = match (self.last_seen_tip_height, state.chain_metadata.clone()) {
-                    (Some(last_seen_tip_height), Some(cm)) => last_seen_tip_height != cm.height_of_longest_chain(),
-                    (None, _) => true,
-                    _ => false,
-                };
-                if trigger_validation {
-                    let _id = self.validate_outputs().map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                        e
-                    });
-                }
-                self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
+            BaseNodeEvent::BaseNodeStateChanged(_state) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received Base Node State Change but no block changes"
+                );
             },
-            BaseNodeEvent::NewBlockDetected(_) => {},
+            BaseNodeEvent::NewBlockDetected(_hash, height) => {
+                self.last_seen_tip_height = Some(height);
+                let _id = self.validate_outputs().map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                    e
+                });
+            },
         }
     }
 

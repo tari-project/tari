@@ -267,10 +267,10 @@ impl WalletConnectivityService {
                     debug!(
                         target: LOG_TARGET,
                         "Dial was cancelled. Retrying after {}s ...",
-                        self.config.base_node_monitor_refresh_interval.as_secs()
+                        self.config.base_node_monitor_max_refresh_interval.as_secs()
                     );
                     self.set_online_status(OnlineStatus::Offline);
-                    time::sleep(self.config.base_node_monitor_refresh_interval).await;
+                    time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
                     continue;
                 },
                 Err(e) => {
@@ -278,7 +278,7 @@ impl WalletConnectivityService {
                     if self.current_base_node().as_ref() == Some(&node_id) {
                         self.disconnect_base_node(node_id).await;
                         self.set_online_status(OnlineStatus::Offline);
-                        time::sleep(self.config.base_node_monitor_refresh_interval).await;
+                        time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
                     }
                     continue;
                 },
