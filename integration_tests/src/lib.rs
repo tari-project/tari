@@ -53,7 +53,7 @@ pub fn get_port(range: Range<u16>) -> Option<u64> {
 
 pub async fn wait_for_service(port: u64) {
     // The idea is that if the port is taken it means the service is running.
-    // If it's not taken the port hasn't come up yet
+    // If the port is not taken the service hasn't come up yet
     let max_tries = 40;
     let mut attempts = 0;
 
@@ -71,16 +71,12 @@ pub async fn wait_for_service(port: u64) {
     }
 }
 
-pub async fn get_peer_addresses(world: &TariWorld, peers: &Vec<String>) -> Vec<String> {
-    let mut peer_addresses = vec![];
-    for peer in peers {
-        let peer = world.base_nodes.get(peer.as_str()).unwrap();
-        peer_addresses.push(format!(
-            "{}::{}",
-            peer.identity.public_key(),
-            peer.identity.first_public_address().expect("No public addresses")
-        ));
-    }
-
-    peer_addresses
+pub async fn get_peer_addresses(world: &TariWorld, peers: &[String]) -> Vec<String> {
+    peers
+        .iter()
+        .map(|peer_string| {
+            let peer = world.base_nodes.get(peer_string.as_str()).unwrap().identity.to_peer();
+            peer.to_short_string()
+        })
+        .collect()
 }
