@@ -60,12 +60,12 @@ use crate::{
 pub struct KeyManagerOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroTari,
-    pub spending_key: KeyId, // rename to id
+    pub spending_key_id: KeyId, // rename to id
     pub features: OutputFeatures,
     pub script: TariScript,
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
-    pub script_private_key: KeyId, // rename to id
+    pub script_private_key_id: KeyId, // rename to id
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
@@ -80,11 +80,11 @@ impl KeyManagerOutput {
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key: KeyId,
+        spending_key_id: KeyId,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
-        script_private_key: KeyId,
+        script_private_key_id: KeyId,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
@@ -95,11 +95,11 @@ impl KeyManagerOutput {
         Self {
             version,
             value,
-            spending_key,
+            spending_key_id,
             features,
             script,
             input_data,
-            script_private_key,
+            script_private_key_id,
             sender_offset_public_key,
             metadata_signature,
             script_lock_height,
@@ -111,11 +111,11 @@ impl KeyManagerOutput {
 
     pub fn new_current_version(
         value: MicroTari,
-        spending_key: KeyId,
+        spending_key_id: KeyId,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
-        script_private_key: KeyId,
+        script_private_key_id: KeyId,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
@@ -126,11 +126,11 @@ impl KeyManagerOutput {
         Self::new(
             TransactionOutputVersion::get_current_version(),
             value,
-            spending_key,
+            spending_key_id,
             features,
             script,
             input_data,
-            script_private_key,
+            script_private_key_id,
             sender_offset_public_key,
             metadata_signature,
             script_lock_height,
@@ -146,13 +146,13 @@ impl KeyManagerOutput {
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key, &value).await?;
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
         let version = TransactionInputVersion::get_current_version();
         let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
         let script_signature = key_manager
             .get_script_signature(
-                &self.script_private_key,
-                &self.spending_key,
+                &self.script_private_key_id,
+                &self.spending_key_id,
                 &value,
                 &version,
                 &script_message,
@@ -197,11 +197,15 @@ impl KeyManagerOutput {
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key, &value).await?;
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
         let proof = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
             Some(
                 key_manager
-                    .construct_range_proof(&self.spending_key, self.value.into(), self.minimum_value_promise.into())
+                    .construct_range_proof(
+                        &self.spending_key_id,
+                        self.value.into(),
+                        self.minimum_value_promise.into(),
+                    )
                     .await?,
             )
         } else {
@@ -235,7 +239,7 @@ impl KeyManagerOutput {
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key, &value).await?;
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
         Ok(transaction_components::hash_output(
             self.version,
             &self.features,
@@ -275,15 +279,16 @@ impl Debug for KeyManagerOutput {
         f.debug_struct("UnblindedOutput")
             .field("version", &self.version)
             .field("value", &self.value)
-            .field("spending_key", &"<secret>")
+            .field("spending_key_id", &self.spending_key_id)
             .field("features", &self.features)
             .field("script", &self.script)
             .field("covenant", &self.covenant)
             .field("input_data", &self.input_data)
-            .field("script_private_key", &"<secret>")
+            .field("script_private_key_id", &self.script_private_key_id)
             .field("sender_offset_public_key", &self.sender_offset_public_key)
             .field("metadata_signature", &self.metadata_signature)
             .field("script_lock_height", &self.script_lock_height)
+            .field("encrypted_data", &self.encrypted_data)
             .field("minimum_value_promise", &self.minimum_value_promise)
             .finish()
     }

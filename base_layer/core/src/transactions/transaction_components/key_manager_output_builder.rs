@@ -26,7 +26,7 @@ use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
-    core_key_manager::KeyId,
+    core_key_manager::{BaseLayerKeyManagerInterface, KeyId},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -38,7 +38,6 @@ use crate::{
             TransactionOutput,
             TransactionOutputVersion,
         },
-        transaction_protocol::RecoveryData,
     },
 };
 
@@ -57,7 +56,7 @@ pub struct KeyManagerOutputBuilder {
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_data: EncryptedData,
-    recovery_data: Option<RecoveryData>,
+    recovery_key_id: Option<KeyId>,
     minimum_value_promise: MicroTari,
 }
 
@@ -77,7 +76,7 @@ impl KeyManagerOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
             encrypted_data: EncryptedData::default(),
-            recovery_data: None,
+            recovery_key_id: None,
             minimum_value_promise: MicroTari::zero(),
         }
     }
@@ -101,9 +100,14 @@ impl KeyManagerOutputBuilder {
         self
     }
 
-    pub fn with_rewind_data(mut self, recovery_data: RecoveryData) -> Self {
-        self.recovery_data = Some(recovery_data);
-        self
+    pub async fn with_encrypted_data<KM: BaseLayerKeyManagerInterface>(
+        mut self,
+        _key_manager: &KM,
+        recovery_key_id: KeyId,
+    ) -> Result<Self, TransactionError> {
+        self.recovery_key_id = Some(recovery_key_id);
+        self.encrypted_data = EncryptedData::default(); // TODO: use key manager service to encrypt data
+        Ok(self)
     }
 
     pub fn with_script_private_key(mut self, script_private_key: KeyId) -> Self {

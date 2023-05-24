@@ -62,27 +62,30 @@ impl FromStr for KeyId {
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = id.split('.').collect();
-        match parts[0] {
-            "default" => {
-                if parts.len() != 3 {
-                    return Err("Wrong format".to_string());
-                }
-                let index = parts[2]
-                    .parse()
-                    .map_err(|_| "Index for default, invalid u64".to_string())?;
-                Ok(KeyId::Default {
-                    branch: parts[1].into(),
-                    index,
-                })
+        match parts.first() {
+            None => Err("Out of bounds".to_string()),
+            Some(val) => match *val {
+                "default" => {
+                    if parts.len() != 3 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let index = parts[2]
+                        .parse()
+                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+                    Ok(KeyId::Default {
+                        branch: parts[1].into(),
+                        index,
+                    })
+                },
+                "imported" => {
+                    if parts.len() != 2 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let key = PublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
+                    Ok(KeyId::Imported { key })
+                },
+                _ => Err("Wrong format".to_string()),
             },
-            "imported" => {
-                if parts.len() != 2 {
-                    return Err("Wrong format".to_string());
-                }
-                let key = PublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
-                Ok(KeyId::Imported { key })
-            },
-            _ => Err("Wrong format".to_string()),
         }
     }
 }
