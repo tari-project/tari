@@ -107,11 +107,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
-        (*self.core_key_manager_inner)
-            .read()
-            .await
-            .get_key_at_index(branch.into(), index)
-            .await
+        unimplemented!(
+            "Oops! We do not share private keys outside `core_key_manager`. ({}, {})",
+            branch.into(),
+            index
+        )
     }
 
     async fn find_key_index<T: Into<String> + Send>(
