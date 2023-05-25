@@ -23,7 +23,6 @@
 mod handle;
 mod interface;
 pub use handle::CoreKeyManagerHandle;
-// pub mod error;
 mod initializer;
 pub use initializer::CoreKeyManagerInitializer;
 
