@@ -210,6 +210,10 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
+    ///
+    /// WARNING: In the case of a revealed-value range proof using a metadata signature, the metadata signature _must_
+    /// separately be verified! If this is not done, the range proof verification is inconclusive and _must not_ be
+    /// relied on.
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
@@ -619,6 +623,10 @@ impl Ord for TransactionOutput {
 }
 
 /// Performs batched range proof verification for an arbitrary number of outputs
+///
+/// WARNING: In the case of a revealed-value range proof using a metadata signature, the metadata signature _must_
+/// separately be verified! If this is not done, the range proof verification is inconclusive and _must not_ be relied
+/// on.
 pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
