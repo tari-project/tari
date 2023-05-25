@@ -37,6 +37,7 @@ use crate::{
         AddResult,
         KeyDigest,
         KeyManagerInterface,
+        NextPublicKeyResult,
     },
 };
 
@@ -96,6 +97,20 @@ impl KeyManagerMock {
         })
     }
 
+    /// Gets the next key in the branch and increments the index
+    pub async fn get_next_public_key_mock(
+        &self,
+        branch: String,
+    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+        let mut lock = self.key_managers.write().await;
+        let km = lock.get_mut(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
+        let derived_key = km.next_public_key()?;
+        Ok(NextPublicKeyResult {
+            key: derived_key.key,
+            index: km.key_index(),
+        })
+    }
+
     /// get the key at the request index for the branch
     pub async fn get_key_at_index_mock(
         &self,
@@ -105,6 +120,18 @@ impl KeyManagerMock {
         let lock = self.key_managers.read().await;
         let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let derived_key = km.derive_key(index)?;
+        Ok(derived_key.key)
+    }
+
+    /// get the key at the request index for the branch
+    pub async fn get_public_key_at_index_mock(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
+        let lock = self.key_managers.read().await;
+        let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
+        let derived_key = km.derive_public_key(index)?;
         Ok(derived_key.key)
     }
 
@@ -158,12 +185,27 @@ impl KeyManagerInterface<PublicKey> for KeyManagerMock
         self.get_next_key_mock(branch.into()).await
     }
 
+    async fn get_next_public_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+        self.get_next_public_key_mock(branch.into()).await
+    }
+
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
         self.get_key_at_index_mock(branch.into(), index).await
+    }
+
+    async fn get_public_key_at_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
+        self.get_public_key_at_index_mock(branch.into(), index).await
     }
 
     async fn find_key_index<T: Into<String> + Send>(

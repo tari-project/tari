@@ -43,6 +43,7 @@ use tari_key_manager::{
         KeyDigest,
         KeyManagerServiceError,
         NextKeyResult,
+        NextPublicKeyResult,
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -83,6 +84,10 @@ pub struct CoreKeyManagerInner<TBackend> {
 impl<TBackend> CoreKeyManagerInner<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
+    // -----------------------------------------------------------------------------------------------------------------
+    // Key manager section
+    // -----------------------------------------------------------------------------------------------------------------
+
     pub fn new(
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
@@ -133,7 +138,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
+    async fn _get_next_key(&self, branch: String) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(&branch)
@@ -148,7 +153,25 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_next_public_key(
+        &self,
+        branch: String,
+    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+        let mut km = self
+            .key_managers
+            .get(&branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+        let derived_key = km.next_public_key()?;
+        self.db.increment_key_index(branch)?;
+        Ok(NextPublicKeyResult {
+            key: derived_key.key,
+            index: km.key_index(),
+        })
+    }
+
+    async fn _get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(&branch)
@@ -156,6 +179,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .lock()
             .await;
         let derived_key = km.derive_key(index)?;
+        Ok(derived_key.key)
+    }
+
+    pub async fn get_public_key_at_index(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
+        let km = self
+            .key_managers
+            .get(&branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+        let derived_key = km.derive_public_key(index)?;
         Ok(derived_key.key)
     }
 
@@ -210,6 +248,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(())
     }
 
+    // Note!: This method may not be made public
     async fn get_private_key(&self, key_id: &KeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Default { branch, index } => {
@@ -229,6 +268,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // General crypto section
+    // -----------------------------------------------------------------------------------------------------------------
+
     pub async fn get_commitment(
         &self,
         private_key: &KeyId,
@@ -237,6 +280,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let key = self.get_private_key(private_key).await?;
         Ok(self.crypto_factories.commitment.commit(&key, value))
     }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Transaction input section (transactions > transaction_components > transaction_input)
+    // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn get_script_signature(
         &self,
@@ -276,6 +323,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         )?;
         Ok(script_signature)
     }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Transaction output section (transactions > transaction_components > transaction_output)
+    // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn construct_range_proof(
         &self,
@@ -325,93 +376,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    async fn get_private_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
-        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_private_nonce");
-        let spending_private_key = self.get_private_key(spend_key_id).await?;
-        let key_hash = hasher.chain(spending_private_key.as_bytes()).finalize();
-        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
-        })
-    }
-
-    pub async fn get_partial_kernel_signature(
-        &self,
-        spending_key: &KeyId,
-        total_nonce: &PublicKey,
-        total_excess: &PublicKey,
-        kernel_version: &TransactionKernelVersion,
-        kernel_message: &[u8; 32],
-    ) -> Result<Signature, TransactionError> {
-        let spending_private_key = self.get_private_key(spending_key).await?;
-        let private_nonce = self.get_private_kernel_signature_nonce(spending_key).await?;
-        let challenge = TransactionKernel::finalize_kernel_signature_challenge(
-            kernel_version,
-            total_nonce,
-            total_excess,
-            kernel_message,
-        );
-
-        let signature = Signature::sign_raw(&spending_private_key, private_nonce, &challenge)?;
-        Ok(signature)
-    }
-
-    pub async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
-        let private_key = self.get_private_kernel_signature_nonce(spend_key_id).await?;
-        Ok(PublicKey::from_secret_key(&private_key))
-    }
-
-    async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        let recovery_id = KeyId::Default {
-            branch: CoreKeyManagerBranch::DataEncryption.get_branch_key(),
-            index: 0,
-        };
-        self.get_private_key(&recovery_id).await
-    }
-
-    pub async fn encrypt_data_for_recovery(
-        &self,
-        spend_key_id: &KeyId,
-        value: u64,
-    ) -> Result<EncryptedData, TransactionError> {
-        let recovery_key = self.get_recovery_key().await?;
-        let value_key = value.into();
-        let commitment = self.get_commitment(spend_key_id, &value_key).await?;
-        let spend_key = self.get_private_key(spend_key_id).await?;
-        let data = EncryptedData::encrypt_data(&recovery_key, &commitment, value.into(), &spend_key)?;
-        Ok(data)
-    }
-
-    pub async fn try_commitment_key_recovery(
-        &self,
-        commitment: &Commitment,
-        data: &EncryptedData,
-    ) -> Result<(KeyId, u64), TransactionError> {
-        let recover_key = self.get_recovery_key().await?;
-        let (value, private_key) = EncryptedData::decrypt_data(&recover_key, commitment, data)?;
-        self.crypto_factories
-            .range_proof
-            .verify_mask(commitment, &private_key, value.into())?;
-        let public_key = PublicKey::from_secret_key(&private_key);
-        let key = match self
-            .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
-            .await
-        {
-            Ok(index) => {
-                self.update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
-                    .await?;
-                KeyId::Default {
-                    branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index,
-                }
-            },
-            Err(_) => {
-                self.import_key(private_key).await?;
-                KeyId::Imported { key: public_key }
-            },
-        };
-        Ok((key, value.into()))
-    }
-
+    // Note!: This method may not be made public
     async fn get_sender_offset_private_key(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
         let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("sender_offset_key");
         let script_private_key = self.get_private_key(script_key_id).await?;
@@ -426,6 +391,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(PublicKey::from_secret_key(&sender_offset_private_key))
     }
 
+    // Note!: This method may not be made public
     async fn get_metadata_signature_ephemeral_private_key_pair(
         &self,
         spend_key_id: &KeyId,
@@ -458,6 +424,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(self.crypto_factories.commitment.commit(&nonce_a, &nonce_b))
     }
 
+    // Note!: This method may not be made public
     async fn get_metadata_signature_ephemeral_private_key(
         &self,
         script_key_id: &KeyId,
@@ -550,5 +517,102 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &*self.crypto_factories.commitment,
         )?;
         Ok(metadata_signature)
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Transaction kernel section (transactions > transaction_components > transaction_kernel)
+    // -----------------------------------------------------------------------------------------------------------------
+
+    // Note!: This method may not be made public
+    async fn get_private_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_private_nonce");
+        let spending_private_key = self.get_private_key(spend_key_id).await?;
+        let key_hash = hasher.chain(spending_private_key.as_bytes()).finalize();
+        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
+        })
+    }
+
+    pub async fn get_partial_kernel_signature(
+        &self,
+        spending_key: &KeyId,
+        total_nonce: &PublicKey,
+        total_excess: &PublicKey,
+        kernel_version: &TransactionKernelVersion,
+        kernel_message: &[u8; 32],
+    ) -> Result<Signature, TransactionError> {
+        let spending_private_key = self.get_private_key(spending_key).await?;
+        let private_nonce = self.get_private_kernel_signature_nonce(spending_key).await?;
+        let challenge = TransactionKernel::finalize_kernel_signature_challenge(
+            kernel_version,
+            total_nonce,
+            total_excess,
+            kernel_message,
+        );
+
+        let signature = Signature::sign_raw(&spending_private_key, private_nonce, &challenge)?;
+        Ok(signature)
+    }
+
+    pub async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        let private_key = self.get_private_kernel_signature_nonce(spend_key_id).await?;
+        Ok(PublicKey::from_secret_key(&private_key))
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Encrypted data section (transactions > transaction_components > encrypted_data)
+    // -----------------------------------------------------------------------------------------------------------------
+
+    // Note!: This method may not be made public
+    async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        let recovery_id = KeyId::Default {
+            branch: CoreKeyManagerBranch::DataEncryption.get_branch_key(),
+            index: 0,
+        };
+        self.get_private_key(&recovery_id).await
+    }
+
+    pub async fn encrypt_data_for_recovery(
+        &self,
+        spend_key_id: &KeyId,
+        value: u64,
+    ) -> Result<EncryptedData, TransactionError> {
+        let recovery_key = self.get_recovery_key().await?;
+        let value_key = value.into();
+        let commitment = self.get_commitment(spend_key_id, &value_key).await?;
+        let spend_key = self.get_private_key(spend_key_id).await?;
+        let data = EncryptedData::encrypt_data(&recovery_key, &commitment, value.into(), &spend_key)?;
+        Ok(data)
+    }
+
+    pub async fn try_commitment_key_recovery(
+        &self,
+        commitment: &Commitment,
+        data: &EncryptedData,
+    ) -> Result<(KeyId, u64), TransactionError> {
+        let recover_key = self.get_recovery_key().await?;
+        let (value, private_key) = EncryptedData::decrypt_data(&recover_key, commitment, data)?;
+        self.crypto_factories
+            .range_proof
+            .verify_mask(commitment, &private_key, value.into())?;
+        let public_key = PublicKey::from_secret_key(&private_key);
+        let key = match self
+            .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
+            .await
+        {
+            Ok(index) => {
+                self.update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
+                    .await?;
+                KeyId::Default {
+                    branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    index,
+                }
+            },
+            Err(_) => {
+                self.import_key(private_key).await?;
+                KeyId::Imported { key: public_key }
+            },
+        };
+        Ok((key, value.into()))
     }
 }
