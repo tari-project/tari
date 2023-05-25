@@ -249,30 +249,16 @@ impl TransactionOutput {
                 self.commitment.to_hex()
             )));
         }
-        let e_bytes = TransactionOutput::build_metadata_signature_challenge(
-            self.version,
-            &self.script,
-            &self.features,
-            &self.sender_offset_public_key,
-            self.metadata_signature.ephemeral_commitment(),
-            self.metadata_signature.ephemeral_pubkey(),
-            &self.commitment,
-            &self.covenant,
-            &self.encrypted_data,
-            self.minimum_value_promise,
-        );
-        // Let's first verify that the metadata signature is valid
-        if !self.metadata_signature.verify_challenge(
-            &self.commitment,
-            &self.sender_offset_public_key,
-            &e_bytes,
-            &CommitmentFactory::default(),
-            &mut OsRng,
-        ) {
-            return Err(RangeProofError::InvalidRangeProof(
-                "Metadata signature not valid!".to_string(),
-            ));
-        }
+        // Let's first verify that the metadata signature is valid.
+        // Note: If normal code paths are followed, this is checked elsewhere already, but it is theoretically possible
+        //       to meddle with the metadata signature after it has been verified and before it is used here, so we
+        //       check it again. It is also a very cheap test in comparison to a range proof verification
+        let e_bytes = match self.verify_metadata_signature_internal() {
+            Ok(val) => val,
+            Err(e) => {
+                return Err(RangeProofError::InvalidRangeProof(format!("{}", e)));
+            },
+        };
         // Now we can perform the balance proof
         let e = PrivateKey::from_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
@@ -287,8 +273,7 @@ impl TransactionOutput {
         }
     }
 
-    /// Verify that the metadata signature is valid
-    pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
+    fn verify_metadata_signature_internal(&self) -> Result<[u8; 32], TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
             self.version,
             &self.script,
@@ -312,6 +297,12 @@ impl TransactionOutput {
                 "Metadata signature not valid!".to_string(),
             ));
         }
+        Ok(challenge)
+    }
+
+    /// Verify that the metadata signature is valid
+    pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
+        let _challenge = self.verify_metadata_signature_internal()?;
         Ok(())
     }
 
@@ -861,7 +852,7 @@ mod test {
             Ok(_) => panic!("Should not have passed check"),
             Err(e) => assert_eq!(
                 e,
-                RangeProofError::InvalidRangeProof("Metadata signature not valid!".to_string())
+                RangeProofError::InvalidRangeProof("Signature is invalid: Metadata signature not valid!".to_string())
             ),
         }
     }
