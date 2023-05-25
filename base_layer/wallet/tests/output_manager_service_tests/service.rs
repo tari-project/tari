@@ -73,10 +73,7 @@ use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_utilities::Hidden;
 use tari_wallet::{
-    base_node_service::{
-        handle::{BaseNodeEvent, BaseNodeServiceHandle},
-        service::BaseNodeState,
-    },
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -1787,7 +1784,10 @@ async fn test_txo_validation() {
 
     // Trigger validation through a base_node_service event
     oms.node_event
-        .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
+        .send(Arc::new(BaseNodeEvent::NewBlockDetected(
+            (*block5_header_reorg.hash()).into(),
+            5,
+        )))
         .unwrap();
 
     let _result = oms

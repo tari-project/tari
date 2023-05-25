@@ -127,7 +127,7 @@ where T: WalletBackend + 'static
 
     fn spawn_monitor(&self) {
         let monitor = BaseNodeMonitor::new(
-            self.config.base_node_monitor_refresh_interval,
+            self.config.base_node_monitor_max_refresh_interval,
             self.state.clone(),
             self.db.clone(),
             self.wallet_connectivity.clone(),

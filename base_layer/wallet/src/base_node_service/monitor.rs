@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp,
     convert::TryFrom,
     future::Future,
     sync::Arc,
@@ -30,8 +31,11 @@ use std::{
 use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::protocol::rpc::RpcError;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
+use tari_comms::{
+    backoff::{Backoff, ExponentialBackoff},
+    protocol::rpc::RpcError,
+};
 use tokio::{sync::RwLock, time};
 
 use crate::{
@@ -47,7 +51,9 @@ use crate::{
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 
 pub struct BaseNodeMonitor<TBackend, TWalletConnectivity> {
-    interval: Duration,
+    max_interval: Duration,
+    backoff: ExponentialBackoff,
+    backoff_attempts: usize,
     state: Arc<RwLock<BaseNodeState>>,
     db: WalletDatabase<TBackend>,
     wallet_connectivity: TWalletConnectivity,
@@ -60,14 +66,16 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        interval: Duration,
+        max_interval: Duration,
         state: Arc<RwLock<BaseNodeState>>,
         db: WalletDatabase<TBackend>,
         wallet_connectivity: TWalletConnectivity,
         event_publisher: BaseNodeEventSender,
     ) -> Self {
         Self {
-            interval,
+            max_interval,
+            backoff: ExponentialBackoff::default(),
+            backoff_attempts: 0,
             state,
             db,
             wallet_connectivity,
@@ -169,14 +177,15 @@ where
             let is_synced = tip_info.is_synced;
             let height_of_longest_chain = chain_metadata.height_of_longest_chain();
 
-            self.update_state(BaseNodeState {
-                node_id: Some(base_node_id.clone()),
-                chain_metadata: Some(chain_metadata),
-                is_synced: Some(is_synced),
-                updated: Some(Utc::now().naive_utc()),
-                latency: Some(latency),
-            })
-            .await;
+            let new_block = self
+                .update_state(BaseNodeState {
+                    node_id: Some(base_node_id.clone()),
+                    chain_metadata: Some(chain_metadata),
+                    is_synced: Some(is_synced),
+                    updated: Some(Utc::now().naive_utc()),
+                    latency: Some(latency),
+                })
+                .await;
 
             debug!(
                 target: LOG_TARGET,
@@ -187,9 +196,18 @@ where
                 latency.as_millis()
             );
 
-            let delay = time::sleep(self.interval.saturating_sub(latency));
-            if interrupt(base_node_watch.changed(), delay).await.is_none() {
-                self.update_state(Default::default()).await;
+            // If there's a new block, try again immediately,
+            if new_block {
+                self.backoff_attempts = 0;
+            } else {
+                self.backoff_attempts += 1;
+                let delay = time::sleep(
+                    cmp::min(self.max_interval, self.backoff.calculate_backoff(self.backoff_attempts))
+                        .saturating_sub(latency),
+                );
+                if interrupt(base_node_watch.changed(), delay).await.is_none() {
+                    self.update_state(Default::default()).await;
+                }
             }
         }
 
@@ -198,24 +216,27 @@ where
         Ok(())
     }
 
-    async fn update_state(&self, new_state: BaseNodeState) {
+    // returns true if a new block, otherwise false
+    async fn update_state(&self, new_state: BaseNodeState) -> bool {
         let mut lock = self.state.write().await;
-        let (new_block_detected, height) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
+        let (new_block_detected, height, hash) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
             (Some(new_metadata), Some(old_metadata)) => (
-                new_metadata.height_of_longest_chain() != old_metadata.height_of_longest_chain(),
+                new_metadata.best_block() != old_metadata.best_block(),
                 new_metadata.height_of_longest_chain(),
+                *new_metadata.best_block(),
             ),
-            (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain()),
-            (None, _) => (false, 0),
+            (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain(), *new_metadata.best_block()),
+            (None, _) => (false, 0, BlockHashType::default()),
         };
 
         if new_block_detected {
-            self.publish_event(BaseNodeEvent::NewBlockDetected(height));
+            self.publish_event(BaseNodeEvent::NewBlockDetected(hash, height));
         }
 
         *lock = new_state.clone();
 
         self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
+        new_block_detected
     }
 
     fn publish_event(&self, event: BaseNodeEvent) {
