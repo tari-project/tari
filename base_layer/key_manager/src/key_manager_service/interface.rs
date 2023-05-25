@@ -39,6 +39,11 @@ pub struct NextKeyResult<PK: PublicKey> {
     pub index: u64,
 }
 
+pub struct NextPublicKeyResult<PK: PublicKey> {
+    pub key: PK,
+    pub index: u64,
+}
+
 /// Behaviour required for the Key manager service
 #[async_trait::async_trait]
 pub trait KeyManagerInterface<PK>: Clone + Send + Sync + 'static
@@ -59,12 +64,25 @@ where
         branch: T,
     ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
 
+    /// Gets the next key from the branch. This will auto-increment the branch key index by 1
+    async fn get_next_public_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextPublicKeyResult<PK>, KeyManagerServiceError>;
+
     /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
     ) -> Result<PK::K, KeyManagerServiceError>;
+
+    /// Gets the public key at the specified index
+    async fn get_public_key_at_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<PK, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError>;

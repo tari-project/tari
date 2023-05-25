@@ -46,6 +46,16 @@ where PK: PublicKey
     pub key_index: u64,
 }
 
+#[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
+#[derivative(Debug)]
+pub struct DerivedPublicKey<PK>
+where PK: PublicKey
+{
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_deserializing)]
+    pub key: PK,
+    pub key_index: u64,
+}
 #[derive(Clone, Derivative, PartialEq, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct KeyManager<PK: PublicKey, D: Digest + LengthExtensionAttackResistant> {
@@ -102,12 +112,23 @@ where
         Ok(s)
     }
 
-    /// Derive a new public key from master key: derived_key=H(master_key||branch_seed||index), for some
+    /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
     /// hash function H which is Length attack resistant, such as Blake2b.
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<PK>, ByteArrayError> {
         let secret = self.derive_private_key(key_index)?;
         // let key = PK::from_secret_key(&secret);
         Ok(DerivedKey { key: secret, key_index })
+    }
+
+    /// Derive a new public key from master key: derived_key=H(master_key||branch_seed||index), for some
+    /// hash function H which is Length attack resistant, such as Blake2b.
+    pub fn derive_public_key(&self, key_index: u64) -> Result<DerivedPublicKey<PK>, ByteArrayError> {
+        let secret = self.derive_private_key(key_index)?;
+        // let key = PK::from_secret_key(&secret);
+        Ok(DerivedPublicKey {
+            key: PublicKey::from_secret_key(&secret),
+            key_index,
+        })
     }
 
     pub fn get_private_key(&self, key_index: u64) -> Result<PK::K, ByteArrayError> {
@@ -119,6 +140,12 @@ where
     pub fn next_key(&mut self) -> Result<DerivedKey<PK>, ByteArrayError> {
         self.primary_key_index += 1;
         self.derive_key(self.primary_key_index)
+    }
+
+    /// Generate next deterministic public key derived from master key
+    pub fn next_public_key(&mut self) -> Result<DerivedPublicKey<PK>, ByteArrayError> {
+        self.primary_key_index += 1;
+        self.derive_public_key(self.primary_key_index)
     }
 
     pub fn cipher_seed(&self) -> &CipherSeed {

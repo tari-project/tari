@@ -34,6 +34,7 @@ use crate::{
         AddResult,
         KeyManagerInner,
         KeyManagerInterface,
+        NextPublicKeyResult,
     },
 };
 
@@ -83,6 +84,13 @@ where
         (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 
+    async fn get_next_public_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextPublicKeyResult<PK>, KeyManagerServiceError> {
+        unimplemented!("Oops! This is reserved for `core_key_manager`. ({})", branch.into(),)
+    }
+
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
@@ -93,6 +101,18 @@ where
             .await
             .get_key_at_index(branch.into(), index)
             .await
+    }
+
+    async fn get_public_key_at_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<PK, KeyManagerServiceError> {
+        unimplemented!(
+            "Oops! This is reserved for `core_key_manager`. ({}, {})",
+            branch.into(),
+            index
+        )
     }
 
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {

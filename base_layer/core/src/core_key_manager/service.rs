@@ -43,6 +43,7 @@ use tari_key_manager::{
         KeyDigest,
         KeyManagerServiceError,
         NextKeyResult,
+        NextPublicKeyResult,
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -137,7 +138,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
+    async fn _get_next_key(&self, branch: String) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(&branch)
@@ -152,6 +153,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
+    pub async fn get_next_public_key(
+        &self,
+        branch: String,
+    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+        let mut km = self
+            .key_managers
+            .get(&branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+        let derived_key = km.next_public_key()?;
+        self.db.increment_key_index(branch)?;
+        Ok(NextPublicKeyResult {
+            key: derived_key.key,
+            index: km.key_index(),
+        })
+    }
+
     async fn _get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
         let km = self
             .key_managers
@@ -160,6 +179,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .lock()
             .await;
         let derived_key = km.derive_key(index)?;
+        Ok(derived_key.key)
+    }
+
+    pub async fn get_public_key_at_index(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
+        let km = self
+            .key_managers
+            .get(&branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+        let derived_key = km.derive_public_key(index)?;
         Ok(derived_key.key)
     }
 
