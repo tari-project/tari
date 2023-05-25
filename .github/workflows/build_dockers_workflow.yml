@@ -116,7 +116,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{github.ref_name}}
+          source tari/buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
 
