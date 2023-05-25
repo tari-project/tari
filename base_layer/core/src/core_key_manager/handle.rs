@@ -31,6 +31,7 @@ use tari_key_manager::{
         KeyManagerInterface,
         KeyManagerServiceError,
         NextKeyResult,
+        NextPublicKeyResult,
     },
 };
 use tokio::sync::RwLock;
@@ -95,10 +96,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         branch: T,
     ) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
+        unimplemented!(
+            "Oops! We do not share private keys outside `core_key_manager`. ({})",
+            branch.into(),
+        )
+    }
+
+    async fn get_next_public_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_next_key(branch.into())
+            .get_next_public_key(branch.into())
             .await
     }
 
@@ -107,10 +118,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
+        unimplemented!(
+            "Oops! We do not share private keys outside `core_key_manager`. ({}, {})",
+            branch.into(),
+            index
+        )
+    }
+
+    async fn get_public_key_at_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_key_at_index(branch.into(), index)
+            .get_public_key_at_index(branch.into(), index)
             .await
     }
 
