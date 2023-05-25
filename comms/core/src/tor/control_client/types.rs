@@ -90,7 +90,7 @@ pub enum PrivateKey {
 
 /// Represents a mapping between an onion port and a proxied address (usually 127.0.0.1:xxxx).
 /// If the proxied_address is not specified, the default `127.0.0.1:[onion_port]` will be used.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct PortMapping {
     onion_port: u16,
     proxied_address: SocketAddr,
@@ -144,5 +144,11 @@ impl<T: Into<u16>, U: Into<SocketAddr>> From<(T, U)> for PortMapping {
 impl fmt::Display for PortMapping {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "PortMapping [{} -> {}]", self.onion_port, self.proxied_address)
+    }
+}
+
+impl fmt::Debug for PortMapping {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
