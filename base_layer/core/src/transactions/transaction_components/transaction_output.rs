@@ -261,6 +261,19 @@ impl TransactionOutput {
             &self.encrypted_data,
             self.minimum_value_promise,
         );
+        // Let's first verify that the metadata signature is valid
+        if !self.metadata_signature.verify_challenge(
+            &self.commitment,
+            &self.sender_offset_public_key,
+            &e_bytes,
+            &CommitmentFactory::default(),
+            &mut OsRng,
+        ) {
+            return Err(RangeProofError::InvalidRangeProof(
+                "Metadata signature not valid!".to_string(),
+            ));
+        }
+        // Now we can perform the balance proof
         let e = PrivateKey::from_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
@@ -674,6 +687,8 @@ pub fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::errors::RangeProofError;
+
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroTari,
@@ -822,6 +837,32 @@ mod test {
         ) {
             Ok(_) => panic!("Should not have been able to create output"),
             Err(e) => assert_eq!(e, "InvalidRevealedValue(\"Expected 20 µT, received 0 µT\")"),
+        }
+    }
+
+    #[test]
+    fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+        let mut output = create_output(
+            &test_params,
+            &factories,
+            MicroTari(20),
+            MicroTari(20),
+            RangeProofType::RevealedValue,
+        )
+        .unwrap();
+        assert!(output.verify_metadata_signature().is_ok());
+        assert!(output.revealed_value_range_proof_check().is_ok());
+
+        output.features.maturity += 1;
+        assert!(output.verify_metadata_signature().is_err());
+        match output.revealed_value_range_proof_check() {
+            Ok(_) => panic!("Should not have passed check"),
+            Err(e) => assert_eq!(
+                e,
+                RangeProofError::InvalidRangeProof("Metadata signature not valid!".to_string())
+            ),
         }
     }
 
