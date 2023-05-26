@@ -13,6 +13,7 @@ name: CI
       - opened
       - reopened
       - synchronize
+  merge_group:
 
 env:
   toolchain: nightly-2022-11-03
@@ -28,7 +29,6 @@ concurrency:
 jobs:
   clippy:
     name: clippy
-    #runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
@@ -57,9 +57,33 @@ jobs:
         with:
           command: lints
           args: clippy --all-targets --all-features
+  machete:
+    name: machete
+    runs-on: [ubuntu-20.04]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Install cargo-machete
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: cargo-machete
+      - name: cargo machete check
+        uses: actions-rs/cargo@v1
+        with:
+          command: machete
   build:
     name: cargo check
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -85,7 +109,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   build-stable:
     name: cargo check stable
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -128,7 +152,10 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
+    permissions:
+      checks: write
+      pull-requests: write
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -142,10 +169,14 @@ jobs:
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: test key manager wasm
         run: |
-          npm install -g wasm-pack
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test
+      - name: Install cargo-nextest
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: cargo-nextest --locked
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
@@ -154,8 +185,15 @@ jobs:
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: test
-          args: -v --all-features --release --workspace --exclude tari_integration_tests
+          command: nextest
+          args: run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: test-results
+          path: ${{ github.workspace }}/target/nextest/ci/junit.xml
+
 
   # Allows other workflows to know the PR number
   artifacts:
@@ -173,3 +211,14 @@ jobs:
         with:
           name: pr_num
           path: ./pr_num.txt
+
+# needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

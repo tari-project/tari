@@ -1,12 +1,13 @@
 ---
 name: Integration tests
 
-'on':
+"on":
   pull_request:
     types:
       - opened
       - reopened
       - synchronize
+  merge_group:
   push:
     paths-ignore:
       - '**/*.md'
@@ -33,12 +34,12 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # cancel-in-progress: true
 
 jobs:
   base_layer:
     name: Cucumber tests / Base Layer
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -97,13 +98,20 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @broken)"
+            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)"
             -c 5
             --retry 2
 
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
   ffi:
     name: Cucumber tests / FFI
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -166,6 +174,23 @@ jobs:
             --all-features
             --release
             --package tari_integration_tests
-            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and (not @broken)"
+            -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)"
             -c 1
             --retry 2
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-ffi-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+  # needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

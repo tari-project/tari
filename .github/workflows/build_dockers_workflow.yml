@@ -112,6 +112,14 @@ jobs:
           ref: ${{ env.LAUNCHPAD_BRANCH }}
           path: tari-launchpad
 
+      - name: Declare TestNet for tags
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          source tari/buildtools/multinet_envs.sh ${{github.ref_name}}
+          echo ${TARI_NETWORK}
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+
       - name: environment setup
         shell: bash
         run: |
@@ -211,6 +219,7 @@ jobs:
             FEATURES=${{ inputs.features }}
             APP_NAME=${{ matrix.builds.app_name }}
             APP_EXEC=${{ matrix.builds.app_exec }}
+            TARI_NETWORK=${{ env.TARI_NETWORK }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
             ${{ steps.meta.outputs.tags }}

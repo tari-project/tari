@@ -33,6 +33,14 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
 
+      - name: Declare TestNet for tags
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
+          echo ${TARI_NETWORK}
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -69,7 +77,6 @@ jobs:
           cd "${{ runner.temp }}/libwallet-android-${target_platform}"
           cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.android_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          cp -v "$GITHUB_WORKSPACE/changelog.md" .
           cd ..
           shasum -a 256 \
             "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.a" \
@@ -100,6 +107,14 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
+
+      - name: Declare TestNet for tags
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
+          echo ${TARI_NETWORK}
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -138,7 +153,6 @@ jobs:
           cd "${{ runner.temp }}/libwallet-ios-${target_platform}"
           cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.ios_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          cp -v "$GITHUB_WORKSPACE/changelog.md" .
           cd ..
           shasum -a 256 \
             "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.a" \
@@ -187,8 +201,6 @@ jobs:
           mkdir libwallet-ios-universal
           cp -v "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
             libwallet-ios-universal/
-          cp -v "libwallet-ios-x86_64/changelog.md" \
-            libwallet-ios-universal/
           lipo -create \
             "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
             "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
@@ -216,8 +228,6 @@ jobs:
             "libwallet-ios-aarch64-sim/libtari_wallet_ffi.ios_aarch64-sim.a" \
               -output "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a"
           mkdir libwallet-ios-xcframework
-          cp -v "libwallet-ios-x86_64/changelog.md" \
-            libwallet-ios-xcframework/
           xcodebuild -create-xcframework \
             -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a" \
               -headers "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
