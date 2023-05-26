@@ -386,9 +386,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_sender_offset_public_key(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
-        let sender_offset_private_key = self.get_sender_offset_private_key(spend_key_id).await?;
+    pub async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        let sender_offset_private_key = self.get_sender_offset_private_key(script_key_id).await?;
         Ok(PublicKey::from_secret_key(&sender_offset_private_key))
+    }
+
+    pub async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+        let sender_offset_private_key = self.get_sender_offset_private_key(script_key_id).await?;
+        let script_private_key = self.get_private_key(script_key_id).await?;
+        let script_offset = script_private_key - sender_offset_private_key;
+        Ok(script_offset)
     }
 
     // Note!: This method may not be made public

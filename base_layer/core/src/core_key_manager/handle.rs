@@ -269,6 +269,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_script_offset(script_key_id)
+            .await
+    }
+
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
         spend_key_id: &KeyId,
