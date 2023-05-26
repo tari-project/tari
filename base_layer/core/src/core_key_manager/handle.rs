@@ -261,19 +261,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+    async fn get_sender_offset_public_key(&self, key_id: &KeyId) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_sender_offset_public_key(script_key_id)
+            .get_sender_offset_public_key(key_id)
             .await
     }
 
-    async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+    async fn get_script_offset(&self, script_key_ids: &Vec<KeyId>, sender_offset_key_ids: &Vec<KeyId>) -> Result<PrivateKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_script_offset(script_key_id)
+            .get_script_offset(script_key_ids,sender_offset_key_ids)
             .await
     }
 

@@ -160,9 +160,9 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         data: &EncryptedData,
     ) -> Result<(KeyId, u64), TransactionError>;
 
-    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+    async fn get_sender_offset_public_key(&self, key_id: &KeyId) -> Result<PublicKey, TransactionError>;
 
-    async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError>;
+    async fn get_script_offset(&self, script_key_ids: &Vec<KeyId>, sender_offset_key_ids: &Vec<KeyId>) -> Result<PrivateKey, TransactionError>;
 
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
