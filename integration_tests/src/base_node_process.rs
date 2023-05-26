@@ -24,7 +24,6 @@ use std::{
     default::Default,
     fmt::{Debug, Formatter},
     path::PathBuf,
-    process,
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -42,7 +41,7 @@ use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_base_dir, get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -79,11 +78,6 @@ impl Debug for BaseNodeProcess {
 
 pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
     spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
-}
-
-pub fn get_base_dir() -> PathBuf {
-    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
 }
 
 pub async fn spawn_base_node_with_config(
