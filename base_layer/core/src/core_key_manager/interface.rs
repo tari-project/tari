@@ -20,13 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, str::FromStr};
-
-use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
-use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
-use tari_utilities::hex::Hex;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 
 use crate::transactions::transaction_components::{
     EncryptedData,
@@ -36,69 +32,13 @@ use crate::transactions::transaction_components::{
     TransactionOutputVersion,
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum KeyId {
-    Default { branch: String, index: u64 },
-    Imported { key: PublicKey },
-}
-
-impl fmt::Display for KeyId {
-    // This trait requires `fmt` with this exact signature.
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            KeyId::Default { branch: b, index: i } => write!(f, "default.{}.{}", b, i),
-            KeyId::Imported { key: public_key } => write!(f, "imported.{}", public_key.to_hex()),
-        }
-    }
-}
-impl Default for KeyId {
-    fn default() -> Self {
-        KeyId::Default {
-            branch: "".to_string(),
-            index: 0,
-        }
-    }
-}
-
-impl FromStr for KeyId {
-    type Err = String;
-
-    fn from_str(id: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = id.split('.').collect();
-        match parts.first() {
-            None => Err("Out of bounds".to_string()),
-            Some(val) => match *val {
-                "default" => {
-                    if parts.len() != 3 {
-                        return Err("Wrong format".to_string());
-                    }
-                    let index = parts[2]
-                        .parse()
-                        .map_err(|_| "Index for default, invalid u64".to_string())?;
-                    Ok(KeyId::Default {
-                        branch: parts[1].into(),
-                        index,
-                    })
-                },
-                "imported" => {
-                    if parts.len() != 2 {
-                        return Err("Wrong format".to_string());
-                    }
-                    let key = PublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
-                    Ok(KeyId::Imported { key })
-                },
-                _ => Err("Wrong format".to_string()),
-            },
-        }
-    }
-}
-
 #[derive(Clone, Copy, EnumIter)]
 pub enum CoreKeyManagerBranch {
     DataEncryption,
     Coinbase,
     CommitmentMask,
     Nonce,
+    ScriptKey,
 }
 
 impl CoreKeyManagerBranch {
@@ -106,10 +46,11 @@ impl CoreKeyManagerBranch {
     /// recovery.
     pub fn get_branch_key(self) -> String {
         match self {
-            CoreKeyManagerBranch::DataEncryption => "data encryption".to_string(),
-            CoreKeyManagerBranch::Coinbase => "coinbase".to_string(),
-            CoreKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
-            CoreKeyManagerBranch::Nonce => "nonce".to_string(),
+            CoreKeyManagerBranch::DataEncryption => "core: data encryption".to_string(),
+            CoreKeyManagerBranch::Coinbase => "core: coinbase".to_string(),
+            CoreKeyManagerBranch::CommitmentMask => "core: commitment mask".to_string(),
+            CoreKeyManagerBranch::Nonce => "core: nonce".to_string(),
+            CoreKeyManagerBranch::ScriptKey => "core: script key".to_string(),
         }
     }
 }

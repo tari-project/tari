@@ -98,12 +98,12 @@ where
     TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone,
     PK: PublicKey,
 {
-    fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = match KeyManagerStateSql::get_state(&branch, &mut conn).ok() {
+        let result = match KeyManagerStateSql::get_state(branch, &mut conn).ok() {
             None => None,
             Some(km) => {
                 let cipher = acquire_read_lock!(self.cipher);
@@ -150,12 +150,12 @@ where
         Ok(())
     }
 
-    fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
+    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
@@ -180,12 +180,12 @@ where
         Ok(())
     }
 
-    fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
+    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
