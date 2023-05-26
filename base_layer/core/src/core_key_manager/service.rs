@@ -391,13 +391,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(PublicKey::from_secret_key(&sender_offset_private_key))
     }
 
-    pub async fn get_script_offset(&self, script_key_ids: &Vec<KeyId>, sender_offset_key_ids: &Vec<KeyId>) -> Result<PrivateKey, TransactionError> {
+    pub async fn get_script_offset(
+        &self,
+        script_key_ids: &Vec<KeyId>,
+        sender_offset_key_ids: &Vec<KeyId>,
+    ) -> Result<PrivateKey, TransactionError> {
         let mut total_sender_offset_private_key = PrivateKey::default();
-        for sender_offset_key_id in sender_offset_key_ids{
+        for sender_offset_key_id in sender_offset_key_ids {
             total_sender_offset_private_key += self.get_sender_offset_private_key(sender_offset_key_id).await?;
         }
         let mut total_script_private_key = PrivateKey::default();
-        for script_key_id in script_key_ids{
+        for script_key_id in script_key_ids {
             total_script_private_key += self.get_sender_offset_private_key(script_key_id).await?;
         }
         let script_offset = total_script_private_key - total_sender_offset_private_key;
