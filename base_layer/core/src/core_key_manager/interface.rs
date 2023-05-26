@@ -98,6 +98,7 @@ pub enum CoreKeyManagerBranch {
     DataEncryption,
     Coinbase,
     CommitmentMask,
+    Nonce,
 }
 
 impl CoreKeyManagerBranch {
@@ -108,6 +109,7 @@ impl CoreKeyManagerBranch {
             CoreKeyManagerBranch::DataEncryption => "data encryption".to_string(),
             CoreKeyManagerBranch::Coinbase => "coinbase".to_string(),
             CoreKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
+            CoreKeyManagerBranch::Nonce => "nonce".to_string(),
         }
     }
 }
@@ -160,8 +162,6 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         data: &EncryptedData,
     ) -> Result<(KeyId, u64), TransactionError>;
 
-    async fn get_sender_offset_public_key(&self, key_id: &KeyId) -> Result<PublicKey, TransactionError>;
-
     async fn get_script_offset(
         &self,
         script_key_ids: &Vec<KeyId>,
@@ -190,7 +190,7 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        script_key_id: &KeyId,
+        sender_offset_key_id: &KeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,

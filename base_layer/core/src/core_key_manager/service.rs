@@ -376,21 +376,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    // Note!: This method may not be made public
-    async fn get_sender_offset_private_key(&self, key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
-        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("sender_offset_key");
-        let private_key = self.get_private_key(key_id).await?;
-        let key_hash = hasher.chain(private_key.as_bytes()).finalize();
-        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
-        })
-    }
-
-    pub async fn get_sender_offset_public_key(&self, key_id: &KeyId) -> Result<PublicKey, TransactionError> {
-        let sender_offset_private_key = self.get_sender_offset_private_key(script_key_id).await?;
-        Ok(PublicKey::from_secret_key(&sender_offset_private_key))
-    }
-
     pub async fn get_script_offset(
         &self,
         script_key_ids: &Vec<KeyId>,
@@ -398,11 +383,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<PrivateKey, TransactionError> {
         let mut total_sender_offset_private_key = PrivateKey::default();
         for sender_offset_key_id in sender_offset_key_ids {
-            total_sender_offset_private_key += self.get_sender_offset_private_key(sender_offset_key_id).await?;
+            total_sender_offset_private_key =
+                total_sender_offset_private_key + self.get_private_key(sender_offset_key_id).await?;
         }
         let mut total_script_private_key = PrivateKey::default();
         for script_key_id in script_key_ids {
-            total_script_private_key += self.get_sender_offset_private_key(script_key_id).await?;
+            total_script_private_key = total_script_private_key + self.get_private_key(script_key_id).await?;
         }
         let script_offset = total_script_private_key - total_sender_offset_private_key;
         Ok(script_offset)
@@ -503,15 +489,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_sender_partial_metadata_signature(
         &self,
-        script_key_id: &KeyId,
+        sender_offset_key_id: &KeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_private_key = self.get_metadata_signature_ephemeral_private_key(script_key_id).await?;
+        let ephemeral_private_key = self
+            .get_metadata_signature_ephemeral_private_key(sender_offset_key_id)
+            .await?;
         let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
-        let sender_offset_private_key = self.get_sender_offset_private_key(script_key_id).await?;
+        let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?;
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
 
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(

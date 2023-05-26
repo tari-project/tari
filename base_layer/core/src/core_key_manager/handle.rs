@@ -261,14 +261,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_sender_offset_public_key(&self, key_id: &KeyId) -> Result<PublicKey, TransactionError> {
-        (*self.core_key_manager_inner)
-            .read()
-            .await
-            .get_sender_offset_public_key(key_id)
-            .await
-    }
-
     async fn get_script_offset(
         &self,
         script_key_ids: &Vec<KeyId>,
@@ -328,7 +320,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        script_key_id: &KeyId,
+        sender_offset_key_id: &KeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,
@@ -338,7 +330,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_sender_partial_metadata_signature(
-                script_key_id,
+                sender_offset_key_id,
                 commitment,
                 ephemeral_commitment,
                 tx_version,
