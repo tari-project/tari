@@ -229,6 +229,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_partial_kernel_signature_excess(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_partial_kernel_signature_excess(spend_key_id)
+            .await
+    }
+
+    async fn get_partial_private_kernel_offset(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_partial_private_kernel_offset(spend_key_id)
+            .await
+    }
+
     async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
@@ -263,8 +279,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_script_offset(
         &self,
-        script_key_ids: &Vec<KeyId>,
-        sender_offset_key_ids: &Vec<KeyId>,
+        script_key_ids: &[KeyId],
+        sender_offset_key_ids: &[KeyId],
     ) -> Result<PrivateKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()

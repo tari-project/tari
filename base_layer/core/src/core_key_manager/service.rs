@@ -378,8 +378,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_script_offset(
         &self,
-        script_key_ids: &Vec<KeyId>,
-        sender_offset_key_ids: &Vec<KeyId>,
+        script_key_ids: &[KeyId],
+        sender_offset_key_ids: &[KeyId],
     ) -> Result<PrivateKey, TransactionError> {
         let mut total_sender_offset_private_key = PrivateKey::default();
         for sender_offset_key_id in sender_offset_key_ids {
@@ -538,6 +538,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
+    pub async fn get_partial_private_kernel_offset(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<PrivateKey, TransactionError> {
+        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+        let spending_private_key = self.get_private_key(spend_key_id).await?;
+        let key_hash = hasher.chain(spending_private_key.as_bytes()).finalize();
+        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
+        })
+    }
+
     pub async fn get_partial_kernel_signature(
         &self,
         spending_key: &KeyId,
@@ -548,6 +560,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Signature, TransactionError> {
         let spending_private_key = self.get_private_key(spending_key).await?;
         let private_nonce = self.get_private_kernel_signature_nonce(spending_key).await?;
+        let signing_key = spending_private_key - &self.get_partial_private_kernel_offset(spending_key).await?;
         let challenge = TransactionKernel::finalize_kernel_signature_challenge(
             kernel_version,
             total_nonce,
@@ -555,8 +568,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             kernel_message,
         );
 
-        let signature = Signature::sign_raw(&spending_private_key, private_nonce, &challenge)?;
+        let signature = Signature::sign_raw(&signing_key, private_nonce, &challenge)?;
         Ok(signature)
+    }
+
+    pub async fn get_partial_kernel_signature_excess(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<PublicKey, TransactionError> {
+        let offset = self.get_partial_private_kernel_offset(spend_key_id).await?;
+        let excess = self.get_private_key(spend_key_id).await?;
+        let combined_excess = excess - &offset;
+        Ok(PublicKey::from_secret_key(&combined_excess))
     }
 
     pub async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {

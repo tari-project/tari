@@ -148,6 +148,10 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         kernel_message: &[u8; 32],
     ) -> Result<Signature, TransactionError>;
 
+    async fn get_partial_kernel_signature_excess(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+
+    async fn get_partial_private_kernel_offset(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError>;
+
     async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
 
     async fn encrypt_data_for_recovery(
@@ -164,8 +168,8 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_script_offset(
         &self,
-        script_key_ids: &Vec<KeyId>,
-        sender_offset_key_ids: &Vec<KeyId>,
+        script_key_ids: &[KeyId],
+        sender_offset_key_ids: &[KeyId],
     ) -> Result<PrivateKey, TransactionError>;
 
     async fn get_metadata_signature_ephemeral_commitment(
