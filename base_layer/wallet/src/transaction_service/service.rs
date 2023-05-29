@@ -42,7 +42,7 @@ use tari_common_types::{
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
+    consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
@@ -1155,6 +1155,12 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, amount.into());
+        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,

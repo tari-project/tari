@@ -133,7 +133,6 @@ pub enum CliCommands {
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
     RegisterValidatorNode(RegisterValidatorNodeArgs),
-    RegisterCodeTemplate(RegisterCodeTemplateArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -283,15 +282,4 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct RegisterCodeTemplateArgs {
-    pub template_name: String,
-    pub template_version: u16,
-    pub template_type: String,
-    pub repo_url: String,
-    pub commit_hash: String,
-    pub binary_sha: Option<String>,
-    pub binary_url: Option<String>,
 }
