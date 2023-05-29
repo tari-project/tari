@@ -41,7 +41,14 @@ use tari_core::{
     proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{BuildInfo, OutputFeatures, TemplateType, Transaction, TransactionOutput},
+        transaction_components::{
+            BuildInfo,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            TemplateType,
+            Transaction,
+            TransactionOutput,
+        },
     },
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -107,6 +114,8 @@ pub enum TransactionServiceRequest {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -240,6 +249,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
+            TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
+                write!(f, "RegisterCodeTemplate: {}", template_name)
+            },
         }
     }
 }
@@ -248,7 +260,14 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
-    BurntTransactionSent { tx_id: TxId, proof: Box<BurntProof> },
+    BurntTransactionSent {
+        tx_id: TxId,
+        proof: Box<BurntProof>,
+    },
+    TemplateRegistrationTransactionSent {
+        tx_id: TxId,
+        template_registration: Box<CodeTemplateRegistration>,
+    },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -510,16 +529,22 @@ impl TransactionServiceHandle {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::RegisterValidatorNode {
+            .call(TransactionServiceRequest::RegisterCodeTemplate {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
                 amount,
-                validator_node_public_key,
-                validator_node_signature,
-                selection_criteria,
                 fee_per_gram,
-                message,
             })
             .await??
         {

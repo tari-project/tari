@@ -21,15 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     fs,
     fs::File,
     io,
     io::{LineWriter, Write},
-    num::ParseIntError,
     path::{Path, PathBuf},
-    str::from_utf8,
-    sync::RwLockReadGuard,
     time::{Duration, Instant},
 };
 
@@ -51,20 +48,16 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
-    peer_manager::IdentitySignature,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    consensus::{MaxSizeBytes, MaxSizeString},
-    transactions::{
-        tari_amount::{uT, MicroTari, Tari},
-        transaction_components::{BuildInfo, OutputFeatures, TemplateType, TransactionOutput, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari, Tari},
+    transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
-use tari_key_manager::key_manager_service::{KeyManagerInterface, NextKeyResult};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
+use tari_key_manager::key_manager_service::NextKeyResult;
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -217,30 +210,6 @@ pub async fn register_validator_node(
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
-            amount,
-            validator_node_public_key,
-            validator_node_signature,
-            selection_criteria,
-            fee_per_gram,
-            message,
-        )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
-
-pub async fn register_code_template(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    author_public_key: PublicKey,
-    author_signature: Signature,
-    template_name: MaxSizeString<32>,
-    template_version: u16,
-    template_type: TemplateType,
-    build_info: BuildInfo,
-    binary_sha: MaxSizeBytes<32>,
-    binary_url: MaxSizeString<255>,
-) -> Result<TxId, CommandError> {
-    wallet_transaction_service
-        .register_code_template(
             amount,
             validator_node_public_key,
             validator_node_signature,
@@ -1037,85 +1006,6 @@ pub async fn command_runner(
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
-                tx_ids.push(tx_id);
-            },
-            RegisterCodeTemplate(args) => {
-                let author_public_key = PublicKey::default();
-                let author_signature = Signature::default();
-
-                let template_name = match MaxSizeString::<32>::from_utf8_bytes_checked(args.template_name) {
-                    None => {
-                        eprintln!("failed to process `template_name`, max length is 32");
-                        return Err(CommandError::InvalidArgument(
-                            "invalid template name, check length (max 32)".to_string(),
-                        ));
-                    },
-                    Some(s) => s,
-                };
-
-                let template_type = match args.template_type.to_lowercase().as_str() {
-                    "flow" => TemplateType::Flow,
-                    "manifest" => TemplateType::Manifest,
-                    s => match s.split(':').collect::<Vec<_>>().as_slice() {
-                        &[typ, abi_version] => {
-                            if &typ.to_lowercase() == "wasm" {
-                                let abi_version = match abi_version.parse::<u16>() {
-                                    Ok(abi_version) => abi_version,
-                                    Err(_) => {
-                                        return Err(CommandError::InvalidArgument(format!(
-                                            "invalid `abi_version` for the `warm` template type: {}",
-                                            abi_version
-                                        )))
-                                    },
-                                };
-
-                                TemplateType::Wasm { abi_version }
-                            } else {
-                                return Err(CommandError::InvalidArgument("unrecognized template type".to_string()));
-                            }
-                        },
-                    },
-                };
-
-                let author_signature = match wallet.comms.node_identity_ref().identity_signature_read().clone() {
-                    None => {
-                        eprintln!("node identity signature is not available");
-                        return Err(CommandError::Comms(
-                            "node identity signature is not available".to_string(),
-                        ));
-                    },
-                    Some(sig) => sig.signature().clone(),
-                };
-
-                let binary_url = MaxSizeString::<255>::try_from(args.binary_url)
-                    .map_err(|_| CommandError::InvalidArgument("binary url has a maximum length of 255".to_string()))?;
-
-                let repo_url = MaxSizeString::<255>::try_from(args.repo_url).map_err(|_| {
-                    CommandError::InvalidArgument("repository url has a maximum length of 255".to_string())
-                })?;
-
-                let commit_hash = MaxSizeBytes::<32>::from_base64(args.commit_hash.as_str()).map_err(|_| {
-                    CommandError::InvalidArgument("commit hash has a maximum length of 32 bytes".to_string())
-                })?;
-
-                let tx_id = register_code_template(
-                    transaction_service.clone(),
-                    wallet.comms.node_identity_ref().public_key().clone(),
-                    author_signature,
-                    template_name,
-                    args.template_version,
-                    template_type,
-                    BuildInfo { repo_url, commit_hash },
-                    MaxSizeBytes::<32>::default(),
-                    binary_url,
-                )
-                .await?;
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Registering code template: name={}, tx_id {}", args.template_name, tx_id
-                );
-
                 tx_ids.push(tx_id);
             },
         }

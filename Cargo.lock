@@ -5505,6 +5505,7 @@ dependencies = [
  "tui",
  "unicode-segmentation",
  "unicode-width",
+ "url 2.3.1",
  "zeroize",
  "zxcvbn",
 ]
