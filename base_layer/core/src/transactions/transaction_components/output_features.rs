@@ -31,17 +31,10 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
-use crate::transactions::transaction_components::{
-    range_proof_type::RangeProofType,
-    side_chain::SideChainFeature,
-    CodeTemplateRegistration,
-    ConfidentialOutputData,
-    OutputType,
-    ValidatorNodeRegistration,
-    ValidatorNodeSignature,
 use crate::{
     consensus::{MaxSizeBytes, MaxSizeString},
     transactions::transaction_components::{
+        range_proof_type::RangeProofType,
         side_chain::SideChainFeature,
         BuildInfo,
         CodeTemplateRegistration,
@@ -160,32 +153,6 @@ impl OutputFeatures {
                     validator_node_signature,
                 )),
             )),
-            ..Default::default()
-        }
-    }
-
-    pub fn for_code_template_registration(
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
-    ) -> OutputFeatures {
-        OutputFeatures {
-            output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(CodeTemplateRegistration {
-                author_public_key,
-                author_signature,
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-            })),
             ..Default::default()
         }
     }

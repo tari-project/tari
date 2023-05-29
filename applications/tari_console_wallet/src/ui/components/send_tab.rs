@@ -78,6 +78,8 @@ impl SendTab {
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
                 ]
                 .as_ref(),
             )

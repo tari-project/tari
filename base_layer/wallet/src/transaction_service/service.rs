@@ -42,17 +42,17 @@ use tari_common_types::{
 use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
+    consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
+            CodeTemplateRegistration,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
-            TemplateType,
             Transaction,
             TransactionOutput,
             UnblindedOutput,
@@ -698,22 +698,30 @@ where
                 build_info,
                 binary_sha,
                 binary_url,
+                amount,
+                fee_per_gram,
             } => {
-                let rp = reply_channel.take().expect("Cannot be missing");
                 self.register_code_template(
-                    author_public_key,
-                    author_signature,
-                    template_name,
-                    template_version,
-                    template_type,
-                    build_info,
-                    binary_sha,
-                    binary_url,
+                    amount,
+                    fee_per_gram,
+                    CodeTemplateRegistration {
+                        author_public_key,
+                        author_signature,
+                        template_name: template_name.clone(),
+                        template_version,
+                        template_type,
+                        build_info,
+                        binary_sha,
+                        binary_url,
+                    },
+                    UtxoSelectionCriteria::default(),
+                    format!("Template Registration: {}", template_name),
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
-                    rp,
+                    reply_channel.take().expect("Reply channel is not set"),
                 )
                 .await?;
+
                 return Ok(());
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
@@ -1589,14 +1597,11 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        template_registration: CodeTemplateRegistration,
+        selection_criteria: UtxoSelectionCriteria,
+        message: String,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1605,14 +1610,11 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
-
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
             amount,
             selection_criteria,
-            output_features,
+            OutputFeatures::for_template_registration(template_registration),
             fee_per_gram,
             message,
             TransactionMetadata::default(),
@@ -1622,6 +1624,85 @@ where
         )
         .await
     }
+
+    // pub async fn register_code_template(
+    //     &mut self,
+    //     amount: MicroTari,
+    //     fee_per_gram: MicroTari,
+    //     template_registration: CodeTemplateRegistration,
+    //     transaction_broadcast_join_handles: &mut FuturesUnordered<
+    //         JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+    //     >,
+    //     reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    // ) -> Result<(u64, FixedHash, CodeTemplateRegistration), TransactionServiceError> {
+    //     let mut output_manager = self.output_manager_service.clone();
+    //
+    //     let output = output_manager
+    //         .create_output_with_features(1 * T, OutputFeatures {
+    //             output_type: OutputType::CodeTemplateRegistration,
+    //             sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(
+    //                 template_registration.clone(),
+    //             )),
+    //             ..Default::default()
+    //         })
+    //         .await
+    //         .map_err(TransactionServiceError::OutputManagerError)?
+    //         .with_script(script![Nop]);
+    //
+    //     let (tx_id, transaction) = output_manager
+    //         .create_send_to_self_with_output(vec![output], fee_per_gram, UtxoSelectionCriteria::default())
+    //         .await
+    //         .map_err(TransactionServiceError::OutputManagerError)?;
+    //
+    //     debug!(
+    //         target: LOG_TARGET,
+    //         "Template registration transaction: {:?}", transaction
+    //     );
+    //
+    //     let message = format!("Template registration {}", template_registration.template_name);
+    //
+    //     let output = transaction
+    //         .body
+    //         .outputs()
+    //         .iter()
+    //         .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
+    //         .ok_or_else(|| {
+    //             TransactionServiceError::OutputManagerError(OutputManagerError::ServiceError(
+    //                 "Output for code template registration is not found".to_string(),
+    //             ))
+    //         })?;
+    //
+    //     let template_address = output.hash();
+    //
+    //     self.submit_transaction(
+    //         transaction_broadcast_join_handles,
+    //         CompletedTransaction::new(
+    //             tx_id,
+    //             self.resources.wallet_identity.address.clone(),
+    //             self.resources.wallet_identity.address.clone(),
+    //             amount,
+    //             fee_per_gram,
+    //             transaction,
+    //             TransactionStatus::Completed,
+    //             message,
+    //             Utc::now().naive_utc(),
+    //             TransactionDirection::Outbound,
+    //             None,
+    //             None,
+    //             None,
+    //         ),
+    //     )
+    //     .map_err(|e| {
+    //         println!("{:#?}", e);
+    //         error!(
+    //             target: LOG_TARGET,
+    //             "Transaction (TxId: {}) could not be submitted. Failure error: {:?}", tx_id, e,
+    //         );
+    //         TransactionServiceProtocolError::new(tx_id, e.into())
+    //     })?;
+    //
+    //     Ok((tx_id.as_u64(), template_address, template_registration))
+    // }
 
     /// Sends a one side payment transaction to a recipient
     /// # Arguments

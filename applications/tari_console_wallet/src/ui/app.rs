@@ -42,6 +42,7 @@ use crate::{
             network_tab::NetworkTab,
             notification_tab::NotificationTab,
             receive_tab::ReceiveTab,
+            register_template_tab::RegisterTemplateTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
             transactions_tab::TransactionsTab,
@@ -90,6 +91,7 @@ impl<B: Backend> App<B> {
             .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
+            .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Events".into(), Box::new(EventsComponent::new()))
