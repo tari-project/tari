@@ -148,11 +148,23 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         kernel_message: &[u8; 32],
     ) -> Result<Signature, TransactionError>;
 
-    async fn get_partial_kernel_signature_excess(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+    async fn get_partial_kernel_signature_excess(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError>;
 
-    async fn get_partial_private_kernel_offset(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError>;
+    async fn get_partial_private_kernel_offset(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PrivateKey, TransactionError>;
 
-    async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+    async fn get_kernel_signature_nonce(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError>;
 
     async fn encrypt_data_for_recovery(
         &self,
@@ -175,11 +187,13 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<Commitment, TransactionError>;
 
     async fn get_metadata_signature_ephemeral_public_key(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<PublicKey, TransactionError>;
 
     async fn get_receiver_partial_metadata_signature(
