@@ -229,11 +229,39 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+    async fn get_partial_kernel_signature_excess(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_kernel_signature_nonce(spend_key_id)
+            .get_partial_kernel_signature_excess(spend_key_id, message)
+            .await
+    }
+
+    async fn get_partial_private_kernel_offset(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PrivateKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_partial_private_kernel_offset(spend_key_id, message)
+            .await
+    }
+
+    async fn get_kernel_signature_nonce(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_kernel_signature_nonce(spend_key_id, message)
             .await
     }
 
@@ -261,41 +289,39 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+    async fn get_script_offset(
+        &self,
+        script_key_ids: &[KeyId],
+        sender_offset_key_ids: &[KeyId],
+    ) -> Result<PrivateKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_sender_offset_public_key(script_key_id)
-            .await
-    }
-
-    async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
-        (*self.core_key_manager_inner)
-            .read()
-            .await
-            .get_script_offset(script_key_id)
+            .get_script_offset(script_key_ids, sender_offset_key_ids)
             .await
     }
 
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<Commitment, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_metadata_signature_ephemeral_commitment(spend_key_id)
+            .get_metadata_signature_ephemeral_commitment(spend_key_id, message)
             .await
     }
 
     async fn get_metadata_signature_ephemeral_public_key(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_metadata_signature_ephemeral_public_key(spend_key_id)
+            .get_metadata_signature_ephemeral_public_key(spend_key_id, message)
             .await
     }
 
@@ -324,7 +350,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        script_key_id: &KeyId,
+        sender_offset_key_id: &KeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,
@@ -334,7 +360,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_sender_partial_metadata_signature(
-                script_key_id,
+                sender_offset_key_id,
                 commitment,
                 ephemeral_commitment,
                 tx_version,

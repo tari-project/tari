@@ -98,6 +98,7 @@ pub enum CoreKeyManagerBranch {
     DataEncryption,
     Coinbase,
     CommitmentMask,
+    Nonce,
 }
 
 impl CoreKeyManagerBranch {
@@ -108,6 +109,7 @@ impl CoreKeyManagerBranch {
             CoreKeyManagerBranch::DataEncryption => "data encryption".to_string(),
             CoreKeyManagerBranch::Coinbase => "coinbase".to_string(),
             CoreKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
+            CoreKeyManagerBranch::Nonce => "nonce".to_string(),
         }
     }
 }
@@ -146,7 +148,23 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         kernel_message: &[u8; 32],
     ) -> Result<Signature, TransactionError>;
 
-    async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+    async fn get_partial_kernel_signature_excess(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError>;
+
+    async fn get_partial_private_kernel_offset(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PrivateKey, TransactionError>;
+
+    async fn get_kernel_signature_nonce(
+        &self,
+        spend_key_id: &KeyId,
+        message: &[u8; 32],
+    ) -> Result<PublicKey, TransactionError>;
 
     async fn encrypt_data_for_recovery(
         &self,
@@ -160,18 +178,22 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         data: &EncryptedData,
     ) -> Result<(KeyId, u64), TransactionError>;
 
-    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
-
-    async fn get_script_offset(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError>;
+    async fn get_script_offset(
+        &self,
+        script_key_ids: &[KeyId],
+        sender_offset_key_ids: &[KeyId],
+    ) -> Result<PrivateKey, TransactionError>;
 
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<Commitment, TransactionError>;
 
     async fn get_metadata_signature_ephemeral_public_key(
         &self,
         spend_key_id: &KeyId,
+        message: &[u8; 32],
     ) -> Result<PublicKey, TransactionError>;
 
     async fn get_receiver_partial_metadata_signature(
@@ -186,7 +208,7 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        script_key_id: &KeyId,
+        sender_offset_key_id: &KeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,
