@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.50.0-pre.2](https://github.com/tari-project/tari/compare/v0.50.0-pre.1...v0.50.0-pre.2) (2023-05-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* add optional range proof types (#5372)
+
+### Features
+
+* add metadata signature check ([#5411](https://github.com/tari-project/tari/issues/5411)) ([9c2bf41](https://github.com/tari-project/tari/commit/9c2bf41ec8f649ffac824878256c09598bf52269))
+* add optional range proof types ([#5372](https://github.com/tari-project/tari/issues/5372)) ([f24784f](https://github.com/tari-project/tari/commit/f24784f3a2f3f574cd2ac4e2d9fe963078e4c524))
+* added burn feature to the console wallet ([#5322](https://github.com/tari-project/tari/issues/5322)) ([45685b9](https://github.com/tari-project/tari/commit/45685b9f3acceba483ec30021e8d4894dbf2861c))
+* improved base node monitoring ([#5390](https://github.com/tari-project/tari/issues/5390)) ([c704890](https://github.com/tari-project/tari/commit/c704890ca949bcfcd608e299175694b81cef0165))
+
+
+### Bug Fixes
+
+* **comms:** only set final forward address if configured to port 0 ([#5406](https://github.com/tari-project/tari/issues/5406)) ([ff7fb6d](https://github.com/tari-project/tari/commit/ff7fb6d6b4ab4f77d108b2d9b7fd010c77e613c7))
+* deeplink to rfc spec ([#5342](https://github.com/tari-project/tari/issues/5342)) ([806d3b8](https://github.com/tari-project/tari/commit/806d3b8cc6668f23bb77ca7040833e080c173063))
+* don't use in memory datastores for chat client dht in integration tests ([#5399](https://github.com/tari-project/tari/issues/5399)) ([cbdca6f](https://github.com/tari-project/tari/commit/cbdca6fcc8ae61ed2dbfacca9da1a59c78945045))
+* fix panic when no public addresses ([#5367](https://github.com/tari-project/tari/issues/5367)) ([49be2a2](https://github.com/tari-project/tari/commit/49be2a27a8aead96c180cb988614e3696c338530))
+* loop on mismatched passphrase entry ([#5396](https://github.com/tari-project/tari/issues/5396)) ([ed120b2](https://github.com/tari-project/tari/commit/ed120b277371be7b9bd61c825aa7d61b104d3ac6))
+* use domain separation for wallet message signing ([#5400](https://github.com/tari-project/tari/issues/5400)) ([7d71f8b](https://github.com/tari-project/tari/commit/7d71f8bef94fddf1ffa345e6b599cf02ee6ab935))
+
 ## [0.50.0-pre.1](https://github.com/tari-project/tari/compare/v0.50.0-pre.0...v0.50.0-pre.1) (2023-05-08)
 
 
