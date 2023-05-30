@@ -39,8 +39,8 @@ use futures::future;
 use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::NodeIdentity;
-use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
-use tari_key_manager::key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle};
+use tari_core::{consensus::NetworkConsensus, core_key_manager::CoreKeyManagerHandle, transactions::CryptoFactories};
+use tari_key_manager::key_manager_service::storage::database::KeyManagerBackend;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -96,10 +96,10 @@ where T: OutputManagerBackend + 'static
 }
 
 #[async_trait]
-impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
+impl<T, TKeyManagerBackend> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerBackend>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: KeyManagerBackend<PublicKey> + 'static,
+    TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -120,7 +120,7 @@ where
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
-            let key_manager = handles.expect_handle::<KeyManagerHandle<TKeyManagerInterface, PublicKey>>();
+            let key_manager = handles.expect_handle::<CoreKeyManagerHandle<TKeyManagerBackend>>();
 
             let service = OutputManagerService::new(
                 config,

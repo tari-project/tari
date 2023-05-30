@@ -56,6 +56,7 @@ where PK: PublicKey
     pub key: PK,
     pub key_index: u64,
 }
+
 #[derive(Clone, Derivative, PartialEq, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
 pub struct KeyManager<PK: PublicKey, D: Digest + LengthExtensionAttackResistant> {
@@ -142,10 +143,10 @@ where
         self.derive_key(self.primary_key_index)
     }
 
-    /// Generate next deterministic public key derived from master key
-    pub fn next_public_key(&mut self) -> Result<DerivedPublicKey<PK>, ByteArrayError> {
-        self.primary_key_index += 1;
-        self.derive_public_key(self.primary_key_index)
+    /// Generate next deterministic private key derived from master key
+    pub fn increment_key_index(&mut self, increment: u64) -> u64 {
+        self.primary_key_index += increment;
+        self.primary_key_index
     }
 
     pub fn cipher_seed(&self) -> &CipherSeed {

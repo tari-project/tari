@@ -109,7 +109,6 @@ pub struct DbConnection {
 
 impl DbConnection {
     /// Connect to an ephemeral database in memory
-    #[cfg(test)]
     pub fn connect_memory(name: String) -> Result<Self, StorageError> {
         Self::connect_url(&DbConnectionUrl::MemoryShared(name))
     }

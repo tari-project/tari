@@ -60,13 +60,13 @@ where
         }
     }
 
-    pub fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
-        let result = if self.key_managers.contains_key(&branch) {
+    pub fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
+        let result = if self.key_managers.contains_key(branch) {
             AddResult::AlreadyExists
         } else {
             AddResult::NewEntry
         };
-        let state = match self.db.get_key_manager_state(branch.clone())? {
+        let state = match self.db.get_key_manager_state(branch)? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
@@ -78,7 +78,7 @@ where
             Some(km) => km,
         };
         self.key_managers.insert(
-            branch,
+            branch.to_string(),
             Mutex::new(KeyManager::<PK, KeyDigest>::from(
                 self.master_seed.clone(),
                 state.branch_seed,
@@ -88,10 +88,10 @@ where
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
+    pub async fn get_next_key(&self, branch: &str) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -103,10 +103,10 @@ where
         })
     }
 
-    pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PK::K, KeyManagerServiceError> {
+    pub async fn get_key_at_index(&self, branch: &str, index: u64) -> Result<PK::K, KeyManagerServiceError> {
         let km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -115,10 +115,10 @@ where
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: String, key: &PK) -> Result<u64, KeyManagerServiceError> {
+    pub async fn find_key_index(&self, branch: &str, key: &PK) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -139,12 +139,12 @@ where
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
     pub async fn update_current_key_index_if_higher(
         &self,
-        branch: String,
+        branch: &str,
         index: u64,
     ) -> Result<(), KeyManagerServiceError> {
         let mut km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;

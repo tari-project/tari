@@ -66,7 +66,7 @@ where
 
     /// Retrieves the key manager state of the provided branch
     /// Returns None if the request branch does not exist.
-    pub fn get_key_manager_state(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+    pub fn get_key_manager_state(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         self.db.get_key_manager(branch)
     }
 
@@ -77,13 +77,13 @@ where
 
     /// Increment the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
+    pub fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
         self.db.increment_key_index(branch)
     }
 
     /// Sets the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
+    pub fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         self.db.set_key_index(branch, index)
     }
 
