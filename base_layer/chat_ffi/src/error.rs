@@ -30,7 +30,7 @@ pub enum InterfaceError {
     NullError(String),
     #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
     TokioError(String),
-    #[error("Emoji ID is invalid")]
+    #[error("Something about the argument is invalid: `{0}`")]
     InvalidArgument(String),
 }
 
