@@ -73,7 +73,6 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
 
 #[when(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "I wait for {word} to connect to {word}")]
-#[then(expr = "{word} is connected to {word}")]
 async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
     let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
     let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
@@ -430,6 +429,31 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
     }
 }
 
+#[when(expr = "I submit transaction {word} to {word} and it does not succeed")]
+pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+    let mut client = world.get_node_client(&node).await?;
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+    let resp = client
+        .submit_transaction(grpc::SubmitTransactionRequest {
+            transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
+        })
+        .await?;
+
+    let result = resp.into_inner();
+
+    if result.result == 1 {
+        panic!(
+            "Transaction {} was submitted, but should not have been to {}",
+            tx_name, node
+        )
+    } else {
+        Ok(())
+    }
+}
+
 #[when(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
 #[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
 async fn prune_node_connected_to_base_node(
@@ -643,7 +667,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
-             Expected: 3, received: 4"
+             Expected: 4, received: 5"
                 .to_string(),
             e.message()
         ),
@@ -656,7 +680,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
-             Expected: 3, received: 4"
+             Expected: 4968, received: 4969"
                 .to_string(),
             e.message()
         ),
@@ -669,7 +693,7 @@ async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node:
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.state_machine.blocks_behind_before_considered_lagging = delay;
 
-    spawn_base_node_with_config(world, true, delayed_node, vec![node], base_node_config).await;
+    spawn_base_node_with_config(world, false, delayed_node, vec![node], base_node_config).await;
 }
 
 #[then(expr = "node {word} has reached initial sync")]

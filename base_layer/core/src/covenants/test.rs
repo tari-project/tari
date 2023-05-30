@@ -40,7 +40,9 @@ use crate::{
 pub fn create_outputs(n: usize, utxo_params: UtxoTestParams) -> Vec<TransactionOutput> {
     iter::repeat_with(|| {
         let params = TestParams::new();
-        let output = params.create_unblinded_output(utxo_params.clone());
+        let output = params
+            .create_unblinded_output_not_recoverable(utxo_params.clone())
+            .unwrap();
         output.as_transaction_output(&Default::default()).unwrap()
     })
     .take(n)
@@ -49,7 +51,9 @@ pub fn create_outputs(n: usize, utxo_params: UtxoTestParams) -> Vec<TransactionO
 
 pub fn create_input() -> TransactionInput {
     let params = TestParams::new();
-    let output = params.create_unblinded_output(Default::default());
+    let output = params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
     output.as_transaction_input(&Default::default()).unwrap()
 }
 

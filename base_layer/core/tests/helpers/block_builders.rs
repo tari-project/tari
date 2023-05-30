@@ -41,9 +41,9 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{
+            create_non_recoverable_unblinded_output,
             create_random_signature_from_s_key,
             create_signature,
-            create_unblinded_output,
             create_utxo,
             spend_utxos,
             TestParams,
@@ -88,12 +88,13 @@ pub fn create_coinbase(
         .build()
         .unwrap();
 
-    let unblinded_output = create_unblinded_output(
+    let unblinded_output = create_non_recoverable_unblinded_output(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, extra),
         &p,
         value,
-    );
+    )
+    .unwrap();
     let output = unblinded_output.as_transaction_output(factories).unwrap();
 
     (output, kernel, unblinded_output)
@@ -245,7 +246,7 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     println!();
     println!("Genesis coinbase maturity: {}", lock_height);
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
-    println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
+    println!("UTXO range_proof: {}", block.body.outputs()[0].proof_hex_display(true));
     println!(
         "UTXO sender offset pubkey: {}",
         block.body.outputs()[0].sender_offset_public_key.to_hex()
@@ -350,7 +351,8 @@ pub fn create_genesis_block_with_utxos(
     let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let p = TestParams::new();
-        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), &p, *v);
+        let unblinded_output =
+            create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p, *v).unwrap();
         secrets.push(unblinded_output.clone());
         let output = unblinded_output.as_transaction_output(factories).unwrap();
         template.body.add_output(output);

@@ -37,7 +37,7 @@ async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: 
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -48,7 +48,7 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
     let seed_node = world.get_node(&seed_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         seed_node.identity.public_key().to_hex(),
-        seed_node.identity.first_public_address().to_string(),
+        seed_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -57,7 +57,7 @@ async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: Str
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -123,14 +123,26 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
     let mut ffi_balance = ffi_wallet.get_balance();
     let mut cnt = 0;
     while ffi_balance.get_available() < balance && cnt < 10 {
+        println!(
+            "wallet {}, port {}, balance: available {} incoming {} time locked {}",
+            ffi_wallet.name,
+            ffi_wallet.port,
+            ffi_balance.get_available(),
+            ffi_balance.get_pending_incoming(),
+            ffi_balance.get_time_locked()
+        );
         tokio::time::sleep(Duration::from_secs(3)).await;
         ffi_balance = ffi_wallet.get_balance();
         cnt += 1;
     }
     assert!(
         ffi_balance.get_available() >= balance,
-        "Wallet doesn't have enough available funds {}",
-        ffi_balance.get_available()
+        "Wallet {}:{} doesn't have enough available funds: available {} incoming {} time locked {}",
+        ffi_wallet.name,
+        ffi_wallet.port,
+        ffi_balance.get_available(),
+        ffi_balance.get_pending_incoming(),
+        ffi_balance.get_time_locked()
     );
 }
 
@@ -402,6 +414,8 @@ async fn ffi_detects_transaction(
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     assert!(vec![
         "TRANSACTION_STATUS_BROADCAST",
+        "TRANSACTION_STATUS_MINED_UNCONFIRMED",
+        "TRANSACTION_STATUS_MINED",
         "TRANSACTION_STATUS_FAUX_UNCONFIRMED",
         "TRANSACTION_STATUS_FAUX_CONFIRMED"
     ]
@@ -414,6 +428,8 @@ async fn ffi_detects_transaction(
     for _ in 0..120 {
         found_count = match status.as_str() {
             "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
+            "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
+            "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
             "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
             "TRANSACTION_STATUS_FAUX_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
             _ => unreachable!(),
@@ -423,6 +439,7 @@ async fn ffi_detects_transaction(
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
+    println!("Counters {:?}", ffi_wallet.get_counters());
     match comparison.as_str() {
         "AT_LEAST" => assert!(
             found_count >= count,
@@ -469,7 +486,7 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 
@@ -481,7 +498,7 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.add_base_node(
         base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().to_string(),
+        base_node.identity.first_public_address().unwrap().to_string(),
     );
 }
 

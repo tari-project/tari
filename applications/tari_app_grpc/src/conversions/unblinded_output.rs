@@ -26,7 +26,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, TransactionOutputVersion, UnblindedOutput},
+    transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
@@ -57,7 +57,7 @@ impl TryFrom<UnblindedOutput> for grpc::UnblindedOutput {
             }),
             script_lock_height: output.script_lock_height,
             covenant,
-            encrypted_value: output.encrypted_value.to_vec(),
+            encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }
@@ -95,7 +95,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let mut buffer = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+        let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
 
@@ -115,7 +115,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             metadata_signature,
             output.script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         ))
     }

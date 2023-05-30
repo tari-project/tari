@@ -42,7 +42,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -53,7 +53,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
+        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
         CoinbaseBuilder,
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -83,7 +83,6 @@ use crate::{
             OutputManagerEventSender,
             OutputManagerRequest,
             OutputManagerResponse,
-            PublicRewindKeys,
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
@@ -100,7 +99,6 @@ use crate::{
     util::one_sided::{
         diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
-        shared_secret_to_output_rewind_key,
         stealth_address_script_spending_key,
     },
 };
@@ -145,16 +143,10 @@ where
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
         Self::initialise_key_manager(&key_manager).await?;
-        let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
-            .await?;
         let encryption_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::OpeningsEncryption.get_branch_key(), 0)
             .await?;
-        let rewind_data = RewindData {
-            rewind_blinding_key,
-            encryption_key,
-        };
+        let recovery_data = RecoveryData { encryption_key };
 
         let resources = OutputManagerResources {
             config,
@@ -165,7 +157,7 @@ where
             master_key_manager: key_manager,
             consensus_constants,
             shutdown_signal,
-            rewind_data,
+            recovery_data,
         };
 
         Ok(Self {
@@ -183,13 +175,6 @@ where
             key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
         Ok(())
-    }
-
-    /// Return the public rewind keys
-    pub fn get_rewind_public_keys(&self) -> PublicRewindKeys {
-        PublicRewindKeys {
-            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
-        }
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
@@ -246,21 +231,9 @@ where
             OutputManagerRequest::AddOutput((uo, spend_priority)) => self
                 .add_output(None, *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
-            OutputManagerRequest::AddRewindableOutput((uo, spend_priority, custom_rewind_data)) => self
-                .add_rewindable_output(None, *uo, spend_priority, custom_rewind_data)
-                .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddOutputWithTxId((tx_id, uo, spend_priority)) => self
                 .add_output(Some(tx_id), *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
-            OutputManagerRequest::AddRewindableOutputWithTxId((tx_id, uo, spend_priority, custom_rewind_data)) => self
-                .add_rewindable_output(Some(tx_id), *uo, spend_priority, custom_rewind_data)
-                .map(|_| OutputManagerResponse::OutputAdded),
-            OutputManagerRequest::ConvertToRewindableTransactionOutput(uo) => {
-                let transaction_output = self.convert_to_rewindable_transaction_output(*uo)?;
-                Ok(OutputManagerResponse::ConvertedToTransactionOutput(Box::new(
-                    transaction_output,
-                )))
-            },
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
@@ -420,7 +393,7 @@ where
 
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
-                self.resources.rewind_data.clone(),
+                self.resources.recovery_data.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
@@ -474,9 +447,9 @@ where
                 let (spend_key, script_key) = self.get_spend_and_script_keys().await?;
                 Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
             },
-            OutputManagerRequest::GetRewindData => {
-                Ok(OutputManagerResponse::RewindData(self.resources.rewind_data.clone()))
-            },
+            OutputManagerRequest::GetRecoveryData => Ok(OutputManagerResponse::RecoveryData(
+                self.resources.recovery_data.clone(),
+            )),
         }
     }
 
@@ -521,21 +494,19 @@ where
 
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(state) => {
-                let trigger_validation = match (self.last_seen_tip_height, state.chain_metadata.clone()) {
-                    (Some(last_seen_tip_height), Some(cm)) => last_seen_tip_height != cm.height_of_longest_chain(),
-                    (None, _) => true,
-                    _ => false,
-                };
-                if trigger_validation {
-                    let _id = self.validate_outputs().map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                        e
-                    });
-                }
-                self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
+            BaseNodeEvent::BaseNodeStateChanged(_state) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received Base Node State Change but no block changes"
+                );
             },
-            BaseNodeEvent::NewBlockDetected(_) => {},
+            BaseNodeEvent::NewBlockDetected(_hash, height) => {
+                self.last_seen_tip_height = Some(height);
+                let _id = self.validate_outputs().map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                    e
+                });
+            },
         }
     }
 
@@ -643,7 +614,7 @@ where
         self.validate_outputs()
     }
 
-    /// Add an unblinded non-rewindable output to the outputs table and mark it as `Unspent`.
+    /// Add an unblinded recoverable output to the outputs table and mark it as `Unspent`.
     pub fn add_output(
         &mut self,
         tx_id: Option<TxId>,
@@ -673,56 +644,6 @@ where
             Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output)?,
         }
         Ok(())
-    }
-
-    /// Add an unblinded rewindable output to the outputs table and marks is as `Unspent`.
-    pub fn add_rewindable_output(
-        &mut self,
-        tx_id: Option<TxId>,
-        output: UnblindedOutput,
-        spend_priority: Option<SpendingPriority>,
-        custom_rewind_data: Option<RewindData>,
-    ) -> Result<(), OutputManagerError> {
-        debug!(
-            target: LOG_TARGET,
-            "Add output of value {} to Output Manager", output.value
-        );
-
-        let rewind_data = if let Some(value) = custom_rewind_data {
-            value
-        } else {
-            self.resources.rewind_data.clone()
-        };
-        let output = DbUnblindedOutput::rewindable_from_unblinded_output(
-            output,
-            &self.resources.factories,
-            &rewind_data,
-            spend_priority,
-            None,
-            OutputSource::default(),
-            tx_id,
-            None,
-        )?;
-        debug!(
-            target: LOG_TARGET,
-            "saving output of hash {} to Output Manager",
-            output.hash.to_hex()
-        );
-        match tx_id {
-            None => self.resources.db.add_unspent_output(output)?,
-            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output)?,
-        }
-        Ok(())
-    }
-
-    /// Convert an unblinded rewindable output into rewindable transaction output using the key manager's rewind data
-    pub fn convert_to_rewindable_transaction_output(
-        &mut self,
-        output: UnblindedOutput,
-    ) -> Result<TransactionOutput, OutputManagerError> {
-        let transaction_output =
-            output.as_rewindable_transaction_output(&Default::default(), &self.resources.rewind_data, None)?;
-        Ok(transaction_output)
     }
 
     /// Add an unblinded output to the outputs table and marks is as `EncumberedToBeReceived`. This is so that it will
@@ -788,7 +709,7 @@ where
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
-            .with_rewind_data(self.resources.rewind_data.clone())
+            .with_recovery_and_encrypted_data(self.resources.recovery_data.clone())?
             .with_script_private_key(script_private_key))
     }
 
@@ -821,13 +742,14 @@ where
             .commitment
             .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
         let features = single_round_sender_data.features.clone();
-        let encrypted_value = EncryptedValue::encrypt_value(
-            &self.resources.rewind_data.encryption_key,
+        let encrypted_data = EncryptedData::encrypt_data(
+            &self.resources.recovery_data.encryption_key,
             &commitment,
             single_round_sender_data.amount,
+            &spending_key,
         )?;
         let minimum_value_promise = single_round_sender_data.minimum_value_promise;
-        let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+        let output = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
                 spending_key.clone(),
@@ -847,17 +769,15 @@ where
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.ephemeral_public_nonce,
                     &single_round_sender_data.covenant,
-                    &encrypted_value,
+                    &encrypted_data,
                     minimum_value_promise,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
-                encrypted_value,
+                encrypted_data,
                 minimum_value_promise,
             ),
             &self.resources.factories,
-            &self.resources.rewind_data,
-            None,
             None,
             OutputSource::default(),
             Some(single_round_sender_data.tx_id),
@@ -870,12 +790,12 @@ where
 
         let nonce = PrivateKey::random(&mut OsRng);
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message.clone(),
             nonce,
             spending_key,
             &self.resources.factories,
-            &self.resources.rewind_data,
+            &encrypted_data,
         );
 
         Ok(rtp)
@@ -1034,7 +954,7 @@ where
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
             builder
                 .with_change_secret(spending_key)
-                .with_rewindable_outputs(self.resources.rewind_data.clone())
+                .with_recoverable_outputs(self.resources.recovery_data.clone())
                 .with_change_script(
                     script!(Nop),
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1058,11 +978,9 @@ where
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            change_output.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+            change_output.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &self.resources.rewind_data.clone(),
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -1120,15 +1038,13 @@ where
             .with_script_key(script_private_key)
             .with_script(script!(Nop))
             .with_nonce(nonce)
-            .with_rewind_data(self.resources.rewind_data.clone())
+            .with_recovery_data(self.resources.recovery_data.clone())
             .with_extra(extra)
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
-        let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+        let output = DbUnblindedOutput::from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            &self.resources.rewind_data,
-            None,
             None,
             OutputSource::Coinbase,
             Some(tx_id),
@@ -1202,7 +1118,7 @@ where
         if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1219,11 +1135,9 @@ where
             builder
                 .with_output(ub.clone(), sender_offset_private_key.clone())
                 .map_err(|e| OutputManagerError::BuildError(e.message))?;
-            db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 ub,
                 &self.resources.factories,
-                &self.resources.rewind_data,
-                None,
                 None,
                 OutputSource::default(),
                 None,
@@ -1236,11 +1150,9 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let tx_id = stp.get_tx_id()?;
         if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
-            db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &self.resources.rewind_data,
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -1298,7 +1210,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_rewindable_outputs(self.resources.rewind_data.clone())
+            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())
             .with_tx_id(tx_id);
@@ -1317,8 +1229,12 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_data = EncryptedData::encrypt_data(
+            &self.resources.recovery_data.encryption_key,
+            &commitment,
+            amount,
+            &spending_key,
+        )?;
         let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -1328,10 +1244,10 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_data,
             minimum_amount_promise,
         )?;
-        let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
+        let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new_current_version(
                 amount,
                 spending_key.clone(),
@@ -1343,12 +1259,10 @@ where
                 metadata_signature,
                 0,
                 covenant,
-                encrypted_value,
+                encrypted_data,
                 minimum_amount_promise,
             ),
             &self.resources.factories,
-            &self.resources.rewind_data,
-            None,
             None,
             OutputSource::default(),
             Some(tx_id),
@@ -1363,7 +1277,7 @@ where
         if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1385,11 +1299,9 @@ where
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            let change_output = DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &self.resources.rewind_data,
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -1768,7 +1680,7 @@ where
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
             .with_kernel_features(KernelFeatures::empty())
-            .with_rewindable_outputs(self.resources.rewind_data.clone());
+            .with_recoverable_outputs(self.resources.recovery_data.clone());
 
         // collecting inputs from source outputs
         let inputs: Vec<TransactionInput> = src_outputs
@@ -1810,10 +1722,11 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_value = EncryptedValue::encrypt_value(
-                &self.resources.rewind_data.encryption_key,
+            let encrypted_data = EncryptedData::encrypt_data(
+                &self.resources.recovery_data.encryption_key,
                 &commitment,
                 amount_per_split,
+                &spending_key,
             )?;
 
             let minimum_amount_promise = MicroTari::zero();
@@ -1825,11 +1738,11 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_value,
+                &encrypted_data,
                 minimum_amount_promise,
             )?;
 
-            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            let output = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new_current_version(
                     amount_per_split,
                     spending_key,
@@ -1841,12 +1754,10 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_value,
+                    encrypted_data,
                     minimum_amount_promise,
                 ),
                 &self.resources.factories,
-                &self.resources.rewind_data.clone(),
-                None,
                 None,
                 OutputSource::default(),
                 None,
@@ -1989,7 +1900,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_rewindable_outputs(self.resources.rewind_data.clone())
+            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
@@ -2028,10 +1939,11 @@ where
                 .factories
                 .commitment
                 .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_value = EncryptedValue::encrypt_value(
-                &self.resources.rewind_data.encryption_key,
+            let encrypted_data = EncryptedData::encrypt_data(
+                &self.resources.recovery_data.encryption_key,
                 &commitment,
                 amount_per_split,
+                &spending_key,
             )?;
             let minimum_value_promise = MicroTari::zero();
             let commitment_signature = TransactionOutput::create_metadata_signature(
@@ -2042,11 +1954,11 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
-                &encrypted_value,
+                &encrypted_data,
                 minimum_value_promise,
             )?;
 
-            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            let output = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new_current_version(
                     amount_per_split,
                     spending_key,
@@ -2058,12 +1970,10 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
-                    encrypted_value,
+                    encrypted_data,
                     minimum_value_promise,
                 ),
                 &self.resources.factories,
-                &self.resources.rewind_data.clone(),
-                None,
                 None,
                 OutputSource::default(),
                 None,
@@ -2083,7 +1993,7 @@ where
         if has_leftover_change {
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
             tx_builder.with_change_secret(spending_key);
-            tx_builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            tx_builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             tx_builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -2119,11 +2029,9 @@ where
             })?;
 
             // appending `change` output to the result
-            dest_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+            dest_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output_for_change,
                 &self.resources.factories,
-                &self.resources.rewind_data.clone(),
-                None,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
@@ -2203,7 +2111,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_rewindable_outputs(self.resources.rewind_data.clone())
+            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
@@ -2238,8 +2146,12 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, aftertax_amount.into());
-        let encrypted_value =
-            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
+        let encrypted_data = EncryptedData::encrypt_data(
+            &self.resources.recovery_data.encryption_key,
+            &commitment,
+            aftertax_amount,
+            &spending_key,
+        )?;
         let minimum_value_promise = MicroTari::zero();
         let commitment_signature = TransactionOutput::create_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -2249,11 +2161,11 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
-            &encrypted_value,
+            &encrypted_data,
             minimum_value_promise,
         )?;
 
-        let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+        let output = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new_current_version(
                 aftertax_amount,
                 spending_key,
@@ -2265,12 +2177,10 @@ where
                 commitment_signature,
                 0,
                 covenant.clone(),
-                encrypted_value,
+                encrypted_data,
                 minimum_value_promise,
             ),
             &self.resources.factories,
-            &self.resources.rewind_data.clone(),
-            None,
             None,
             OutputSource::default(),
             None,
@@ -2356,11 +2266,10 @@ where
             self.node_identity.as_ref().secret_key(),
             &output.sender_offset_public_key,
         );
-        let blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
+        if let Ok((amount, blinding_factor)) =
+            EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
-            let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
             if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
                 let rewound_output = UnblindedOutput::new(
                     output.version,
@@ -2376,7 +2285,7 @@ where
                     // to to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
-                    output.encrypted_value,
+                    output.encrypted_data,
                     output.minimum_value_promise,
                 );
 
@@ -2403,7 +2312,7 @@ where
 
                 let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
                 builder.with_change_secret(spending_key);
-                builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+                builder.with_recoverable_outputs(self.resources.recovery_data.clone());
                 builder.with_change_script(
                     script!(Nop),
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -2425,11 +2334,9 @@ where
                         "There should be a change output metadata signature available".to_string(),
                     )
                 })?;
-                let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                let change_output = DbUnblindedOutput::from_unblinded_output(
                     unblinded_output,
                     &self.resources.factories,
-                    &self.resources.rewind_data,
-                    None,
                     None,
                     OutputSource::AtomicSwap,
                     Some(tx_id),
@@ -2492,7 +2399,7 @@ where
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
         builder.with_change_secret(spending_key);
-        builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+        builder.with_recoverable_outputs(self.resources.recovery_data.clone());
         builder.with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -2513,11 +2420,9 @@ where
             OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
         })?;
 
-        let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+        let change_output = DbUnblindedOutput::from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            &self.resources.rewind_data,
-            None,
             None,
             OutputSource::Refund,
             Some(tx_id),
@@ -2639,15 +2544,10 @@ where
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
-            let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            let committed_value =
-                EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
-
-            if let Ok(committed_value) = committed_value {
-                let blinding_factor =
-                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-
+            if let Ok((committed_value, blinding_factor)) =
+                EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+            {
                 if output.verify_mask(
                     &self.resources.factories.range_proof,
                     &blinding_factor,
@@ -2665,20 +2565,15 @@ where
                         output.metadata_signature,
                         0,
                         output.covenant,
-                        output.encrypted_value,
+                        output.encrypted_data,
                         output.minimum_value_promise,
                     );
 
                     let tx_id = TxId::new_random();
-                    let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                    let db_output = DbUnblindedOutput::from_unblinded_output(
                         rewound_output.clone(),
                         &self.resources.factories,
-                        &RewindData {
-                            rewind_blinding_key,
-                            encryption_key,
-                        },
                         None,
-                        Some(&output.proof),
                         output_source,
                         Some(tx_id),
                         None,

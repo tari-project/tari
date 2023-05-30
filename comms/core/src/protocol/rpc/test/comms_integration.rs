@@ -44,7 +44,7 @@ async fn run_service() {
     let mock_state = rpc_service.shared_state();
     let shutdown = Shutdown::new();
     let comms1 = CommsBuilder::new()
-        .with_listener_address(node_identity1.first_public_address())
+        .with_listener_address(node_identity1.first_public_address().unwrap())
         .with_node_identity(node_identity1)
         .with_shutdown_signal(shutdown.to_signal())
         .with_peer_storage(CommsDatabase::new(), None)
@@ -57,7 +57,7 @@ async fn run_service() {
 
     let node_identity2 = build_node_identity(Default::default());
     let comms2 = CommsBuilder::new()
-        .with_listener_address(node_identity2.first_public_address())
+        .with_listener_address(node_identity2.first_public_address().unwrap())
         .with_shutdown_signal(shutdown.to_signal())
         .with_node_identity(node_identity2.clone())
         .with_peer_storage(CommsDatabase::new(), None)

@@ -3,7 +3,7 @@ name = "tari_contacts"
 authors = ["The Tari Development Community"]
 description = "Tari contacts library"
 license = "BSD-3-Clause"
-version = "0.50.0-pre.1"
+version = "0.50.0-pre.2"
 edition = "2018"
 
 [dependencies]
@@ -12,7 +12,7 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_crypto = { version = "0.16.12"}
+tari_crypto = { version = "0.16"}
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
@@ -30,7 +30,7 @@ rand = "0.7.3"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["sync", "macros"] }
 tower = "0.4"
-uuid = { version = "1.3.1", features = ["v4"] }
+uuid = { version = "1.3", features = ["v4"] }
 
 [dev-dependencies]
 tari_comms_dht = {  path = "../../comms/dht", features = ["test-mocks"] }

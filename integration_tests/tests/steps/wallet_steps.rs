@@ -48,9 +48,10 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             OutputFeatures,
             OutputType,
+            RangeProofType,
             TransactionOutputVersion,
             UnblindedOutput,
         },
@@ -58,7 +59,11 @@ use tari_core::{
 };
 use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
 use tari_integration_tests::{
-    transaction::{build_transaction_with_output, build_transaction_with_output_and_fee},
+    transaction::{
+        build_transaction_with_output,
+        build_transaction_with_output_and_fee,
+        build_transaction_with_output_and_lockheight,
+    },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
@@ -557,6 +562,25 @@ async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs
         .collect::<Vec<_>>();
 
     let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    world.utxos.insert(output, utxo);
+    world.transactions.insert(transaction, tx);
+}
+
+#[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
+async fn create_tx_custom_lock(
+    world: &mut TariWorld,
+    transaction: String,
+    inputs: String,
+    output: String,
+    lockheight: u64,
+) {
+    let inputs = inputs.split(',').collect::<Vec<&str>>();
+    let utxos = inputs
+        .iter()
+        .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
+        .collect::<Vec<_>>();
+
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -2193,10 +2217,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features =
+            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
@@ -2216,7 +2241,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -2296,10 +2321,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features =
+            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
@@ -2319,7 +2345,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -2341,7 +2367,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         .into_inner()
         .tx_ids;
 }
-
+#[allow(clippy::too_many_lines)]
 #[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
 async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
@@ -2399,10 +2425,11 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_value = EncryptedValue::from_hex(&output[19]).unwrap();
+        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
 
-        let features = OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None);
+        let features =
+            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
@@ -2422,7 +2449,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
 

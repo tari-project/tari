@@ -65,16 +65,12 @@ Feature: Reorgs
     When I have a base node B connected to seed SA
     When I mine 5 blocks on B
     Then node B is at height 5
-    When I save the tip on B as BTip1
-    # Try a few times to insert an invalid block
-    # And I mine a block on B at height 3 with an invalid MMR
-    # And I mine a block on B at height 3 with an invalid MMR
-    # And I mine a block on B at height 4 with an invalid MMR
-    # And I mine a block on B at height 4 with an invalid MMR
-    # Then node B is at tip BTip1
+    When I mine but do not submit a block BLOCKA on B
+    Then I update block BLOCKA to have an invalid mmr
+    When I submit block BLOCKA to B
+    Then all nodes are at height 5
 
-  # Failing communication on restart
-  # @reorg
+  # @reorg @missing-steps
   # Scenario: Pruned mode reorg simple
   #   When I have a base node NODE1 connected to all seed nodes
   #   When I have wallet WALLET1 connected to base node NODE1
@@ -98,7 +94,7 @@ Feature: Reorgs
   #   When I start base node NODE1
   #   Then all nodes are at height 20
 
-  @reorg @flaky
+  @reorg @flaky @missing-steps
   Scenario: Pruned mode reorg past horizon
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
@@ -124,54 +120,54 @@ Feature: Reorgs
     Then node PNODE1 is at height 10
     When I start base node NODE2
     # Here is where it all goes wrong. the restarted node never syncs
-    # Then all nodes are at height 20
-    # # Because TX1 should have been re_orged out we should be able to spend CB1 again
-    # When I create a transaction TX2 spending CB1 to UTX2
-    # When I submit transaction TX2 to PNODE1
-    # Then PNODE1 has TX2 in MEMPOOL state
+    Then all nodes are at height 20
+    # Because TX1 should have been re_orged out we should be able to spend CB1 again
+    When I create a transaction TX2 spending CB1 to UTX2
+    When I submit transaction TX2 to PNODE1
+    Then PNODE1 has TX2 in MEMPOOL state
 
-  @reorg
+  @reorg @broken
   Scenario: Zero-conf reorg with spending
     When I have a base node NODE1 connected to all seed nodes
-    # Given I have a base node NODE2 connected to node NODE1
-    # When I mine 14 blocks on NODE1
-    # When I mine a block on NODE1 with coinbase CB1
+    When I have a base node NODE2 connected to node NODE1
+    When I mine 14 blocks on NODE1
+    When I mine a block on NODE1 with coinbase CB1
     When I mine 4 blocks on NODE1
-    # When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 20
-    # When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 20
-    # When I submit transaction TX1 to NODE1
-    # When I submit transaction TX11 to NODE1
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 20
+    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 20
+    When I submit transaction TX1 to NODE1
+    When I submit transaction TX11 to NODE1
     When I mine 1 blocks on NODE1
-    # Then NODE1 has TX1 in MINED state
-    # And NODE1 has TX11 in MINED state
-    # And all nodes are at height 20
-    # And I stop node NODE1
-    # And node NODE2 is at height 20
-    # When I mine a block on NODE2 with coinbase CB2
-    # When I mine 3 blocks on NODE2
-    # When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 20
-    # When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 20
-    # When I submit transaction TX2 to NODE2
-    # When I submit transaction TX21 to NODE2
-    # When I mine 1 blocks on NODE2
-    # Then node NODE2 is at height 25
-    # And NODE2 has TX2 in MINED state
-    # And NODE2 has TX21 in MINED state
-    # And I stop node NODE2
-    # When I start base node NODE1
-    # And node NODE1 is at height 20
-    # When I mine a block on NODE1 with coinbase CB3
+    Then NODE1 has TX1 in MINED state
+    And NODE1 has TX11 in MINED state
+    And all nodes are at height 20
+    And I stop node NODE1
+    And node NODE2 is at height 20
+    When I mine a block on NODE2 with coinbase CB2
+    When I mine 3 blocks on NODE2
+    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 20
+    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 20
+    When I submit transaction TX2 to NODE2
+    When I submit transaction TX21 to NODE2
+    When I mine 1 blocks on NODE2
+    Then node NODE2 is at height 25
+    And NODE2 has TX2 in MINED state
+    And NODE2 has TX21 in MINED state
+    And I stop node NODE2
+    When I start base node NODE1
+    And node NODE1 is at height 20
+    When I mine a block on NODE1 with coinbase CB3
     When I mine 3 blocks on NODE1
-    # When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 20
-    # When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 20
-    # When I submit transaction TX3 to NODE1
-    # When I submit transaction TX31 to NODE1
+    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 20
+    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 20
+    When I submit transaction TX3 to NODE1
+    When I submit transaction TX31 to NODE1
     When I mine 1 blocks on NODE1
-    # Then NODE1 has TX3 in MINED state
-    # And NODE1 has TX31 in MINED state
-    # And node NODE1 is at height 25
-    # When I start base node NODE2
-    # Then all nodes are on the same chain tip
+    Then NODE1 has TX3 in MINED state
+    And NODE1 has TX31 in MINED state
+    And node NODE1 is at height 25
+    When I start base node NODE2
+    Then all nodes are on the same chain at height 25
 
   Scenario Outline: Massive multiple reorg
     #
@@ -257,7 +253,7 @@ Feature: Reorgs
         | 100    | 125    | 150   | 175  |
         | 1010   | 1110   | 1210  | 1310 |
 
-  @reorg
+  @reorg @missing-steps
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     When I have wallet WALLET1 connected to base node NODE1
@@ -277,7 +273,7 @@ Feature: Reorgs
     # When I start base node NODE1
     # Then all nodes are on the same chain at height 12
 
-  @reorg @long-running
+  @reorg @long-running @missing-steps
   Scenario: Full block sync with large reorg
     Given I have a base node NODE1
     When I have wallet WALLET1 connected to base node NODE1

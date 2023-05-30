@@ -32,11 +32,11 @@ use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     transaction::TxId,
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
+    transaction_components::{EncryptedData, OutputFeatures, OutputType, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
@@ -101,7 +101,7 @@ pub struct OutputSql {
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
     pub mined_timestamp: Option<NaiveDateTime>,
-    pub encrypted_value: Vec<u8>,
+    pub encrypted_data: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
     pub last_validation_timestamp: Option<NaiveDateTime>,
@@ -659,7 +659,7 @@ impl OutputSql {
             }
         })?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
+        let encrypted_data = EncryptedData::from_bytes(&o.encrypted_data)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -741,7 +741,7 @@ impl OutputSql {
             ),
             o.script_lock_height as u64,
             covenant,
-            encrypted_value,
+            encrypted_data,
             MicroTari::from(o.minimum_value_promise as u64),
         );
 
@@ -749,29 +749,24 @@ impl OutputSql {
         o.spending_key.zeroize();
         o.script_private_key.zeroize();
 
+        let factories = CryptoFactories::default();
+        let commitment = match o.commitment {
+            None => factories
+                .commitment
+                .commit(&unblinded_output.spending_key, &unblinded_output.value.into()),
+            Some(c) => Commitment::from_vec(&c)?,
+        };
         let hash = match o.hash {
-            None => {
-                let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories)?.hash()
-            },
-            Some(v) => match v.try_into() {
+            None => unblinded_output.hash(&factories),
+            Some(v) => match <Vec<u8> as TryInto<FixedHash>>::try_into(v) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Malformed transaction hash: {}", e);
+                    error!(target: LOG_TARGET, "Malformed output hash: {}", e);
                     return Err(OutputManagerStorageError::ConversionError {
-                        reason: "Malformed transaction hash".to_string(),
+                        reason: "Malformed output hash".to_string(),
                     });
                 },
             },
-        };
-        let commitment = match o.commitment {
-            None => {
-                let factories = CryptoFactories::default();
-                factories
-                    .commitment
-                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
-            },
-            Some(c) => Commitment::from_vec(&c)?,
         };
         let spending_priority = (o.spending_priority as u32).into();
         let mined_in_block = match o.mined_in_block {

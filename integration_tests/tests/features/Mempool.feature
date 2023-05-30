@@ -21,22 +21,24 @@ Feature: Mempool
     Then SENDER has TX1 in MEMPOOL state
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
+    @broken
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     When I have a base node SENDER connected to all seed nodes
     When I have 2 base nodes connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
-    When I mine 2 blocks on SENDER
-    Then all nodes are at height 3
+    When I mine 6 blocks on SENDER
+    Then all nodes are at height 7
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
     Then TX1 is in the MEMPOOL of all nodes
     When I have a base node NODE1 connected to all seed nodes
     # Keeps returning not stored. Maybe initial sync ins't receiving it.
-    # Then NODE1 has TX1 in MEMPOOL state
+    # mempool needs to sync more than 5 blocks before it starts syncing
+    Then NODE1 has TX1 in MEMPOOL state
     When I mine 1 blocks on SENDER
-    Then all nodes are at height 4
+    Then all nodes are at height 8
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
@@ -178,3 +180,14 @@ Feature: Mempool
     Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
     When I mine 1 blocks on BN1
     Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool
+
+  Scenario: Mempool should not accept locked transactions
+    Given I have 1 seed nodes
+    When I have a base node BN1 connected to all seed nodes
+    When I mine a block on BN1 with coinbase CB1
+    When I mine 2 blocks on BN1
+    When I create a custom locked transaction TX1 spending CB1 to UTX1 with lockheight 5
+    When I submit transaction TX1 to BN1 and it does not succeed
+    Then BN1 has TX1 in NOT_STORED state
+    When I mine 4 blocks on BN1
+    When I submit transaction TX1 to BN1

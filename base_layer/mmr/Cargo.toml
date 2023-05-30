@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.50.0-pre.1"
+version = "0.50.0-pre.2"
 edition = "2018"
 
 [features]
@@ -14,7 +14,7 @@ benches = ["criterion"]
 
 [dependencies]
 tari_utilities = "0.4.10"
-tari_crypto = { version = "0.16.12"}
+tari_crypto = { version = "0.16"}
 tari_common = {path = "../../common"}
 thiserror = "1.0.26"
 borsh = "0.9.3"
@@ -29,6 +29,7 @@ rand="0.8.0"
 blake2 = "0.9.0"
 serde_json = "1.0"
 bincode = "1.1"
+
 [lib]
 # Disable libtest from intercepting Criterion bench arguments
 bench = false
@@ -36,3 +37,8 @@ bench = false
 [[bench]]
 name = "bench"
 harness = false
+
+[[test]]
+name="tari_mmr_integration_tests"
+path="tests/mmr_integration_tests.rs"
+required-features=["native_bitmap"]

@@ -22,12 +22,15 @@
 #![feature(internal_output_capture)]
 
 use std::{
+    fs,
+    io,
     path::PathBuf,
+    process,
     str::{self},
     sync::{Arc, Mutex},
 };
 
-use cucumber::{event::ScenarioFinished, World as _};
+use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
 use log::*;
 use tari_common::initialize_logging;
 use tari_integration_tests::TariWorld;
@@ -101,13 +104,28 @@ fn main() {
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
             })
         });
+        let file = fs::File::create("cucumber-output-junit.xml").unwrap();
         world
             // .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
-            .run_and_exit("tests/features/")
+            .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
+                                          writer::Summarize::new(writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString))))
+            .run("tests/features/")
             .await;
     });
 
     // If by any chance we have anything in the stdout buffer just log it.
     flush_stdout(&stdout_buffer);
+
+    // Move the logs to the temp dir
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let log_dir = crate_root.join("log");
+    let test_run_dir = crate_root.join(format!("tests/temp/cucumber_{}/logs", process::id()));
+    fs::create_dir_all(&test_run_dir).unwrap();
+
+    for entry in fs::read_dir(log_dir).unwrap() {
+        let file = entry.unwrap();
+        fs::copy(file.path(), test_run_dir.join(file.file_name())).unwrap();
+        fs::remove_file(file.path()).unwrap();
+    }
 }

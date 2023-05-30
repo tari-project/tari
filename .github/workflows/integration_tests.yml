@@ -1,13 +1,13 @@
 ---
 name: Integration tests
 
-'on':
+"on":
   pull_request:
     types:
       - opened
       - reopened
       - synchronize
-  merge_group:    
+  merge_group:
   push:
     paths-ignore:
       - '**/*.md'
@@ -102,6 +102,13 @@ jobs:
             -c 5
             --retry 2
 
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
   ffi:
     name: Cucumber tests / FFI
     runs-on: [self-hosted, ubuntu-high-cpu]
@@ -170,3 +177,20 @@ jobs:
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)"
             -c 1
             --retry 2
+      - name: upload artifact
+        uses: actions/upload-artifact@v2  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-ffi-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+  # needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

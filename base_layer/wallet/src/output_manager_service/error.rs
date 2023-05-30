@@ -26,10 +26,11 @@ use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction_components::{EncryptionError, TransactionError},
+    transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
+use tari_crypto::errors::RangeProofError;
 use tari_key_manager::{
     error::{KeyManagerError, MnemonicError},
     key_manager_service::KeyManagerServiceError,
@@ -133,13 +134,15 @@ pub enum OutputManagerError {
     #[error("Key manager service error : {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Value can't be encrypted/decrypted")]
-    ValueEncryptionError(#[from] EncryptionError),
+    ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
     NoCommitmentsProvided,
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
     #[error("Validation in progress")]
     ValidationInProgress,
+    #[error("Invalid data: `{0}`")]
+    RangeProofError(#[from] RangeProofError),
 }
 
 #[derive(Debug, Error)]
@@ -196,6 +199,8 @@ pub enum OutputManagerStorageError {
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
+    #[error("Encryption error: `{0}`")]
+    EncryptedOpeningsError(#[from] EncryptedDataError),
 }
 
 impl From<OutputManagerError> for ExitError {

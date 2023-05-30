@@ -31,7 +31,6 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    errors::RangeProofError,
     keys::SecretKey as SecretKeyTrait,
     range_proof::RangeProofService,
     tari_utilities::hex::Hex,
@@ -47,7 +46,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedValue, OutputFeatures},
+        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -60,7 +59,9 @@ fn input_and_output_and_unblinded_output_hash_match() {
     let test_params = TestParams::new();
     let factory = CommitmentFactory::default();
 
-    let i = test_params.create_unblinded_output(Default::default());
+    let i = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
     let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
     let input = i.as_transaction_input(&factory).unwrap();
     assert_eq!(output.hash(), input.output_hash());
@@ -72,7 +73,9 @@ fn unblinded_input() {
     let test_params = TestParams::new();
     let factory = CommitmentFactory::default();
 
-    let i = test_params.create_unblinded_output(Default::default());
+    let i = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
     let input = i
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
@@ -82,11 +85,13 @@ fn unblinded_input() {
 }
 
 #[test]
-fn unblinded_input_with_rewind_data() {
+fn unblinded_input_with_recovery_data() {
     let test_params = TestParams::new();
     let factory = CommitmentFactory::default();
 
-    let i = test_params.create_unblinded_output_with_rewind_data(Default::default());
+    let i = test_params
+        .create_unblinded_output_with_recovery_data(Default::default())
+        .unwrap();
     let input = i
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
@@ -103,17 +108,21 @@ fn range_proof_verification() {
     let test_params_2 = TestParams::new();
 
     // For testing the max range has been limited to 2^32 so this value is too large.
-    let unblinded_output1 = test_params_1.create_unblinded_output(UtxoTestParams {
-        value: (2u64.pow(32) - 1u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output1 = test_params_1
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (2u64.pow(32) - 1u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
-    let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
-        value: (2u64.pow(32) + 1u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output2 = test_params_2
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (2u64.pow(32) + 1u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output2 = unblinded_output2.as_transaction_output(&factories);
     match tx_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
@@ -151,38 +160,48 @@ fn range_proof_verification() {
 fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
 
-    let unblinded_output1 = TestParams::new().create_unblinded_output(UtxoTestParams {
-        value: (1u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output1 = TestParams::new()
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (1u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output2 = TestParams::new().create_unblinded_output(UtxoTestParams {
-        value: (2u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output2 = TestParams::new()
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (2u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output2 = unblinded_output2.as_transaction_output(&factories).unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output3 = TestParams::new().create_unblinded_output(UtxoTestParams {
-        value: (3u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output3 = TestParams::new()
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (3u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output3 = unblinded_output3.as_transaction_output(&factories).unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output4 = TestParams::new().create_unblinded_output(UtxoTestParams {
-        value: (4u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output4 = TestParams::new()
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (4u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let tx_output4 = unblinded_output4.as_transaction_output(&factories).unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output5 = TestParams::new().create_unblinded_output(UtxoTestParams {
-        value: (5u64).into(),
-        ..Default::default()
-    });
+    let unblinded_output5 = TestParams::new()
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: (5u64).into(),
+            ..Default::default()
+        })
+        .unwrap();
     let mut tx_output5 = unblinded_output5.as_transaction_output(&factories).unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
@@ -208,7 +227,9 @@ fn range_proof_verification_batch() {
 fn sender_signature_verification() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
-    let unblinded_output = test_params.create_unblinded_output(Default::default());
+    let unblinded_output = test_params
+        .create_unblinded_output_not_recoverable(Default::default())
+        .unwrap();
 
     let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
@@ -284,7 +305,7 @@ fn check_timelocks() {
         script_signature,
         offset_pub_key,
         Covenant::default(),
-        EncryptedValue::default(),
+        EncryptedData::default(),
         MicroTari::zero(),
     );
 
@@ -435,42 +456,37 @@ fn inputs_not_malleable() {
 }
 
 #[test]
-fn test_output_rewinding_bulletproofs() {
+fn test_output_recover_openings() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
     let v = MicroTari::from(42);
     let random_key = PrivateKey::random(&mut OsRng);
 
-    for minimum_value_promise in [MicroTari::zero(), v / 2, v] {
-        let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
+    let unblinded_output = test_params
+        .create_unblinded_output_with_recovery_data(UtxoTestParams {
             value: v,
-            minimum_value_promise,
             ..Default::default()
-        });
-        let output = unblinded_output
-            .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
-            .unwrap();
+        })
+        .unwrap();
+    let output = unblinded_output.as_transaction_output(&factories).unwrap();
 
-        match output.recover_mask(&factories.range_proof, &random_key) {
-            Ok(recovered_mask) => {
-                if let Ok(succeeded) =
-                    output.verify_mask(&factories.range_proof, &recovered_mask, unblinded_output.value.as_u64())
-                {
-                    if succeeded {
-                        panic!("Should not have succeeded")
-                    }
-                }
-            },
-            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
-            _ => {
-                panic!("Unexpected error condition")
-            },
-        }
-        let recovered_mask = output
-            .recover_mask(&factories.range_proof, &test_params.rewind_data.rewind_blinding_key)
-            .unwrap();
-        assert_eq!(recovered_mask, test_params.spend_key);
+    if let Ok((value, recovered_mask)) =
+        EncryptedData::decrypt_data(&random_key, &output.commitment, &output.encrypted_data)
+    {
+        assert!(output
+            .verify_mask(&factories.range_proof, &recovered_mask, value.as_u64())
+            .is_err());
     }
+    let (value, recovered_mask) = EncryptedData::decrypt_data(
+        &test_params.recovery_data.encryption_key,
+        &output.commitment,
+        &output.encrypted_data,
+    )
+    .unwrap();
+    assert!(output
+        .verify_mask(&factories.range_proof, &recovered_mask, value.as_u64())
+        .is_ok());
+    assert_eq!(recovered_mask, test_params.spend_key);
 }
 
 mod validate_internal_consistency {

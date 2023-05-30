@@ -23,6 +23,7 @@
 use std::{iter, sync::Arc, time::Duration};
 
 use log::*;
+use multiaddr::{multiaddr, Protocol};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -222,9 +223,20 @@ impl UnspawnedCommsNode {
         );
 
         let listening_info = connection_manager_requester.wait_until_listening().await?;
+
+        // Final setup of the hidden service.
         let mut hidden_service = None;
         if let Some(mut ctl) = hidden_service_ctl {
-            ctl.set_proxied_addr(listening_info.bind_address());
+            // Only set the address to the bind address it is set to TCP port 0
+            let mut proxied_addr = ctl.proxied_address();
+            if proxied_addr.ends_with(&multiaddr!(Tcp(0u16))) {
+                // Remove the TCP port 0 address and replace it with the actual listener port
+                if let Some(Protocol::Tcp(port)) = listening_info.bind_address().iter().last() {
+                    proxied_addr.pop();
+                    proxied_addr.push(Protocol::Tcp(port));
+                    ctl.set_proxied_addr(&proxied_addr);
+                }
+            }
             let hs = ctl.create_hidden_service().await?;
             let onion_addr = hs.get_onion_address();
             if !node_identity.public_addresses().contains(&onion_addr) {
@@ -244,17 +256,14 @@ impl UnspawnedCommsNode {
         );
 
         // Spawn liveness check now that we have the final address
-        let liveness_watch = connection_manager_config
-            .liveness_self_check_interval
-            .map(|interval| {
-                LivenessCheck::spawn(
-                    transport,
-                    node_identity.first_public_address(),
-                    interval,
-                    shutdown_signal.clone(),
-                )
-            })
-            .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1);
+        let liveness_watch = if let Some(public_address) = node_identity.first_public_address() {
+            connection_manager_config
+                .liveness_self_check_interval
+                .map(|interval| LivenessCheck::spawn(transport, public_address, interval, shutdown_signal.clone()))
+                .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1)
+        } else {
+            watch::channel(LivenessStatus::Disabled).1
+        };
 
         Ok(CommsNode {
             shutdown_signal,

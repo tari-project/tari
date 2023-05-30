@@ -57,7 +57,7 @@ message TransactionInput {
     // Version
     uint32 version = 10;
     // The encrypted value
-    bytes encrypted_value = 11;
+    bytes encrypted_data = 11;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 12;
 }
@@ -71,7 +71,7 @@ message TransactionOutput {
     // The homomorphic commitment representing the output amount
     Commitment commitment = 2;
     // A proof that the commitment is in the right range
-    bytes range_proof = 3;
+    RangeProof range_proof = 3;
     // Tari script serialised script
     bytes script = 4;
     // Tari script offset pubkey, K_O
@@ -82,8 +82,8 @@ message TransactionOutput {
     bytes covenant = 7;
     // Version
     uint32 version = 8;
-    // The encrypted value
-    bytes encrypted_value = 9;
+    // Encrypted Pedersen commitment openings (value and mask) for the output
+    bytes encrypted_data = 9;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 10;
 }
@@ -99,8 +99,10 @@ message OutputFeatures {
     uint64 maturity = 3;
     // Additional arbitrary info in coinbase transactions supplied by miners
     bytes coinbase_extra = 4;
+    // Features that are specific to a side chain
     SideChainFeature sidechain_feature = 5;
-    // Additional
+    // The type of range proof used in the output
+    uint32 range_proof_type = 6;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
