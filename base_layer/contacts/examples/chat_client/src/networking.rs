@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 // Re-exports
 pub use tari_comms::{
@@ -32,51 +32,35 @@ use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsSer
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{spawn_comms_using_transport, P2pInitializer},
+    peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
-    Network,
-    P2pConfig,
-    PeerSeedsConfig,
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
-use crate::database::connect_to_db;
+use crate::{config::ApplicationConfig, database::connect_to_db};
 
 pub async fn start(
     node_identity: Arc<NodeIdentity>,
-    config: P2pConfig,
-    seed_peers: Vec<Peer>,
-    network: Network,
-    db_path: PathBuf,
+    config: ApplicationConfig,
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
-    let backend = connect_to_db(db_path)?;
+    let backend = connect_to_db(config.chat_client.db_file)?;
 
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
     let in_msg = Arc::new(subscription_factory);
 
-    let seed_config = PeerSeedsConfig {
-        peer_seeds: seed_peers
-            .iter()
-            .map(|p| format!("{}::{}", p.public_key, p.addresses.best().unwrap().address()))
-            .collect::<Vec<String>>()
-            .into(),
-        ..PeerSeedsConfig::default()
-    };
-
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
-            config.clone(),
-            seed_config,
-            network,
+            config.chat_client.p2p.clone(),
+            config.peer_seeds.clone(),
+            config.chat_client.network,
             node_identity,
             publisher,
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
-                auto_ping_interval: Some(Duration::from_secs(1)),
-                num_peers_per_round: 0,       // No random peers
-                max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
+                auto_ping_interval: Some(config.chat_client.metadata_auto_ping_interval),
                 ..Default::default()
             },
             in_msg.clone(),
@@ -96,11 +80,20 @@ pub async fn start(
         .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
     let peer_manager = comms.peer_manager();
+
+    let seed_peers = config
+        .peer_seeds
+        .peer_seeds
+        .iter()
+        .map(|s| SeedPeer::from_str(s))
+        .map(|r| r.map(Peer::from))
+        .collect::<Result<Vec<_>, _>>()?;
+
     for peer in seed_peers {
         peer_manager.add_peer(peer).await?;
     }
 
-    let comms = spawn_comms_using_transport(comms, config.transport.clone())
+    let comms = spawn_comms_using_transport(comms, config.chat_client.p2p.transport.clone())
         .await
         .unwrap();
     handles.register(comms);
