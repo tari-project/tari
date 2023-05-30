@@ -32,24 +32,23 @@ use indexmap::IndexMap;
 use libc::c_void;
 
 // use tari_wallet_ffi::*;
-use super::{
-    ffi::{
-        Balance,
-        Callbacks,
-        CompletedTransactions,
-        Contact,
-        Contacts,
-        ContactsLivenessData,
-        FeePerGramStats,
-        PendingInboundTransactions,
-        PendingOutboundTransactions,
-        PublicKeys,
-        WalletAddress,
-    },
-    get_port,
+use super::ffi::{
+    Balance,
+    Callbacks,
+    CompletedTransactions,
+    Contact,
+    Contacts,
+    ContactsLivenessData,
+    FeePerGramStats,
+    PendingInboundTransactions,
+    PendingOutboundTransactions,
+    PublicKeys,
+    WalletAddress,
 };
 use crate::{
     ffi::{self},
+    get_base_dir,
+    get_port,
     TariWorld,
 };
 
@@ -67,10 +66,19 @@ impl WalletFFI {
         let port = get_port(18000..18499).unwrap();
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
+        let base_dir_path = get_base_dir()
+            .join("ffi_wallets")
+            .join(format!("port_{}", port))
+            .join(name.clone());
+        let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
+        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
+        let log_path = base_dir_path
+            .join("logs")
+            .join("ffi_wallet.log")
+            .as_os_str()
+            .to_str()
+            .unwrap()
+            .into();
         let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
         Self { name, port, wallet }
     }
