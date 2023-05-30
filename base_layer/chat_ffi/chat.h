@@ -12,13 +12,6 @@ struct ChatMessages;
 
 struct ClientFFI;
 
-struct ClientPeers;
-
-/**
- * Configuration for a comms node
- */
-struct P2pConfig;
-
 struct TariAddress;
 
 #ifdef __cplusplus
@@ -27,16 +20,10 @@ extern "C" {
 
 /**
  * Creates a Chat Client
- * TODO: This function takes a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
- * isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
- * for supplying seed peers.
  *
  * ## Arguments
- * `config` - The P2PConfig pointer
+ * `config` - The ApplicationConfig pointer
  * `identity_file_path` - The path to the node identity file
- * `db_path` - The path to the db file
- * `seed_peers` - A ptr to a collection of seed peers
- * `network_str` - The network to connect to
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -46,11 +33,8 @@ extern "C" {
  * # Safety
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
-struct ClientFFI *create_chat_client(struct P2pConfig *config,
+struct ClientFFI *create_chat_client(ApplicationConfig *config,
                                      const char *identity_file_path,
-                                     const char *db_path,
-                                     struct ClientPeers *seed_peers,
-                                     const char *network_str,
                                      int *error_out);
 
 /**
@@ -66,6 +50,39 @@ struct ClientFFI *create_chat_client(struct P2pConfig *config,
  * None
  */
 void destroy_client_ffi(struct ClientFFI *client);
+
+/**
+ * Creates a Chat Client config
+ *
+ * ## Arguments
+ * `network` - The network to run on
+ * `public_address` - The nodes public address
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ApplicationConfig` - Returns a pointer to an ApplicationConfig
+ *
+ * # Safety
+ * The ```destroy_config``` method must be called when finished with a Config to prevent a memory leak
+ */
+ApplicationConfig *create_chat_config(const char *network_str,
+                                      const char *public_address,
+                                      const char *datastore_path,
+                                      int *error_out);
+
+/**
+ * Frees memory for an ApplicationConfig
+ *
+ * ## Arguments
+ * `config` - The pointer of an ApplicationConfig
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_config(ApplicationConfig *config);
 
 /**
  * Sends a message over a client

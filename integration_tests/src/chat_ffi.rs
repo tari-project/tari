@@ -22,8 +22,6 @@
 
 use std::{
     ffi::{c_void, CString},
-    fs,
-    path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -33,19 +31,20 @@ use async_trait::async_trait;
 type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
-use rand::rngs::OsRng;
-use tari_chat_client::{database, ChatClient};
-use tari_common::configuration::{MultiaddrList, Network};
+use tari_app_utilities::identity_management::setup_node_identity;
+use tari_chat_client::{
+    config::{ApplicationConfig, ChatClientConfig},
+    database,
+    ChatClient,
+};
+use tari_common::configuration::MultiaddrList;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
-use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
-use tari_utilities::message_format::MessageFormat;
 
 use crate::{get_base_dir, get_port};
 
@@ -55,9 +54,6 @@ extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
         identity_file_path: *const c_char,
-        db_path: *const c_char,
-        seed_peers: *mut c_void,
-        network_str: *const c_char,
         out_error: *const c_int,
     ) -> *mut ClientFFI;
     pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
@@ -73,7 +69,7 @@ unsafe impl Send for PtrWrapper {}
 #[derive(Debug)]
 pub struct ChatFFI {
     ptr: Arc<Mutex<PtrWrapper>>,
-    pub identity: NodeIdentity,
+    pub identity: Arc<NodeIdentity>,
 }
 
 #[async_trait]
@@ -135,42 +131,46 @@ impl ChatClient for ChatFFI {
 
 pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI {
     let port = get_port(18000..18499).unwrap();
-    let base_dir = get_base_dir()
-        .join("ffi_chat_clients")
-        .join(format!("port_{}", port))
-        .join(name);
+    let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
 
-    let (identity, identity_path) = identity_file(port, &base_dir);
-    let identity_path_c_str = CString::new(identity_path.into_os_string().into_string().unwrap()).unwrap();
+    let mut config = test_config(name, port, address.clone());
+    let identity = setup_node_identity(
+        &config.chat_client.identity_file,
+        vec![address],
+        true,
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    database::create_chat_storage(&config.chat_client.db_file);
+    database::create_peer_storage(&config.chat_client.data_dir);
+
+    config.peer_seeds.peer_seeds = seed_peers
+        .iter()
+        .map(|p| p.to_short_string())
+        .collect::<Vec<String>>()
+        .into();
+
+    let identity_path_c_str = CString::new(
+        config
+            .chat_client
+            .identity_file
+            .clone()
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+    )
+    .unwrap();
     let identity_path_c_char: *const c_char = CString::into_raw(identity_path_c_str) as *const c_char;
 
-    let config = test_config(&base_dir, &identity);
-    let config_ptr = Box::into_raw(Box::new(config.clone())) as *mut c_void;
-
-    let network = Network::LocalNet;
-    let network_c_str = CString::new(network.to_string()).unwrap();
-    let network_c_char: *const c_char = CString::into_raw(network_c_str) as *const c_char;
-
-    let db_path = database::create_chat_storage(&config.datastore_path).unwrap();
-    let db_path_c_str = CString::new(db_path.into_os_string().into_string().unwrap()).unwrap();
-    let db_path_c_char: *const c_char = CString::into_raw(db_path_c_str) as *const c_char;
-    database::create_peer_storage(&config.datastore_path);
-
-    let seed_peers_ptr = Box::into_raw(Box::new(seed_peers)) as *mut c_void;
+    let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
 
     let client_ptr;
 
     let out_error = Box::into_raw(Box::new(0));
 
     unsafe {
-        client_ptr = create_chat_client(
-            config_ptr,
-            identity_path_c_char,
-            db_path_c_char,
-            seed_peers_ptr,
-            network_c_char,
-            out_error,
-        );
+        client_ptr = create_chat_client(config_ptr, identity_path_c_char, out_error);
     }
 
     ChatFFI {
@@ -179,41 +179,19 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
     }
 }
 
-fn test_config(base_dir: &PathBuf, identity: &NodeIdentity) -> P2pConfig {
-    let mut config = P2pConfig {
-        datastore_path: base_dir.clone(),
-        dht: DhtConfig {
-            database_url: DbConnectionUrl::file("dht.sqlite"),
-            network_discovery: NetworkDiscoveryConfig {
-                enabled: true,
-                ..NetworkDiscoveryConfig::default()
-            },
-            saf: SafConfig {
-                auto_request: true,
-                ..Default::default()
-            },
-            ..DhtConfig::default_local_test()
-        },
-        transport: TransportConfig::new_tcp(TcpTransportConfig {
-            listener_address: identity.first_public_address().expect("No public address"),
-            ..TcpTransportConfig::default()
-        }),
-        allow_test_addresses: true,
-        public_addresses: MultiaddrList::from(vec![identity.first_public_address().expect("No public address")]),
-        user_agent: "tari/chat-client/0.0.1".to_string(),
-        ..P2pConfig::default()
-    };
-    config.set_base_path(base_dir);
-    config
-}
+fn test_config(name: &str, port: u64, address: Multiaddr) -> ApplicationConfig {
+    let temp_dir_path = get_base_dir()
+        .join("ffi_chat_clients")
+        .join(format!("port_{}", port))
+        .join(name);
 
-fn identity_file(port: u64, base_dir: &PathBuf) -> (NodeIdentity, PathBuf) {
-    let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-    let identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
+    let mut chat_client_config = ChatClientConfig::default_local_test();
+    chat_client_config.p2p.transport.tcp.listener_address = address.clone();
+    chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.set_base_path(temp_dir_path);
 
-    fs::create_dir_all(base_dir).unwrap();
-    let path = base_dir.join(format!("{}.json", identity.node_id()));
-    fs::write(&path, identity.to_json().unwrap()).unwrap();
-
-    (identity, path)
+    ApplicationConfig {
+        chat_client: chat_client_config,
+        ..ApplicationConfig::default()
+    }
 }

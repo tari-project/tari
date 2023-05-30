@@ -22,15 +22,19 @@
 
 #![recursion_limit = "1024"]
 
-use std::{ffi::CStr, fs::File, io::Read, path::PathBuf, ptr, str::FromStr};
+use std::{ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
 
 use libc::{c_char, c_int};
-use tari_chat_client::{ChatClient, Client};
-use tari_common::configuration::Network;
+use tari_app_utilities::identity_management::load_from_json;
+use tari_chat_client::{
+    config::{ApplicationConfig, ChatClientConfig},
+    ChatClient,
+    Client,
+};
+use tari_common::configuration::{MultiaddrList, Network};
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::Peer;
+use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
 use tari_contacts::contacts_service::types::Message;
-use tari_p2p::P2pConfig;
 use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, LibChatError};
@@ -40,25 +44,16 @@ mod error;
 #[derive(Clone)]
 pub struct ChatMessages(Vec<Message>);
 
-#[derive(Clone)]
-pub struct ClientPeers(Vec<Peer>);
-
 pub struct ClientFFI {
     client: Client,
     runtime: Runtime,
 }
 
 /// Creates a Chat Client
-/// TODO: This function takes a ptr to a collection of seed peers and this works fine in cucumber, or native rust but
-/// isn't at all ideal for a real FFI. We need to work with the mobile teams and come up with a better interface
-/// for supplying seed peers.
 ///
 /// ## Arguments
-/// `config` - The P2PConfig pointer
+/// `config` - The ApplicationConfig pointer
 /// `identity_file_path` - The path to the node identity file
-/// `db_path` - The path to the db file
-/// `seed_peers` - A ptr to a collection of seed peers
-/// `network_str` - The network to connect to
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -69,11 +64,8 @@ pub struct ClientFFI {
 /// The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
-    config: *mut P2pConfig,
+    config: *mut ApplicationConfig,
     identity_file_path: *const c_char,
-    db_path: *const c_char,
-    seed_peers: *mut ClientPeers,
-    network_str: *const c_char,
     error_out: *mut c_int,
 ) -> *mut ClientFFI {
     let mut error = 0;
@@ -89,28 +81,15 @@ pub unsafe extern "C" fn create_chat_client(
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     };
-    let identity = match CStr::from_ptr(identity_file_path).to_str() {
+
+    let identity: Arc<NodeIdentity> = match CStr::from_ptr(identity_file_path).to_str() {
         Ok(str) => {
             let identity_path = PathBuf::from(str);
-            let mut buf = Vec::new();
 
-            match File::open(identity_path) {
-                Ok(mut f) => {
-                    if let Err(e) = f.read_to_end(&mut buf) {
-                        bad_identity(e.to_string());
-                        return ptr::null_mut();
-                    }
-                },
-                Err(e) => {
-                    bad_identity(e.to_string());
-                    return ptr::null_mut();
-                },
-            }
-
-            match serde_json::from_slice(&buf) {
-                Ok(identity) => identity,
-                Err(e) => {
-                    bad_identity(e.to_string());
+            match load_from_json(identity_path) {
+                Ok(Some(identity)) => Arc::new(identity),
+                _ => {
+                    bad_identity("No identity loaded".to_string());
                     return ptr::null_mut();
                 },
             }
@@ -121,40 +100,6 @@ pub unsafe extern "C" fn create_chat_client(
         },
     };
 
-    let mut bad_network = |e| {
-        error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-    };
-    let network = if network_str.is_null() {
-        bad_network("network is missing".to_string());
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(network_str).to_str() {
-            Ok(str) => match Network::from_str(str) {
-                Ok(network) => network,
-                Err(e) => {
-                    bad_network(e.to_string());
-                    return ptr::null_mut();
-                },
-            },
-            Err(e) => {
-                bad_network(e.to_string());
-                return ptr::null_mut();
-            },
-        }
-    };
-
-    let db_path = match CStr::from_ptr(db_path).to_str() {
-        Ok(str) => PathBuf::from(str),
-        Err(e) => {
-            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-
-    let seed_peers = (*seed_peers).clone().0;
-
     let runtime = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
@@ -164,8 +109,7 @@ pub unsafe extern "C" fn create_chat_client(
         },
     };
 
-    let mut client = Client::new(identity, (*config).clone(), seed_peers, db_path, network);
-
+    let mut client = Client::new(identity, (*config).clone());
     runtime.block_on(client.initialize());
 
     let client_ffi = ClientFFI { client, runtime };
@@ -187,6 +131,128 @@ pub unsafe extern "C" fn create_chat_client(
 pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
     if !client.is_null() {
         drop(Box::from_raw(client))
+    }
+}
+
+/// Creates a Chat Client config
+///
+/// ## Arguments
+/// `network` - The network to run on
+/// `public_address` - The nodes public address
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut ApplicationConfig` - Returns a pointer to an ApplicationConfig
+///
+/// # Safety
+/// The ```destroy_config``` method must be called when finished with a Config to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn create_chat_config(
+    network_str: *const c_char,
+    public_address: *const c_char,
+    datastore_path: *const c_char,
+    error_out: *mut c_int,
+) -> *mut ApplicationConfig {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut bad_network = |e| {
+        error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    };
+
+    let network = if network_str.is_null() {
+        bad_network("network is missing".to_string());
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(network_str).to_str() {
+            Ok(str) => match Network::from_str(str) {
+                Ok(network) => network,
+                Err(e) => {
+                    bad_network(e.to_string());
+                    return ptr::null_mut();
+                },
+            },
+            Err(e) => {
+                bad_network(e.to_string());
+                return ptr::null_mut();
+            },
+        }
+    };
+
+    let datastore_path_string;
+    if datastore_path.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(datastore_path).to_str() {
+            Ok(v) => {
+                datastore_path_string = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("datastore_path".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+    let datastore_path = PathBuf::from(datastore_path_string);
+
+    let public_address_string;
+    if public_address.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("public_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(public_address).to_str() {
+            Ok(v) => {
+                public_address_string = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("public_address".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+    let address = match Multiaddr::from_str(&public_address_string) {
+        Ok(a) => a,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let mut chat_client_config = ChatClientConfig::default();
+    chat_client_config.network = network;
+    chat_client_config.p2p.transport.tcp.listener_address = address.clone();
+    chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.set_base_path(datastore_path);
+
+    let config = ApplicationConfig {
+        chat_client: chat_client_config,
+        ..ApplicationConfig::default()
+    };
+
+    Box::into_raw(Box::new(config))
+}
+
+/// Frees memory for an ApplicationConfig
+///
+/// ## Arguments
+/// `config` - The pointer of an ApplicationConfig
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_config(config: *mut ApplicationConfig) {
+    if !config.is_null() {
+        drop(Box::from_raw(config))
     }
 }
 
