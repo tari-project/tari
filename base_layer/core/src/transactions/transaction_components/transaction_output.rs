@@ -249,18 +249,17 @@ impl TransactionOutput {
                 self.commitment.to_hex()
             )));
         }
-        let e_bytes = TransactionOutput::build_metadata_signature_challenge(
-            &self.version,
-            &self.script,
-            &self.features,
-            &self.sender_offset_public_key,
-            self.metadata_signature.ephemeral_commitment(),
-            self.metadata_signature.ephemeral_pubkey(),
-            &self.commitment,
-            &self.covenant,
-            &self.encrypted_data,
-            self.minimum_value_promise,
-        );
+        // Let's first verify that the metadata signature is valid.
+        // Note: If normal code paths are followed, this is checked elsewhere already, but it is theoretically possible
+        //       to meddle with the metadata signature after it has been verified and before it is used here, so we
+        //       check it again. It is also a very cheap test in comparison to a range proof verification
+        let e_bytes = match self.verify_metadata_signature_internal() {
+            Ok(val) => val,
+            Err(e) => {
+                return Err(RangeProofError::InvalidRangeProof(format!("{}", e)));
+            },
+        };
+        // Now we can perform the balance proof
         let e = PrivateKey::from_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
@@ -274,8 +273,7 @@ impl TransactionOutput {
         }
     }
 
-    /// Verify that the metadata signature is valid
-    pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
+    fn verify_metadata_signature_internal(&self) -> Result<[u8; 32], TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
             &self.version,
             &self.script,
@@ -299,6 +297,12 @@ impl TransactionOutput {
                 "Metadata signature not valid!".to_string(),
             ));
         }
+        Ok(challenge)
+    }
+
+    /// Verify that the metadata signature is valid
+    pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
+        let _challenge = self.verify_metadata_signature_internal()?;
         Ok(())
     }
 
@@ -692,6 +696,8 @@ pub fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::errors::RangeProofError;
+
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroTari,
@@ -840,6 +846,32 @@ mod test {
         ) {
             Ok(_) => panic!("Should not have been able to create output"),
             Err(e) => assert_eq!(e, "InvalidRevealedValue(\"Expected 20 µT, received 0 µT\")"),
+        }
+    }
+
+    #[test]
+    fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+        let mut output = create_output(
+            &test_params,
+            &factories,
+            MicroTari(20),
+            MicroTari(20),
+            RangeProofType::RevealedValue,
+        )
+        .unwrap();
+        assert!(output.verify_metadata_signature().is_ok());
+        assert!(output.revealed_value_range_proof_check().is_ok());
+
+        output.features.maturity += 1;
+        assert!(output.verify_metadata_signature().is_err());
+        match output.revealed_value_range_proof_check() {
+            Ok(_) => panic!("Should not have passed check"),
+            Err(e) => assert_eq!(
+                e,
+                RangeProofError::InvalidRangeProof("Signature is invalid: Metadata signature not valid!".to_string())
+            ),
         }
     }
 

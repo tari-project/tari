@@ -47,7 +47,7 @@ use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Messa
 use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 use tari_utilities::message_format::MessageFormat;
 
-use crate::{base_node_process::get_base_dir, get_port};
+use crate::{get_base_dir, get_port};
 
 #[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
