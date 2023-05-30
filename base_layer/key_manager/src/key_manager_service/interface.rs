@@ -22,7 +22,12 @@
 
 // use tari_common_types::types::{PrivateKey, PublicKey};
 
+use std::{fmt, str::FromStr};
+
+use serde::{Deserialize, Serialize};
+use tari_common_types::types;
 use tari_crypto::keys::{PublicKey, SecretKey};
+use tari_utilities::hex::Hex;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
@@ -39,9 +44,85 @@ pub struct NextKeyResult<PK: PublicKey> {
     pub index: u64,
 }
 
-pub struct NextPublicKeyResult<PK: PublicKey> {
-    pub key: PK,
-    pub index: u64,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum KeyId {
+    Default { branch: String, index: u64 },
+    Imported { key: types::PublicKey },
+}
+
+impl KeyId {
+    pub fn index(&self) -> Option<u64> {
+        match self {
+            KeyId::Default { index, .. } => Some(*index),
+            KeyId::Imported { .. } => None,
+        }
+    }
+
+    pub fn branch(&self) -> Option<String> {
+        match self {
+            KeyId::Default { branch, .. } => Some(branch.clone()),
+            KeyId::Imported { .. } => None,
+        }
+    }
+
+    pub fn key(&self) -> Option<types::PublicKey> {
+        match self {
+            KeyId::Default { .. } => None,
+            KeyId::Imported { key } => Some(key.clone()),
+        }
+    }
+}
+
+impl fmt::Display for KeyId {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            KeyId::Default { branch: b, index: i } => write!(f, "default.{}.{}", b, i),
+            KeyId::Imported { key: public_key } => write!(f, "imported.{}", public_key.to_hex()),
+        }
+    }
+}
+
+impl Default for KeyId {
+    fn default() -> Self {
+        KeyId::Default {
+            branch: "".to_string(),
+            index: 0,
+        }
+    }
+}
+
+impl FromStr for KeyId {
+    type Err = String;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = id.split('.').collect();
+        match parts.first() {
+            None => Err("Out of bounds".to_string()),
+            Some(val) => match *val {
+                "default" => {
+                    if parts.len() != 3 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let index = parts[2]
+                        .parse()
+                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+                    Ok(KeyId::Default {
+                        branch: parts[1].into(),
+                        index,
+                    })
+                },
+                "imported" => {
+                    if parts.len() != 2 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let key = types::PublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
+                    Ok(KeyId::Imported { key })
+                },
+                _ => Err("Wrong format".to_string()),
+            },
+        }
+    }
 }
 
 /// Behaviour required for the Key manager service
@@ -64,11 +145,8 @@ where
         branch: T,
     ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
 
-    /// Gets the next key from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_public_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextPublicKeyResult<PK>, KeyManagerServiceError>;
+    /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
+    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError>;
 
     /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(
@@ -77,12 +155,8 @@ where
         index: u64,
     ) -> Result<PK::K, KeyManagerServiceError>;
 
-    /// Gets the public key at the specified index
-    async fn get_public_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PK, KeyManagerServiceError>;
+    /// Gets the key id at the specified index
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PK, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError>;

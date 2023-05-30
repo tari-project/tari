@@ -65,6 +65,7 @@ use tari_core::{
     },
     blocks::BlockHeader,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    core_key_manager::CoreKeyManagerInitializer,
     covenants::Covenant,
     proto::{
         base_node as base_node_proto,
@@ -75,6 +76,7 @@ use tari_core::{
         },
         types::Signature as SignatureProto,
     },
+    test_helpers::create_test_key_manager,
     transactions::{
         fee::Fee,
         tari_amount::*,
@@ -96,10 +98,7 @@ use tari_crypto::{
     hash::blake2::Blake256,
     keys::{PublicKey as PK, SecretKey as SK},
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInitializer, KeyManagerMock},
-};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase};
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
@@ -229,15 +228,18 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             ts_backend,
             wallet_identity,
             consensus_manager,
-            factories,
+            factories.clone(),
             db.clone(),
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
-        .add_initializer(KeyManagerInitializer::<
-            KeyManagerSqliteDatabase<WalletDbConnection>,
-            PublicKey,
-        >::new(kms_backend, cipher))
+        .add_initializer(
+            CoreKeyManagerInitializer::<KeyManagerSqliteDatabase<WalletDbConnection>>::new(
+                kms_backend,
+                cipher,
+                factories,
+            ),
+        )
         .build()
         .await
         .unwrap();
@@ -344,8 +346,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let cipher_seed = CipherSeed::new();
-    let key_manager = KeyManagerMock::new(cipher_seed);
+    let key_manager = create_test_key_manager();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, cipher.clone()));
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),

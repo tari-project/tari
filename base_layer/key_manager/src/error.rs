@@ -45,6 +45,8 @@ pub enum KeyManagerError {
     DecryptionFailed,
     #[error("The requested fixed slice length exceeds the available slice length")]
     SliceError(#[from] SliceError),
+    #[error("Key ID not valid")]
+    InvalidKeyID,
 }
 
 #[derive(Debug, Error, PartialEq)]

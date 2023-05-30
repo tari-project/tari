@@ -43,23 +43,20 @@ use tari_key_manager::{
         KeyDigest,
         KeyManagerServiceError,
         NextKeyResult,
-        NextPublicKeyResult,
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::{
-    core_key_manager::interface::KeyId,
-    transactions::{
-        transaction_components::{TransactionError, TransactionInput, TransactionInputVersion},
-        CryptoFactories,
-    },
+use crate::transactions::{
+    transaction_components::{TransactionError, TransactionInput, TransactionInputVersion},
+    CryptoFactories,
 };
 
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 use strum::IntoEnumIterator;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_key_manager::key_manager_service::KeyId;
 
 use crate::{
     core_key_manager::interface::CoreKeyManagerBranch,
@@ -105,18 +102,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
         for branch in CoreKeyManagerBranch::iter() {
-            self.add_key_manager_branch(branch.get_branch_key())?;
+            self.add_key_manager_branch(&branch.get_branch_key())?;
         }
         Ok(())
     }
 
-    pub fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
-        let result = if self.key_managers.contains_key(&branch) {
+    pub fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
+        let result = if self.key_managers.contains_key(branch) {
             AddResult::AlreadyExists
         } else {
             AddResult::NewEntry
         };
-        let state = match self.db.get_key_manager_state(branch.clone())? {
+        let state = match self.db.get_key_manager_state(branch)? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
@@ -128,7 +125,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             Some(km) => km,
         };
         self.key_managers.insert(
-            branch,
+            branch.to_string(),
             Mutex::new(KeyManager::<PublicKey, KeyDigest>::from(
                 self.master_seed.clone(),
                 state.branch_seed,
@@ -138,10 +135,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(result)
     }
 
-    async fn _get_next_key(&self, branch: String) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
+    pub async fn get_next_key(&self, branch: &str) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -153,28 +150,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_next_public_key(
-        &self,
-        branch: String,
-    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+    pub async fn get_next_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
         let mut km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
-        let derived_key = km.next_public_key()?;
         self.db.increment_key_index(branch)?;
-        Ok(NextPublicKeyResult {
-            key: derived_key.key,
-            index: km.key_index(),
+        Ok(KeyId::Default {
+            branch: branch.to_string(),
+            index: km.increment_key_index(1),
         })
     }
 
-    async fn _get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_key_at_index(&self, branch: &str, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
         let km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -182,26 +175,26 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(derived_key.key)
     }
 
-    pub async fn get_public_key_at_index(
-        &self,
-        branch: String,
-        index: u64,
-    ) -> Result<PublicKey, KeyManagerServiceError> {
-        let km = self
-            .key_managers
-            .get(&branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
-            .await;
-        let derived_key = km.derive_public_key(index)?;
-        Ok(derived_key.key)
+    pub async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PublicKey, KeyManagerServiceError> {
+        match key_id {
+            KeyId::Default { branch, index } => {
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .lock()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
+            },
+            KeyId::Imported { key } => Ok(key.clone()),
+        }
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: String, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
+    pub async fn find_key_index(&self, branch: &str, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -222,12 +215,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
     pub async fn update_current_key_index_if_higher(
         &self,
-        branch: String,
+        branch: &str,
         index: u64,
     ) -> Result<(), KeyManagerServiceError> {
         let mut km = self
             .key_managers
-            .get(&branch)
+            .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
@@ -652,11 +645,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .verify_mask(commitment, &private_key, value.into())?;
         let public_key = PublicKey::from_secret_key(&private_key);
         let key = match self
-            .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
+            .find_key_index(&CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
             .await
         {
             Ok(index) => {
-                self.update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
+                self.update_current_key_index_if_higher(&CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
                     .await?;
                 KeyId::Default {
                     branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),

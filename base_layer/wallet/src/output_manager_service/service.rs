@@ -36,6 +36,7 @@ use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
+    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
     covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -65,7 +66,7 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::{error::KeyManagerError, key_manager_service::KeyId};
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -124,7 +125,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -171,7 +172,11 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
+        // TODO: Remove this loop when removing `OutputManagerKeyManagerBranch`
         for branch in OutputManagerKeyManagerBranch::iter() {
+            key_manager.add_new_branch(branch.get_branch_key()).await?;
+        }
+        for branch in CoreKeyManagerBranch::iter() {
             key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
         Ok(())
@@ -694,6 +699,21 @@ where
             )
             .await?;
         Ok((result.key, script_key))
+    }
+
+    async fn _get_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), OutputManagerError> {
+        let spend_key_id = self
+            .resources
+            .master_key_manager
+            .get_next_key_id(CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .await?;
+        let script_key_id = KeyId::Default {
+            branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+            index: spend_key_id
+                .index()
+                .ok_or(OutputManagerError::KeyManagerError(KeyManagerError::InvalidKeyID))?,
+        };
+        Ok((spend_key_id, script_key_id))
     }
 
     async fn create_output_with_features(

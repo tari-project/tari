@@ -30,12 +30,13 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, FixedHash, PublicKey};
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
     borsh::SerializedSize,
-    core_key_manager::{BaseLayerKeyManagerInterface, KeyId},
+    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,

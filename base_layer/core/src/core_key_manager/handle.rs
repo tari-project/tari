@@ -28,16 +28,16 @@ use tari_key_manager::{
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase},
         AddResult,
+        KeyId,
         KeyManagerInterface,
         KeyManagerServiceError,
         NextKeyResult,
-        NextPublicKeyResult,
     },
 };
 use tokio::sync::RwLock;
 
 use crate::{
-    core_key_manager::{interface::KeyId, BaseLayerKeyManagerInterface, CoreKeyManagerInner},
+    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInner},
     transactions::{
         transaction_components::{
             EncryptedData,
@@ -89,27 +89,30 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .write()
             .await
-            .add_key_manager_branch(branch.into())
+            .add_key_manager_branch(&branch.into())
     }
 
     async fn get_next_key<T: Into<String> + Send>(
         &self,
         branch: T,
     ) -> Result<NextKeyResult<PublicKey>, KeyManagerServiceError> {
-        unimplemented!(
-            "Oops! We do not share private keys outside `core_key_manager`. ({})",
-            branch.into(),
-        )
-    }
-
-    async fn get_next_public_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextPublicKeyResult<PublicKey>, KeyManagerServiceError> {
+        // unimplemented!(
+        //     "Oops! `get_next_key` - we do not share private keys outside `core_key_manager`. ({})",
+        //     branch.into(),
+        // )
+        // TODO: Remove this call - only here for legacy tests
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_next_public_key(branch.into())
+            .get_next_key(&branch.into())
+            .await
+    }
+
+    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_next_key_id(&branch.into())
             .await
     }
 
@@ -118,22 +121,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
-        unimplemented!(
-            "Oops! We do not share private keys outside `core_key_manager`. ({}, {})",
-            branch.into(),
-            index
-        )
-    }
-
-    async fn get_public_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PublicKey, KeyManagerServiceError> {
+        // unimplemented!(
+        //     "Oops! `get_key_at_index` - we do not share private keys outside `core_key_manager`. ({}, {})",
+        //     branch.into(),
+        //     index
+        // )
+        // TODO: Remove this call - only here for legacy tests
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_public_key_at_index(branch.into(), index)
+            .get_key_at_index(&branch.into(), index)
+            .await
+    }
+
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PublicKey, KeyManagerServiceError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_public_key_at_key_id(key_id)
             .await
     }
 
@@ -145,7 +150,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .find_key_index(branch.into(), key)
+            .find_key_index(&branch.into(), key)
             .await
     }
 
@@ -157,7 +162,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .update_current_key_index_if_higher(branch.into(), index)
+            .update_current_key_index_if_higher(&branch.into(), index)
             .await
     }
 

@@ -5653,6 +5653,7 @@ dependencies = [
  "strum_macros",
  "tari-curve25519-dalek",
  "tari_common",
+ "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",

@@ -32,9 +32,9 @@ use crate::{
         interface::NextKeyResult,
         storage::database::{KeyManagerBackend, KeyManagerDatabase},
         AddResult,
+        KeyId,
         KeyManagerInner,
         KeyManagerInterface,
-        NextPublicKeyResult,
     },
 };
 
@@ -74,21 +74,22 @@ where
         (*self.key_manager_inner)
             .write()
             .await
-            .add_key_manager_branch(branch.into())
+            .add_key_manager_branch(&branch.into())
     }
 
     async fn get_next_key<T: Into<String> + Send>(
         &self,
         branch: T,
     ) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
-        (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_next_key(&branch.into())
+            .await
     }
 
-    async fn get_next_public_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextPublicKeyResult<PK>, KeyManagerServiceError> {
-        unimplemented!("Oops! This is reserved for `core_key_manager`. ({})", branch.into(),)
+    async fn get_next_key_id<T: Into<String> + Send>(&self, _branch: T) -> Result<KeyId, KeyManagerServiceError> {
+        todo!()
     }
 
     async fn get_key_at_index<T: Into<String> + Send>(
@@ -99,27 +100,19 @@ where
         (*self.key_manager_inner)
             .read()
             .await
-            .get_key_at_index(branch.into(), index)
+            .get_key_at_index(&branch.into(), index)
             .await
     }
 
-    async fn get_public_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PK, KeyManagerServiceError> {
-        unimplemented!(
-            "Oops! This is reserved for `core_key_manager`. ({}, {})",
-            branch.into(),
-            index
-        )
+    async fn get_public_key_at_key_id(&self, _key_id: &KeyId) -> Result<PK, KeyManagerServiceError> {
+        todo!()
     }
 
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
-            .find_key_index(branch.into(), key)
+            .find_key_index(&branch.into(), key)
             .await
     }
 
@@ -131,7 +124,7 @@ where
         (*self.key_manager_inner)
             .read()
             .await
-            .update_current_key_index_if_higher(branch.into(), index)
+            .update_current_key_index_if_higher(&branch.into(), index)
             .await
     }
 

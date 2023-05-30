@@ -37,8 +37,10 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     borsh::SerializedSize,
+    core_key_manager::CoreKeyManagerHandle,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
+    test_helpers::create_test_key_manager,
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
@@ -61,9 +63,7 @@ use tari_key_manager::{
             database::{KeyManagerBackend, KeyManagerDatabase},
             sqlite_db::KeyManagerSqliteDatabase,
         },
-        KeyManagerHandle,
         KeyManagerInterface,
-        KeyManagerMock,
     },
     mnemonic::Mnemonic,
     SeedWords,
@@ -120,7 +120,7 @@ struct TestOmsService<U> {
     pub node_id: Arc<NodeIdentity>,
     pub base_node_wallet_rpc_mock_state: BaseNodeWalletRpcMockState,
     pub node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
-    pub key_manager_handler: KeyManagerHandle<U, PublicKey>,
+    pub key_manager_handler: CoreKeyManagerHandle<U>,
     pub recovery_data: RecoveryData,
 }
 
@@ -183,7 +183,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     let seed_words = SeedWords::new(words.iter().map(|s| Hidden::hide(s.to_string())).collect::<Vec<_>>());
 
     let cipher_seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
-    let key_manager = KeyManagerHandle::new(cipher_seed.clone(), KeyManagerDatabase::new(ks_backend));
+    let key_manager = CoreKeyManagerHandle::new(
+        cipher_seed.clone(),
+        KeyManagerDatabase::new(ks_backend),
+        factories.clone(),
+    )
+    .unwrap();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
@@ -255,8 +260,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_base_node_state(height);
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
-    let cipher = CipherSeed::new();
-    let key_manager = KeyManagerMock::new(cipher.clone());
+    let key_manager = create_test_key_manager();
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,

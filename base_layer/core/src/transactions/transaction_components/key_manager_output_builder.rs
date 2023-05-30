@@ -23,10 +23,11 @@
 use derivative::Derivative;
 use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
-    core_key_manager::{BaseLayerKeyManagerInterface, KeyId},
+    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -102,11 +103,13 @@ impl KeyManagerOutputBuilder {
 
     pub async fn with_encrypted_data<KM: BaseLayerKeyManagerInterface>(
         mut self,
-        _key_manager: &KM,
+        key_manager: &KM,
         recovery_key_id: KeyId,
     ) -> Result<Self, TransactionError> {
         self.recovery_key_id = Some(recovery_key_id);
-        self.encrypted_data = EncryptedData::default(); // TODO: use key manager service to encrypt data
+        self.encrypted_data = key_manager
+            .encrypt_data_for_recovery(&self.spending_key_id, self.value.as_u64())
+            .await?;
         Ok(self)
     }
 

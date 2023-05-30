@@ -47,12 +47,8 @@ pub use initializer::KeyManagerInitializer;
 mod service;
 pub use service::KeyManagerInner;
 
-mod mock;
-pub use mock::KeyManagerMock;
-#[cfg(test)]
-mod test;
-
 mod interface;
+pub use interface::KeyId;
 pub mod storage;
 
-pub use interface::{AddResult, KeyManagerInterface, NextKeyResult, NextPublicKeyResult};
+pub use interface::{AddResult, KeyManagerInterface, NextKeyResult};

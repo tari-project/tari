@@ -46,6 +46,7 @@ use tari_contacts::contacts_service::{
 };
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
+    core_key_manager::{CoreKeyManagerHandle, CoreKeyManagerInitializer},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -57,7 +58,7 @@ use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignat
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerHandle, KeyManagerInitializer},
+    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -118,7 +119,7 @@ pub struct Wallet<T, U, V, W, X> {
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
-    pub key_manager_service: KeyManagerHandle<X, PublicKey>,
+    pub key_manager_service: CoreKeyManagerHandle<X>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -192,7 +193,11 @@ where
                 config.network.into(),
                 node_identity.clone(),
             ))
-            .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
+            .add_initializer(CoreKeyManagerInitializer::new(
+                key_manager_backend,
+                master_seed,
+                factories.clone(),
+            ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
@@ -250,7 +255,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
-        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X, PublicKey>>();
+        let key_manager_handle = handles.expect_handle::<CoreKeyManagerHandle<X>>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
