@@ -60,6 +60,7 @@ extern "C" {
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
     pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
+    pub fn destroy_client_ffi(client: *mut ClientFFI);
 }
 
 #[derive(Debug)]

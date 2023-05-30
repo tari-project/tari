@@ -224,4 +224,20 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {}
+
+    pub async fn after(&mut self, _scenario: &Scenario) {
+        for (name, mut p) in self.chat_clients.drain(..) {
+            println!("Shutting down chat client {}", name);
+            p.shutdown();
+        }
+        for (name, mut p) in self.wallets.drain(..) {
+            println!("Shutting down wallet {}", name);
+            p.kill_signal.trigger();
+        }
+        for (name, mut p) in self.base_nodes.drain(..) {
+            println!("Shutting down base node {}", name);
+            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
+            p.kill_signal.trigger();
+        }
+    }
 }
