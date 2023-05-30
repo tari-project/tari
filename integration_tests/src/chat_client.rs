@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{
@@ -34,13 +34,17 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
 };
 
-use crate::{get_base_dir, get_port};
+use crate::get_port;
 
-pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
+pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: PathBuf) -> Client {
     let port = get_port(18000..18499).unwrap();
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
 
-    let mut config = test_config(name, port, address.clone());
+    let base_dir = base_dir.join("chat_clients").join(format!("{}_port_{}", name, port));
+
+    let mut config = test_config(address.clone());
+    config.chat_client.set_base_path(base_dir);
+
     let identity = setup_node_identity(
         &config.chat_client.identity_file,
         vec![address],
@@ -59,21 +63,15 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
         .into();
 
     let mut client = Client::new(identity, config);
-    client.initialize().await;
 
+    client.initialize().await;
     client
 }
 
-fn test_config(name: &str, port: u64, address: Multiaddr) -> ApplicationConfig {
-    let temp_dir_path = get_base_dir()
-        .join("chat_clients")
-        .join(format!("port_{}", port))
-        .join(name);
-
+pub fn test_config(address: Multiaddr) -> ApplicationConfig {
     let mut chat_client_config = ChatClientConfig::default_local_test();
     chat_client_config.p2p.transport.tcp.listener_address = address.clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
-    chat_client_config.set_base_path(temp_dir_path);
 
     ApplicationConfig {
         chat_client: chat_client_config,

@@ -41,7 +41,7 @@ use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_base_dir, get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -105,10 +105,12 @@ pub async fn spawn_base_node_with_config(
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
         // temp_dir_path = tempdir().unwrap().path().to_path_buf();
-        temp_dir_path = get_base_dir()
+        temp_dir_path = world
+            .current_base_dir
+            .as_ref()
+            .expect("Base dir on world")
             .join("base_nodes")
-            .join(format!("grpc_port_{}", grpc_port))
-            .join(bn_name.clone());
+            .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
 
         let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);

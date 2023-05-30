@@ -22,6 +22,7 @@
 
 use std::{
     ffi::CString,
+    path::PathBuf,
     ptr::null,
     sync::{Arc, Mutex},
     time::SystemTime,
@@ -47,7 +48,6 @@ use super::ffi::{
 };
 use crate::{
     ffi::{self},
-    get_base_dir,
     get_port,
     TariWorld,
 };
@@ -62,14 +62,11 @@ pub struct WalletFFI {
 }
 
 impl WalletFFI {
-    fn spawn(name: String, seed_words_ptr: *const c_void) -> Self {
+    fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
         let port = get_port(18000..18499).unwrap();
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let base_dir_path = get_base_dir()
-            .join("ffi_wallets")
-            .join(format!("port_{}", port))
-            .join(name.clone());
+        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
         let log_path = base_dir_path
@@ -193,7 +190,11 @@ impl WalletFFI {
 }
 
 pub fn spawn_wallet_ffi(world: &mut TariWorld, wallet_name: String, seed_words_ptr: *const c_void) {
-    let wallet_ffi = WalletFFI::spawn(wallet_name.clone(), seed_words_ptr);
+    let wallet_ffi = WalletFFI::spawn(
+        wallet_name.clone(),
+        seed_words_ptr,
+        world.current_base_dir.clone().expect("Base dir on world"),
+    );
     world.ffi_wallets.insert(wallet_name, wallet_ffi);
 }
 
