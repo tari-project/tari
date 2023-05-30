@@ -33,7 +33,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_p2p::{P2pConfig, TcpTransportConfig, TransportConfig};
 
-use crate::{base_node_process::get_base_dir, get_port};
+use crate::{get_base_dir, get_port};
 
 pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>) -> Client {
     let port = get_port(18000..18499).unwrap();
