@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::TcpListener, ops::Range, time::Duration};
+use std::{net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
 
 use rand::Rng;
 
@@ -49,6 +49,11 @@ pub fn get_port(range: Range<u16>) -> Option<u64> {
             return Some(u64::from(port));
         }
     }
+}
+
+pub fn get_base_dir() -> PathBuf {
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
 }
 
 pub async fn wait_for_service(port: u64) {

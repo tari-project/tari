@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, process, str::FromStr, thread, time::Duration};
+use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
 use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
@@ -35,7 +35,7 @@ use tari_wallet_grpc_client::WalletGrpcClient;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_base_dir, get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -245,9 +245,4 @@ impl WalletProcess {
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
     }
-}
-
-pub fn get_base_dir() -> PathBuf {
-    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
 }
