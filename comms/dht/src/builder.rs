@@ -41,9 +41,7 @@ use crate::{
 ///
 /// ```rust
 /// # use tari_comms_dht::{DbConnectionUrl, Dht};
-/// let builder = Dht::builder()
-///     .mainnet()
-///     .with_database_url(DbConnectionUrl::Memory);
+/// let builder = Dht::builder().mainnet().with_database_url(DbConnectionUrl::Memory);
 /// // let dht = builder.build(...).unwrap();
 /// ```
 #[derive(Debug, Clone, Default)]

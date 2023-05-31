@@ -274,15 +274,23 @@ pub async fn get_base_node_peer_config(
     wallet: &mut WalletSqlite,
     non_interactive_mode: bool,
 ) -> Result<PeerConfig, ExitError> {
+    let mut use_custom_base_node_peer = false;
     let mut selected_base_node = match config.wallet.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
             .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
-        None => get_custom_base_node_peer_from_db(wallet),
+        None => {
+            if let Some(custom_base_node_peer) = get_custom_base_node_peer_from_db(wallet) {
+                use_custom_base_node_peer = true;
+                Some(custom_base_node_peer)
+            } else {
+                None
+            }
+        },
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.wallet.custom_base_node.is_none() {
+    if !non_interactive_mode && config.wallet.custom_base_node.is_none() && !use_custom_base_node_peer {
         if let Some(detected_node) = detect_local_base_node(config.wallet.network).await {
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
