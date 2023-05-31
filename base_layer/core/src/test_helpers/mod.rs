@@ -54,13 +54,13 @@ use crate::{
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
-pub type TestKeyManager = CoreKeyManagerHandle<KeyManagerSqliteDatabase<DbConnection>>;
+pub type MemoryDbCoreKeyManagerHandle = CoreKeyManagerHandle<KeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
-pub fn create_test_key_manager() -> TestKeyManager {
+pub fn create_test_core_key_manager_with_memory_db() -> MemoryDbCoreKeyManagerHandle {
     let connection = DbConnection::connect_memory(random_string(8)).unwrap();
     let cipher = CipherSeed::new();
 

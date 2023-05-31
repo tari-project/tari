@@ -57,7 +57,7 @@ pub struct KeyManagerOutputBuilder {
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_data: EncryptedData,
-    recovery_key_id: Option<KeyId>,
+    custom_recovery_key_id: Option<KeyId>,
     minimum_value_promise: MicroTari,
 }
 
@@ -77,7 +77,7 @@ impl KeyManagerOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
             encrypted_data: EncryptedData::default(),
-            recovery_key_id: None,
+            custom_recovery_key_id: None,
             minimum_value_promise: MicroTari::zero(),
         }
     }
@@ -104,11 +104,9 @@ impl KeyManagerOutputBuilder {
     pub async fn with_encrypted_data<KM: BaseLayerKeyManagerInterface>(
         mut self,
         key_manager: &KM,
-        recovery_key_id: KeyId,
     ) -> Result<Self, TransactionError> {
-        self.recovery_key_id = Some(recovery_key_id);
         self.encrypted_data = key_manager
-            .encrypt_data_for_recovery(&self.spending_key_id, self.value.as_u64())
+            .encrypt_data_for_recovery(&self.spending_key_id, &None, self.value.as_u64())
             .await?;
         Ok(self)
     }

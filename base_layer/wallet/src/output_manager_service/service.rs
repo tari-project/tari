@@ -66,7 +66,7 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::{error::KeyManagerError, key_manager_service::KeyId};
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -449,12 +449,37 @@ where
                 Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
             },
             OutputManagerRequest::GetNextSpendAndScriptKeys => {
-                let (spend_key, script_key) = self.get_spend_and_script_keys().await?;
+                let (spend_key, script_key) = self.get_next_spend_and_script_keys().await?;
                 Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
+            },
+            OutputManagerRequest::GetNextSpendAndScriptKeyIds => {
+                let (spend_key_id, script_key_id) = self.get_next_spend_and_script_key_ids().await?;
+                Ok(OutputManagerResponse::NextSpendAndScriptKeyIds {
+                    spend_key_id,
+                    script_key_id,
+                })
             },
             OutputManagerRequest::GetRecoveryData => Ok(OutputManagerResponse::RecoveryData(
                 self.resources.recovery_data.clone(),
             )),
+            OutputManagerRequest::GetRecoveryKeyId => {
+                Ok(OutputManagerResponse::RecoveryKeyId(self.get_recovery_key_id().await?))
+            },
+            OutputManagerRequest::TryCommitmentKeyRecovery(commitment, encrypted_data, custom_recovery_key_id) => {
+                Ok(OutputManagerResponse::CommitmentKeyRecovery(
+                    self.try_commitment_key_recovery(&commitment, &encrypted_data, &custom_recovery_key_id)
+                        .await?,
+                ))
+            },
+            OutputManagerRequest::GetSpendingKeyId(public_spending_key) => Ok(OutputManagerResponse::SpendingKeyId(
+                self.get_spending_key_id(&public_spending_key).await?,
+            )),
+            OutputManagerRequest::GetDiffieHellmanSharedSecret(key_id, public_key) => {
+                let shared_secret = self.get_diffie_hellman_shared_secret(&key_id, &public_key).await?;
+                Ok(OutputManagerResponse::DiffieHellmanSharedSecret(PublicKey::from_bytes(
+                    shared_secret.as_bytes(),
+                )?))
+            },
         }
     }
 
@@ -684,7 +709,7 @@ where
         Ok(())
     }
 
-    async fn get_spend_and_script_keys(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
+    async fn get_next_spend_and_script_keys(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
         let result = self
             .resources
             .master_key_manager
@@ -701,19 +726,65 @@ where
         Ok((result.key, script_key))
     }
 
-    async fn _get_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), OutputManagerError> {
-        let spend_key_id = self
+    async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), OutputManagerError> {
+        let (spend_key_id, script_key_id) = self
             .resources
             .master_key_manager
-            .get_next_key_id(CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .get_next_spend_and_script_key_ids()
             .await?;
-        let script_key_id = KeyId::Default {
-            branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
-            index: spend_key_id
-                .index()
-                .ok_or(OutputManagerError::KeyManagerError(KeyManagerError::InvalidKeyID))?,
-        };
         Ok((spend_key_id, script_key_id))
+    }
+
+    async fn get_recovery_key_id(&self) -> Result<KeyId, OutputManagerError> {
+        let recovery_key_id = self
+            .resources
+            .master_key_manager
+            .get_static_key_id(CoreKeyManagerBranch::Recovery.get_branch_key())
+            .await?;
+        Ok(recovery_key_id)
+    }
+
+    async fn try_commitment_key_recovery(
+        &self,
+        commitment: &Commitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: &Option<KeyId>,
+    ) -> Result<(KeyId, MicroTari), OutputManagerError> {
+        let (spending_key_id, value) = self
+            .resources
+            .master_key_manager
+            .try_commitment_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
+            .await?;
+        Ok((spending_key_id, value))
+    }
+
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, OutputManagerError> {
+        let index = self
+            .resources
+            .master_key_manager
+            .find_key_index(
+                CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                public_spending_key,
+            )
+            .await?;
+        let spending_key_id = KeyId::Managed {
+            branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+            index,
+        };
+        Ok(spending_key_id)
+    }
+
+    async fn get_diffie_hellman_shared_secret(
+        &self,
+        private_key_id: &KeyId,
+        public_key: &PublicKey,
+    ) -> Result<CommsDHKE, OutputManagerError> {
+        let shared_secret = self
+            .resources
+            .master_key_manager
+            .get_diffie_hellman_shared_secret(private_key_id, public_key)
+            .await?;
+        Ok(shared_secret)
     }
 
     async fn create_output_with_features(
@@ -721,7 +792,7 @@ where
         value: MicroTari,
         features: OutputFeatures,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
@@ -754,7 +825,7 @@ where
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
 
         let commitment = self
             .resources
@@ -971,7 +1042,7 @@ where
         );
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             builder
                 .with_change_secret(spending_key)
                 .with_recoverable_outputs(self.resources.recovery_data.clone())
@@ -1136,7 +1207,7 @@ where
         }
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             builder.with_change_secret(spending_key);
             builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             builder.with_change_script(
@@ -1243,7 +1314,7 @@ where
             );
         }
 
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
         let commitment = self
             .resources
             .factories
@@ -1295,7 +1366,7 @@ where
         let mut outputs = vec![utxo];
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             builder.with_change_secret(spending_key);
             builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             builder.with_change_script(
@@ -1731,7 +1802,7 @@ where
             };
 
             let noop_script = script!(Nop);
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             let output_features = OutputFeatures::default();
 
             // generating sender's keypair
@@ -1948,7 +2019,7 @@ where
 
         for _ in 0..number_of_splits {
             let noop_script = script!(Nop);
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             let output_features = OutputFeatures::default();
 
             // generating sender's keypair
@@ -2011,7 +2082,7 @@ where
 
         // extending transaction if there is some `change` left over
         if has_leftover_change {
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
             tx_builder.with_change_secret(spending_key);
             tx_builder.with_recoverable_outputs(self.resources.recovery_data.clone());
             tx_builder.with_change_script(
@@ -2155,7 +2226,7 @@ where
         });
 
         // initializing primary output
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
         let output_features = OutputFeatures::default();
 
         // generating sender's keypair
@@ -2330,7 +2401,7 @@ where
 
                 let mut outputs = Vec::new();
 
-                let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+                let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
                 builder.with_change_secret(spending_key);
                 builder.with_recoverable_outputs(self.resources.recovery_data.clone());
                 builder.with_change_script(
@@ -2417,7 +2488,7 @@ where
 
         let mut outputs = Vec::new();
 
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
         builder.with_change_secret(spending_key);
         builder.with_recoverable_outputs(self.resources.recovery_data.clone());
         builder.with_change_script(

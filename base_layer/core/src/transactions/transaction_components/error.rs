@@ -30,6 +30,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
@@ -91,6 +92,8 @@ pub enum TransactionError {
     KeyManagerError(String),
     #[error("EncryptedData error : {0}")]
     EncryptedDataError(String),
+    #[error("Conversion error : {0}")]
+    ByteArrayError(String),
 }
 
 impl From<CovenantError> for TransactionError {
@@ -108,5 +111,11 @@ impl From<KeyManagerServiceError> for TransactionError {
 impl From<EncryptedDataError> for TransactionError {
     fn from(err: EncryptedDataError) -> Self {
         TransactionError::EncryptedDataError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for TransactionError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionError::ByteArrayError(err.to_string())
     }
 }

@@ -31,6 +31,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedData,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -42,6 +43,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -136,11 +138,17 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
-    GetNextSpendAndScriptKeys,
-    GetRecoveryData,
+    GetNextSpendAndScriptKeys, // TODO: Remove this when core key manager is implemented
+    GetNextSpendAndScriptKeyIds,
+    GetRecoveryData, // TODO: Remove this when core key manager is implemented
+    GetRecoveryKeyId,
+    TryCommitmentKeyRecovery(Commitment, EncryptedData, Option<KeyId>),
+    GetSpendingKeyId(PublicKey),
+    GetDiffieHellmanSharedSecret(KeyId, PublicKey),
 }
 
 impl fmt::Display for OutputManagerRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
         use OutputManagerRequest::*;
@@ -228,7 +236,27 @@ impl fmt::Display for OutputManagerRequest {
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
             GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
+            GetNextSpendAndScriptKeyIds => write!(f, "GetNextSpendAndScriptKeyIds"),
             GetRecoveryData => write!(f, "GetRecoveryData"),
+            GetRecoveryKeyId => write!(f, "GetRecoveryKeyId"),
+            TryCommitmentKeyRecovery(commitment, encrypted_data, custom_recovery_key_id) => write!(
+                f,
+                "TryCommitmentKeyRecovery(commitment: {}, encrypted_data: {}, custom_recovery_key_id: {:?})",
+                commitment.to_hex(),
+                encrypted_data.hex_display(false),
+                custom_recovery_key_id
+            ),
+            GetSpendingKeyId(public_spending_key) => write!(
+                f,
+                "GetSpendingKeyId(public_spending_key: {})",
+                public_spending_key.to_hex()
+            ),
+            GetDiffieHellmanSharedSecret(secret_key_id, public_key) => write!(
+                f,
+                "GetDiffieHellmanSharedSecret(secret_key_id: {}, public_key: {:?})",
+                secret_key_id,
+                public_key.to_hex()
+            ),
         }
     }
 }
@@ -276,7 +304,15 @@ pub enum OutputManagerResponse {
         spend_key: PrivateKey,
         script_key: PrivateKey,
     },
+    NextSpendAndScriptKeyIds {
+        spend_key_id: KeyId,
+        script_key_id: KeyId,
+    },
     RecoveryData(RecoveryData),
+    RecoveryKeyId(KeyId),
+    CommitmentKeyRecovery((KeyId, MicroTari)),
+    SpendingKeyId(KeyId),
+    DiffieHellmanSharedSecret(PublicKey),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -856,9 +892,79 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn get_next_spend_and_script_key_ids(&mut self) -> Result<(KeyId, KeyId), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetNextSpendAndScriptKeyIds)
+            .await??
+        {
+            OutputManagerResponse::NextSpendAndScriptKeyIds {
+                spend_key_id,
+                script_key_id,
+            } => Ok((spend_key_id, script_key_id)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_recovery_data(&mut self) -> Result<RecoveryData, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetRecoveryData).await?? {
             OutputManagerResponse::RecoveryData(recovery_data) => Ok(recovery_data),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_recovery_key_id(&mut self) -> Result<KeyId, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetRecoveryKeyId).await?? {
+            OutputManagerResponse::RecoveryKeyId(recovery_key_id) => Ok(recovery_key_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn try_commitment_key_recovery(
+        &mut self,
+        commitment: Commitment,
+        encrypted_data: EncryptedData,
+        custom_recovery_key_id: Option<KeyId>,
+    ) -> Result<(KeyId, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::TryCommitmentKeyRecovery(
+                commitment,
+                encrypted_data,
+                custom_recovery_key_id,
+            ))
+            .await??
+        {
+            OutputManagerResponse::CommitmentKeyRecovery((spending_key_id, value)) => Ok((spending_key_id, value)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_spending_key_id(&mut self, public_spending_key: PublicKey) -> Result<KeyId, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetSpendingKeyId(public_spending_key))
+            .await??
+        {
+            OutputManagerResponse::SpendingKeyId(spending_key_id) => Ok(spending_key_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_diffie_hellman_shared_secret(
+        &mut self,
+        private_key_id: KeyId,
+        public_key: PublicKey,
+    ) -> Result<PublicKey, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetDiffieHellmanSharedSecret(
+                private_key_id,
+                public_key,
+            ))
+            .await??
+        {
+            OutputManagerResponse::DiffieHellmanSharedSecret(shared_secret) => Ok(shared_secret),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

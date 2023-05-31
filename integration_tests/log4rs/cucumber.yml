@@ -114,7 +114,7 @@ loggers:
     appenders:
       - stdout
   c:
-    level: debug
+    level: trace
     appenders:
       - base_layer_base_node
   tari:
@@ -128,7 +128,7 @@ loggers:
       - base_layer_base_node
     additive: false
   wallet:
-    level: debug
+    level: trace
     appenders:
       - base_layer_wallet
   # Route log events sent to the "comms" logger to the "network" appender

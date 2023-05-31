@@ -65,6 +65,16 @@ pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Resu
     )
 }
 
+/// Generate an output encryption key from a Diffie-Hellman shared secret's bytes
+pub fn shared_secret_bytes_to_output_encryption_key(shared_secret: &[u8]) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_bytes(
+        WalletOutputEncryptionKeysDomainHasher::new()
+            .chain(shared_secret)
+            .finalize()
+            .as_ref(),
+    )
+}
+
 /// Generate an output spending key from a Diffie-Hellman shared secret
 pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_bytes(

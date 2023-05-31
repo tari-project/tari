@@ -35,6 +35,7 @@ use tari_comms_dht::{
     outbound::{OutboundEncryption, SendMessageResponse},
 };
 use tari_core::{
+    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -85,7 +86,7 @@ pub enum TransactionSendProtocolStage {
     WaitForReply,
 }
 
-pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
+pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
     dest_address: TariAddress,
     amount: MicroTari,
@@ -93,21 +94,23 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
 }
 
-impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub fn new(
         id: TxId,
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_address: TariAddress,

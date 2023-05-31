@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use log::*;
 use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
+    core_key_manager::BaseLayerKeyManagerInterface,
     proto::base_node as base_node_proto,
     transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
 };
@@ -71,10 +72,11 @@ mod utc;
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
-pub struct TransactionServiceInitializer<T, W>
+pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface>
 where
     T: TransactionBackend,
     W: WalletBackend,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
@@ -83,12 +85,14 @@ where
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
+    _phantom_data: PhantomData<TKeyManagerInterface>,
 }
 
-impl<T, W> TransactionServiceInitializer<T, W>
+impl<T, W, TKeyManagerInterface> TransactionServiceInitializer<T, W, TKeyManagerInterface>
 where
     T: TransactionBackend,
     W: WalletBackend,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -107,6 +111,7 @@ where
             consensus_manager,
             factories,
             wallet_database: Some(wallet_database),
+            _phantom_data: Default::default(),
         }
     }
 
@@ -178,10 +183,11 @@ where
 }
 
 #[async_trait]
-impl<T, W> ServiceInitializer for TransactionServiceInitializer<T, W>
+impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitializer<T, W, TKeyManagerInterface>
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -216,6 +222,7 @@ where
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
@@ -230,6 +237,7 @@ where
                 base_node_response_stream,
                 transaction_cancelled_stream,
                 output_manager_service,
+                core_key_manager_service,
                 outbound_message_service,
                 connectivity,
                 publisher,

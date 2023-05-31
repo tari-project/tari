@@ -37,6 +37,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
+    core_key_manager::BaseLayerKeyManagerInterface,
     transactions::transaction_components::Transaction,
 };
 use tari_utilities::hex::Hex;
@@ -57,22 +58,24 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
-pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity> {
+pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     tx_id: TxId,
     mode: TxBroadcastMode,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     timeout_update_receiver: watch::Receiver<Duration>,
     last_rejection: Option<Instant>,
 }
 
-impl<TBackend, TWalletConnectivity> TransactionBroadcastProtocol<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionBroadcastProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub fn new(
         tx_id: TxId,
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         timeout_update_receiver: watch::Receiver<Duration>,
     ) -> Self {
         Self {
