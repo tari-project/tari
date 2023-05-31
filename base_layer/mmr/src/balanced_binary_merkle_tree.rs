@@ -26,7 +26,7 @@ use digest::Digest;
 use tari_common::DomainDigest;
 use thiserror::Error;
 
-use crate::{common::hash_together, ArrayLike, Hash};
+use crate::{common::hash_together, Hash};
 
 pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleTreeError> {
     u32::try_from(value).map_err(|_| BalancedBinaryMerkleTreeError::MathOverFlow)
@@ -86,11 +86,25 @@ where D: Digest + DomainDigest
         }
     }
 
-    pub(crate) fn get_hash(&self, pos: usize) -> &Hash {
-        &self.hashes[pos]
+    /// Returns the number of _leaf_ nodes in the tree. That is, the number of hashes that are committed to by the
+    /// Merkle root.
+    pub fn num_leaf_nodes(&self) -> usize {
+        if self.hashes.is_empty() {
+            return 0;
+        }
+        ((self.hashes.len() - 1) >> 1) + 1
     }
 
-    pub fn get_leaf(&self, leaf_index: usize) -> &Hash {
+    /// Returns the number of nodes in the tree.
+    pub fn num_nodes(&self) -> usize {
+        self.hashes.len()
+    }
+
+    pub fn get_hash(&self, pos: usize) -> Option<&Hash> {
+        self.hashes.get(pos)
+    }
+
+    pub fn get_leaf(&self, leaf_index: usize) -> Option<&Hash> {
         self.get_hash(self.get_node_index(leaf_index))
     }
 
@@ -101,8 +115,8 @@ where D: Digest + DomainDigest
     pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<u32, BalancedBinaryMerkleTreeError> {
         let pos = self
             .hashes
-            .position(hash)
-            .expect("Unexpected Balanced Binary Merkle Tree error")
+            .iter()
+            .position(|h| h == hash)
             .ok_or(BalancedBinaryMerkleTreeError::LeafNotFound)?;
         if pos < (self.hashes.len() >> 1) {
             // The hash provided was not for leaf, but for node.
@@ -124,6 +138,7 @@ mod test {
     fn test_empty_tree() {
         let leaves = vec![];
         let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        assert_eq!(bmt.num_leaf_nodes(), 0);
         let root = bmt.get_merkle_root();
         assert_eq!(root, vec![
             72, 54, 179, 2, 214, 45, 9, 89, 161, 132, 177, 251, 229, 46, 124, 233, 32, 186, 46, 87, 127, 247, 19, 36,
@@ -135,6 +150,7 @@ mod test {
     fn test_single_node_tree() {
         let leaves = vec![vec![0; 32]];
         let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        assert_eq!(bmt.num_leaf_nodes(), 1);
         let root = bmt.get_merkle_root();
         assert_eq!(root, vec![0; 32]);
     }
@@ -143,6 +159,8 @@ mod test {
     fn test_find_leaf() {
         let leaves = (0..100).map(|i| vec![i; 32]).collect::<Vec<_>>();
         let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        assert_eq!(bmt.num_leaf_nodes(), 100);
+        assert_eq!(bmt.num_nodes(), (100 << 1) - 1);
         assert_eq!(bmt.find_leaf_index_for_hash(&vec![42; 32]).unwrap(), 42);
         // Non existing hash
         assert_eq!(
