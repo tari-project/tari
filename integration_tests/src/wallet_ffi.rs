@@ -79,7 +79,7 @@ impl WalletFFI {
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        let wallet = ffi::Wallet::init(comms_config, log_path, seed_words_ptr);
         wallet.lock().unwrap().start();
         Self { name, port, wallet }
     }
@@ -185,7 +185,7 @@ impl WalletFFI {
         let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
         let log_path = format!("{}/log/ffi_wallet.log", base_dir);
-        self.wallet = ffi::Wallet::create(comms_config, log_path, null());
+        self.wallet = ffi::Wallet::init(comms_config, log_path, null());
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {

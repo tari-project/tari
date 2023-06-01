@@ -5197,7 +5197,7 @@ unsafe fn init_logging(
 #[no_mangle]
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::too_many_lines)]
-pub unsafe extern "C" fn wallet_create(
+pub unsafe extern "C" fn wallet_init(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
     num_rolling_log_files: c_uint,
@@ -9442,7 +9442,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -9485,7 +9485,7 @@ mod test {
             drop(wallet_backend);
 
             // Check that the same key is returned when the wallet is started a second time
-            let alice_wallet2 = wallet_create(
+            let alice_wallet2 = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -9597,7 +9597,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -9820,7 +9820,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
 
-            let wallet = wallet_create(
+            let wallet = wallet_init(
                 config,
                 ptr::null(),
                 0,
@@ -9882,7 +9882,7 @@ mod test {
             let log_path: *const c_char =
                 CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
                     as *const c_char;
-            let recovered_wallet = wallet_create(
+            let recovered_wallet = wallet_init(
                 config,
                 log_path,
                 0,
@@ -9958,7 +9958,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -10104,7 +10104,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -10217,7 +10217,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -10412,7 +10412,7 @@ mod test {
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -10615,7 +10615,7 @@ mod test {
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
 
-            let alice_wallet = wallet_create(
+            let alice_wallet = wallet_init(
                 alice_config,
                 ptr::null(),
                 0,
@@ -10848,7 +10848,7 @@ mod test {
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let wallet_ptr = wallet_create(
+            let wallet_ptr = wallet_init(
                 config,
                 ptr::null(),
                 0,

@@ -377,7 +377,7 @@ extern "C" {
         position: c_uint,
         error_out: *mut c_int,
     ) -> *mut TariPublicKey;
-    pub fn wallet_create(
+    pub fn wallet_init(
         config: *mut TariCommsConfig,
         log_path: *const c_char,
         num_rolling_log_files: c_uint,

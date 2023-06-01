@@ -33,7 +33,7 @@ use libc::{c_ulonglong, c_void};
 use super::{
     ffi_import::{
         self,
-        wallet_create,
+        wallet_init,
         TariBalance,
         TariCompletedTransaction,
         TariContactsLivenessData,
@@ -164,12 +164,12 @@ impl Drop for Wallet {
 
 impl Wallet {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
+    pub fn init(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = wallet_create(
+            ptr = wallet_init(
                 comms_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 50,
