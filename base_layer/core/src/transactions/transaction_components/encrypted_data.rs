@@ -39,7 +39,7 @@ use digest::{generic_array::GenericArray, FixedOutput};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
@@ -84,8 +84,9 @@ impl EncryptedData {
         value: MicroTari,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
-        let mut openings = value.as_u64().to_le_bytes().to_vec();
-        openings.append(&mut mask.to_vec());
+        let mut openings = Vec::with_capacity(size_of::<u64>() + PrivateKey::key_length());
+        openings.extend(value.as_u64().to_le_bytes());
+        openings.extend(mask.as_bytes());
         let aead_payload = Payload {
             msg: openings.as_slice(),
             aad: Self::TAG,
