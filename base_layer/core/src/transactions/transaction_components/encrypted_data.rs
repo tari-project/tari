@@ -167,6 +167,11 @@ impl EncryptedData {
         bytes
     }
 
+    /// Return a copy of the inner data arrays
+    pub fn to_inner_arrays(&self) -> ([u8; BORSH_64], [u8; BORSH_X]) {
+        (self.data_1, self.data_2)
+    }
+
     /// Accessor method for the encrypted data hex display
     pub fn hex_display(&self, full: bool) -> String {
         if full {
