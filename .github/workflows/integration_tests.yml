@@ -64,12 +64,10 @@ jobs:
           fi
 
       - name: Setup rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ env.toolchain }}
-          override: true
 
       - name: Install ubuntu dependencies
         shell: bash
@@ -81,25 +79,20 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo test compile
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
         timeout-minutes: 90
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --test cucumber
-            -v
-            --all-features
-            --release
-            --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)"
-            -c 5
+        run: |
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
+            -c 5 \
             --retry 2
 
       - name: upload artifact
@@ -137,12 +130,10 @@ jobs:
 
       - name: Setup rust toolchain
         if: ${{ env.CI_FFI == 'true' }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ env.toolchain }}
-          override: true
 
       - name: Install ubuntu dependencies
         if: ${{ env.CI_FFI == 'true' }}
@@ -157,26 +148,22 @@ jobs:
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         timeout-minutes: 90
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --test cucumber
-            -v
-            --all-features
-            --release
-            --package tari_integration_tests
-            -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)"
-            -c 1
+        run: |
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
+            -c 1 \
             --retry 2
+
       - name: upload artifact
         uses: actions/upload-artifact@v2  # upload test results as artifact
         if: always()
