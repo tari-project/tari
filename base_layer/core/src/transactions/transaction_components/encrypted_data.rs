@@ -99,6 +99,10 @@ impl EncryptedData {
         let aead_key = kdf_aead(encryption_key, commitment);
         let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
         let mut ciphertext = cipher.encrypt(nonce_ga, aead_payload)?;
+
+        // Openings contains the mask so we need to zeroize it
+        openings.zeroize();
+
         let mut ciphertext_integral_nonce = nonce.to_vec();
         ciphertext_integral_nonce.append(&mut ciphertext);
 
