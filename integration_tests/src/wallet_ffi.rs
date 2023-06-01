@@ -80,6 +80,7 @@ impl WalletFFI {
             .unwrap()
             .into();
         let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        wallet.lock().unwrap().start();
         Self { name, port, wallet }
     }
 

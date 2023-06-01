@@ -211,6 +211,16 @@ impl Wallet {
         wallet
     }
 
+    pub fn start(&self) {
+        let mut error = 0;
+        unsafe {
+            ffi_import::wallet_start(self.ptr, &mut error);
+            if error > 0 {
+                println!("wallet_start error {}", error);
+            }
+        };
+    }
+
     pub fn add_liveness_data(&mut self, contact_liveness_data: ContactsLivenessData) {
         self.liveness_data.lock().unwrap().insert(
             contact_liveness_data.get_public_key().address().get_as_hex(),

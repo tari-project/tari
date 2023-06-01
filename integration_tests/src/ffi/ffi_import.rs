@@ -405,6 +405,7 @@ extern "C" {
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;
+    pub fn wallet_start(wallet: *mut TariWallet, error_out: *mut c_int);
     pub fn wallet_get_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariBalance;
     pub fn wallet_get_utxos(
         wallet: *mut TariWallet,

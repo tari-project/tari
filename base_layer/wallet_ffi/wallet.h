@@ -2708,6 +2708,22 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  int *error_out);
 
 /**
+ * Starts wallets comms and validates transactions
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void wallet_start(struct TariWallet *wallet,
+                  int *error_out);
+
+/**
  * Retrieves the version of an app that last accessed the wallet database
  *
  * ## Arguments

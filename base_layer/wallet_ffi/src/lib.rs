@@ -159,6 +159,7 @@ use tari_wallet::{
         storage::{
             database::TransactionDatabase,
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+            sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
@@ -243,6 +244,7 @@ pub struct TariPublicKeys(Vec<TariPublicKey>);
 
 pub struct TariWallet {
     wallet: WalletSqlite,
+    callback_handler: Option<CallbackHandler<TransactionServiceSqliteDatabase>>,
     runtime: Runtime,
     shutdown: Shutdown,
 }
@@ -5434,7 +5436,7 @@ pub unsafe extern "C" fn wallet_create(
     ));
 
     match w {
-        Ok(mut w) => {
+        Ok(w) => {
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = w.db.set_tor_identity(hs.tor_identity().clone()) {
@@ -5474,17 +5476,11 @@ pub unsafe extern "C" fn wallet_create(
                 callback_base_node_state,
             );
 
-            runtime.spawn(callback_handler.start());
-
-            if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not restart transaction negotiation protocols: {:?}", e
-                );
-            }
+            // runtime.spawn(callback_handler.start());
 
             let tari_wallet = TariWallet {
                 wallet: w,
+                callback_handler: Some(callback_handler),
                 runtime,
                 shutdown,
             };
@@ -5497,6 +5493,70 @@ pub unsafe extern "C" fn wallet_create(
             ptr::null_mut()
         },
     }
+}
+
+/// Starts wallets comms and validates transactions
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_start(wallet: *mut TariWallet, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    let callback_handler = match (*wallet).callback_handler.take() {
+        Some(c) => c,
+        None => {
+            error = LibWalletError::from(InterfaceError::NullError(
+                "callback_handler was empty, or already consumed. Start may only be called once on an instance of \
+                 TariWallet"
+                    .to_string(),
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+
+    (*wallet).runtime.spawn(callback_handler.start());
+
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.revalidate_all_transactions())
+    {
+        warn!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
+    };
+
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.restart_transaction_protocols())
+    {
+        warn!(
+            target: LOG_TARGET,
+            "Could not restart transaction negotiation protocols: {:?}", e
+        );
+    };
+
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.validate_transactions())
+    {
+        warn!(
+            target: LOG_TARGET,
+            "Problem validating and restarting transaction protocols: {}", e
+        );
+    };
 }
 
 /// Retrieves the version of an app that last accessed the wallet database
