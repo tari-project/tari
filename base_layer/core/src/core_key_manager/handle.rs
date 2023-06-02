@@ -226,6 +226,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_spending_key_id(public_spending_key)
+            .await
+    }
+
     async fn construct_range_proof(
         &self,
         spend_key_id: &KeyId,

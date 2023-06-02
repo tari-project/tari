@@ -66,7 +66,6 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -448,25 +447,6 @@ where
                 let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
             },
-            OutputManagerRequest::GetNextSpendAndScriptKeyIds => {
-                let (spend_key_id, script_key_id) = self.get_next_spend_and_script_key_ids().await?;
-                Ok(OutputManagerResponse::NextSpendAndScriptKeyIds {
-                    spend_key_id,
-                    script_key_id,
-                })
-            },
-            OutputManagerRequest::GetRecoveryKeyId => {
-                Ok(OutputManagerResponse::RecoveryKeyId(self.get_recovery_key_id().await?))
-            },
-            OutputManagerRequest::TryCommitmentKeyRecovery(commitment, encrypted_data, custom_recovery_key_id) => {
-                Ok(OutputManagerResponse::CommitmentKeyRecovery(
-                    self.try_commitment_key_recovery(&commitment, &encrypted_data, &custom_recovery_key_id)
-                        .await?,
-                ))
-            },
-            OutputManagerRequest::GetSpendingKeyId(public_spending_key) => Ok(OutputManagerResponse::SpendingKeyId(
-                self.get_spending_key_id(&public_spending_key).await?,
-            )),
         }
     }
 
@@ -711,54 +691,6 @@ where
             )
             .await?;
         Ok((result.key, script_key))
-    }
-
-    async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), OutputManagerError> {
-        let (spend_key_id, script_key_id) = self
-            .resources
-            .master_key_manager
-            .get_next_spend_and_script_key_ids()
-            .await?;
-        Ok((spend_key_id, script_key_id))
-    }
-
-    async fn get_recovery_key_id(&self) -> Result<KeyId, OutputManagerError> {
-        let recovery_key_id = self
-            .resources
-            .master_key_manager
-            .get_static_key_id(CoreKeyManagerBranch::Recovery.get_branch_key())
-            .await?;
-        Ok(recovery_key_id)
-    }
-
-    async fn try_commitment_key_recovery(
-        &self,
-        commitment: &Commitment,
-        encrypted_data: &EncryptedData,
-        custom_recovery_key_id: &Option<KeyId>,
-    ) -> Result<(KeyId, MicroTari), OutputManagerError> {
-        let (spending_key_id, value) = self
-            .resources
-            .master_key_manager
-            .try_commitment_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
-            .await?;
-        Ok((spending_key_id, value))
-    }
-
-    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, OutputManagerError> {
-        let index = self
-            .resources
-            .master_key_manager
-            .find_key_index(
-                CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
-                public_spending_key,
-            )
-            .await?;
-        let spending_key_id = KeyId::Managed {
-            branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
-            index,
-        };
-        Ok(spending_key_id)
     }
 
     async fn create_output_with_features(

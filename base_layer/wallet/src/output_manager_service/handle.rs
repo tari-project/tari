@@ -31,7 +31,6 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedData,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -43,7 +42,6 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -138,10 +136,6 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
-    GetNextSpendAndScriptKeyIds,
-    GetRecoveryKeyId,
-    TryCommitmentKeyRecovery(Commitment, EncryptedData, Option<KeyId>),
-    GetSpendingKeyId(PublicKey),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -232,20 +226,6 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
-            GetNextSpendAndScriptKeyIds => write!(f, "GetNextSpendAndScriptKeyIds"),
-            GetRecoveryKeyId => write!(f, "GetRecoveryKeyId"),
-            TryCommitmentKeyRecovery(commitment, encrypted_data, custom_recovery_key_id) => write!(
-                f,
-                "TryCommitmentKeyRecovery(commitment: {}, encrypted_data: {}, custom_recovery_key_id: {:?})",
-                commitment.to_hex(),
-                encrypted_data.hex_display(false),
-                custom_recovery_key_id
-            ),
-            GetSpendingKeyId(public_spending_key) => write!(
-                f,
-                "GetSpendingKeyId(public_spending_key: {})",
-                public_spending_key.to_hex()
-            ),
         }
     }
 }
@@ -284,10 +264,6 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroTari>, MicroTari)),
-    NextSpendAndScriptKeyIds { spend_key_id: KeyId, script_key_id: KeyId },
-    RecoveryKeyId(KeyId),
-    CommitmentKeyRecovery((KeyId, MicroTari)),
-    SpendingKeyId(KeyId),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -852,58 +828,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_next_spend_and_script_key_ids(&mut self) -> Result<(KeyId, KeyId), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetNextSpendAndScriptKeyIds)
-            .await??
-        {
-            OutputManagerResponse::NextSpendAndScriptKeyIds {
-                spend_key_id,
-                script_key_id,
-            } => Ok((spend_key_id, script_key_id)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_recovery_key_id(&mut self) -> Result<KeyId, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetRecoveryKeyId).await?? {
-            OutputManagerResponse::RecoveryKeyId(recovery_key_id) => Ok(recovery_key_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn try_commitment_key_recovery(
-        &mut self,
-        commitment: Commitment,
-        encrypted_data: EncryptedData,
-        custom_recovery_key_id: Option<KeyId>,
-    ) -> Result<(KeyId, MicroTari), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::TryCommitmentKeyRecovery(
-                commitment,
-                encrypted_data,
-                custom_recovery_key_id,
-            ))
-            .await??
-        {
-            OutputManagerResponse::CommitmentKeyRecovery((spending_key_id, value)) => Ok((spending_key_id, value)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_spending_key_id(&mut self, public_spending_key: PublicKey) -> Result<KeyId, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetSpendingKeyId(public_spending_key))
-            .await??
-        {
-            OutputManagerResponse::SpendingKeyId(spending_key_id) => Ok(spending_key_id),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -361,6 +361,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction output section (transactions > transaction_components > transaction_output)
     // -----------------------------------------------------------------------------------------------------------------
 
+    pub async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError> {
+        let index = self
+            .find_key_index(
+                &CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                public_spending_key,
+            )
+            .await?;
+        let spending_key_id = KeyId::Managed {
+            branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+            index,
+        };
+        Ok(spending_key_id)
+    }
+
     pub async fn construct_range_proof(
         &self,
         private_key: &KeyId,

@@ -163,7 +163,6 @@ pub struct TransactionService<
 > {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
-    output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
     transaction_finalized_stream: Option<TTxFinalizedStream>,
@@ -248,7 +247,7 @@ where
         // spawned.
         let resources = TransactionServiceResources {
             db: db.clone(),
-            output_manager_service: output_manager_service.clone(),
+            output_manager_service,
             core_key_manager_service,
             outbound_message_service,
             connectivity,
@@ -269,7 +268,6 @@ where
         Self {
             config,
             db,
-            output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
             transaction_finalized_stream: Some(transaction_finalized_stream),
@@ -350,7 +348,7 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
-        let mut output_manager_event_stream = self.output_manager_service.get_event_stream();
+        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
@@ -899,7 +897,7 @@ where
     async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
-            let output_manager_handle = self.output_manager_service.clone();
+            let output_manager_handle = self.resources.output_manager_service.clone();
             let metadata = match self.wallet_db.get_chain_metadata() {
                 Ok(data) => data,
                 Err(_) => None,
@@ -959,6 +957,7 @@ where
             );
 
             let (fee, transaction) = self
+                .resources
                 .output_manager_service
                 .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
                 .await?;
@@ -1066,6 +1065,7 @@ where
 
         // Prepare sender part of the transaction
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1087,7 +1087,8 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1172,7 +1173,8 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         self.submit_transaction(
@@ -1214,6 +1216,7 @@ where
 
         // Prepare sender part of the transaction
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1235,7 +1238,8 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1390,6 +1394,7 @@ where
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1411,7 +1416,8 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1842,7 +1848,7 @@ where
             e
         })?;
 
-        self.output_manager_service.cancel_transaction(tx_id).await?;
+        self.resources.output_manager_service.cancel_transaction(tx_id).await?;
 
         if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
             let _result = cancellation_sender.send(());
@@ -2143,7 +2149,8 @@ where
                             tx_id
                         );
                         self.db.uncancel_pending_transaction(tx_id)?;
-                        self.output_manager_service
+                        self.resources
+                            .output_manager_service
                             .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
                         self.restart_receive_transaction_protocol(tx_id, source_address.clone(), join_handles);
@@ -2704,6 +2711,7 @@ where
             // otherwise create a new coinbase tx
             let tx_id = TxId::new_random();
             let tx = self
+                .resources
                 .output_manager_service
                 .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
                 .await?;

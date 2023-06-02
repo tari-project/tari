@@ -80,6 +80,8 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError>;
 
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError>;
+
     async fn construct_range_proof(
         &self,
         spend_key_id: &KeyId,
