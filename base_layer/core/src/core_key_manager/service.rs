@@ -168,7 +168,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_fixed_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
             None => Err(KeyManagerServiceError::UnknownKeyBranch),
             Some(_) => Ok(KeyId::Managed {

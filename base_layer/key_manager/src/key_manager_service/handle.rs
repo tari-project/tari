@@ -89,11 +89,19 @@ where
     }
 
     async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
-        unimplemented!("KeyManagerHandle::get_next_key_id({})", branch.into())
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_next_key_id(&branch.into())
+            .await
     }
 
     async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
-        unimplemented!("KeyManagerHandle::get_fixed_key_id({})", branch.into())
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_static_key_id(&branch.into())
+            .await
     }
 
     async fn get_key_at_index<T: Into<String> + Send>(

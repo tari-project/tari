@@ -448,10 +448,6 @@ where
                 let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
             },
-            OutputManagerRequest::GetNextSpendAndScriptKeys => {
-                let (spend_key, script_key) = self.get_next_spend_and_script_keys().await?;
-                Ok(OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key })
-            },
             OutputManagerRequest::GetNextSpendAndScriptKeyIds => {
                 let (spend_key_id, script_key_id) = self.get_next_spend_and_script_key_ids().await?;
                 Ok(OutputManagerResponse::NextSpendAndScriptKeyIds {
@@ -459,9 +455,6 @@ where
                     script_key_id,
                 })
             },
-            OutputManagerRequest::GetRecoveryData => Ok(OutputManagerResponse::RecoveryData(
-                self.resources.recovery_data.clone(),
-            )),
             OutputManagerRequest::GetRecoveryKeyId => {
                 Ok(OutputManagerResponse::RecoveryKeyId(self.get_recovery_key_id().await?))
             },
@@ -474,12 +467,6 @@ where
             OutputManagerRequest::GetSpendingKeyId(public_spending_key) => Ok(OutputManagerResponse::SpendingKeyId(
                 self.get_spending_key_id(&public_spending_key).await?,
             )),
-            OutputManagerRequest::GetDiffieHellmanSharedSecret(key_id, public_key) => {
-                let shared_secret = self.get_diffie_hellman_shared_secret(&key_id, &public_key).await?;
-                Ok(OutputManagerResponse::DiffieHellmanSharedSecret(PublicKey::from_bytes(
-                    shared_secret.as_bytes(),
-                )?))
-            },
         }
     }
 
@@ -772,19 +759,6 @@ where
             index,
         };
         Ok(spending_key_id)
-    }
-
-    async fn get_diffie_hellman_shared_secret(
-        &self,
-        private_key_id: &KeyId,
-        public_key: &PublicKey,
-    ) -> Result<CommsDHKE, OutputManagerError> {
-        let shared_secret = self
-            .resources
-            .master_key_manager
-            .get_diffie_hellman_shared_secret(private_key_id, public_key)
-            .await?;
-        Ok(shared_secret)
     }
 
     async fn create_output_with_features(

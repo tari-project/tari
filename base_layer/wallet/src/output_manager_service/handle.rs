@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -38,7 +38,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
+        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -138,13 +138,10 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
-    GetNextSpendAndScriptKeys, // TODO: Remove this when core key manager is implemented
     GetNextSpendAndScriptKeyIds,
-    GetRecoveryData, // TODO: Remove this when core key manager is implemented
     GetRecoveryKeyId,
     TryCommitmentKeyRecovery(Commitment, EncryptedData, Option<KeyId>),
     GetSpendingKeyId(PublicKey),
-    GetDiffieHellmanSharedSecret(KeyId, PublicKey),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -235,9 +232,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
-            GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
             GetNextSpendAndScriptKeyIds => write!(f, "GetNextSpendAndScriptKeyIds"),
-            GetRecoveryData => write!(f, "GetRecoveryData"),
             GetRecoveryKeyId => write!(f, "GetRecoveryKeyId"),
             TryCommitmentKeyRecovery(commitment, encrypted_data, custom_recovery_key_id) => write!(
                 f,
@@ -250,12 +245,6 @@ impl fmt::Display for OutputManagerRequest {
                 f,
                 "GetSpendingKeyId(public_spending_key: {})",
                 public_spending_key.to_hex()
-            ),
-            GetDiffieHellmanSharedSecret(secret_key_id, public_key) => write!(
-                f,
-                "GetDiffieHellmanSharedSecret(secret_key_id: {}, public_key: {:?})",
-                secret_key_id,
-                public_key.to_hex()
             ),
         }
     }
@@ -288,31 +277,17 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures {
-        output: Box<UnblindedOutputBuilder>,
-    },
-    CreatePayToSelfWithOutputs {
-        transaction: Box<Transaction>,
-        tx_id: TxId,
-    },
+    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroTari>, MicroTari)),
-    NextSpendAndScriptKeys {
-        spend_key: PrivateKey,
-        script_key: PrivateKey,
-    },
-    NextSpendAndScriptKeyIds {
-        spend_key_id: KeyId,
-        script_key_id: KeyId,
-    },
-    RecoveryData(RecoveryData),
+    NextSpendAndScriptKeyIds { spend_key_id: KeyId, script_key_id: KeyId },
     RecoveryKeyId(KeyId),
     CommitmentKeyRecovery((KeyId, MicroTari)),
     SpendingKeyId(KeyId),
-    DiffieHellmanSharedSecret(PublicKey),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -881,17 +856,6 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_next_spend_and_script_keys(&mut self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetNextSpendAndScriptKeys)
-            .await??
-        {
-            OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key } => Ok((spend_key, script_key)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn get_next_spend_and_script_key_ids(&mut self) -> Result<(KeyId, KeyId), OutputManagerError> {
         match self
             .handle
@@ -902,13 +866,6 @@ impl OutputManagerHandle {
                 spend_key_id,
                 script_key_id,
             } => Ok((spend_key_id, script_key_id)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_recovery_data(&mut self) -> Result<RecoveryData, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetRecoveryData).await?? {
-            OutputManagerResponse::RecoveryData(recovery_data) => Ok(recovery_data),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -947,24 +904,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::SpendingKeyId(spending_key_id) => Ok(spending_key_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_diffie_hellman_shared_secret(
-        &mut self,
-        private_key_id: KeyId,
-        public_key: PublicKey,
-    ) -> Result<PublicKey, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetDiffieHellmanSharedSecret(
-                private_key_id,
-                public_key,
-            ))
-            .await??
-        {
-            OutputManagerResponse::DiffieHellmanSharedSecret(shared_secret) => Ok(shared_secret),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -122,7 +122,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_next_key_id(&branch.into())
+            .get_static_key_id(&branch.into())
             .await
     }
 

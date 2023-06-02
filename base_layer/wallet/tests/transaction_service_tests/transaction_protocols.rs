@@ -53,7 +53,7 @@ use tari_core::{
         },
         types::Signature as SignatureProto,
     },
-    test_helpers::{create_test_core_key_manager_with_memory_db, MemoryDbCoreKeyManagerHandle},
+    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::schema_to_transaction,
@@ -97,7 +97,7 @@ use crate::support::{
 };
 
 pub async fn setup() -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock, MemoryDbCoreKeyManagerHandle>,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock, TestKeyManager>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
