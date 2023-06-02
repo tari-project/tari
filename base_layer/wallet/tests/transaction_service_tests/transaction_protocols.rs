@@ -53,6 +53,7 @@ use tari_core::{
         },
         types::Signature as SignatureProto,
     },
+    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::schema_to_transaction,
@@ -96,7 +97,7 @@ use crate::support::{
 };
 
 pub async fn setup() -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock, TestKeyManager>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
@@ -143,6 +144,7 @@ pub async fn setup() -> (
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+    let core_key_manager_service_handle = create_test_core_key_manager_with_memory_db();
 
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
     let outbound_mock_state = mock_outbound_service.get_state();
@@ -158,6 +160,7 @@ pub async fn setup() -> (
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
+        core_key_manager_service: core_key_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,

@@ -22,14 +22,18 @@
 
 use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_comms::types::CommsDHKE;
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 
-use crate::transactions::transaction_components::{
-    EncryptedData,
-    TransactionError,
-    TransactionInputVersion,
-    TransactionKernelVersion,
-    TransactionOutputVersion,
+use crate::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{
+        EncryptedData,
+        TransactionError,
+        TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutputVersion,
+    },
 };
 
 #[derive(Clone, Copy, EnumIter)]
@@ -39,6 +43,7 @@ pub enum CoreKeyManagerBranch {
     CommitmentMask,
     Nonce,
     ScriptKey,
+    Recovery,
 }
 
 impl CoreKeyManagerBranch {
@@ -51,6 +56,7 @@ impl CoreKeyManagerBranch {
             CoreKeyManagerBranch::CommitmentMask => "core: commitment mask".to_string(),
             CoreKeyManagerBranch::Nonce => "core: nonce".to_string(),
             CoreKeyManagerBranch::ScriptKey => "core: script key".to_string(),
+            CoreKeyManagerBranch::Recovery => "core: recovery".to_string(),
         }
     }
 }
@@ -63,6 +69,18 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         spend_key_id: &KeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError>;
+
+    async fn get_recovery_key_id(&self) -> Result<KeyId, KeyManagerServiceError>;
+
+    async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), KeyManagerServiceError>;
+
+    async fn get_diffie_hellman_shared_secret(
+        &self,
+        secret_key_id: &KeyId,
+        public_key: &PublicKey,
+    ) -> Result<CommsDHKE, TransactionError>;
+
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError>;
 
     async fn construct_range_proof(
         &self,
@@ -110,6 +128,7 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn encrypt_data_for_recovery(
         &self,
         spend_key_id: &KeyId,
+        custom_recovery_key_id: &Option<KeyId>,
         value: u64,
     ) -> Result<EncryptedData, TransactionError>;
 
@@ -117,7 +136,8 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         commitment: &Commitment,
         data: &EncryptedData,
-    ) -> Result<(KeyId, u64), TransactionError>;
+        custom_recovery_key_id: &Option<KeyId>,
+    ) -> Result<(KeyId, MicroTari), TransactionError>;
 
     async fn get_script_offset(
         &self,

@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_comms::types::CommsDHKE;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
@@ -37,8 +38,9 @@ use tari_key_manager::{
 use tokio::sync::RwLock;
 
 use crate::{
-    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInner},
+    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, CoreKeyManagerInner},
     transactions::{
+        tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
             TransactionError,
@@ -116,6 +118,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_static_key_id(&branch.into())
+            .await
+    }
+
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
@@ -188,6 +198,39 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_commitment(spend_key_id, value)
+            .await
+    }
+
+    async fn get_recovery_key_id(&self) -> Result<KeyId, KeyManagerServiceError> {
+        self.get_static_key_id(CoreKeyManagerBranch::Recovery.get_branch_key())
+            .await
+    }
+
+    async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), KeyManagerServiceError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_next_spend_and_script_key_ids()
+            .await
+    }
+
+    async fn get_diffie_hellman_shared_secret(
+        &self,
+        secret_key_id: &KeyId,
+        public_key: &PublicKey,
+    ) -> Result<CommsDHKE, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_diffie_hellman_shared_secret(secret_key_id, public_key)
+            .await
+    }
+
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_spending_key_id(public_spending_key)
             .await
     }
 
@@ -273,12 +316,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn encrypt_data_for_recovery(
         &self,
         spend_key_id: &KeyId,
+        custom_recovery_key_id: &Option<KeyId>,
         value: u64,
     ) -> Result<EncryptedData, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .encrypt_data_for_recovery(spend_key_id, value)
+            .encrypt_data_for_recovery(spend_key_id, custom_recovery_key_id, value)
             .await
     }
 
@@ -286,11 +330,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         commitment: &Commitment,
         data: &EncryptedData,
-    ) -> Result<(KeyId, u64), TransactionError> {
+        custom_recovery_key_id: &Option<KeyId>,
+    ) -> Result<(KeyId, MicroTari), TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .try_commitment_key_recovery(commitment, data)
+            .try_commitment_key_recovery(commitment, data, custom_recovery_key_id)
             .await
     }
 

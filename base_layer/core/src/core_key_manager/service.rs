@@ -55,17 +55,21 @@ use crate::transactions::{
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 use strum::IntoEnumIterator;
+use tari_comms::types::CommsDHKE;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_key_manager::key_manager_service::KeyId;
 
 use crate::{
     core_key_manager::interface::CoreKeyManagerBranch,
-    transactions::transaction_components::{
-        EncryptedData,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        TransactionOutputVersion,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{
+            EncryptedData,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+        },
     },
 };
 
@@ -158,10 +162,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .lock()
             .await;
         self.db.increment_key_index(branch)?;
-        Ok(KeyId::Default {
+        Ok(KeyId::Managed {
             branch: branch.to_string(),
             index: km.increment_key_index(1),
         })
+    }
+
+    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+        match self.key_managers.get(branch) {
+            None => Err(KeyManagerServiceError::UnknownKeyBranch),
+            Some(_) => Ok(KeyId::Managed {
+                branch: branch.to_string(),
+                index: 0,
+            }),
+        }
     }
 
     pub async fn get_key_at_index(&self, branch: &str, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
@@ -177,7 +191,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Default { branch, index } => {
+            KeyId::Managed { branch, index } => {
                 let km = self
                     .key_managers
                     .get(branch)
@@ -188,6 +202,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             KeyId::Imported { key } => Ok(key.clone()),
         }
+    }
+
+    pub async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), KeyManagerServiceError> {
+        let spend_key_id = self
+            .get_next_key_id(&CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .await?;
+        let index = spend_key_id
+            .managed_index()
+            .ok_or(KeyManagerServiceError::KyeIdWithoutIndex)?;
+        self.db
+            .set_key_index(&CoreKeyManagerBranch::ScriptKey.get_branch_key(), index)?;
+        let script_key_id = KeyId::Managed {
+            branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+            index,
+        };
+        Ok((spend_key_id, script_key_id))
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
@@ -244,7 +274,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Note!: This method may not be made public
     async fn get_private_key(&self, key_id: &KeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Default { branch, index } => {
+            KeyId::Managed { branch, index } => {
                 let km = self
                     .key_managers
                     .get(branch)
@@ -272,6 +302,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Commitment, KeyManagerServiceError> {
         let key = self.get_private_key(private_key).await?;
         Ok(self.crypto_factories.commitment.commit(&key, value))
+    }
+
+    pub async fn get_diffie_hellman_shared_secret(
+        &self,
+        secret_key_id: &KeyId,
+        public_key: &PublicKey,
+    ) -> Result<CommsDHKE, TransactionError> {
+        let secret_key = self.get_private_key(secret_key_id).await?;
+        let shared_secret = CommsDHKE::new(&secret_key, public_key);
+        Ok(shared_secret)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -320,6 +360,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction output section (transactions > transaction_components > transaction_output)
     // -----------------------------------------------------------------------------------------------------------------
+
+    pub async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError> {
+        let index = self
+            .find_key_index(
+                &CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                public_spending_key,
+            )
+            .await?;
+        let spending_key_id = KeyId::Managed {
+            branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+            index,
+        };
+        Ok(spending_key_id)
+    }
 
     pub async fn construct_range_proof(
         &self,
@@ -613,7 +667,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     // Note!: This method may not be made public
     async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        let recovery_id = KeyId::Default {
+        let recovery_id = KeyId::Managed {
             branch: CoreKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
@@ -623,9 +677,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn encrypt_data_for_recovery(
         &self,
         spend_key_id: &KeyId,
+        custom_recovery_key_id: &Option<KeyId>,
         value: u64,
     ) -> Result<EncryptedData, TransactionError> {
-        let recovery_key = self.get_recovery_key().await?;
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            self.get_private_key(key_id).await?
+        } else {
+            self.get_recovery_key().await?
+        };
         let value_key = value.into();
         let commitment = self.get_commitment(spend_key_id, &value_key).await?;
         let spend_key = self.get_private_key(spend_key_id).await?;
@@ -636,10 +695,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn try_commitment_key_recovery(
         &self,
         commitment: &Commitment,
-        data: &EncryptedData,
-    ) -> Result<(KeyId, u64), TransactionError> {
-        let recover_key = self.get_recovery_key().await?;
-        let (value, private_key) = EncryptedData::decrypt_data(&recover_key, commitment, data)?;
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: &Option<KeyId>,
+    ) -> Result<(KeyId, MicroTari), TransactionError> {
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            self.get_private_key(key_id).await?
+        } else {
+            self.get_recovery_key().await?
+        };
+        let (value, private_key) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
         self.crypto_factories
             .range_proof
             .verify_mask(commitment, &private_key, value.into())?;
@@ -651,7 +715,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             Ok(index) => {
                 self.update_current_key_index_if_higher(&CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
                     .await?;
-                KeyId::Default {
+                KeyId::Managed {
                     branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index,
                 }
@@ -661,6 +725,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 KeyId::Imported { key: public_key }
             },
         };
-        Ok((key, value.into()))
+        Ok((key, value))
     }
 }

@@ -46,7 +46,7 @@ use tari_contacts::contacts_service::{
 };
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
-    core_key_manager::{CoreKeyManagerHandle, CoreKeyManagerInitializer},
+    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInitializer},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -113,13 +113,13 @@ hash_domain!(
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W, X> {
+pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
-    pub key_manager_service: CoreKeyManagerHandle<X>,
+    pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -134,16 +134,16 @@ pub struct Wallet<T, U, V, W, X> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W, X> Wallet<T, U, V, W, X>
+impl<T, U, V, W, TKeyManagerInterface> Wallet<T, U, V, W, TKeyManagerInterface>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    X: KeyManagerBackend<PublicKey> + 'static,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
-    pub async fn start(
+    pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
@@ -155,7 +155,7 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
-        key_manager_backend: X,
+        key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
@@ -186,7 +186,7 @@ where
                 node_identity.clone(),
                 publisher,
             ))
-            .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
+            .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
                 config.output_manager_service_config,
                 output_manager_backend.clone(),
                 factories.clone(),
@@ -198,7 +198,7 @@ where
                 master_seed,
                 factories.clone(),
             ))
-            .add_initializer(TransactionServiceInitializer::new(
+            .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
@@ -255,7 +255,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
-        let key_manager_handle = handles.expect_handle::<CoreKeyManagerHandle<X>>();
+        let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();

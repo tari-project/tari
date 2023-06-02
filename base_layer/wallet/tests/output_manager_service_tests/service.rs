@@ -40,7 +40,7 @@ use tari_core::{
     core_key_manager::CoreKeyManagerHandle,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
-    test_helpers::create_test_key_manager,
+    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
@@ -260,7 +260,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_base_node_state(height);
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
-    let key_manager = create_test_key_manager();
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,

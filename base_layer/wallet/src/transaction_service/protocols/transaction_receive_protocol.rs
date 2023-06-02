@@ -29,9 +29,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_core::transactions::{
-    transaction_components::Transaction,
-    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
+use tari_core::{
+    core_key_manager::BaseLayerKeyManagerInterface,
+    transactions::{
+        transaction_components::Transaction,
+        transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
+    },
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -61,27 +64,29 @@ pub enum TransactionReceiveProtocolStage {
     WaitForFinalize,
 }
 
-pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
+pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
     source_address: TariAddress,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(TariAddress, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
-impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionReceiveProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub fn new(
         id: TxId,
         source_address: TariAddress,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         transaction_finalize_receiver: mpsc::Receiver<(TariAddress, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
     ) -> Self {

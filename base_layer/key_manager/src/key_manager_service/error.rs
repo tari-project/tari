@@ -32,6 +32,8 @@ use crate::error::KeyManagerError as KMError;
 pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
+    #[error("Key ID without an index, most likely `Imported`")]
+    KyeIdWithoutIndex,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
