@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -37,7 +37,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
+        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -136,11 +136,10 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
-    GetNextSpendAndScriptKeys,
-    GetRecoveryData,
 }
 
 impl fmt::Display for OutputManagerRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
         use OutputManagerRequest::*;
@@ -227,8 +226,6 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
-            GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
-            GetRecoveryData => write!(f, "GetRecoveryData"),
         }
     }
 }
@@ -260,23 +257,13 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures {
-        output: Box<UnblindedOutputBuilder>,
-    },
-    CreatePayToSelfWithOutputs {
-        transaction: Box<Transaction>,
-        tx_id: TxId,
-    },
+    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroTari>, MicroTari)),
-    NextSpendAndScriptKeys {
-        spend_key: PrivateKey,
-        script_key: PrivateKey,
-    },
-    RecoveryData(RecoveryData),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -841,24 +828,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_next_spend_and_script_keys(&mut self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetNextSpendAndScriptKeys)
-            .await??
-        {
-            OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key } => Ok((spend_key, script_key)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_recovery_data(&mut self) -> Result<RecoveryData, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetRecoveryData).await?? {
-            OutputManagerResponse::RecoveryData(recovery_data) => Ok(recovery_data),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

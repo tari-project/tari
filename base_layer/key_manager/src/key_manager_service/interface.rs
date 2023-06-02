@@ -44,30 +44,30 @@ pub struct NextKeyResult<PK: PublicKey> {
     pub index: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId {
-    Default { branch: String, index: u64 },
+    Managed { branch: String, index: u64 },
     Imported { key: types::PublicKey },
 }
 
 impl KeyId {
-    pub fn index(&self) -> Option<u64> {
+    pub fn managed_index(&self) -> Option<u64> {
         match self {
-            KeyId::Default { index, .. } => Some(*index),
+            KeyId::Managed { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
         }
     }
 
-    pub fn branch(&self) -> Option<String> {
+    pub fn managed_branch(&self) -> Option<String> {
         match self {
-            KeyId::Default { branch, .. } => Some(branch.clone()),
+            KeyId::Managed { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
         }
     }
 
-    pub fn key(&self) -> Option<types::PublicKey> {
+    pub fn imported(&self) -> Option<types::PublicKey> {
         match self {
-            KeyId::Default { .. } => None,
+            KeyId::Managed { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
         }
     }
@@ -77,15 +77,15 @@ impl fmt::Display for KeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            KeyId::Default { branch: b, index: i } => write!(f, "default.{}.{}", b, i),
-            KeyId::Imported { key: public_key } => write!(f, "imported.{}", public_key.to_hex()),
+            KeyId::Managed { branch: b, index: i } => write!(f, "managed.'{}'.'{}'", b, i),
+            KeyId::Imported { key: public_key } => write!(f, "imported.'{}'", public_key.to_hex()),
         }
     }
 }
 
 impl Default for KeyId {
     fn default() -> Self {
-        KeyId::Default {
+        KeyId::Managed {
             branch: "".to_string(),
             index: 0,
         }
@@ -107,7 +107,7 @@ impl FromStr for KeyId {
                     let index = parts[2]
                         .parse()
                         .map_err(|_| "Index for default, invalid u64".to_string())?;
-                    Ok(KeyId::Default {
+                    Ok(KeyId::Managed {
                         branch: parts[1].into(),
                         index,
                     })
@@ -147,6 +147,9 @@ where
 
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
     async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError>;
+
+    /// Gets the fixed key id from the branch. This will use the branch key with index 0
+    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError>;
 
     /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(

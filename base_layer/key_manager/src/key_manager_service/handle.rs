@@ -88,8 +88,20 @@ where
             .await
     }
 
-    async fn get_next_key_id<T: Into<String> + Send>(&self, _branch: T) -> Result<KeyId, KeyManagerServiceError> {
-        todo!()
+    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_next_key_id(&branch.into())
+            .await
+    }
+
+    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_static_key_id(&branch.into())
+            .await
     }
 
     async fn get_key_at_index<T: Into<String> + Send>(
@@ -104,8 +116,8 @@ where
             .await
     }
 
-    async fn get_public_key_at_key_id(&self, _key_id: &KeyId) -> Result<PK, KeyManagerServiceError> {
-        todo!()
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PK, KeyManagerServiceError> {
+        unimplemented!("KeyManagerHandle::get_public_key_at_key_id({})", key_id)
     }
 
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {

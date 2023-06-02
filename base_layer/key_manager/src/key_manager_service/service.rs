@@ -35,6 +35,7 @@ use crate::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
         AddResult,
         KeyDigest,
+        KeyId,
     },
 };
 
@@ -103,6 +104,30 @@ where
         })
     }
 
+    pub async fn get_next_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+        let mut km = self
+            .key_managers
+            .get(branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+        self.db.increment_key_index(branch)?;
+        Ok(KeyId::Managed {
+            branch: branch.to_string(),
+            index: km.increment_key_index(1),
+        })
+    }
+
+    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+        match self.key_managers.get(branch) {
+            None => Err(KeyManagerServiceError::UnknownKeyBranch),
+            Some(_) => Ok(KeyId::Managed {
+                branch: branch.to_string(),
+                index: 0,
+            }),
+        }
+    }
+
     pub async fn get_key_at_index(&self, branch: &str, index: u64) -> Result<PK::K, KeyManagerServiceError> {
         let km = self
             .key_managers
@@ -164,23 +189,4 @@ where
         trace!(target: LOG_TARGET, "Imported key {}", hex_key);
         Ok(())
     }
-
-    // async fn get_private_key(&self, key_id: &KeyId<PK>) -> Result<PK::K, KeyManagerServiceError> {
-    //     match key_id {
-    //         KeyId::Default { branch, index } => {
-    //             let km = self
-    //                 .key_managers
-    //                 .get(branch)
-    //                 .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-    //                 .lock()
-    //                 .await;
-    //             let key = km.get_private_key(*index)?;
-    //             Ok(key)
-    //         },
-    //         KeyId::Imported { key } => {
-    //             let pvt_key = self.db.get_imported_key(key)?;
-    //             Ok(pvt_key)
-    //         },
-    //     }
-    // }
 }

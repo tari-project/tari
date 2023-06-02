@@ -43,6 +43,7 @@ use tari_comms::types::{CommsDHKE, CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
+    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
@@ -61,7 +62,6 @@ use tari_core::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
-            RecoveryData,
             TransactionMetadata,
         },
         CryptoFactories,
@@ -74,6 +74,7 @@ use tari_crypto::{
     ristretto::RistrettoComSig,
     tari_utilities::ByteArray,
 };
+use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
@@ -159,10 +160,10 @@ pub struct TransactionService<
     TTxCancelledStream,
     TWalletBackend,
     TWalletConnectivity,
+    TKeyManagerInterface,
 > {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
-    output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
     transaction_finalized_stream: Option<TTxFinalizedStream>,
@@ -172,7 +173,7 @@ pub struct TransactionService<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
     event_publisher: TransactionEventSender,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
@@ -195,6 +196,7 @@ impl<
         TTxCancelledStream,
         TWalletBackend,
         TWalletConnectivity,
+        TKeyManagerInterface,
     >
     TransactionService<
         TTxStream,
@@ -205,6 +207,7 @@ impl<
         TTxCancelledStream,
         TWalletBackend,
         TWalletConnectivity,
+        TKeyManagerInterface,
     >
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
@@ -215,6 +218,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -230,6 +234,7 @@ where
         base_node_response_stream: BNResponseStream,
         transaction_cancelled_stream: TTxCancelledStream,
         output_manager_service: OutputManagerHandle,
+        core_key_manager_service: TKeyManagerInterface,
         outbound_message_service: OutboundMessageRequester,
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
@@ -243,7 +248,8 @@ where
         // spawned.
         let resources = TransactionServiceResources {
             db: db.clone(),
-            output_manager_service: output_manager_service.clone(),
+            output_manager_service,
+            core_key_manager_service,
             outbound_message_service,
             connectivity,
             event_publisher: event_publisher.clone(),
@@ -263,7 +269,6 @@ where
         Self {
             config,
             db,
-            output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
             transaction_finalized_stream: Some(transaction_finalized_stream),
@@ -344,7 +349,7 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
-        let mut output_manager_event_stream = self.output_manager_service.get_event_stream();
+        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
@@ -926,7 +931,7 @@ where
     async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
-            let output_manager_handle = self.output_manager_service.clone();
+            let output_manager_handle = self.resources.output_manager_service.clone();
             let metadata = match self.wallet_db.get_chain_metadata() {
                 Ok(data) => data,
                 Err(_) => None,
@@ -986,6 +991,7 @@ where
             );
 
             let (fee, transaction) = self
+                .resources
                 .output_manager_service
                 .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
                 .await?;
@@ -1093,6 +1099,7 @@ where
 
         // Prepare sender part of the transaction
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1114,7 +1121,8 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1199,7 +1207,8 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         self.submit_transaction(
@@ -1241,6 +1250,7 @@ where
 
         // Prepare sender part of the transaction
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1262,7 +1272,8 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1408,6 +1419,7 @@ where
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
+        trace!(target: LOG_TARGET, "Burning transaction start - TxId: {}", tx_id);
         let output_features = claim_public_key
             .as_ref()
             .cloned()
@@ -1416,6 +1428,7 @@ where
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
+            .resources
             .output_manager_service
             .prepare_transaction_to_send(
                 tx_id,
@@ -1437,39 +1450,66 @@ where
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.output_manager_service
+        self.resources
+            .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let (spend_key, _script_key) = self
+        let (spend_key_id, _script_key_id) = self
             .resources
-            .output_manager_service
-            .get_next_spend_and_script_keys()
+            .core_key_manager_service
+            .get_next_spend_and_script_key_ids()
             .await?;
-        let public_spend_key = PublicKey::from_secret_key(&spend_key);
+        let public_spend_key = self
+            .resources
+            .core_key_manager_service
+            .get_public_key_at_key_id(&spend_key_id)
+            .await?;
+        // TODO: Remove this when `core_key_manager_service` fully implemented
+        let spend_key = self
+            .resources
+            .core_key_manager_service
+            .get_key_at_index(
+                spend_key_id.managed_branch().expect("branch exists"),
+                spend_key_id.managed_index().expect("index exists"),
+            )
+            .await?;
 
-        let recovery_data = self.resources.output_manager_service.get_recovery_data().await?;
+        let recovery_key_id = self.resources.core_key_manager_service.get_recovery_key_id().await?;
 
-        let recovery_data = match claim_public_key {
+        let recovery_key_id = match claim_public_key {
             Some(ref claim_public_key) => {
                 // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
                 // this case a new spend key from the key manager) and the provided claim public key. The public
                 // nonce/spend_key is returned back to the caller.
-                let shared_secret = CommsDHKE::new(&spend_key, claim_public_key);
+                let shared_secret = self
+                    .resources
+                    .core_key_manager_service
+                    .get_diffie_hellman_shared_secret(&spend_key_id, claim_public_key)
+                    .await?;
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                RecoveryData { encryption_key }
+                self.resources
+                    .core_key_manager_service
+                    .import_key(encryption_key.clone())
+                    .await?;
+                KeyId::Imported {
+                    key: PublicKey::from_secret_key(&encryption_key),
+                }
             },
             // No claim key provided, no shared secret or encryption key needed
-            None => recovery_data,
+            None => recovery_key_id,
         };
         let commitment = self
             .resources
-            .factories
-            .commitment
-            .commit_value(&spend_key, amount.into());
-        let encrypted_data =
-            EncryptedData::encrypt_data(&recovery_data.encryption_key, &commitment, amount, &spend_key)?;
+            .core_key_manager_service
+            .get_commitment(&spend_key_id, &PrivateKey::from(amount))
+            .await?;
+        let encrypted_data = self
+            .resources
+            .core_key_manager_service
+            .encrypt_data_for_recovery(&spend_key_id, &Some(recovery_key_id), amount.as_u64())
+            .await?;
 
         let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
@@ -1503,12 +1543,12 @@ where
                 &*self.resources.factories.commitment,
             )?);
         }
+
         // Start finalizing
         stp.add_single_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
-
         stp.finalize().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -1516,7 +1556,7 @@ where
             );
             TransactionServiceProtocolError::new(tx_id, e.into())
         })?;
-        info!(target: LOG_TARGET, "Finalized burning transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -1525,7 +1565,6 @@ where
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
         // Broadcast burn transaction
-
         let tx = stp
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1550,6 +1589,7 @@ where
                 None,
             ),
         )?;
+        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
 
         Ok((tx_id, BurntProof {
             // Key used to claim the burn on L2
@@ -1871,7 +1911,7 @@ where
             e
         })?;
 
-        self.output_manager_service.cancel_transaction(tx_id).await?;
+        self.resources.output_manager_service.cancel_transaction(tx_id).await?;
 
         if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
             let _result = cancellation_sender.send(());
@@ -2172,7 +2212,8 @@ where
                             tx_id
                         );
                         self.db.uncancel_pending_transaction(tx_id)?;
-                        self.output_manager_service
+                        self.resources
+                            .output_manager_service
                             .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
                         self.restart_receive_transaction_protocol(tx_id, source_address.clone(), join_handles);
@@ -2733,6 +2774,7 @@ where
             // otherwise create a new coinbase tx
             let tx_id = TxId::new_random();
             let tx = self
+                .resources
                 .output_manager_service
                 .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
                 .await?;
@@ -2795,9 +2837,10 @@ where
 
 /// This struct is a collection of the common resources that a protocol in the service requires.
 #[derive(Clone)]
-pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
+pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
+    pub core_key_manager_service: TKeyManagerInterface,
     pub outbound_message_service: OutboundMessageRequester,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
