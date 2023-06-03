@@ -32,7 +32,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    BlindingFactor,
     ComAndPubSignature,
     Commitment,
     CommitmentFactory,
@@ -50,12 +49,14 @@ use tari_crypto::{
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
     borsh::SerializedSize,
     consensus::DomainSeparatedConsensusHasher,
+    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -73,8 +74,8 @@ use crate::{
 };
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
-/// blinded value for the output while the range proof guarantees the commitment includes a positive value without
-/// overflow and the ownership of the private key.
+/// blinded/masked value for the output while the range proof guarantees the commitment includes a positive value
+/// without overflow and the ownership of the private key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub version: TransactionOutputVersion,
@@ -326,13 +327,27 @@ impl TransactionOutput {
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    pub async fn verify_mask_with_id<KM: BaseLayerKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+        prover: &RangeProofService,
+        spending_key_id: &KeyId<PublicKey>,
+        value: u64,
+    ) -> Result<bool, TransactionError> {
+        Ok(key_manager
+            .verify_mask(prover, &self.commitment, spending_key_id, value)
+            .await?)
+    }
+
+    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    /// TODO: Remove this method when core key manager is fully implemented
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
-        blinding_factor: &PrivateKey,
+        spending_key: &PrivateKey,
         value: u64,
     ) -> Result<bool, TransactionError> {
-        Ok(prover.verify_mask(&self.commitment, blinding_factor, value)?)
+        Ok(prover.verify_mask(&self.commitment, spending_key, value)?)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
@@ -427,10 +442,55 @@ impl TransactionOutput {
     }
 
     // Create partial commitment signature for the metadata for the receiver
+    pub async fn create_receiver_partial_metadata_signature_with_key_id<KM: BaseLayerKeyManagerInterface>(
+        key_manager: &KM,
+        version: TransactionOutputVersion,
+        value: MicroTari,
+        spending_key_id: &KeyId<PublicKey>,
+        script: &TariScript,
+        output_features: &OutputFeatures,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_pubkey: &PublicKey,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: MicroTari,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
+        let nonce_b = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
+        let pk_value = PrivateKey::from(value.as_u64());
+        let commitment = key_manager.get_commitment(spending_key_id, &pk_value).await?;
+        let e = TransactionOutput::build_metadata_signature_challenge(
+            &version,
+            script,
+            output_features,
+            sender_offset_public_key,
+            &ephemeral_commitment,
+            ephemeral_pubkey,
+            &commitment,
+            covenant,
+            encrypted_data,
+            minimum_value_promise,
+        );
+        key_manager
+            .get_metadata_signature(
+                &pk_value,
+                spending_key_id,
+                &PrivateKey::default(),
+                &nonce_a,
+                &nonce_b,
+                &PrivateKey::default(),
+                &e,
+            )
+            .await
+    }
+
+    // Create partial commitment signature for the metadata for the receiver
+    // TODO: Remove this method when core key manager is fully implemented
     pub fn create_receiver_partial_metadata_signature(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key: &BlindingFactor,
+        spending_key: &PrivateKey,
         script: &TariScript,
         output_features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
@@ -534,10 +594,57 @@ impl TransactionOutput {
     }
 
     // Create complete commitment signature if you are both the sender and receiver
+    pub async fn create_metadata_signature_with_key_id<KM: BaseLayerKeyManagerInterface>(
+        key_manager: &KM,
+        version: TransactionOutputVersion,
+        value: MicroTari,
+        spending_key_id: &KeyId<PublicKey>,
+        script: &TariScript,
+        output_features: &OutputFeatures,
+        sender_offset_private_key: &PrivateKey,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: MicroTari,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
+        let nonce_b = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
+        let nonce_x = PrivateKey::random(&mut OsRng);
+        let ephemeral_pubkey = PublicKey::from_secret_key(&nonce_x);
+        let pk_value = PrivateKey::from(value.as_u64());
+        let commitment = key_manager.get_commitment(spending_key_id, &pk_value).await?;
+        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
+        let e = TransactionOutput::build_metadata_signature_challenge(
+            &version,
+            script,
+            output_features,
+            &sender_offset_public_key,
+            &ephemeral_commitment,
+            &ephemeral_pubkey,
+            &commitment,
+            covenant,
+            encrypted_data,
+            minimum_value_promise,
+        );
+        key_manager
+            .get_metadata_signature(
+                &pk_value,
+                spending_key_id,
+                sender_offset_private_key,
+                &nonce_a,
+                &nonce_b,
+                &nonce_x,
+                &e,
+            )
+            .await
+    }
+
+    // Create complete commitment signature if you are both the sender and receiver
+    // TODO: Remove this method when core key manager is fully implemented
     pub fn create_metadata_signature(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key: &BlindingFactor,
+        spending_key: &PrivateKey,
         script: &TariScript,
         output_features: &OutputFeatures,
         sender_offset_private_key: &PrivateKey,

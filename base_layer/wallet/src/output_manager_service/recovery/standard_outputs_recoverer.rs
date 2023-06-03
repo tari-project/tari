@@ -26,7 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, PrivateKey, PublicKey},
+    types::{PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -189,7 +189,7 @@ where
     fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(BlindingFactor, MicroTari)>, OutputManagerError> {
+    ) -> Result<Option<(PrivateKey, MicroTari)>, OutputManagerError> {
         let (committed_value, blinding_factor) = match EncryptedData::decrypt_data(
             &self.recovery_data.encryption_key,
             &output.commitment,

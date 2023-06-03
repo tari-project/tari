@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, Signature};
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::{
@@ -47,12 +47,12 @@ pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
     /// transactions.
-    pub offset: BlindingFactor,
+    pub offset: PrivateKey,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
     /// A scalar offset that links outputs and inputs to prevent cut-through, enforcing the correct application of
     /// the output script.
-    pub script_offset: BlindingFactor,
+    pub script_offset: PrivateKey,
 }
 
 impl Transaction {
@@ -61,8 +61,8 @@ impl Transaction {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-        offset: BlindingFactor,
-        script_offset: BlindingFactor,
+        offset: PrivateKey,
+        script_offset: PrivateKey,
     ) -> Self {
         Self {
             offset,

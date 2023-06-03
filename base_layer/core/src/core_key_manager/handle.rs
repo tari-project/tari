@@ -22,7 +22,15 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    Commitment,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+    Signature,
+};
 use tari_comms::types::CommsDHKE;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
@@ -110,7 +118,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+    async fn get_next_key_id<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<KeyId<PublicKey>, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -118,7 +129,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+    async fn get_static_key_id<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<KeyId<PublicKey>, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -144,7 +158,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PublicKey, KeyManagerServiceError> {
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId<PublicKey>) -> Result<PublicKey, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -176,7 +190,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn import_key(&self, private_key: PrivateKey) -> Result<(), KeyManagerServiceError> {
+    async fn import_key(&self, private_key: PrivateKey) -> Result<KeyId<PublicKey>, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -191,7 +205,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     async fn get_commitment(
         &self,
-        spend_key_id: &KeyId,
+        spend_key_id: &KeyId<PublicKey>,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
@@ -201,12 +215,28 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_recovery_key_id(&self) -> Result<KeyId, KeyManagerServiceError> {
-        self.get_static_key_id(CoreKeyManagerBranch::Recovery.get_branch_key())
+    async fn verify_mask(
+        &self,
+        prover: &RangeProofService,
+        commitment: &Commitment,
+        spending_key_id: &KeyId<PublicKey>,
+        value: u64,
+    ) -> Result<bool, KeyManagerServiceError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .verify_mask(prover, commitment, spending_key_id, value)
             .await
     }
 
-    async fn get_next_spend_and_script_key_ids(&self) -> Result<(KeyId, KeyId), KeyManagerServiceError> {
+    async fn get_recovery_key_id(&self) -> Result<KeyId<PublicKey>, KeyManagerServiceError> {
+        self.get_static_key_id(CoreKeyManagerBranch::DataEncryption.get_branch_key())
+            .await
+    }
+
+    async fn get_next_spend_and_script_key_ids(
+        &self,
+    ) -> Result<(KeyId<PublicKey>, KeyId<PublicKey>), KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -216,7 +246,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_diffie_hellman_shared_secret(
         &self,
-        secret_key_id: &KeyId,
+        secret_key_id: &KeyId<PublicKey>,
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
         (*self.core_key_manager_inner)
@@ -226,7 +256,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId, TransactionError> {
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<KeyId<PublicKey>, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -236,7 +266,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn construct_range_proof(
         &self,
-        spend_key_id: &KeyId,
+        spend_key_id: &KeyId<PublicKey>,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
@@ -249,8 +279,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_script_signature(
         &self,
-        script_key_id: &KeyId,
-        spend_key_id: &KeyId,
+        script_key_id: &KeyId<PublicKey>,
+        spend_key_id: &KeyId<PublicKey>,
         value: &PrivateKey,
         tx_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -264,7 +294,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_partial_kernel_signature(
         &self,
-        spend_key_id: &KeyId,
+        spend_key_id: &KeyId<PublicKey>,
+        nonce_id: &KeyId<PublicKey>,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
         kernel_version: &TransactionKernelVersion,
@@ -273,50 +304,45 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_partial_kernel_signature(spend_key_id, total_nonce, total_excess, kernel_version, kernel_message)
+            .get_partial_kernel_signature(
+                spend_key_id,
+                nonce_id,
+                total_nonce,
+                total_excess,
+                kernel_version,
+                kernel_message,
+            )
             .await
     }
 
     async fn get_partial_kernel_signature_excess(
         &self,
-        spend_key_id: &KeyId,
-        message: &[u8; 32],
+        spend_key_id: &KeyId<PublicKey>,
+        nonce_id: &KeyId<PublicKey>,
     ) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_partial_kernel_signature_excess(spend_key_id, message)
+            .get_partial_kernel_signature_excess(spend_key_id, nonce_id)
             .await
     }
 
     async fn get_partial_private_kernel_offset(
         &self,
-        spend_key_id: &KeyId,
-        message: &[u8; 32],
+        spend_key_id: &KeyId<PublicKey>,
+        nonce_id: &KeyId<PublicKey>,
     ) -> Result<PrivateKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_partial_private_kernel_offset(spend_key_id, message)
-            .await
-    }
-
-    async fn get_kernel_signature_nonce(
-        &self,
-        spend_key_id: &KeyId,
-        message: &[u8; 32],
-    ) -> Result<PublicKey, TransactionError> {
-        (*self.core_key_manager_inner)
-            .read()
-            .await
-            .get_kernel_signature_nonce(spend_key_id, message)
+            .get_partial_private_kernel_offset(spend_key_id, nonce_id)
             .await
     }
 
     async fn encrypt_data_for_recovery(
         &self,
-        spend_key_id: &KeyId,
-        custom_recovery_key_id: &Option<KeyId>,
+        spend_key_id: &KeyId<PublicKey>,
+        custom_recovery_key_id: &Option<KeyId<PublicKey>>,
         value: u64,
     ) -> Result<EncryptedData, TransactionError> {
         (*self.core_key_manager_inner)
@@ -330,8 +356,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         commitment: &Commitment,
         data: &EncryptedData,
-        custom_recovery_key_id: &Option<KeyId>,
-    ) -> Result<(KeyId, MicroTari), TransactionError> {
+        custom_recovery_key_id: &Option<KeyId<PublicKey>>,
+    ) -> Result<(KeyId<PublicKey>, MicroTari), TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
@@ -341,8 +367,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_script_offset(
         &self,
-        script_key_ids: &[KeyId],
-        sender_offset_key_ids: &[KeyId],
+        script_key_ids: &[KeyId<PublicKey>],
+        sender_offset_key_ids: &[KeyId<PublicKey>],
     ) -> Result<PrivateKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
@@ -353,32 +379,45 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
-        spend_key_id: &KeyId,
-        message: &[u8; 32],
+        nonce_id: &KeyId<PublicKey>,
     ) -> Result<Commitment, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_metadata_signature_ephemeral_commitment(spend_key_id, message)
+            .get_metadata_signature_ephemeral_commitment(nonce_id)
             .await
     }
 
-    async fn get_metadata_signature_ephemeral_public_key(
+    async fn get_metadata_signature(
         &self,
-        spend_key_id: &KeyId,
-        message: &[u8; 32],
-    ) -> Result<PublicKey, TransactionError> {
+        value_as_private_key: &PrivateKey,
+        spending_key_id: &KeyId<PublicKey>,
+        sender_offset_private_key: &PrivateKey,
+        nonce_a: &PrivateKey,
+        nonce_b: &PrivateKey,
+        nonce_x: &PrivateKey,
+        challenge_bytes: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_metadata_signature_ephemeral_public_key(spend_key_id, message)
+            .get_metadata_signature(
+                value_as_private_key,
+                spending_key_id,
+                sender_offset_private_key,
+                nonce_a,
+                nonce_b,
+                nonce_x,
+                challenge_bytes,
+            )
             .await
     }
 
     async fn get_receiver_partial_metadata_signature(
         &self,
-        spend_key_id: &KeyId,
+        spend_key_id: &KeyId<PublicKey>,
         value: &PrivateKey,
+        nonce_id: &KeyId<PublicKey>,
         sender_offset_public_key: &PublicKey,
         ephemeral_pubkey: &PublicKey,
         tx_version: &TransactionOutputVersion,
@@ -390,6 +429,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .get_receiver_partial_metadata_signature(
                 spend_key_id,
                 value,
+                nonce_id,
                 sender_offset_public_key,
                 ephemeral_pubkey,
                 tx_version,
@@ -400,7 +440,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        sender_offset_key_id: &KeyId,
+        nonce_id: &KeyId<PublicKey>,
+        sender_offset_key_id: &KeyId<PublicKey>,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         tx_version: &TransactionOutputVersion,
@@ -410,6 +451,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_sender_partial_metadata_signature(
+                nonce_id,
                 sender_offset_key_id,
                 commitment,
                 ephemeral_commitment,

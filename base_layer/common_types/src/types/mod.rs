@@ -58,7 +58,6 @@ pub type PublicKey = RistrettoPublicKey;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type PrivateKey = RistrettoSecretKey;
-pub type BlindingFactor = RistrettoSecretKey;
 
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHasher = Blake256;

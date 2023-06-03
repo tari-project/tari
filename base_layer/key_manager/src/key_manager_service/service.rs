@@ -104,7 +104,7 @@ where
         })
     }
 
-    pub async fn get_next_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+    pub async fn get_next_key_id(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(branch)
@@ -118,7 +118,7 @@ where
         })
     }
 
-    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId, KeyManagerServiceError> {
+    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
             None => Err(KeyManagerServiceError::UnknownKeyBranch),
             Some(_) => Ok(KeyId::Managed {
@@ -182,11 +182,12 @@ where
         Ok(())
     }
 
-    pub async fn import_key(&self, private_key: PK::K) -> Result<(), KeyManagerServiceError> {
+    pub async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
         let public_key = PK::from_secret_key(&private_key);
         let hex_key = public_key.to_hex();
-        self.db.insert_imported_key(public_key, private_key)?;
+        self.db.insert_imported_key(public_key.clone(), private_key)?;
         trace!(target: LOG_TARGET, "Imported key {}", hex_key);
-        Ok(())
+        let key_id = KeyId::Imported { key: public_key };
+        Ok(key_id)
     }
 }

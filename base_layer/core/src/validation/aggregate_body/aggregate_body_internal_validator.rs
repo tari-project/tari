@@ -23,15 +23,7 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::types::{
-    BlindingFactor,
-    Commitment,
-    CommitmentFactory,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-};
+use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
@@ -102,8 +94,8 @@ impl AggregateBodyInternalConsistencyValidator {
     pub fn validate(
         &self,
         body: &AggregateBody,
-        tx_offset: &BlindingFactor,
-        script_offset: &BlindingFactor,
+        tx_offset: &PrivateKey,
+        script_offset: &PrivateKey,
         total_reward: Option<MicroTari>,
         prev_header: Option<HashOutput>,
         height: u64,

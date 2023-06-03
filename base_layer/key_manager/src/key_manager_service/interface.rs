@@ -25,9 +25,8 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types;
 use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
@@ -45,12 +44,14 @@ pub struct NextKeyResult<PK: PublicKey> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub enum KeyId {
+pub enum KeyId<PK> {
     Managed { branch: String, index: u64 },
-    Imported { key: types::PublicKey },
+    Imported { key: PK },
 }
 
-impl KeyId {
+impl<PK> KeyId<PK>
+where PK: Clone
+{
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
@@ -65,7 +66,7 @@ impl KeyId {
         }
     }
 
-    pub fn imported(&self) -> Option<types::PublicKey> {
+    pub fn imported(&self) -> Option<PK> {
         match self {
             KeyId::Managed { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
@@ -73,7 +74,9 @@ impl KeyId {
     }
 }
 
-impl fmt::Display for KeyId {
+impl<PK> fmt::Display for KeyId<PK>
+where PK: ByteArray
+{
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -83,7 +86,7 @@ impl fmt::Display for KeyId {
     }
 }
 
-impl Default for KeyId {
+impl<PK> Default for KeyId<PK> {
     fn default() -> Self {
         KeyId::Managed {
             branch: "".to_string(),
@@ -92,7 +95,9 @@ impl Default for KeyId {
     }
 }
 
-impl FromStr for KeyId {
+impl<PK> FromStr for KeyId<PK>
+where PK: ByteArray
+{
     type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
@@ -116,7 +121,7 @@ impl FromStr for KeyId {
                     if parts.len() != 2 {
                         return Err("Wrong format".to_string());
                     }
-                    let key = types::PublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
+                    let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
                 _ => Err("Wrong format".to_string()),
@@ -146,10 +151,10 @@ where
     ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
 
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError>;
+    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
 
     /// Gets the fixed key id from the branch. This will use the branch key with index 0
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError>;
+    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
 
     /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(
@@ -159,7 +164,7 @@ where
     ) -> Result<PK::K, KeyManagerServiceError>;
 
     /// Gets the key id at the specified index
-    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PK, KeyManagerServiceError>;
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError>;
 
     /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError>;
@@ -172,5 +177,5 @@ where
     ) -> Result<(), KeyManagerServiceError>;
 
     /// Add a new key to be tracked
-    async fn import_key(&self, private_key: PK::K) -> Result<(), KeyManagerServiceError>;
+    async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError>;
 }

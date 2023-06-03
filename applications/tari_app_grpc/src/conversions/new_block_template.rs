@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{BlindingFactor, FixedHash};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
     proof_of_work::ProofOfWork,
@@ -76,9 +76,9 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
 
     fn try_from(block: grpc::NewBlockTemplate) -> Result<Self, Self::Error> {
         let header = block.header.clone().ok_or_else(|| "No header provided".to_string())?;
-        let total_kernel_offset = BlindingFactor::from_bytes(&header.total_kernel_offset)
+        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset)
             .map_err(|err| format!("total_kernel_offset {}", err))?;
-        let total_script_offset = BlindingFactor::from_bytes(&header.total_script_offset)
+        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset)
             .map_err(|err| format!("total_script_offset {}", err))?;
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,

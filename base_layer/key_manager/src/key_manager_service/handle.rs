@@ -88,7 +88,7 @@ where
             .await
     }
 
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -96,7 +96,7 @@ where
             .await
     }
 
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId, KeyManagerServiceError> {
+    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -116,7 +116,7 @@ where
             .await
     }
 
-    async fn get_public_key_at_key_id(&self, key_id: &KeyId) -> Result<PK, KeyManagerServiceError> {
+    async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError> {
         unimplemented!("KeyManagerHandle::get_public_key_at_key_id({})", key_id)
     }
 
@@ -140,7 +140,7 @@ where
             .await
     }
 
-    async fn import_key(&self, private_key: PK::K) -> Result<(), KeyManagerServiceError> {
+    async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner).read().await.import_key(private_key).await
     }
 }
