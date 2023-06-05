@@ -47,7 +47,7 @@ use tari_utilities::{
     ByteArrayError,
 };
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
 use crate::transactions::{tari_amount::MicroTari, TransactionSecureNonceKdfDomain};
@@ -84,11 +84,11 @@ impl EncryptedData {
         value: MicroTari,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
-        let mut openings = Vec::with_capacity(size_of::<u64>() + PrivateKey::key_length());
+        let mut openings = Zeroizing::new(Vec::with_capacity(size_of::<u64>() + PrivateKey::key_length()));
         openings.extend(value.as_u64().to_le_bytes());
         openings.extend(mask.as_bytes());
         let aead_payload = Payload {
-            msg: openings.as_slice(),
+            msg: &openings,
             aad: Self::TAG,
         };
 
@@ -100,9 +100,6 @@ impl EncryptedData {
         let aead_key = kdf_aead(encryption_key, commitment);
         let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
         let mut ciphertext = cipher.encrypt(nonce_ga, aead_payload)?;
-
-        // Openings contains the mask so we need to zeroize it
-        openings.zeroize();
 
         let mut ciphertext_integral_nonce = nonce.to_vec();
         ciphertext_integral_nonce.append(&mut ciphertext);
