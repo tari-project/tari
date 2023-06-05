@@ -12,7 +12,7 @@ crate-type = ["lib", "cdylib"]
 
 # NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
-tari_crypto = {version = "0.16"}
+tari_crypto = { version = "0.17" }
 tari_utilities = "0.4.10"
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}
