@@ -40,7 +40,7 @@ use grpc::{
 };
 use tari_app_grpc::tari_rpc::{self as grpc};
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::{
     consensus::ConsensusManager,
@@ -2194,7 +2194,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             _ => panic!("Invalid output version"),
         };
         let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2298,7 +2298,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             _ => panic!("Invalid output version"),
         };
         let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2402,7 +2402,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             _ => panic!("Invalid output version"),
         };
         let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,

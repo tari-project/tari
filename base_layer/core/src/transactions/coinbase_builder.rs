@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
@@ -286,8 +286,8 @@ impl CoinbaseBuilder {
         let mut builder = TransactionBuilder::new();
         builder
             .add_output(output)
-            .add_offset(BlindingFactor::default())
-            .add_script_offset(BlindingFactor::default())
+            .add_offset(PrivateKey::default())
+            .add_script_offset(PrivateKey::default())
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
@@ -301,7 +301,7 @@ impl CoinbaseBuilder {
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::{BlindingFactor, PrivateKey, Signature};
+    use tari_common_types::types::{PrivateKey, Signature};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     use crate::{
@@ -603,7 +603,7 @@ mod test {
         body_validator
             .validate(
                 tx.body(),
-                &BlindingFactor::default(),
+                &PrivateKey::default(),
                 &PrivateKey::default(),
                 Some(block_reward),
                 None,

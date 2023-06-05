@@ -26,7 +26,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, ComAndPubSignature, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -94,9 +94,9 @@ pub(super) struct RawTransactionInfo {
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
-    pub offset: BlindingFactor,
+    pub offset: PrivateKey,
     // The sender's blinding factor shifted by the sender-selected offset
-    pub offset_blinding_factor: BlindingFactor,
+    pub offset_blinding_factor: PrivateKey,
     #[derivative(Debug = "ignore")]
     pub gamma: PrivateKey,
     pub public_excess: PublicKey,

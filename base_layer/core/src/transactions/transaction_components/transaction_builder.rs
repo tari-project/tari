@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::PrivateKey;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
@@ -34,8 +34,8 @@ use crate::transactions::{
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
 pub struct TransactionBuilder {
     body: AggregateBody,
-    offset: Option<BlindingFactor>,
-    script_offset: Option<BlindingFactor>,
+    offset: Option<PrivateKey>,
+    script_offset: Option<PrivateKey>,
     reward: Option<MicroTari>,
 }
 
@@ -46,13 +46,13 @@ impl TransactionBuilder {
     }
 
     /// Update the offset of an existing transaction
-    pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
+    pub fn add_offset(&mut self, offset: PrivateKey) -> &mut Self {
         self.offset = Some(offset);
         self
     }
 
     /// Update the script offset of an existing transaction
-    pub fn add_script_offset(&mut self, script_offset: BlindingFactor) -> &mut Self {
+    pub fn add_script_offset(&mut self, script_offset: PrivateKey) -> &mut Self {
         self.script_offset = Some(script_offset);
         self
     }

@@ -22,7 +22,7 @@
 
 use derivative::Derivative;
 use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::keys::PublicKey as PK;
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
 
@@ -45,26 +45,28 @@ use crate::{
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct KeyManagerOutputBuilder {
+    version: TransactionOutputVersion,
     value: MicroTari,
-    spending_key_id: KeyId,
+    spending_key_id: KeyId<PublicKey>,
     features: OutputFeatures,
     script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
-    script_private_key_id: Option<KeyId>,
+    script_private_key_id: Option<KeyId<PublicKey>>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_data: EncryptedData,
-    custom_recovery_key_id: Option<KeyId>,
+    custom_recovery_key_id: Option<KeyId<PublicKey>>,
     minimum_value_promise: MicroTari,
 }
 
 #[allow(dead_code)]
 impl KeyManagerOutputBuilder {
-    pub fn new(value: MicroTari, spending_key_id: KeyId) -> Self {
+    pub fn new(value: MicroTari, spending_key_id: KeyId<PublicKey>) -> Self {
         Self {
+            version: TransactionOutputVersion::get_current_version(),
             value,
             spending_key_id,
             features: OutputFeatures::default(),
@@ -82,8 +84,9 @@ impl KeyManagerOutputBuilder {
         }
     }
 
-    pub fn with_sender_offset_public_key(&mut self, sender_offset_public_key: PublicKey) {
+    pub fn with_sender_offset_public_key(mut self, sender_offset_public_key: PublicKey) -> Self {
         self.sender_offset_public_key = Some(sender_offset_public_key);
+        self
     }
 
     pub fn with_features(mut self, features: OutputFeatures) -> Self {
@@ -101,6 +104,11 @@ impl KeyManagerOutputBuilder {
         self
     }
 
+    pub fn with_covenant(mut self, covenant: Covenant) -> Self {
+        self.covenant = covenant;
+        self
+    }
+
     pub async fn with_encrypted_data<KM: BaseLayerKeyManagerInterface>(
         mut self,
         key_manager: &KM,
@@ -111,8 +119,18 @@ impl KeyManagerOutputBuilder {
         Ok(self)
     }
 
-    pub fn with_script_private_key(mut self, script_private_key: KeyId) -> Self {
-        self.script_private_key_id = Some(script_private_key);
+    pub fn with_script_private_key(mut self, script_private_key_id: KeyId<PublicKey>) -> Self {
+        self.script_private_key_id = Some(script_private_key_id);
+        self
+    }
+
+    pub fn with_version(mut self, version: TransactionOutputVersion) -> Self {
+        self.version = version;
+        self
+    }
+
+    pub fn with_minimum_value_promise(mut self, minimum_value_promise: MicroTari) -> Self {
+        self.minimum_value_promise = minimum_value_promise;
         self
     }
 
@@ -132,25 +150,28 @@ impl KeyManagerOutputBuilder {
         &self.covenant
     }
 
-    pub fn sign_as_sender_and_receiver(
+    pub async fn sign_as_sender_and_receiver<KM: BaseLayerKeyManagerInterface>(
         &mut self,
+        key_manager: &KM,
         sender_offset_private_key: &PrivateKey,
     ) -> Result<(), TransactionError> {
         let script = self
             .script
             .as_ref()
             .ok_or_else(|| TransactionError::ValidationError("Cannot sign metadata without a script".to_string()))?;
-        let metadata_signature = TransactionOutput::create_metadata_signature(
+        let metadata_signature = TransactionOutput::create_metadata_signature_with_key_id(
+            key_manager,
             TransactionOutputVersion::get_current_version(),
             self.value,
-            &PrivateKey::default(), // TODO &self.spending_key_id,
+            &self.spending_key_id,
             script,
             &self.features,
             sender_offset_private_key,
             &self.covenant,
             &self.encrypted_data,
             self.minimum_value_promise,
-        )?;
+        )
+        .await?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
         self.metadata_signature = Some(metadata_signature);
         self.metadata_signed_by_receiver = true;
@@ -169,7 +190,8 @@ impl KeyManagerOutputBuilder {
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
-        let ub = KeyManagerOutput::new_current_version(
+        let ub = KeyManagerOutput::new(
+            self.version,
             self.value,
             self.spending_key_id,
             self.features,
@@ -194,20 +216,112 @@ impl KeyManagerOutputBuilder {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
+    use crate::{test_helpers::create_test_core_key_manager_with_memory_db, transactions::CryptoFactories};
 
-    #[test]
-    fn test_try_build() {
-        let uob = KeyManagerOutputBuilder::new(100.into(), KeyId::default());
-        let mut uob = uob.with_script(TariScript::new(vec![]));
-        assert!(uob.clone().try_build().is_err());
-        uob.with_sender_offset_public_key(PublicKey::default());
-        assert!(uob.sign_as_sender_and_receiver(&PrivateKey::default()).is_ok());
-        assert!(uob.clone().try_build().is_err());
-        let uob = uob.with_input_data(ExecutionStack::new(vec![]));
-        let uob = uob.with_script_private_key(KeyId::default());
-        let uob = uob.with_features(OutputFeatures::default());
-        assert!(uob.try_build().is_ok());
+    #[tokio::test]
+    async fn test_try_build() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let (spending_key_id, script_key_id) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let value = MicroTari(100);
+        let kmob = KeyManagerOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = kmob.with_script(TariScript::new(vec![]));
+        assert!(kmob.clone().try_build().is_err());
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let kmob = kmob.with_sender_offset_public_key(PublicKey::from_secret_key(&sender_offset_private_key));
+        assert!(kmob.clone().try_build().is_err());
+        let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
+        let kmob = kmob.with_script_private_key(script_key_id);
+        let kmob = kmob.with_features(OutputFeatures::default());
+        let mut kmob = kmob.with_encrypted_data(&key_manager).await.unwrap();
+        kmob.sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key)
+            .await
+            .unwrap();
+        match kmob.clone().try_build() {
+            Ok(val) => {
+                let output = val.as_transaction_output(&key_manager).await.unwrap();
+                assert!(output.verify_metadata_signature().is_ok());
+                assert!(output
+                    .verify_mask_with_id(
+                        &key_manager,
+                        &CryptoFactories::default().range_proof,
+                        &spending_key_id,
+                        value.into()
+                    )
+                    .await
+                    .unwrap());
+                let (recovered_key_id, recovered_value) = key_manager
+                    .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, &None)
+                    .await
+                    .unwrap();
+                assert_eq!(recovered_key_id, spending_key_id);
+                assert_eq!(recovered_value, value);
+            },
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_partial_metadata_signatures() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let (spending_key_id, script_key_id) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let value = MicroTari(100);
+        let kmob = KeyManagerOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let kmob = kmob.with_sender_offset_public_key(PublicKey::from_secret_key(&sender_offset_private_key));
+        let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
+        let kmob = kmob.with_script_private_key(script_key_id);
+        let kmob = kmob.with_features(OutputFeatures::default());
+        let mut kmob = kmob.with_encrypted_data(&key_manager).await.unwrap();
+        kmob.sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key)
+            .await
+            .unwrap();
+        match kmob.clone().try_build() {
+            Ok(val) => {
+                let mut output = val.as_transaction_output(&key_manager).await.unwrap();
+                assert!(output.verify_metadata_signature().is_ok());
+
+                // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
+                let (ephemeral_private_nonce, sender_ephemeral_public_nonce) = PublicKey::random_keypair(&mut OsRng);
+                let receiver_metadata_signature =
+                    TransactionOutput::create_receiver_partial_metadata_signature_with_key_id(
+                        &key_manager,
+                        output.version,
+                        value,
+                        &spending_key_id,
+                        &output.script,
+                        &output.features,
+                        &output.sender_offset_public_key,
+                        &sender_ephemeral_public_nonce,
+                        &output.covenant,
+                        &output.encrypted_data,
+                        output.minimum_value_promise,
+                    )
+                    .await
+                    .unwrap();
+                let sender_metadata_signature = TransactionOutput::create_sender_partial_metadata_signature(
+                    output.version,
+                    &output.commitment,
+                    receiver_metadata_signature.ephemeral_commitment(),
+                    &output.script,
+                    &output.features,
+                    &sender_offset_private_key,
+                    Some(&ephemeral_private_nonce),
+                    &output.covenant,
+                    &output.encrypted_data,
+                    output.minimum_value_promise,
+                )
+                .unwrap();
+                let metadata_signature_from_partials = &receiver_metadata_signature + &sender_metadata_signature;
+                assert_ne!(output.metadata_signature, metadata_signature_from_partials);
+                output.metadata_signature = metadata_signature_from_partials;
+                assert!(output.verify_metadata_signature().is_ok());
+            },
+            Err(e) => panic!("{}", e),
+        }
     }
 }

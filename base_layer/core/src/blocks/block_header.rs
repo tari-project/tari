@@ -46,7 +46,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
+use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
@@ -106,9 +106,9 @@ pub struct BlockHeader {
     /// This is the Merkle root of the inputs in this block
     pub input_mr: FixedHash,
     /// Sum of kernel offsets for all kernels in this block.
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PrivateKey,
     /// Sum of script offsets for all kernels in this block.
-    pub total_script_offset: BlindingFactor,
+    pub total_script_offset: PrivateKey,
     /// Nonce increment used to mine this block.
     pub nonce: u64,
     /// Proof of work summary
@@ -131,8 +131,8 @@ impl BlockHeader {
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
-            total_kernel_offset: BlindingFactor::default(),
-            total_script_offset: BlindingFactor::default(),
+            total_kernel_offset: PrivateKey::default(),
+            total_script_offset: PrivateKey::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
@@ -164,8 +164,8 @@ impl BlockHeader {
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
-            total_kernel_offset: BlindingFactor::default(),
-            total_script_offset: BlindingFactor::default(),
+            total_kernel_offset: PrivateKey::default(),
+            total_script_offset: PrivateKey::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),

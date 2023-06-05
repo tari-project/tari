@@ -27,7 +27,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::PrivateKey;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use super::transaction_components::OutputFeatures;
@@ -305,7 +305,7 @@ impl AggregateBody {
         // counters should be 0 and the fn should have returned an error by now.
         let utxo = coinbase_utxo.unwrap();
         let rhs =
-            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&BlindingFactor::default(), reward.0);
+            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
         if rhs != utxo.commitment {
             warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
             return Err(TransactionError::InvalidCoinbase);

@@ -29,7 +29,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -86,15 +86,15 @@ pub struct SenderTransactionInitializer {
     unblinded_inputs: Vec<UnblindedOutput>,
     sender_custom_outputs: Vec<UnblindedOutput>,
     sender_offset_private_keys: Vec<PrivateKey>,
-    change_secret: Option<BlindingFactor>,
+    change_secret: Option<PrivateKey>,
     change_script: Option<TariScript>,
     change_input_data: Option<ExecutionStack>,
     change_script_private_key: Option<PrivateKey>,
     change_sender_offset_private_key: Option<PrivateKey>,
     change_covenant: Covenant,
     recovery_data: Option<RecoveryData>,
-    offset: Option<BlindingFactor>,
-    excess_blinding_factor: BlindingFactor,
+    offset: Option<PrivateKey>,
+    excess_blinding_factor: PrivateKey,
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
     prevent_fee_gt_amount: bool,
@@ -142,7 +142,7 @@ impl SenderTransactionInitializer {
             recovery_data: None,
             offset: None,
             private_nonce: None,
-            excess_blinding_factor: BlindingFactor::default(),
+            excess_blinding_factor: PrivateKey::default(),
             message: None,
             prevent_fee_gt_amount: true,
             recipient_output_features: FixedSet::new(num_recipients),
@@ -202,7 +202,7 @@ impl SenderTransactionInitializer {
     }
 
     /// Manually sets the offset value. If this is not called, a random offset will be used when `build()` is called.
-    pub fn with_offset(&mut self, offset: BlindingFactor) -> &mut Self {
+    pub fn with_offset(&mut self, offset: PrivateKey) -> &mut Self {
         self.offset = Some(offset);
         self
     }
@@ -231,7 +231,7 @@ impl SenderTransactionInitializer {
 
     /// Provide a blinding factor for the change output. The amount of change will automatically be calculated when
     /// the transaction is built.
-    pub fn with_change_secret(&mut self, blinding_factor: BlindingFactor) -> &mut Self {
+    pub fn with_change_secret(&mut self, blinding_factor: PrivateKey) -> &mut Self {
         self.change_secret = Some(blinding_factor);
         self
     }

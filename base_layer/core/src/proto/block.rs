@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{BlindingFactor, FixedHash, PrivateKey};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -150,7 +150,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
             accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
             accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
-            total_kernel_offset: BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
+            total_kernel_offset: PrivateKey::from_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
         })
     }
@@ -202,10 +202,8 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
     type Error = String;
 
     fn try_from(header: proto::NewBlockHeaderTemplate) -> Result<Self, Self::Error> {
-        let total_kernel_offset =
-            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
-        let total_script_offset =
-            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),

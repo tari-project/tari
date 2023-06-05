@@ -25,15 +25,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use tari_common_types::types::{
-    BlindingFactor,
-    ComAndPubSignature,
-    Commitment,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    Signature,
-};
+use tari_common_types::types::{ComAndPubSignature, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
@@ -126,16 +118,16 @@ impl From<HashOutput> for proto::HashOutput {
 
 //--------------------------------- BlindingFactor -----------------------------------------//
 
-impl TryFrom<proto::BlindingFactor> for BlindingFactor {
+impl TryFrom<proto::BlindingFactor> for PrivateKey {
     type Error = ByteArrayError;
 
     fn try_from(offset: proto::BlindingFactor) -> Result<Self, Self::Error> {
-        BlindingFactor::from_bytes(&offset.data)
+        PrivateKey::from_bytes(&offset.data)
     }
 }
 
-impl From<BlindingFactor> for proto::BlindingFactor {
-    fn from(offset: BlindingFactor) -> Self {
+impl From<PrivateKey> for proto::BlindingFactor {
+    fn from(offset: PrivateKey) -> Self {
         Self { data: offset.to_vec() }
     }
 }

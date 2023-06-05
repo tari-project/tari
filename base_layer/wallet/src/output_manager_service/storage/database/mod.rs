@@ -30,7 +30,7 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput},
+    types::{Commitment, HashOutput, PrivateKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -83,8 +83,8 @@ impl Default for OutputBackendQuery {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
-    SpentOutput(BlindingFactor),
-    UnspentOutput(BlindingFactor),
+    SpentOutput(PrivateKey),
+    UnspentOutput(PrivateKey),
     UnspentOutputHash(HashOutput),
     AnyOutputByCommitment(Commitment),
     TimeLockedUnspentOutputs(u64),
