@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{BlindingFactor, ComAndPubSignature, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
 use tari_script::{ExecutionStack, TariScript};
 
@@ -47,7 +47,7 @@ use crate::{
 pub struct UnblindedOutputBuilder {
     value: MicroTari,
     #[derivative(Debug = "ignore")]
-    spending_key: BlindingFactor,
+    spending_key: PrivateKey,
     features: OutputFeatures,
     script: Option<TariScript>,
     covenant: Covenant,
@@ -64,7 +64,7 @@ pub struct UnblindedOutputBuilder {
 }
 
 impl UnblindedOutputBuilder {
-    pub fn new(value: MicroTari, spending_key: BlindingFactor) -> Self {
+    pub fn new(value: MicroTari, spending_key: PrivateKey) -> Self {
         Self {
             value,
             spending_key,

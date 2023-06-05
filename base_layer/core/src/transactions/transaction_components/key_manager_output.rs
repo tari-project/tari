@@ -36,7 +36,7 @@ use tari_script::{ExecutionStack, TariScript};
 use super::TransactionOutputVersion;
 use crate::{
     borsh::SerializedSize,
-    core_key_manager::BaseLayerKeyManagerInterface,
+    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -46,6 +46,7 @@ use crate::{
             transaction_output::TransactionOutput,
             EncryptedData,
             OutputFeatures,
+            OutputType,
             RangeProofType,
             TransactionError,
             TransactionInputVersion,
@@ -61,12 +62,12 @@ use crate::{
 pub struct KeyManagerOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroTari,
-    pub spending_key_id: KeyId, // rename to id
+    pub spending_key_id: KeyId<PublicKey>,
     pub features: OutputFeatures,
     pub script: TariScript,
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
-    pub script_private_key_id: KeyId, // rename to id
+    pub script_private_key_id: KeyId<PublicKey>,
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
@@ -81,11 +82,11 @@ impl KeyManagerOutput {
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key_id: KeyId,
+        spending_key_id: KeyId<PublicKey>,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
-        script_private_key_id: KeyId,
+        script_private_key_id: KeyId<PublicKey>,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
@@ -112,11 +113,11 @@ impl KeyManagerOutput {
 
     pub fn new_current_version(
         value: MicroTari,
-        spending_key_id: KeyId,
+        spending_key_id: KeyId<PublicKey>,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
-        script_private_key_id: KeyId,
+        script_private_key_id: KeyId<PublicKey>,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
@@ -160,8 +161,6 @@ impl KeyManagerOutput {
             )
             .await?;
 
-        // .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
-
         Ok(TransactionInput::new_current_version(
             SpentOutput::OutputData {
                 features: self.features.clone(),
@@ -191,6 +190,95 @@ impl KeyManagerOutput {
             input.input_data,
             input.script_signature,
         ))
+    }
+
+    pub async fn sign_metadata_signature_as_sender_receiver<KM: BaseLayerKeyManagerInterface>(
+        &mut self,
+        key_manager: &KM,
+        sender_offset_private_key_id: &KeyId<PublicKey>,
+    ) -> Result<(), TransactionError> {
+        let metadata_message = TransactionOutput::build_metadata_signature_message(
+            &self.version,
+            &self.script,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            self.minimum_value_promise,
+        );
+        let ephemeral_commitment_nonce_id = key_manager
+            .get_next_key_id(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let ephemeral_pubkey_nonce_id = key_manager
+            .get_next_key_id(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let ephemeral_pubkey = key_manager.get_public_key_at_key_id(&ephemeral_pubkey_nonce_id).await?;
+        let ephemeral_commitment = key_manager
+            .get_metadata_signature_ephemeral_commitment(&ephemeral_commitment_nonce_id)
+            .await?;
+        let commitment = key_manager
+            .get_commitment(&self.spending_key_id, &self.value.into())
+            .await?;
+
+        let receiver_metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &self.spending_key_id,
+                &self.value.into(),
+                &ephemeral_commitment_nonce_id,
+                &self.sender_offset_public_key,
+                &ephemeral_pubkey,
+                &self.version,
+                &metadata_message,
+            )
+            .await?;
+        let sender_metadata_signature = key_manager
+            .get_sender_partial_metadata_signature(
+                &ephemeral_pubkey_nonce_id,
+                sender_offset_private_key_id,
+                &commitment,
+                &ephemeral_commitment,
+                &self.version,
+                &metadata_message,
+            )
+            .await?;
+        self.metadata_signature = &receiver_metadata_signature + &sender_metadata_signature;
+        Ok(())
+    }
+
+    pub async fn sign_metadata_signature_as_receiver<KM: BaseLayerKeyManagerInterface>(
+        &mut self,
+        key_manager: &KM,
+        ephemeral_commitment_nonce_id: Option<KeyId<PublicKey>>,
+        ephemeral_pubkey: &PublicKey,
+    ) -> Result<(), TransactionError> {
+        let metadata_message = TransactionOutput::build_metadata_signature_message(
+            &self.version,
+            &self.script,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            self.minimum_value_promise,
+        );
+        let ephemeral_commitment_nonce = match ephemeral_commitment_nonce_id {
+            Some(id) => id,
+            None => {
+                key_manager
+                    .get_next_key_id(CoreKeyManagerBranch::Nonce.get_branch_key())
+                    .await?
+            },
+        };
+        let receiver_metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &self.spending_key_id,
+                &self.value.into(),
+                &ephemeral_commitment_nonce,
+                &self.sender_offset_public_key,
+                ephemeral_pubkey,
+                &self.version,
+                &metadata_message,
+            )
+            .await?;
+        self.metadata_signature = receiver_metadata_signature;
+        Ok(())
     }
 
     pub async fn as_transaction_output<KM: BaseLayerKeyManagerInterface>(
@@ -252,6 +340,11 @@ impl KeyManagerOutput {
             self.minimum_value_promise,
         ))
     }
+
+    /// Is this a burned output kernel?
+    pub fn is_burned(&self) -> bool {
+        matches!(self.features.output_type, OutputType::Burn)
+    }
 }
 
 // These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
@@ -277,7 +370,7 @@ impl Ord for KeyManagerOutput {
 
 impl Debug for KeyManagerOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UnblindedOutput")
+        f.debug_struct("KeyManagerOutput")
             .field("version", &self.version)
             .field("value", &self.value)
             .field("spending_key_id", &self.spending_key_id)

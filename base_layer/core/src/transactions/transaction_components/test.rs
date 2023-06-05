@@ -21,14 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{self, rngs::OsRng};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComAndPubSignature,
-    CommitmentFactory,
-    PrivateKey,
-    PublicKey,
-    Signature,
-};
+use tari_common_types::types::{ComAndPubSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -288,7 +281,7 @@ fn kernel_metadata() {
 #[test]
 fn check_timelocks() {
     let factories = CryptoFactories::new(32);
-    let k = BlindingFactor::random(&mut OsRng);
+    let k = PrivateKey::random(&mut OsRng);
     let v = PrivateKey::from(2u64.pow(32) + 1);
     let c = factories.commitment.commit(&k, &v);
 

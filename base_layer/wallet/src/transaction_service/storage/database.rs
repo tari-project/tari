@@ -33,7 +33,7 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{BlindingFactor, BlockHash},
+    types::{BlockHash, PrivateKey},
 };
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::Transaction};
 
@@ -664,8 +664,8 @@ where T: TransactionBackend + 'static
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
-                BlindingFactor::default(),
-                BlindingFactor::default(),
+                PrivateKey::default(),
+                PrivateKey::default(),
             ),
             TransactionStatus::try_from(import_status)?,
             message,

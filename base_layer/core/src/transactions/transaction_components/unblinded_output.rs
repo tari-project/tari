@@ -31,15 +31,7 @@ use std::{
 
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComAndPubSignature,
-    CommitmentFactory,
-    FixedHash,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-};
+use tari_common_types::types::{ComAndPubSignature, CommitmentFactory, FixedHash, PrivateKey, PublicKey, RangeProof};
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     errors::RangeProofError,
@@ -102,7 +94,7 @@ impl UnblindedOutput {
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key: BlindingFactor,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -133,7 +125,7 @@ impl UnblindedOutput {
 
     pub fn new_current_version(
         value: MicroTari,
-        spending_key: BlindingFactor,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
