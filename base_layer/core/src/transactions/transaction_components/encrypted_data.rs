@@ -39,7 +39,7 @@ use digest::{generic_array::GenericArray, FixedOutput};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
@@ -47,31 +47,25 @@ use tari_utilities::{
     ByteArrayError,
 };
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
 use crate::transactions::{tari_amount::MicroTari, TransactionSecureNonceKdfDomain};
 
-const VALUE_SIZE: usize = size_of::<u64>(); // 8 bytes
-const KEY_SIZE: usize = size_of::<PrivateKey>(); // 32 bytes
-const SIZE: usize = VALUE_SIZE + KEY_SIZE + size_of::<Tag>() + size_of::<XNonce>(); // 80 bytes
-const BORSH_64: usize = 64;
-const BORSH_X: usize = SIZE - BORSH_64; // 16 bytes
+/// Total encrypted data size: nonce, encrypted value, encrypted mask, tag
+const SIZE: usize = size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN + size_of::<Tag>();
 
-/// Encrypted data for the extended-nonce variant XChaCha20-Poly1305 encryption
-/// Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
 #[derive(
     Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize,
 )]
 pub struct EncryptedData {
     #[serde(with = "tari_utilities::serde::hex")]
-    data_1: [u8; BORSH_64],
-    #[serde(with = "tari_utilities::serde::hex")]
-    data_2: [u8; BORSH_X],
+    data: [u8; SIZE],
 }
 
 impl EncryptedData {
-    const TAG: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
+    /// AEAD associated data
+    const AAD: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
     /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
     /// Notes: - This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`
@@ -84,11 +78,12 @@ impl EncryptedData {
         value: MicroTari,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
-        let mut openings = value.as_u64().to_le_bytes().to_vec();
-        openings.append(&mut mask.to_vec());
+        let mut bytes = Zeroizing::new([0u8; size_of::<u64>() + PrivateKey::KEY_LEN]);
+        bytes[..size_of::<u64>()].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
+        bytes[size_of::<u64>()..].clone_from_slice(mask.as_bytes());
         let aead_payload = Payload {
-            msg: openings.as_slice(),
-            aad: Self::TAG,
+            msg: bytes.as_slice(),
+            aad: Self::AAD,
         };
 
         // Produce a secure random nonce
@@ -114,28 +109,25 @@ impl EncryptedData {
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroTari, PrivateKey), EncryptedDataError> {
         // Extract the nonce and ciphertext
-        let binding = encrypted_data.to_byte_vec();
-        let (nonce, ciphertext) = binding.split_at(size_of::<XNonce>());
+        let (nonce, ciphertext) = encrypted_data.as_bytes().split_at(size_of::<XNonce>());
         let nonce_ga = XNonce::from_slice(nonce);
 
         let aead_key = kdf_aead(encryption_key, commitment);
         let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
         let aead_payload = Payload {
             msg: ciphertext,
-            aad: Self::TAG,
+            aad: Self::AAD,
         };
-        let decrypted_bytes = cipher.decrypt(nonce_ga, aead_payload)?;
-        let mut value_bytes = [0u8; VALUE_SIZE];
-        value_bytes.clone_from_slice(&decrypted_bytes[0..VALUE_SIZE]);
-        let mut mask_bytes = [0u8; KEY_SIZE];
-        mask_bytes.clone_from_slice(&decrypted_bytes[VALUE_SIZE..VALUE_SIZE + KEY_SIZE]);
+        let decrypted_bytes = Zeroizing::new(cipher.decrypt(nonce_ga, aead_payload)?);
+        let mut value_bytes = [0u8; size_of::<u64>()];
+        value_bytes.clone_from_slice(&decrypted_bytes[0..size_of::<u64>()]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_bytes(&mask_bytes)?,
+            PrivateKey::from_bytes(&decrypted_bytes[size_of::<u64>()..])?,
         ))
     }
 
-    /// Custom convert `EncryptedOpenings` to bytes
+    /// Parse encrypted data from a byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
         if bytes.len() != SIZE {
             return Err(EncryptedDataError::IncorrectLength(format!(
@@ -144,27 +136,24 @@ impl EncryptedData {
                 bytes.len()
             )));
         }
-        let mut data_1: [u8; BORSH_64] = [0u8; BORSH_64];
-        data_1.copy_from_slice(
-            bytes
-                .get(..BORSH_64)
-                .ok_or_else(|| EncryptedDataError::IncorrectLength("Out of bounds 'data_1'".to_string()))?,
-        );
-        let mut data_2: [u8; BORSH_X] = [0u8; BORSH_X];
-        data_2.copy_from_slice(
-            bytes
-                .get(BORSH_64..SIZE)
-                .ok_or_else(|| EncryptedDataError::IncorrectLength("Out of bounds 'data_2'".to_string()))?,
-        );
-        Ok(Self { data_1, data_2 })
+        let mut data = [0u8; SIZE];
+        data.copy_from_slice(bytes);
+        Ok(Self { data })
     }
 
-    /// Custom convert `EncryptedOpenings` to byte vector
+    /// Get a byte vector with the encrypted data contents
     pub fn to_byte_vec(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(SIZE);
-        bytes.extend_from_slice(&self.data_1);
-        bytes.extend_from_slice(&self.data_2);
-        bytes
+        self.data.to_vec()
+    }
+
+    /// Get a byte array with the encrypted data contents
+    pub fn to_bytes(&self) -> [u8; SIZE] {
+        self.data
+    }
+
+    /// Get a byte slice with the encrypted data contents
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
     }
 
     /// Accessor method for the encrypted data hex display
@@ -199,10 +188,7 @@ impl Hex for EncryptedData {
 
 impl Default for EncryptedData {
     fn default() -> Self {
-        Self {
-            data_1: [0u8; BORSH_64],
-            data_2: [0u8; BORSH_X],
-        }
+        Self { data: [0u8; SIZE] }
     }
 }
 // EncryptedOpenings errors
@@ -241,22 +227,6 @@ mod test {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 
     use super::*;
-
-    #[test]
-    fn const_sizes_for_serialization_is_optimized() {
-        const BORSH_128: usize = 128;
-        const BORSH_64: usize = 64;
-        const BORSH_32: usize = 32;
-        if SIZE >= BORSH_128 {
-            panic!("SIZE is not optimized for serialization");
-        }
-        if SIZE <= BORSH_64 {
-            panic!("SIZE is not optimized for serialization");
-        }
-        if BORSH_X >= BORSH_32 {
-            panic!("BORSH_X is not optimized for serialization");
-        }
-    }
 
     #[test]
     fn it_encrypts_and_decrypts_correctly() {
