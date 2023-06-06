@@ -5434,7 +5434,7 @@ pub unsafe extern "C" fn wallet_create(
     ));
 
     match w {
-        Ok(mut w) => {
+        Ok(w) => {
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = w.db.set_tor_identity(hs.tor_identity().clone()) {
@@ -5476,12 +5476,15 @@ pub unsafe extern "C" fn wallet_create(
 
             runtime.spawn(callback_handler.start());
 
-            if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not restart transaction negotiation protocols: {:?}", e
-                );
-            }
+            let mut ts = w.transaction_service.clone();
+            runtime.spawn(async move {
+                if let Err(e) = ts.restart_transaction_protocols().await {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not restart transaction negotiation protocols: {:?}", e
+                    );
+                }
+            });
 
             let tari_wallet = TariWallet {
                 wallet: w,
