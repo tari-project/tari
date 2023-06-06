@@ -23,9 +23,10 @@
 use std::{
     collections::VecDeque,
     fmt::{Debug, Formatter},
+    path::PathBuf,
 };
 
-use cucumber::gherkin::Scenario;
+use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
 use serde_json::Value;
 use tari_chat_client::ChatClient;
@@ -38,6 +39,7 @@ use thiserror::Error;
 
 use crate::{
     base_node_process::BaseNodeProcess,
+    get_base_dir,
     merge_mining_proxy::MergeMiningProxyProcess,
     miner::MinerProcess,
     wallet_ffi::WalletFFI,
@@ -62,6 +64,9 @@ pub enum TariWorldError {
 
 #[derive(Default, cucumber::World)]
 pub struct TariWorld {
+    pub current_scenario_name: Option<String>,
+    pub current_feature_name: Option<String>,
+    pub current_base_dir: Option<PathBuf>,
     pub base_nodes: IndexMap<String, BaseNodeProcess>,
     pub blocks: IndexMap<String, Block>,
     pub miners: IndexMap<String, MinerProcess>,
@@ -223,5 +228,25 @@ impl TariWorld {
         self.seed_nodes.as_slice()
     }
 
-    pub async fn after(&mut self, _scenario: &Scenario) {}
+    pub async fn before(&mut self, feature: &Feature, scenario: &Scenario) {
+        self.current_feature_name = Some(feature.name.clone());
+        self.current_scenario_name = Some(scenario.name.clone());
+        self.current_base_dir = Some(get_base_dir().join(feature.name.clone()).join(scenario.name.clone()))
+    }
+
+    pub async fn after(&mut self, _scenario: &Scenario) {
+        for (name, mut p) in self.chat_clients.drain(..) {
+            println!("Shutting down chat client {}", name);
+            p.shutdown();
+        }
+        for (name, mut p) in self.wallets.drain(..) {
+            println!("Shutting down wallet {}", name);
+            p.kill_signal.trigger();
+        }
+        for (name, mut p) in self.base_nodes.drain(..) {
+            println!("Shutting down base node {}", name);
+            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
+            p.kill_signal.trigger();
+        }
+    }
 }

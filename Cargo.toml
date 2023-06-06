@@ -14,7 +14,6 @@ members = [
     "base_layer/tari_mining_helper_ffi",
     "clients/rust/base_node_grpc_client",
     "clients/rust/wallet_grpc_client",
-    # "clients/rust/web_chat",
     "comms/core",
     "comms/dht",
     "comms/rpc_macros",

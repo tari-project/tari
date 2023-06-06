@@ -48,6 +48,7 @@ pub trait ChatClient {
     async fn send_message(&self, receiver: TariAddress, message: String);
     async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message>;
     fn identity(&self) -> &NodeIdentity;
+    fn shutdown(&mut self);
 }
 
 pub struct Client {
@@ -116,6 +117,10 @@ impl Client {
 impl ChatClient for Client {
     fn identity(&self) -> &NodeIdentity {
         &self.identity
+    }
+
+    fn shutdown(&mut self) {
+        self.shutdown.trigger();
     }
 
     async fn add_contact(&self, address: &TariAddress) {

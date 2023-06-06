@@ -98,10 +98,12 @@ fn main() {
                 }
             })
         })
-        .before(|_feature,_rule,scenario,_world| {
+        .before(move |feature, _rule, scenario, world| {
             Box::pin(async move {
                 println!("{} : {}", scenario.keyword, scenario.name); // This will be printed into the stdout_buffer
                 info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
+
+                world.before(feature, scenario).await;
             })
         });
         let file = fs::File::create("cucumber-output-junit.xml").unwrap();
