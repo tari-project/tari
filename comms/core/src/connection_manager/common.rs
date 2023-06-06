@@ -22,6 +22,7 @@
 
 use std::{convert::TryInto, net::Ipv6Addr};
 
+use digest::Digest;
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -224,14 +225,6 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
         .next()
         .ok_or_else(|| ConnectionManagerError::InvalidMultiaddr("Multiaddr was empty".to_string()))?;
 
-    let expect_end_of_address = |mut iter: multiaddr::Iter<'_>| match iter.next() {
-        Some(p) => Err(ConnectionManagerError::InvalidMultiaddr(format!(
-            "Unexpected multiaddress component '{}'",
-            p
-        ))),
-        None => Ok(()),
-    };
-
     /// Returns [true] if the address is a unicast link-local address (fe80::/10).
     #[inline]
     const fn is_unicast_link_local(addr: &Ipv6Addr) -> bool {
@@ -245,7 +238,6 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
             })?;
 
             validate_tcp_port(tcp)?;
-
             expect_end_of_address(addr_iter)
         },
 
@@ -286,11 +278,24 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
             "A zero onion port is not valid in the onion spec".to_string(),
         )),
         Protocol::Onion(_, _) => Err(ConnectionManagerError::OnionV2NotSupported),
-        Protocol::Onion3(_) => expect_end_of_address(addr_iter),
+        Protocol::Onion3(addr) => {
+            expect_end_of_address(addr_iter)?;
+            validate_onion3_address(&addr)
+        },
         p => Err(ConnectionManagerError::InvalidMultiaddr(format!(
             "Unsupported address type '{}'",
             p
         ))),
+    }
+}
+
+fn expect_end_of_address(mut iter: multiaddr::Iter<'_>) -> Result<(), ConnectionManagerError> {
+    match iter.next() {
+        Some(p) => Err(ConnectionManagerError::InvalidMultiaddr(format!(
+            "Unexpected multiaddress component '{}'",
+            p
+        ))),
+        None => Ok(()),
     }
 }
 
@@ -305,6 +310,35 @@ fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), ConnectionManagerErro
             p
         ))),
     }
+}
+
+/// Validates the onion3 version and checksum as per https://github.com/torproject/torspec/blob/main/rend-spec-v3.txt#LL2258C6-L2258C6
+fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), ConnectionManagerError> {
+    const ONION3_PUBKEY_SIZE: usize = 32;
+    const ONION3_CHECKSUM_SIZE: usize = 2;
+
+    let (pub_key, checksum_version) = addr.hash().split_at(ONION3_PUBKEY_SIZE);
+    let (checksum, version) = checksum_version.split_at(ONION3_CHECKSUM_SIZE);
+
+    if version != b"\x03" {
+        return Err(ConnectionManagerError::InvalidMultiaddr(
+            "Invalid version in onion address".to_string(),
+        ));
+    }
+
+    let calculated_checksum = sha3::Sha3_256::new()
+        .chain(".onion checksum")
+        .chain(pub_key)
+        .chain(version)
+        .finalize();
+
+    if calculated_checksum[..2] != *checksum {
+        return Err(ConnectionManagerError::InvalidMultiaddr(
+            "Invalid checksum in onion address".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -367,5 +401,29 @@ mod test {
         for addr in invalid {
             validate_address(addr, true).unwrap_err();
         }
+    }
+
+    #[test]
+    fn validate_onion3_checksum() {
+        let valid: Multiaddr = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
+            .parse()
+            .unwrap();
+
+        validate_address(&valid, false).unwrap();
+
+        // Change one byte
+        let invalid: Multiaddr = "/onion3/www6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
+            .parse()
+            .unwrap();
+
+        validate_address(&invalid, false).unwrap_err();
+
+        // Randomly generated
+        let invalid: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tm7pzpuotk2b7rpuhaeym:1234"
+            .parse()
+            .unwrap();
+
+        let err = validate_address(&invalid, false).unwrap_err();
+        assert!(matches!(err, ConnectionManagerError::InvalidMultiaddr(_)));
     }
 }
