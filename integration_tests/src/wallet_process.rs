@@ -35,7 +35,7 @@ use tari_wallet_grpc_client::WalletGrpcClient;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_base_dir, get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -77,10 +77,12 @@ pub async fn spawn_wallet(
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
 
-        temp_dir_path = get_base_dir()
+        temp_dir_path = world
+            .current_base_dir
+            .as_ref()
+            .expect("Base dir on world")
             .join("wallets")
-            .join(format!("grpc_port_{}", grpc_port))
-            .join(wallet_name.clone());
+            .join(format!("{}_grpc_port_{}", wallet_name.clone(), grpc_port));
 
         wallet_config = WalletConfig::default();
     };

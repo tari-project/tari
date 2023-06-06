@@ -39,6 +39,7 @@ prost = "=0.9.0"
 rand = "0.7.3"
 serde = "1.0.119"
 serde_derive = "1.0.119"
+sha3 = "0.9"
 snow = { version = "=0.9.1", features = ["default-resolver"] }
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }

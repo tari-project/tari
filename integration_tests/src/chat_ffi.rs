@@ -22,6 +22,7 @@
 
 use std::{
     ffi::{c_void, CString},
+    path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -32,12 +33,7 @@ type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
 use tari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{
-    config::{ApplicationConfig, ChatClientConfig},
-    database,
-    ChatClient,
-};
-use tari_common::configuration::MultiaddrList;
+use tari_chat_client::{database, ChatClient};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -46,7 +42,7 @@ use tari_comms::{
 };
 use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
 
-use crate::{get_base_dir, get_port};
+use crate::{chat_client::test_config, get_port};
 
 #[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
@@ -60,6 +56,7 @@ extern "C" {
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
     pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
+    pub fn destroy_client_ffi(client: *mut ClientFFI);
 }
 
 #[derive(Debug)]
@@ -127,13 +124,25 @@ impl ChatClient for ChatFFI {
     fn identity(&self) -> &NodeIdentity {
         &self.identity
     }
+
+    fn shutdown(&mut self) {
+        let client = self.ptr.lock().unwrap();
+
+        unsafe { destroy_client_ffi(client.0) }
+    }
 }
 
-pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI {
+pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: PathBuf) -> ChatFFI {
     let port = get_port(18000..18499).unwrap();
     let address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
 
-    let mut config = test_config(name, port, address.clone());
+    let base_dir = base_dir
+        .join("ffi_chat_clients")
+        .join(format!("{}_port_{}", name, port));
+
+    let mut config = test_config(address.clone());
+    config.chat_client.set_base_path(base_dir);
+
     let identity = setup_node_identity(
         &config.chat_client.identity_file,
         vec![address],
@@ -176,22 +185,5 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>) -> ChatFFI
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
         identity,
-    }
-}
-
-fn test_config(name: &str, port: u64, address: Multiaddr) -> ApplicationConfig {
-    let temp_dir_path = get_base_dir()
-        .join("ffi_chat_clients")
-        .join(format!("port_{}", port))
-        .join(name);
-
-    let mut chat_client_config = ChatClientConfig::default_local_test();
-    chat_client_config.p2p.transport.tcp.listener_address = address.clone();
-    chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
-    chat_client_config.set_base_path(temp_dir_path);
-
-    ApplicationConfig {
-        chat_client: chat_client_config,
-        ..ApplicationConfig::default()
     }
 }
