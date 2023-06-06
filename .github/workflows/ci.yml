@@ -1,7 +1,7 @@
 ---
 name: CI
 
-"on":
+'on':
   workflow_dispatch:
   push:
     branches:
@@ -68,8 +68,8 @@ jobs:
         run: |
           cargo install cargo-machete
           cargo machete
-  build:
-    name: cargo check
+  build-nightly:
+    name: cargo check for nightly
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
@@ -82,18 +82,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: rustup show
+        run: rustup show
       - name: cargo check
         run: cargo check --release --all-targets
       - name: cargo check ffi separately
         run: cargo check --release --package tari_wallet_ffi
   build-stable:
-    name: cargo check stable
+    name: cargo check for stable
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
       - name: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
@@ -102,8 +104,7 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: rustup show
-        run: |
-          rustup show
+        run: rustup show
       - name: cargo check
         run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
