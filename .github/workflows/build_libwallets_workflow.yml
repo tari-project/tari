@@ -91,7 +91,7 @@ jobs:
           shasum -a 256 \
             "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.a" \
             "libwallet-android-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.sha256sums"
+              > "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-android-${target_platform}"
 
       - name: Upload artifacts
@@ -175,7 +175,7 @@ jobs:
           shasum -a 256 \
             "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.a" \
             "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256sums"
+              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
 
       - name: Upload artifacts
@@ -208,9 +208,9 @@ jobs:
         working-directory: libwallets
         run: |
           ls -alhtR
-          find . -name "*.sha256sums" -type f -print | xargs cat >> libwallets.txt.sha256sums-verify
-          cat libwallets.txt.sha256sums-verify
-          sha256sum -c libwallets.txt.sha256sums-verify
+          find . -name "*.sha256" -type f -print | xargs cat >> libwallets.txt.sha256-verify
+          cat libwallets.txt.sha256-verify
+          sha256sum -c libwallets.txt.sha256-verify
 
       - name: Assemble iOS universal libwallet
         shell: bash
@@ -245,7 +245,7 @@ jobs:
           shasum -a 256 \
             "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a" \
             "libwallet-ios-universal/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256sums"
+              > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256"
           ls -alhtR
 
       - name: Upload iOS universal libwallet artifacts
@@ -296,7 +296,7 @@ jobs:
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/libtari_wallet_ffi.ios_universal-sim.a" \
             "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256sums"
+              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256"
           ls -alhtR
 
       - name: Upload iOS xcframework libwallet artifacts
