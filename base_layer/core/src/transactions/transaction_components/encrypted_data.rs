@@ -29,14 +29,13 @@ use std::mem::size_of;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
-    aead::{AeadInPlace, Error, heapless::Vec as HeaplessVec},
+    aead::{AeadCore, AeadInPlace, Error, OsRng},
     KeyInit,
     Tag,
     XChaCha20Poly1305,
     XNonce,
 };
 use digest::{generic_array::GenericArray, FixedOutput};
-use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher, keys::SecretKey};
@@ -64,7 +63,7 @@ pub struct EncryptedData {
 }
 
 /// AEAD associated data
-const ENCRYPTED_DATA_AAD: &'static [u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
+const ENCRYPTED_DATA_AAD: &[u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
 impl EncryptedData {
     /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
@@ -83,31 +82,22 @@ impl EncryptedData {
         bytes[..size_of::<u64>()].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
         bytes[size_of::<u64>()..].clone_from_slice(mask.as_bytes());
 
-        // Set up a buffer that also has room for the AEAD tag
-        let mut buffer = HeaplessVec::<u8, { size_of::<u64>() + PrivateKey::KEY_LEN + size_of::<Tag>() }>::new();
-        buffer.extend_from_slice(bytes.as_slice()).map_err(|_| EncryptedDataError::BufferError)?;
-
         // Produce a secure random nonce
-        let mut nonce = [0u8; size_of::<XNonce>()];
-        OsRng.fill_bytes(&mut nonce);
-        let nonce_ga = XNonce::from_slice(&nonce);
+        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
 
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
         let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
 
-        // Encrypt in place using the buffer, being careful to zeroize the buffer on failure
-        cipher.encrypt_in_place(nonce_ga, ENCRYPTED_DATA_AAD, &mut buffer)
-            .map_err(|e| {
-                buffer.zeroize();
-                EncryptedDataError::EncryptionFailed(e)
-            })?;
+        // Encrypt in place
+        let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
-        // Prepend the nonce and zeroize the buffer
+        // Put everything together: nonce, ciphertext, tag
         let mut data = [0u8; SIZE];
-        data[..size_of::<XNonce>()].clone_from_slice(nonce_ga);
-        data[size_of::<XNonce>()..].clone_from_slice(buffer.as_slice());
-        buffer.zeroize();
+        data[..size_of::<XNonce>()].clone_from_slice(&nonce);
+        data[size_of::<XNonce>()..size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN]
+            .clone_from_slice(bytes.as_slice());
+        data[size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN..].clone_from_slice(&tag);
 
         EncryptedData::from_bytes(data.as_slice())
     }
@@ -120,30 +110,29 @@ impl EncryptedData {
         commitment: &Commitment,
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroTari, PrivateKey), EncryptedDataError> {
-        // Extract the nonce and ciphertext
-        let (nonce, ciphertext) = encrypted_data.as_bytes().split_at(size_of::<XNonce>());
-        let nonce_ga = XNonce::from_slice(nonce);
+        // Extract the nonce, ciphertext, and tag
+        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..size_of::<XNonce>()]);
+        let mut bytes = Zeroizing::new([0u8; size_of::<u64>() + PrivateKey::KEY_LEN]);
+        bytes.clone_from_slice(
+            &encrypted_data.as_bytes()
+                [size_of::<XNonce>()..size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN],
+        );
+        let tag =
+            Tag::from_slice(&encrypted_data.as_bytes()[size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN..]);
 
-        // Set up a buffer for decryption
-        let mut buffer = HeaplessVec::<u8, { size_of::<u64>() + PrivateKey::KEY_LEN + size_of::<Tag>() }>::new();
-        buffer.extend_from_slice(ciphertext).map_err(|_| EncryptedDataError::BufferError)?;
-    
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
         let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
 
-        // Decrypt in place using the buffer
-        cipher.decrypt_in_place(nonce_ga, ENCRYPTED_DATA_AAD, &mut buffer)?;
+        // Decrypt in place
+        cipher.decrypt_in_place_detached(nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice(), tag)?;
 
-        // Extract data and zeroize the buffer (it doesn't support a zeroizing wrapper natively)
+        // Decode the value and mask
         let mut value_bytes = [0u8; size_of::<u64>()];
-        value_bytes.clone_from_slice(&buffer[0..size_of::<u64>()]);
-        let mut mask_bytes = Zeroizing::new([0u8; PrivateKey::KEY_LEN]);
-        mask_bytes.clone_from_slice(&buffer[size_of::<u64>()..size_of::<u64>() + PrivateKey::KEY_LEN]);
-        buffer.zeroize();
+        value_bytes.clone_from_slice(&bytes[0..size_of::<u64>()]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_bytes(mask_bytes.as_slice())?,
+            PrivateKey::from_bytes(&bytes[size_of::<u64>()..])?,
         ))
     }
 
@@ -220,8 +209,6 @@ pub enum EncryptedDataError {
     ByteArrayError(#[from] ByteArrayError),
     #[error("Incorrect length: {0}")]
     IncorrectLength(String),
-    #[error("Buffer error")]
-    BufferError,
 }
 
 // Chacha error is not StdError compatible
