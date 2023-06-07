@@ -77,7 +77,6 @@ pub struct RegisterTemplateTab {
     binary_checksum: String,
     template_name: String,
     template_version: String,
-    amount: String,
     fee_per_gram: String,
     template_type: String,
     error_message: Option<String>,
@@ -104,7 +103,6 @@ impl RegisterTemplateTab {
             result_watch: None,
             confirmation_dialog: None,
             template_type: String::new(),
-            amount: String::new(),
             fee_per_gram: app_state.get_default_fee_per_gram().as_u64().to_string(),
         }
     }
@@ -121,7 +119,7 @@ impl RegisterTemplateTab {
         let form_layout = Layout::default()
             .constraints(
                 [
-                    Constraint::Length(3),
+                    Constraint::Length(4),
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -166,10 +164,6 @@ impl RegisterTemplateTab {
                 Span::raw(" to edit "),
                 Span::styled("Template Type", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" field, "),
-                Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to edit "),
-                Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
                 Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Fee-per-gram", Style::default().add_modifier(Modifier::BOLD)),
@@ -189,62 +183,42 @@ impl RegisterTemplateTab {
         // layouts
         // ----------------------------------------------------------------------------
 
-        let amount_and_fee_layout = Layout::default()
+        let first_row_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(
                 [
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
                     Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
                 ]
                 .as_ref(),
             )
             .split(form_layout[1]);
 
-        let name_version_type_layout = Layout::default()
+        let second_row_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .split(form_layout[2]);
+
+        let third_row_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .split(form_layout[3]);
+
+        let fourth_row_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(
                 [
-                    Constraint::Percentage(65),
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(40),
                     Constraint::Percentage(20),
-                    Constraint::Percentage(15),
                 ]
                 .as_ref(),
             )
-            .split(form_layout[2]);
-
-        let binary_url_and_checkout_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
-            .split(form_layout[3]);
-
-        let repository_url_and_commit_hash_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
             .split(form_layout[4]);
 
         // ----------------------------------------------------------------------------
-        // amount and fee
-        // ----------------------------------------------------------------------------
-
-        let amount = Paragraph::new(self.amount.as_ref())
-            .style(match self.input_mode {
-                InputMode::Amount => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("(A)mount:"));
-        f.render_widget(amount, amount_and_fee_layout[0]);
-
-        let fee_per_gram = Paragraph::new(self.fee_per_gram.as_ref())
-            .style(match self.input_mode {
-                InputMode::RepositoryCommitHash => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram:"));
-        f.render_widget(fee_per_gram, amount_and_fee_layout[1]);
-
-        // ----------------------------------------------------------------------------
-        // template name, version and type
+        // First row - Template Name, Template Version, Template Type
         // ----------------------------------------------------------------------------
 
         let template_name = Paragraph::new(self.template_name.as_ref())
@@ -253,7 +227,7 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("Template (N)ame:"));
-        f.render_widget(template_name, name_version_type_layout[0]);
+        f.render_widget(template_name, first_row_layout[0]);
 
         let template_version = Paragraph::new(self.template_version.to_string())
             .style(match self.input_mode {
@@ -261,7 +235,7 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("Template (V)ersion:"));
-        f.render_widget(template_version, name_version_type_layout[1]);
+        f.render_widget(template_version, first_row_layout[1]);
 
         let template_type = Paragraph::new(self.template_type.as_ref())
             .style(match self.input_mode {
@@ -269,10 +243,10 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("Template (T)ype:"));
-        f.render_widget(template_type, name_version_type_layout[2]);
+        f.render_widget(template_type, first_row_layout[2]);
 
         // ----------------------------------------------------------------------------
-        // binary url and checksum
+        // Second row - Binary URL
         // ----------------------------------------------------------------------------
 
         let binary_url = Paragraph::new(self.binary_url.as_ref())
@@ -281,18 +255,10 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("(B)inary URL:"));
-        f.render_widget(binary_url, binary_url_and_checkout_layout[0]);
-
-        let binary_checksum = Paragraph::new(self.binary_checksum.as_ref())
-            .style(match self.input_mode {
-                InputMode::BinaryChecksum => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("Binary (C)hecksum:"));
-        f.render_widget(binary_checksum, binary_url_and_checkout_layout[1]);
+        f.render_widget(binary_url, second_row_layout[0]);
 
         // ----------------------------------------------------------------------------
-        // repository url and commit hash
+        // Third row - Repository URL
         // ----------------------------------------------------------------------------
 
         let repository_url = Paragraph::new(self.repository_url.as_ref())
@@ -301,7 +267,19 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("Repository (U)RL:"));
-        f.render_widget(repository_url, repository_url_and_commit_hash_layout[0]);
+        f.render_widget(repository_url, third_row_layout[0]);
+
+        // ----------------------------------------------------------------------------
+        // Fourth row - Binary checksum, Repository Commit Hash, Fee per gram
+        // ----------------------------------------------------------------------------
+
+        let binary_checksum = Paragraph::new(self.binary_checksum.as_ref())
+            .style(match self.input_mode {
+                InputMode::BinaryChecksum => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Binary (C)hecksum:"));
+        f.render_widget(binary_checksum, fourth_row_layout[0]);
 
         let repository_commit_hash = Paragraph::new(self.repository_commit_hash.as_ref())
             .style(match self.input_mode {
@@ -313,7 +291,15 @@ impl RegisterTemplateTab {
                     .borders(Borders::ALL)
                     .title("Repository Commit (H)ash:"),
             );
-        f.render_widget(repository_commit_hash, repository_url_and_commit_hash_layout[1]);
+        f.render_widget(repository_commit_hash, fourth_row_layout[1]);
+
+        let fee_per_gram = Paragraph::new(self.fee_per_gram.as_ref())
+            .style(match self.input_mode {
+                InputMode::FeePerGram => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram:"));
+        f.render_widget(fee_per_gram, fourth_row_layout[2]);
 
         // ----------------------------------------------------------------------------
         // field cursor placement
@@ -321,41 +307,37 @@ impl RegisterTemplateTab {
 
         match self.input_mode {
             InputMode::None => (),
-            InputMode::Amount => f.set_cursor(
-                amount_and_fee_layout[0].x + self.amount.width() as u16 + 1,
-                amount_and_fee_layout[0].y + 1,
-            ),
             InputMode::FeePerGram => f.set_cursor(
-                amount_and_fee_layout[1].x + self.fee_per_gram.width() as u16 + 1,
-                amount_and_fee_layout[1].y + 1,
+                fourth_row_layout[2].x + self.fee_per_gram.width() as u16 + 1,
+                fourth_row_layout[2].y + 1,
             ),
             InputMode::TemplateName => f.set_cursor(
-                name_version_type_layout[0].x + self.template_name.width() as u16 + 1,
-                name_version_type_layout[0].y + 1,
+                first_row_layout[0].x + self.template_name.width() as u16 + 1,
+                first_row_layout[0].y + 1,
             ),
             InputMode::TemplateVersion => f.set_cursor(
-                name_version_type_layout[1].x + self.template_version.width() as u16 + 1,
-                name_version_type_layout[1].y + 1,
+                first_row_layout[1].x + self.template_version.width() as u16 + 1,
+                first_row_layout[1].y + 1,
             ),
             InputMode::TemplateType => f.set_cursor(
-                name_version_type_layout[2].x + self.template_type.width() as u16 + 1,
-                name_version_type_layout[2].y + 1,
+                first_row_layout[2].x + self.template_type.width() as u16 + 1,
+                first_row_layout[2].y + 1,
             ),
             InputMode::BinaryUrl => f.set_cursor(
-                binary_url_and_checkout_layout[0].x + self.binary_url.width() as u16 + 1,
-                binary_url_and_checkout_layout[0].y + 1,
+                second_row_layout[0].x + self.binary_url.width() as u16 + 1,
+                second_row_layout[0].y + 1,
             ),
             InputMode::BinaryChecksum => f.set_cursor(
-                binary_url_and_checkout_layout[1].x + self.binary_checksum.width() as u16 + 1,
-                binary_url_and_checkout_layout[1].y + 1,
+                fourth_row_layout[0].x + self.binary_checksum.width() as u16 + 1,
+                fourth_row_layout[0].y + 1,
             ),
             InputMode::RepositoryUrl => f.set_cursor(
-                repository_url_and_commit_hash_layout[0].x + self.repository_url.width() as u16 + 1,
-                repository_url_and_commit_hash_layout[0].y + 1,
+                third_row_layout[0].x + self.repository_url.width() as u16 + 1,
+                third_row_layout[0].y + 1,
             ),
             InputMode::RepositoryCommitHash => f.set_cursor(
-                repository_url_and_commit_hash_layout[1].x + self.repository_commit_hash.width() as u16 + 1,
-                repository_url_and_commit_hash_layout[1].y + 1,
+                fourth_row_layout[1].x + self.repository_commit_hash.width() as u16 + 1,
+                fourth_row_layout[1].y + 1,
             ),
         }
     }
@@ -370,6 +352,7 @@ impl RegisterTemplateTab {
                 let template_version = if let Ok(version) = self.template_version.parse::<u16>() {
                     version
                 } else {
+                    self.confirmation_dialog = None;
                     self.error_message =
                         Some("Template version should be an integer\nPress Enter to continue.".to_string());
                     return KeyHandled::Handled;
@@ -383,6 +366,7 @@ impl RegisterTemplateTab {
                             let abi_version = match abi_version.parse::<u16>() {
                                 Ok(abi_version) => abi_version,
                                 Err(_) => {
+                                    self.confirmation_dialog = None;
                                     self.error_message = Some(format!(
                                         "Invalid `abi_version` for the `wasm` template type\n{}\nPress Enter to \
                                          continue.",
@@ -396,6 +380,7 @@ impl RegisterTemplateTab {
                         },
 
                         _ => {
+                            self.confirmation_dialog = None;
                             self.error_message = Some(format!(
                                 "Unrecognized template type\n{}\nPress Enter to continue.",
                                 self.template_type
@@ -405,16 +390,10 @@ impl RegisterTemplateTab {
                     },
                 };
 
-                let amount = if let Ok(amount) = MicroTari::from_str(self.amount.as_str()) {
-                    amount
-                } else {
-                    self.error_message = Some("Amount should be an integer\nPress Enter to continue.".to_string());
-                    return KeyHandled::Handled;
-                };
-
-                let fee_per_gram = if let Ok(fee_per_gram) = MicroTari::from_str(self.amount.as_str()) {
+                let fee_per_gram = if let Ok(fee_per_gram) = MicroTari::from_str(self.fee_per_gram.as_str()) {
                     fee_per_gram
                 } else {
+                    self.confirmation_dialog = None;
                     self.error_message =
                         Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
                     return KeyHandled::Handled;
@@ -433,12 +412,12 @@ impl RegisterTemplateTab {
                         self.binary_checksum.clone(),
                         self.repository_url.clone(),
                         self.repository_commit_hash.clone(),
-                        amount,
                         fee_per_gram,
                         UtxoSelectionCriteria::default(),
                         tx,
                     )) {
                         Err(e) => {
+                            self.confirmation_dialog = None;
                             self.error_message = Some(format!(
                                 "Failed to register code template:\n{:?}\nPress Enter to continue.",
                                 e
@@ -452,7 +431,6 @@ impl RegisterTemplateTab {
                 }
 
                 if reset_fields {
-                    self.amount = "1T".to_string();
                     self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
                     self.template_name = "".to_string();
                     self.template_type = "".to_string();
@@ -470,7 +448,6 @@ impl RegisterTemplateTab {
                 return KeyHandled::Handled;
             }
         }
-
         KeyHandled::NotHandled
     }
 
@@ -478,26 +455,6 @@ impl RegisterTemplateTab {
         if self.input_mode != InputMode::None {
             match self.input_mode {
                 InputMode::None => (),
-
-                InputMode::Amount => match c {
-                    '\n' => self.input_mode = InputMode::FeePerGram,
-                    c => {
-                        if c.is_numeric() || ['t', 'T', 'u', 'U'].contains(&c) {
-                            self.amount.push(c);
-                        }
-                        return KeyHandled::Handled;
-                    },
-                },
-                InputMode::FeePerGram => match c {
-                    '\n' => self.input_mode = InputMode::TemplateName,
-                    c => {
-                        if c.is_numeric() || ['t', 'T', 'u', 'U'].contains(&c) {
-                            self.fee_per_gram.push(c);
-                        }
-                        return KeyHandled::Handled;
-                    },
-                },
-
                 InputMode::TemplateName => match c {
                     '\n' => self.input_mode = InputMode::TemplateVersion,
                     c => {
@@ -519,7 +476,6 @@ impl RegisterTemplateTab {
                         return KeyHandled::Handled;
                     },
                 },
-
                 InputMode::BinaryUrl => match c {
                     '\n' => {
                         self.input_mode = {
@@ -537,7 +493,7 @@ impl RegisterTemplateTab {
                                 };
                             }
 
-                            InputMode::BinaryChecksum
+                            InputMode::RepositoryUrl
                         }
                     },
                     c => {
@@ -545,28 +501,36 @@ impl RegisterTemplateTab {
                         return KeyHandled::Handled;
                     },
                 },
-                InputMode::BinaryChecksum => match c {
-                    '\n' => self.input_mode = InputMode::RepositoryUrl,
+                InputMode::RepositoryUrl => match c {
+                    '\n' => self.input_mode = InputMode::BinaryChecksum,
                     c => {
-                        self.binary_checksum.push(c);
+                        self.repository_url.push(c);
                         return KeyHandled::Handled;
                     },
                 },
-
-                InputMode::RepositoryUrl => match c {
+                InputMode::BinaryChecksum => match c {
                     '\n' => self.input_mode = InputMode::RepositoryCommitHash,
                     c => {
                         if c.is_numeric() {
-                            self.repository_url.push(c);
+                            self.binary_checksum.push(c);
                         }
                         return KeyHandled::Handled;
                     },
                 },
                 InputMode::RepositoryCommitHash => match c {
-                    '\n' => self.input_mode = InputMode::None,
+                    '\n' => self.input_mode = InputMode::FeePerGram,
                     c => {
                         if c.is_numeric() {
                             self.repository_commit_hash.push(c);
+                        }
+                        return KeyHandled::Handled;
+                    },
+                },
+                InputMode::FeePerGram => match c {
+                    '\n' => self.input_mode = InputMode::None,
+                    c => {
+                        if c.is_numeric() || ['t', 'T', 'u', 'U'].contains(&c) {
+                            self.fee_per_gram.push(c);
                         }
                         return KeyHandled::Handled;
                     },
@@ -585,7 +549,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(17),
+                    Constraint::Length(18),
                     Constraint::Min(42),
                     Constraint::Length(1),
                     Constraint::Length(1),
@@ -636,10 +600,6 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             draw_dialog(f, area, "Offline!".to_string(), msg, Color::Green, 120, 9);
         }
 
-        if let Some(msg) = self.error_message.clone() {
-            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
-        }
-
         match self.confirmation_dialog {
             None => (),
             Some(ConfirmationDialogType::Normal) => {
@@ -653,6 +613,10 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                     9,
                 );
             },
+        }
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
         }
     }
 
@@ -691,7 +655,6 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
         }
 
         match c {
-            'a' => self.input_mode = InputMode::Amount,
             'f' => self.input_mode = InputMode::FeePerGram,
             'n' => self.input_mode = InputMode::TemplateName,
             'v' => self.input_mode = InputMode::TemplateVersion,
@@ -700,7 +663,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             'c' => self.input_mode = InputMode::BinaryChecksum,
             'u' => self.input_mode = InputMode::RepositoryUrl,
             'h' => self.input_mode = InputMode::RepositoryCommitHash,
-            'r' => {
+            's' => {
                 // ----------------------------------------------------------------------------
                 // basic field value validation
                 // ----------------------------------------------------------------------------
@@ -737,12 +700,6 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
 
                 if self.repository_commit_hash.is_empty() {
                     self.error_message = Some("Repository Commit Hash is empty\nPress Enter to continue.".to_string());
-                    return;
-                }
-
-                if self.amount.parse::<MicroTari>().is_err() {
-                    self.error_message =
-                        Some("Amount should be a valid amount of Tari\nPress Enter to continue.".to_string());
                     return;
                 }
 
@@ -793,9 +750,6 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             InputMode::RepositoryCommitHash => {
                 let _ = self.repository_commit_hash.pop();
             },
-            InputMode::Amount => {
-                let _ = self.amount.pop();
-            },
             InputMode::FeePerGram => {
                 let _ = self.fee_per_gram.pop();
             },
@@ -814,7 +768,6 @@ enum InputMode {
     BinaryChecksum,
     RepositoryUrl,
     RepositoryCommitHash,
-    Amount,
     FeePerGram,
 }
 

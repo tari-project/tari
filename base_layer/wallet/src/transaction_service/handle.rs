@@ -114,7 +114,6 @@ pub enum TransactionServiceRequest {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
-        amount: MicroTari,
         fee_per_gram: MicroTari,
     },
     SendOneSidedTransaction {
@@ -529,7 +528,6 @@ impl TransactionServiceHandle {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
-        amount: MicroTari,
         fee_per_gram: MicroTari,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -543,7 +541,6 @@ impl TransactionServiceHandle {
                 build_info,
                 binary_sha,
                 binary_url,
-                amount,
                 fee_per_gram,
             })
             .await??

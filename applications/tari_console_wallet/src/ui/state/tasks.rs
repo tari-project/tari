@@ -346,7 +346,6 @@ pub async fn send_register_template_transaction_task(
     repository_commit_hash: String,
     binary_url: String,
     _binary_sha: String,
-    amount: MicroTari,
     fee_per_gram: MicroTari,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -362,7 +361,11 @@ pub async fn send_register_template_transaction_task(
 
     let template_name = match MaxSizeString::<32>::try_from(template_name) {
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `template_name`, max length is 32: {:?}", e.to_string());
+            error!(
+                target: LOG_TARGET,
+                "failed to process `template_name`, max length is 32: {:?}",
+                e.to_string()
+            );
             return;
         },
         Ok(template_name) => template_name,
@@ -371,14 +374,21 @@ pub async fn send_register_template_transaction_task(
     let binary_url = match MaxSizeString::<255>::try_from(binary_url) {
         Ok(binary_url) => binary_url,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_url`, max length is 32: {:?}", e.to_string());
+            error!(
+                target: LOG_TARGET,
+                "failed to process `binary_url`, max length is 32: {:?}",
+                e.to_string()
+            );
             return;
         },
     };
 
     let binary_sha = match MaxSizeBytes::<32>::try_from([0; 32].to_vec()) {
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_sha`, max length is 32: {:?}", e);
+            error!(
+                target: LOG_TARGET,
+                "failed to process `binary_sha`, max length is 32: {:?}", e
+            );
             return;
         },
         Ok(binary_sha) => binary_sha,
@@ -387,14 +397,21 @@ pub async fn send_register_template_transaction_task(
     let repository_url = match MaxSizeString::<255>::try_from(repository_url) {
         Ok(repository_url) => repository_url,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_url`, max length is 255: {:?}", e.to_string());
+            error!(
+                target: LOG_TARGET,
+                "failed to process `repository_url`, max length is 255: {:?}",
+                e.to_string()
+            );
             return;
         },
     };
 
     let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash.into_bytes()) {
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_commit_hash`, max length is 32: {:?}", e);
+            error!(
+                target: LOG_TARGET,
+                "failed to process `repository_commit_hash`, max length is 32: {:?}", e
+            );
             return;
         },
         Ok(repository_commit_hash) => repository_commit_hash,
@@ -445,7 +462,6 @@ pub async fn send_register_template_transaction_task(
             },
             binary_sha,
             binary_url,
-            amount,
             fee_per_gram,
         )
         .await;

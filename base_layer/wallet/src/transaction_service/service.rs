@@ -49,12 +49,10 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            BuildInfo,
             CodeTemplateRegistration,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
-            TemplateType,
             Transaction,
             TransactionOutput,
             UnblindedOutput,
@@ -700,11 +698,9 @@ where
                 build_info,
                 binary_sha,
                 binary_url,
-                amount,
                 fee_per_gram,
             } => {
                 self.register_code_template(
-                    amount,
                     fee_per_gram,
                     CodeTemplateRegistration {
                         author_public_key,
@@ -1155,12 +1151,6 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -1605,7 +1595,6 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        amount: MicroTari,
         fee_per_gram: MicroTari,
         template_registration: CodeTemplateRegistration,
         selection_criteria: UtxoSelectionCriteria,
@@ -1620,7 +1609,7 @@ where
     ) -> Result<(), TransactionServiceError> {
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
-            amount,
+            0.into(),
             selection_criteria,
             OutputFeatures::for_template_registration(template_registration),
             fee_per_gram,
