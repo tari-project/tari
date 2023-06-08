@@ -90,23 +90,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          tagnet=${{github.ref_name}}
-          echo $tagnet
-          # case match is not RegEx, but wildcards/globs
-          case "$tagnet" in
-            v*-pre.*)
-              TARI_NETWORK=esme
-              TARI_NETWORK_DIR=testnet
-              ;;
-            v*-rc.*)
-              TARI_NETWORK=nextnet
-              TARI_NETWORK_DIR=nextnet
-              ;;
-            *)
-              TARI_NETWORK=mainnet
-              TARI_NETWORK_DIR=mainnet
-              ;;
-          esac
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
@@ -129,13 +113,11 @@ jobs:
           echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ matrix.builds.rust }}
-          target: ${{ matrix.builds.target }}
-          override: true
+          targets: ${{ matrix.builds.target }}
 
       - name: Install Linux dependencies - Ubuntu
         if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
@@ -189,6 +171,7 @@ jobs:
           xcrun --show-sdk-path
           ls -la "/Library/Developer/CommandLineTools/SDKs/"
           echo "RANDOMX_RS_CMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk" >> $GITHUB_ENV
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')
@@ -215,14 +198,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build rust binaries
-        uses: actions-rs/cargo@v1
         env:
+          CARGO_UNSTABLE_SPARSE_REGISTRY: true
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
           ROARING_ARCH: "${{ matrix.builds.target_cpu }}"
-        with:
-          use-cross: ${{ matrix.builds.cross }}
-          command: build
-          args: --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }} ${{ matrix.builds.flags }} --locked
+        shell: bash
+        run: |
+          if [ "${{ matrix.builds.cross }}" != "true" ]; then
+            cargo build --release \
+              --target ${{ matrix.builds.target }} \
+              --features ${{ matrix.builds.features }} \
+              ${{ matrix.builds.target_bins }} \
+              ${{ matrix.builds.flags }} --locked
+          else
+            cargo install cross
+            cross build --release \
+              --target ${{ matrix.builds.target }} \
+              --features ${{ matrix.builds.features }} \
+              ${{ matrix.builds.target_bins }} \
+              ${{ matrix.builds.flags }} --locked
+          fi
 
       - name: Copy binaries to folder for archiving
         shell: bash
@@ -339,6 +334,13 @@ jobs:
             echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg\n"
             xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
           fi
+          cd ${distDirPKG}
+          echo "Compute pkg shasum"
+          ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" \
+            >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          echo "Checksum verification for pkg is "
+          ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
 
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
@@ -346,7 +348,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg
-          path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg"
+          path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg*"
 
       # unlike inno script studio, iscc.exe doesn't run the [precompile] step generate_config.bat
       - name: Build the Windows installer
@@ -369,19 +371,17 @@ jobs:
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
           cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
-          #zip -j "${{ env.BINFILE }}.zip" *
+          echo "Compute files shasum"
+          ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
+          cat "${{ env.BINFILE }}.sha256"
+          echo "Checksum verification for files is "
+          ${SHARUN} --check "${{ env.BINFILE }}.sha256"
           7z a "${{ env.BINFILE }}.zip" *
-          echo "Compute shasum"
+          echo "Compute archive shasum"
           ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
           cat "${{ env.BINFILE }}.zip.sha256"
-          echo "Verifications is "
+          echo "Checkum verification archive is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
-          if [ -f "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" ]; then
-            echo "Add PKG to $GITHUB_WORKSPACE${{ env.TBN_DIST }} "
-            cp -v "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
-            ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
-            ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
-          fi
 
       - name: Artifact upload for Archive
         uses: actions/upload-artifact@v3
@@ -389,14 +389,18 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
-      - name: Prep miner for upload
+      - name: Prep Miner for upload
         shell: bash
         run: |
           cd "${{ github.workspace }}${{ env.TBN_DIST }}"
           cp -v "tari_miner${{ env.TBN_EXT}}" \
             "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          echo "Compute miner shasum"
           ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
             >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          cat "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          echo "Checksum verification for miner is "
+          ${SHARUN} --check "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
@@ -404,7 +408,7 @@ jobs:
           name: tari_miner-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
 
-      - name: Prep diag-utils for upload
+      - name: Prep diag-utils archive for upload
         continue-on-error: true
         shell: bash
         run: |
@@ -413,15 +417,26 @@ jobs:
           # Find RandomX built tools for testing
           find "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/" \
             -name "randomx-*${{ env.TBN_EXT}}" -type f -perm -+x -exec cp -v {} . \;
+          echo "Compute diag utils shasum"
           ${SHARUN} * \
             >> "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.sha256"
+          cat "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.sha256"
+          echo "Checksum verification for diag utils is "
+          ${SHARUN} --check "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.sha256"
+          7z a "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.zip" *
+          echo "Compute diag utils archive shasum"
+          ${SHARUN} "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.zip" \
+            >> "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.zip.sha256"
+          cat "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.zip.sha256"
+          echo "Checksum verification for diag utils archive is "
+          ${SHARUN} --check "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.zip.sha256"
 
       - name: Artifact upload for diag-utils
         continue-on-error: true
         uses: actions/upload-artifact@v3
         with:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*"
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
@@ -498,7 +513,6 @@ jobs:
         with:
           artifacts: "tari_*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
-          #bodyFile: changelog.md
           prerelease: true
           draft: true
           allowUpdates: true

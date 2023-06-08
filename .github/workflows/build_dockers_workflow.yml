@@ -116,17 +116,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          tagnet=${{github.ref_name}}
-          echo $tagnet
-          # case match is not RegEx, but wildcards/globs
-          case "$tagnet" in
-            v*-pre.*) TARI_NETWORK=esme
-              ;;
-            v*-rc.*) TARI_NETWORK=nextnet
-              ;;
-            *) TARI_NETWORK=mainnet
-              ;;
-          esac
+          source tari/buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
 

@@ -1,13 +1,13 @@
 ---
 name: Integration tests
 
-'on':
+"on":
   pull_request:
     types:
       - opened
       - reopened
       - synchronize
-  merge_group:    
+  merge_group:
   push:
     paths-ignore:
       - '**/*.md'
@@ -39,7 +39,7 @@ concurrency:
 jobs:
   base_layer:
     name: Cucumber tests / Base Layer
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -64,12 +64,10 @@ jobs:
           fi
 
       - name: Setup rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ env.toolchain }}
-          override: true
 
       - name: Install ubuntu dependencies
         shell: bash
@@ -81,30 +79,32 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo test compile
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
         timeout-minutes: 90
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --test cucumber
-            -v
-            --all-features
-            --release
-            --package tari_integration_tests
-            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @broken)"
-            -c 5
+        run: |
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
+            -c 5 \
             --retry 2
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v3  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
 
   ffi:
     name: Cucumber tests / FFI
-    runs-on: [self-hosted, ubuntu18.04-high-cpu]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -130,12 +130,10 @@ jobs:
 
       - name: Setup rust toolchain
         if: ${{ env.CI_FFI == 'true' }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ env.toolchain }}
-          override: true
 
       - name: Install ubuntu dependencies
         if: ${{ env.CI_FFI == 'true' }}
@@ -150,23 +148,36 @@ jobs:
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         timeout-minutes: 90
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --test cucumber
-            -v
-            --all-features
-            --release
-            --package tari_integration_tests
-            -- -t "@wallet-ffi and ${{ env.CI_PROFILE }} and (not @broken)"
-            -c 1
+        run: |
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
+            -c 1 \
             --retry 2
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v3  # upload test results as artifact
+        if: always()
+        with:
+          name: junit-ffi-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+  # needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

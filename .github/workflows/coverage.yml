@@ -17,7 +17,7 @@ concurrency:
 jobs:
   coverage:
     name: test and generate coverage
-    runs-on: [ self-hosted, ubuntu18.04-high-mem ]
+    runs-on: [ self-hosted, ubuntu-high-mem ]
     steps:
       - name: checkout source code
         uses: actions/checkout@v3
@@ -27,10 +27,9 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-          override: true
           components: llvm-tools-preview
 
       - name: cache cargo files and outputs
@@ -38,14 +37,13 @@ jobs:
         with:
           cache-on-failure: true
 
-      - uses: actions-rs/cargo@v1
+      - name: cargo test
         env:
           RUSTFLAGS: "-C instrument-coverage"
           RUSTDOCFLAGS: "-C instrument-coverage"
           LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
-        with:
-          command: test
-          args: --all-features --no-fail-fast --workspace --exclude tari_integration_tests
+          CARGO_UNSTABLE_SPARSE_REGISTRY: true
+        run: cargo test --all-features --no-fail-fast --workspace --exclude tari_integration_tests
 
       - name: prepare coverage data
         env:
