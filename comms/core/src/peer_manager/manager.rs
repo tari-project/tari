@@ -135,6 +135,16 @@ impl PeerManager {
         self.peer_storage.read().await.all()
     }
 
+    /// Return "good" peers for syncing
+    /// Criteria:
+    ///  - Peer is not banned
+    ///  - Peer has been seen within a defined time span (1 week)
+    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
+    ///    peers to sync)
+    pub async fn discovery_syncing(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.discovery_syncing()
+    }
+
     /// Adds or updates a peer and sets the last connection as successful.
     /// If the peer is marked as offline, it will be unmarked.
     pub async fn add_or_update_online_peer(

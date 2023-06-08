@@ -45,6 +45,7 @@ use crate::{
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// The maximum number of peers to return from the flood_identities method in peer manager
 const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
+const PEER_ACTIVE_WITHIN_DURATION: u64 = 7 * 24 * 60 * 60; // 7 days, 24h, 60m, 60s = 1 week
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -278,6 +279,24 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peers)
     }
 
+    /// Return "good" peers for syncing
+    /// Criteria:
+    ///  - Peer is not banned
+    ///  - Peer has been seen within a defined time span (1 week)
+    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
+    ///    peers to sync)
+    pub fn discovery_syncing(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_db
+            .filter_take(PEER_MANAGER_SYNC_PEERS, |(_, peer)| {
+                !peer.is_banned() &&
+                    peer.last_seen_since().is_some() &&
+                    peer.last_seen_since().expect("Last seen to exist") <=
+                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
+            })
+            .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
+            .map_err(PeerManagerError::DatabaseError)
+    }
+
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db
@@ -498,15 +517,17 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 
 #[cfg(test)]
 mod test {
-    use std::iter::repeat_with;
+    use std::{borrow::BorrowMut, iter::repeat_with};
 
+    use chrono::NaiveDateTime;
     use multiaddr::Multiaddr;
+    use rand::Rng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
     use crate::{
-        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
