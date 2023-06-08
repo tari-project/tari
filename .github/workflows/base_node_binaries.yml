@@ -113,13 +113,11 @@ jobs:
           echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ matrix.builds.rust }}
-          target: ${{ matrix.builds.target }}
-          override: true
+          targets: ${{ matrix.builds.target }}
 
       - name: Install Linux dependencies - Ubuntu
         if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
@@ -173,6 +171,7 @@ jobs:
           xcrun --show-sdk-path
           ls -la "/Library/Developer/CommandLineTools/SDKs/"
           echo "RANDOMX_RS_CMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk" >> $GITHUB_ENV
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')
@@ -199,14 +198,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build rust binaries
-        uses: actions-rs/cargo@v1
         env:
+          CARGO_UNSTABLE_SPARSE_REGISTRY: true
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
           ROARING_ARCH: "${{ matrix.builds.target_cpu }}"
-        with:
-          use-cross: ${{ matrix.builds.cross }}
-          command: build
-          args: --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }} ${{ matrix.builds.flags }} --locked
+        shell: bash
+        run: |
+          if [ "${{ matrix.builds.cross }}" != "true" ]; then
+            cargo build --release \
+              --target ${{ matrix.builds.target }} \
+              --features ${{ matrix.builds.features }} \
+              ${{ matrix.builds.target_bins }} \
+              ${{ matrix.builds.flags }} --locked
+          else
+            cargo install cross
+            cross build --release \
+              --target ${{ matrix.builds.target }} \
+              --features ${{ matrix.builds.features }} \
+              ${{ matrix.builds.target_bins }} \
+              ${{ matrix.builds.flags }} --locked
+          fi
 
       - name: Copy binaries to folder for archiving
         shell: bash
