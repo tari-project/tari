@@ -90,23 +90,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          tagnet=${{github.ref_name}}
-          echo $tagnet
-          # case match is not RegEx, but wildcards/globs
-          case "$tagnet" in
-            v*-pre.*)
-              TARI_NETWORK=esme
-              TARI_NETWORK_DIR=testnet
-              ;;
-            v*-rc.*)
-              TARI_NETWORK=nextnet
-              TARI_NETWORK_DIR=nextnet
-              ;;
-            *)
-              TARI_NETWORK=mainnet
-              TARI_NETWORK_DIR=mainnet
-              ;;
-          esac
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
@@ -148,7 +132,7 @@ jobs:
         run: brew install cmake coreutils automake autoconf
 
       - name: Install Windows dependencies
-        #continue-on-error: true  # WARNING: workaround
+        # continue-on-error: true  # WARNING: workaround
         if: startsWith(runner.os,'Windows')
         run: |
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
@@ -181,6 +165,14 @@ jobs:
         run: |
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
           echo "LIB_EXT=.dylib" >> $GITHUB_ENV
+
+      # Hardcoded sdk for MacOSX 11 on ARM64
+      - name: Set environment variables - macOS - ARM64 (pin/sdk)
+        if: ${{ startsWith(runner.os,'macOS') && matrix.builds.name == 'macos-arm64' }}
+        run: |
+          xcrun --show-sdk-path
+          ls -la "/Library/Developer/CommandLineTools/SDKs/"
+          echo "RANDOMX_RS_CMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk" >> $GITHUB_ENV
 
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')
@@ -381,11 +373,39 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
+      - name: Prep Miner for upload
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}${{ env.TBN_DIST }}"
+          cp -v "tari_miner${{ env.TBN_EXT}}" \
+            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
         with:
           name: tari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
+
+      - name: Prep diag-utils for upload
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils"
+          cd "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils"
+          # Find RandomX built tools for testing
+          find "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/" \
+            -name "randomx-*${{ env.TBN_EXT}}" -type f -perm -+x -exec cp -v {} . \;
+          ${SHARUN} * \
+            >> "${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}.sha256"
+
+      - name: Artifact upload for diag-utils
+        continue-on-error: true
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
@@ -462,7 +482,6 @@ jobs:
         with:
           artifacts: "tari_*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
-          #bodyFile: changelog.md
           prerelease: true
           draft: true
           allowUpdates: true
