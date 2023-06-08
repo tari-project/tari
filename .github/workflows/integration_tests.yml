@@ -96,7 +96,7 @@ jobs:
             --retry 2
 
       - name: upload artifact
-        uses: actions/upload-artifact@v2  # upload test results as artifact
+        uses: actions/upload-artifact@v3  # upload test results as artifact
         if: always()
         with:
           name: junit-cucumber
@@ -165,7 +165,7 @@ jobs:
             --retry 2
 
       - name: upload artifact
-        uses: actions/upload-artifact@v2  # upload test results as artifact
+        uses: actions/upload-artifact@v3  # upload test results as artifact
         if: always()
         with:
           name: junit-ffi-cucumber
