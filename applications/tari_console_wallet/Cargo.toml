@@ -40,6 +40,7 @@ log = { version = "0.4.8", features = ["std"] }
 qrcode = { version = "0.12" }
 rand = "0.7.3"
 regex = "1.5.4"
+reqwest = "0.11.18"
 rpassword = "5.0"
 rustyline = "9.0"
 serde = "1.0.136"
