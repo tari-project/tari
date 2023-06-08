@@ -43,8 +43,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
-/// The maximum number of peers to return from the flood_identities method in peer manager
-const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
+/// The maximum number of peers to return in peer manager
+const PEER_MANAGER_SYNC_PEERS: usize = 1000;
 const PEER_ACTIVE_WITHIN_DURATION: u64 = 7 * 24 * 60 * 60; // 7 days, 24h, 60m, 60s = 1 week
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
@@ -300,7 +300,7 @@ where DS: KeyValueStore<PeerId, Peer>
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db
-            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| !peer.is_banned())
+            .filter_take(PEER_MANAGER_SYNC_PEERS, |(_, peer)| !peer.is_banned())
             .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
             .map_err(PeerManagerError::DatabaseError)
     }
