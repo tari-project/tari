@@ -839,4 +839,34 @@ mod test {
         let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
         assert!(!is_in_region);
     }
+
+    #[test]
+    fn discovery_syncing_returns_correct_peers() {
+        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
+        let a_week_ago = Utc::now().timestamp() - (PEER_ACTIVE_WITHIN_DURATION + 60) as i64; // A week ago + a minute
+
+        let never_seen_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let banned_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, true);
+
+        let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let address = not_active_peer.addresses.best().unwrap();
+        let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
+        address.last_seen = Some(NaiveDateTime::from_timestamp_opt(a_week_ago, 0).unwrap());
+        not_active_peer
+            .addresses
+            .merge(&MultiaddressesWithStats::from(vec![address]));
+
+        let mut good_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let good_addresses = good_peer.addresses.borrow_mut();
+        let good_address = good_addresses.addresses()[0].address().clone();
+        good_addresses.mark_last_seen_now(&good_address);
+
+        assert!(peer_storage.add_peer(never_seen_peer).is_ok());
+        assert!(peer_storage.add_peer(not_active_peer).is_ok());
+        assert!(peer_storage.add_peer(banned_peer).is_ok());
+        assert!(peer_storage.add_peer(good_peer).is_ok());
+
+        assert_eq!(peer_storage.all().unwrap().len(), 4);
+        assert_eq!(peer_storage.discovery_syncing().unwrap().len(), 1);
+    }
 }
