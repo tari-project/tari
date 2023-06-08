@@ -764,11 +764,26 @@ mod test {
 
     fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
         let mut rng = rand::rngs::OsRng;
+
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
-        let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses =
-            MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config);
+
+        let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+        // Create 1 to 4 random addresses
+        for _i in 1..=rand::thread_rng().gen_range(1, 4) {
+            let n = vec![
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+            ];
+            let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3],)
+                .parse::<Multiaddr>()
+                .unwrap();
+            net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+        }
+
         let mut peer = Peer::new(
             pk,
             node_id,
