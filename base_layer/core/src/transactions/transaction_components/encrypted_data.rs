@@ -51,15 +51,22 @@ use zeroize::{Zeroize, Zeroizing};
 use super::EncryptedDataKey;
 use crate::transactions::{tari_amount::MicroTari, TransactionSecureNonceKdfDomain};
 
-/// Total encrypted data size: nonce, encrypted value, encrypted mask, tag
-const SIZE: usize = size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN + size_of::<Tag>();
+// Useful size constants, each in bytes
+const SIZE_NONCE: usize = size_of::<XNonce>();
+const SIZE_VALUE: usize = size_of::<u64>();
+const SIZE_MASK: usize = PrivateKey::KEY_LEN;
+const SIZE_TAG: usize = size_of::<Tag>();
+const SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
+
+// Number of hex characters of encrypted data to display on each side of ellipsis when truncating
+const DISPLAY_CUTOFF: usize = 16;
 
 #[derive(
     Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize,
 )]
 pub struct EncryptedData {
     #[serde(with = "tari_utilities::serde::hex")]
-    data: [u8; SIZE],
+    data: [u8; SIZE_TOTAL], // nonce, encrypted value, encrypted mask, tag
 }
 
 /// AEAD associated data
@@ -78,9 +85,9 @@ impl EncryptedData {
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
-        let mut bytes = Zeroizing::new([0u8; size_of::<u64>() + PrivateKey::KEY_LEN]);
-        bytes[..size_of::<u64>()].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
-        bytes[size_of::<u64>()..].clone_from_slice(mask.as_bytes());
+        let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
+        bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
+        bytes[SIZE_VALUE..].clone_from_slice(mask.as_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -93,11 +100,10 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = [0u8; SIZE];
-        data[..size_of::<XNonce>()].clone_from_slice(&nonce);
-        data[size_of::<XNonce>()..size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN]
-            .clone_from_slice(bytes.as_slice());
-        data[size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN..].clone_from_slice(&tag);
+        let mut data = [0u8; SIZE_TOTAL];
+        data[..SIZE_NONCE].clone_from_slice(&nonce);
+        data[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK].clone_from_slice(bytes.as_slice());
+        data[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..].clone_from_slice(&tag);
 
         EncryptedData::from_bytes(data.as_slice())
     }
@@ -111,14 +117,10 @@ impl EncryptedData {
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroTari, PrivateKey), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
-        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..size_of::<XNonce>()]);
-        let mut bytes = Zeroizing::new([0u8; size_of::<u64>() + PrivateKey::KEY_LEN]);
-        bytes.clone_from_slice(
-            &encrypted_data.as_bytes()
-                [size_of::<XNonce>()..size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN],
-        );
-        let tag =
-            Tag::from_slice(&encrypted_data.as_bytes()[size_of::<XNonce>() + size_of::<u64>() + PrivateKey::KEY_LEN..]);
+        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..SIZE_NONCE]);
+        let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
+        bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK]);
+        let tag = Tag::from_slice(&encrypted_data.as_bytes()[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..]);
 
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
@@ -128,24 +130,24 @@ impl EncryptedData {
         cipher.decrypt_in_place_detached(nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice(), tag)?;
 
         // Decode the value and mask
-        let mut value_bytes = [0u8; size_of::<u64>()];
-        value_bytes.clone_from_slice(&bytes[0..size_of::<u64>()]);
+        let mut value_bytes = [0u8; SIZE_VALUE];
+        value_bytes.clone_from_slice(&bytes[0..SIZE_VALUE]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_bytes(&bytes[size_of::<u64>()..])?,
+            PrivateKey::from_bytes(&bytes[SIZE_VALUE..])?,
         ))
     }
 
     /// Parse encrypted data from a byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
-        if bytes.len() != SIZE {
+        if bytes.len() != SIZE_TOTAL {
             return Err(EncryptedDataError::IncorrectLength(format!(
                 "Expected {} bytes, got {}",
-                SIZE,
+                SIZE_TOTAL,
                 bytes.len()
             )));
         }
-        let mut data = [0u8; SIZE];
+        let mut data = [0u8; SIZE_TOTAL];
         data.copy_from_slice(bytes);
         Ok(Self { data })
     }
@@ -156,7 +158,7 @@ impl EncryptedData {
     }
 
     /// Get a byte array with the encrypted data contents
-    pub fn to_bytes(&self) -> [u8; SIZE] {
+    pub fn to_bytes(&self) -> [u8; SIZE_TOTAL] {
         self.data
     }
 
@@ -171,11 +173,11 @@ impl EncryptedData {
             self.to_hex()
         } else {
             let encrypted_data_hex = self.to_hex();
-            if encrypted_data_hex.len() > 32 {
+            if encrypted_data_hex.len() > DISPLAY_CUTOFF {
                 format!(
                     "Some({}..{})",
-                    &encrypted_data_hex[0..16],
-                    &encrypted_data_hex[encrypted_data_hex.len() - 16..encrypted_data_hex.len()]
+                    &encrypted_data_hex[0..DISPLAY_CUTOFF],
+                    &encrypted_data_hex[encrypted_data_hex.len() - DISPLAY_CUTOFF..encrypted_data_hex.len()]
                 )
             } else {
                 encrypted_data_hex
@@ -197,7 +199,9 @@ impl Hex for EncryptedData {
 
 impl Default for EncryptedData {
     fn default() -> Self {
-        Self { data: [0u8; SIZE] }
+        Self {
+            data: [0u8; SIZE_TOTAL],
+        }
     }
 }
 // EncryptedOpenings errors
