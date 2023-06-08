@@ -4,6 +4,7 @@
 use std::{path::Path, str::FromStr};
 
 use log::*;
+use regex::Regex;
 use tari_core::transactions::{tari_amount::MicroTari, transaction_components::TemplateType};
 use tari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tokio::{runtime::Handle, sync::watch};
@@ -52,7 +53,7 @@ fn maybe_extract_git_repo(git_url: &str) -> Option<String> {
     }
 }
 
-fn maybe_extract_template_type(url: &str) -> Option<(String, TemplateType)> {
+fn maybe_extract_template_type(url: &str) -> Option<String> {
     let url = match Url::parse(url) {
         Ok(url) => url,
         Err(_) => return None,
@@ -60,11 +61,35 @@ fn maybe_extract_template_type(url: &str) -> Option<(String, TemplateType)> {
 
     if let Some(ext) = Path::new(url.path()).extension() {
         match ext.to_ascii_uppercase().to_str()? {
-            "WASM" => Some(("WASM:1".to_string(), TemplateType::Wasm { abi_version: 1 })),
+            "WASM" => Some("WASM:1".to_string()),
             _ => None,
         }
     } else {
         None
+    }
+}
+
+fn maybe_extract_template_name_and_version(url: &str) -> (Option<String>, Option<String>) {
+    let url = match Url::parse(url) {
+        Ok(url) => url,
+        Err(_) => return (None, None),
+    };
+
+    if let Some(name) = Path::new(url.path()).file_stem() {
+        if let Some(name) = name.to_str() {
+            let regex = Regex::new(r"(.*)\.(\d+)").unwrap();
+            if let Some(captures) = regex.captures(name) {
+                let first_part = captures.get(1).unwrap().as_str();
+                let second_part = captures.get(2).unwrap().as_str();
+                (Some(first_part.to_string()), Some(second_part.to_string()))
+            } else {
+                (Some(name.to_string()), None)
+            }
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
     }
 }
 
@@ -185,6 +210,11 @@ impl RegisterTemplateTab {
 
         let first_row_layout = Layout::default()
             .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .split(form_layout[1]);
+
+        let second_row_layout = Layout::default()
+            .direction(Direction::Horizontal)
             .constraints(
                 [
                     Constraint::Percentage(50),
@@ -193,11 +223,6 @@ impl RegisterTemplateTab {
                 ]
                 .as_ref(),
             )
-            .split(form_layout[1]);
-
-        let second_row_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(100)].as_ref())
             .split(form_layout[2]);
 
         let third_row_layout = Layout::default()
@@ -218,35 +243,7 @@ impl RegisterTemplateTab {
             .split(form_layout[4]);
 
         // ----------------------------------------------------------------------------
-        // First row - Template Name, Template Version, Template Type
-        // ----------------------------------------------------------------------------
-
-        let template_name = Paragraph::new(self.template_name.as_ref())
-            .style(match self.input_mode {
-                InputMode::TemplateName => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("Template (N)ame:"));
-        f.render_widget(template_name, first_row_layout[0]);
-
-        let template_version = Paragraph::new(self.template_version.to_string())
-            .style(match self.input_mode {
-                InputMode::TemplateVersion => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("Template (V)ersion:"));
-        f.render_widget(template_version, first_row_layout[1]);
-
-        let template_type = Paragraph::new(self.template_type.as_ref())
-            .style(match self.input_mode {
-                InputMode::TemplateType => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("Template (T)ype:"));
-        f.render_widget(template_type, first_row_layout[2]);
-
-        // ----------------------------------------------------------------------------
-        // Second row - Binary URL
+        // First row - Binary URL
         // ----------------------------------------------------------------------------
 
         let binary_url = Paragraph::new(self.binary_url.as_ref())
@@ -255,7 +252,35 @@ impl RegisterTemplateTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("(B)inary URL:"));
-        f.render_widget(binary_url, second_row_layout[0]);
+        f.render_widget(binary_url, first_row_layout[0]);
+
+        // ----------------------------------------------------------------------------
+        // Second row - Template Name, Template Version, Template Type
+        // ----------------------------------------------------------------------------
+
+        let template_name = Paragraph::new(self.template_name.as_ref())
+            .style(match self.input_mode {
+                InputMode::TemplateName => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Template (N)ame:"));
+        f.render_widget(template_name, second_row_layout[0]);
+
+        let template_version = Paragraph::new(self.template_version.to_string())
+            .style(match self.input_mode {
+                InputMode::TemplateVersion => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Template (V)ersion:"));
+        f.render_widget(template_version, second_row_layout[1]);
+
+        let template_type = Paragraph::new(self.template_type.as_ref())
+            .style(match self.input_mode {
+                InputMode::TemplateType => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Template (T)ype:"));
+        f.render_widget(template_type, second_row_layout[2]);
 
         // ----------------------------------------------------------------------------
         // Third row - Repository URL
@@ -312,20 +337,20 @@ impl RegisterTemplateTab {
                 fourth_row_layout[2].y + 1,
             ),
             InputMode::TemplateName => f.set_cursor(
-                first_row_layout[0].x + self.template_name.width() as u16 + 1,
-                first_row_layout[0].y + 1,
+                second_row_layout[0].x + self.template_name.width() as u16 + 1,
+                second_row_layout[0].y + 1,
             ),
             InputMode::TemplateVersion => f.set_cursor(
-                first_row_layout[1].x + self.template_version.width() as u16 + 1,
-                first_row_layout[1].y + 1,
+                second_row_layout[1].x + self.template_version.width() as u16 + 1,
+                second_row_layout[1].y + 1,
             ),
             InputMode::TemplateType => f.set_cursor(
-                first_row_layout[2].x + self.template_type.width() as u16 + 1,
-                first_row_layout[2].y + 1,
+                second_row_layout[2].x + self.template_type.width() as u16 + 1,
+                second_row_layout[2].y + 1,
             ),
             InputMode::BinaryUrl => f.set_cursor(
-                second_row_layout[0].x + self.binary_url.width() as u16 + 1,
-                second_row_layout[0].y + 1,
+                first_row_layout[0].x + self.binary_url.width() as u16 + 1,
+                first_row_layout[0].y + 1,
             ),
             InputMode::BinaryChecksum => f.set_cursor(
                 fourth_row_layout[0].x + self.binary_checksum.width() as u16 + 1,
@@ -344,66 +369,105 @@ impl RegisterTemplateTab {
 
     #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-        if self.confirmation_dialog.is_some() {
-            if 'n' == c {
-                self.confirmation_dialog = None;
-                return KeyHandled::Handled;
-            } else if 'y' == c {
-                let template_version = if let Ok(version) = self.template_version.parse::<u16>() {
-                    version
-                } else {
-                    self.confirmation_dialog = None;
-                    self.error_message =
-                        Some("Template version should be an integer\nPress Enter to continue.".to_string());
-                    return KeyHandled::Handled;
-                };
-
-                let template_type = match self.template_type.to_lowercase().as_str() {
-                    "flow" => TemplateType::Flow,
-                    "manifest" => TemplateType::Manifest,
-                    s => match s.split(':').collect::<Vec<_>>().as_slice() {
-                        &[typ, abi_version] if &typ.to_lowercase() == "wasm" => {
-                            let abi_version = match abi_version.parse::<u16>() {
-                                Ok(abi_version) => abi_version,
-                                Err(_) => {
-                                    self.confirmation_dialog = None;
-                                    self.error_message = Some(format!(
-                                        "Invalid `abi_version` for the `wasm` template type\n{}\nPress Enter to \
-                                         continue.",
-                                        self.template_type
-                                    ));
-                                    return KeyHandled::Handled;
-                                },
-                            };
-
-                            TemplateType::Wasm { abi_version }
-                        },
-
-                        _ => {
-                            self.confirmation_dialog = None;
-                            self.error_message = Some(format!(
-                                "Unrecognized template type\n{}\nPress Enter to continue.",
-                                self.template_type
-                            ));
-                            return KeyHandled::Handled;
-                        },
+        match self.confirmation_dialog {
+            Some(ConfirmationDialogType::AutoFill) => {
+                match c {
+                    'n' => {
+                        self.confirmation_dialog = None;
+                        self.input_mode = InputMode::TemplateName;
                     },
-                };
+                    'y' => {
+                        if self.repository_url.is_empty() {
+                            if let Some(repository_url) = maybe_extract_git_repo(self.binary_url.as_str()) {
+                                self.repository_url = repository_url;
+                            }
+                        }
 
-                let fee_per_gram = if let Ok(fee_per_gram) = MicroTari::from_str(self.fee_per_gram.as_str()) {
-                    fee_per_gram
-                } else {
+                        if self.template_type.is_empty() {
+                            if let Some(template_type) = maybe_extract_template_type(self.binary_url.as_str()) {
+                                self.template_type = template_type;
+                            }
+                        }
+
+                        if self.template_name.is_empty() || self.template_version.is_empty() {
+                            if let (Some(template_name), Some(template_version)) =
+                                maybe_extract_template_name_and_version(self.binary_url.as_str())
+                            {
+                                if self.template_name.is_empty() {
+                                    self.template_name = template_name;
+                                }
+                                if self.template_version.is_empty() {
+                                    self.template_version = template_version;
+                                }
+                            }
+                        }
+                        self.confirmation_dialog = None;
+                        self.input_mode = InputMode::TemplateName;
+                    },
+                    _ => (),
+                }
+                KeyHandled::Handled
+            },
+            Some(ConfirmationDialogType::Normal) => match c {
+                'n' => {
                     self.confirmation_dialog = None;
-                    self.error_message =
-                        Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
                     return KeyHandled::Handled;
-                };
+                },
+                'y' => {
+                    let template_version = if let Ok(version) = self.template_version.parse::<u16>() {
+                        version
+                    } else {
+                        self.confirmation_dialog = None;
+                        self.error_message =
+                            Some("Template version should be an integer\nPress Enter to continue.".to_string());
+                        return KeyHandled::Handled;
+                    };
 
-                let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+                    let template_type = match self.template_type.to_lowercase().as_str() {
+                        "flow" => TemplateType::Flow,
+                        "manifest" => TemplateType::Manifest,
+                        s => match s.split(':').collect::<Vec<_>>().as_slice() {
+                            &[typ, abi_version] if &typ.to_lowercase() == "wasm" => {
+                                let abi_version = match abi_version.parse::<u16>() {
+                                    Ok(abi_version) => abi_version,
+                                    Err(_) => {
+                                        self.confirmation_dialog = None;
+                                        self.error_message = Some(format!(
+                                            "Invalid `abi_version` for the `wasm` template type\n{}\nPress Enter to \
+                                             continue.",
+                                            self.template_type
+                                        ));
+                                        return KeyHandled::Handled;
+                                    },
+                                };
 
-                let mut reset_fields = false;
+                                TemplateType::Wasm { abi_version }
+                            },
 
-                if Some(ConfirmationDialogType::Normal) == self.confirmation_dialog {
+                            _ => {
+                                self.confirmation_dialog = None;
+                                self.error_message = Some(format!(
+                                    "Unrecognized template type\n{}\nPress Enter to continue.",
+                                    self.template_type
+                                ));
+                                return KeyHandled::Handled;
+                            },
+                        },
+                    };
+
+                    let fee_per_gram = if let Ok(fee_per_gram) = MicroTari::from_str(self.fee_per_gram.as_str()) {
+                        fee_per_gram
+                    } else {
+                        self.confirmation_dialog = None;
+                        self.error_message =
+                            Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                        return KeyHandled::Handled;
+                    };
+
+                    let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+
+                    let mut reset_fields = false;
+
                     match Handle::current().block_on(app_state.register_code_template(
                         self.template_name.clone(),
                         template_version,
@@ -428,33 +492,42 @@ impl RegisterTemplateTab {
                             reset_fields = true
                         },
                     }
-                }
 
-                if reset_fields {
-                    self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
-                    self.template_name = "".to_string();
-                    self.template_type = "".to_string();
-                    self.binary_url = "".to_string();
-                    self.binary_checksum = "".to_string();
-                    self.repository_url = "".to_string();
-                    self.repository_commit_hash = "".to_string();
-                    self.input_mode = InputMode::None;
-                    self.result_watch = Some(rx);
-                }
+                    if reset_fields {
+                        self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
+                        self.template_name = "".to_string();
+                        self.template_type = "".to_string();
+                        self.binary_url = "".to_string();
+                        self.binary_checksum = "".to_string();
+                        self.repository_url = "".to_string();
+                        self.repository_commit_hash = "".to_string();
+                        self.input_mode = InputMode::None;
+                        self.result_watch = Some(rx);
+                    }
 
-                self.confirmation_dialog = None;
-                return KeyHandled::Handled;
-            } else {
-                return KeyHandled::Handled;
-            }
+                    self.confirmation_dialog = None;
+                    KeyHandled::Handled
+                },
+                _ => KeyHandled::Handled,
+            },
+            None => KeyHandled::NotHandled,
         }
-        KeyHandled::NotHandled
     }
 
     fn on_key_send_input(&mut self, c: char) -> KeyHandled {
         if self.input_mode != InputMode::None {
             match self.input_mode {
                 InputMode::None => (),
+                InputMode::BinaryUrl => match c {
+                    '\n' => {
+                        self.confirmation_dialog = Some(ConfirmationDialogType::AutoFill);
+                        self.input_mode = InputMode::None;
+                    },
+                    c => {
+                        self.binary_url.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
                 InputMode::TemplateName => match c {
                     '\n' => self.input_mode = InputMode::TemplateVersion,
                     c => {
@@ -470,37 +543,13 @@ impl RegisterTemplateTab {
                     },
                 },
                 InputMode::TemplateType => match c {
-                    '\n' => self.input_mode = InputMode::BinaryUrl,
+                    '\n' => self.input_mode = InputMode::RepositoryUrl,
                     c => {
                         self.template_type.push(c.to_uppercase().collect::<Vec<_>>()[0]);
                         return KeyHandled::Handled;
                     },
                 },
-                InputMode::BinaryUrl => match c {
-                    '\n' => {
-                        self.input_mode = {
-                            if self.repository_url.is_empty() {
-                                self.repository_url = match maybe_extract_git_repo(self.binary_url.as_str()) {
-                                    None => String::new(),
-                                    Some(repository_url) => repository_url,
-                                };
-                            }
 
-                            if self.template_type.is_empty() {
-                                self.repository_url = match maybe_extract_template_type(self.binary_url.as_str()) {
-                                    None => String::new(),
-                                    Some(assumed_template_type) => assumed_template_type.0,
-                                };
-                            }
-
-                            InputMode::RepositoryUrl
-                        }
-                    },
-                    c => {
-                        self.binary_url.push(c);
-                        return KeyHandled::Handled;
-                    },
-                },
                 InputMode::RepositoryUrl => match c {
                     '\n' => self.input_mode = InputMode::BinaryChecksum,
                     c => {
@@ -602,6 +651,15 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
 
         match self.confirmation_dialog {
             None => (),
+            Some(ConfirmationDialogType::AutoFill) => draw_dialog(
+                f,
+                area,
+                "Confirm autofill".to_string(),
+                "Do you want to autofill (if possible) empty fields from the binary URL?\n(Y)es / (N)o".to_string(),
+                Color::Blue,
+                120,
+                9,
+            ),
             Some(ConfirmationDialogType::Normal) => {
                 draw_dialog(
                     f,
@@ -773,5 +831,6 @@ enum InputMode {
 
 #[derive(PartialEq, Debug)]
 enum ConfirmationDialogType {
+    AutoFill,
     Normal,
 }
