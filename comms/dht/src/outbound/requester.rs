@@ -51,7 +51,34 @@ impl OutboundMessageRequester {
     }
 
     /// Send directly to a peer. If the peer does not exist in the peer list, a discovery will be initiated.
-    pub async fn send_direct<T>(
+    pub async fn send_direct_encrypted<T>(
+        &mut self,
+        dest_public_key: CommsPublicKey,
+        message: OutboundDomainMessage<T>,
+        encryption: OutboundEncryption,
+        source_info: String,
+    ) -> Result<MessageSendStates, DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        self.send_message(
+            SendMessageParams::new()
+                .with_debug_info(format!("Send direct to {} from {}", &dest_public_key, source_info))
+                .direct_public_key(dest_public_key.clone())
+                .with_discovery(true)
+                .with_encryption(encryption)
+                .with_destination(dest_public_key.into())
+                .finish(),
+            message,
+        )
+        .await?
+        .resolve()
+        .await
+        .map_err(Into::into)
+    }
+
+    /// Send directly to a peer unencrypted. If the peer does not exist in the peer list, a discovery will be initiated.
+    pub async fn send_direct_unencrypted<T>(
         &mut self,
         dest_public_key: CommsPublicKey,
         message: OutboundDomainMessage<T>,

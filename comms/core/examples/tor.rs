@@ -175,7 +175,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         hs_builder = hs_builder.with_tor_identity(ident);
     }
 
-    let mut hs_controller = hs_builder.build().await?;
+    let mut hs_controller = hs_builder.build()?;
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,

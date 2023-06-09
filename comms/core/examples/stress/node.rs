@@ -139,7 +139,7 @@ pub async fn create(
             hs_builder = hs_builder.with_tor_identity(tor_identity);
         }
 
-        let mut hs_ctl = hs_builder.build().await?;
+        let mut hs_ctl = hs_builder.build()?;
         let transport = hs_ctl.initialize_transport().await?;
 
         builder

@@ -2,6 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<<<<<<< HEAD
 ## [0.49.0-rc.3](https://github.com/tari-project/tari/compare/v0.49.0-rc.2...v0.49.0-rc.3) (2023-04-19)
 
 
@@ -25,6 +26,8 @@ All notable changes to this project will be documented in this file. See [standa
 * wallet ffi header file ([#5329](https://github.com/tari-project/tari/issues/5329)) ([b0d2032](https://github.com/tari-project/tari/commit/b0d2032c680bbc9914acf21f42ae79499b6c9a44))
 
 
+=======
+>>>>>>> development
 ## [0.49.0-rc.0](https://github.com/tari-project/tari/compare/v0.48.0-rc.0...v0.49.0-rc.0) (2023-04-12)
 
 

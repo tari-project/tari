@@ -11,11 +11,15 @@ tari_app_grpc = { path = "../applications/tari_app_grpc" }
 tari_app_utilities = { path = "../applications/tari_app_utilities" }
 tari_base_node = { path = "../applications/tari_base_node" }
 tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
+tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
+tari_chat_ffi = { path = "../base_layer/chat_ffi" }
+tari_crypto = "0.16"
 tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
 tari_console_wallet = { path = "../applications/tari_console_wallet" }
+tari_contacts = { path = "../base_layer/contacts" }
 tari_core = { path = "../base_layer/core" }
 tari_merge_mining_proxy = { path = "../applications/tari_merge_mining_proxy" }
 tari_miner = { path = "../applications/tari_miner" }
@@ -24,37 +28,30 @@ tari_script = { path = "../infrastructure/tari_script" }
 tari_shutdown = { path = "../infrastructure/shutdown" }
 tari_utilities = "0.4.10"
 tari_wallet = { path = "../base_layer/wallet" }
-tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
+tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
 chrono = "0.4.22"
 config = "0.13.0"
 csv = "1.1"
+cucumber = { version = "0.18.0", features = ["default", "libtest", "output-junit"] }
 futures = { version = "^0.3.1" }
+indexmap = "1.9.1"
 libc = "0.2.65"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.7"
 reqwest = "0.11.11"
 serde_json = "1.0.64"
+tempfile = "3.3.0"
 thiserror = "^1.0.20"
 time = "0.3.15"
 tokio = { version = "1.10", features = ["macros", "time", "sync", "rt-multi-thread"] }
 tonic = "0.6.2"
 
-
-[dev-dependencies]
-tari_crypto = { version = "0.16.11"}
-
-# FIXME: the newest version failed compilation due to a missing "bool_to_option" unstable feature
-#cucumber = { version = "0.13.0", features = ["default"] }
-cucumber = { version = "0.18.0", features = ["default", "libtest"] }
-tempfile = "3.3.0"
-indexmap = "1.9.1"
-
 [package.metadata.cargo-machete]
-ignored = ["tari_wallet_ffi"]
+ignored = ["tari_wallet_ffi", "tari_chat_ffi"]
 
 [[test]]
 name = "cucumber" # this should be the same as the filename of your test target

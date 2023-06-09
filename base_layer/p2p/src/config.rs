@@ -30,6 +30,7 @@ use tari_common::{
     configuration::{
         serializers,
         utils::{deserialize_string_or_struct, serialize_string},
+        MultiaddrList,
         StringList,
     },
     DnsNameServer,
@@ -87,7 +88,7 @@ pub struct P2pConfig {
     /// The public address advertised to other peers by this node. If not set it will be set automatically depending on
     /// the transport type. The TCP transport is not able to determine the users public IP, so this will need to be
     /// manually set.
-    pub public_addresses: Vec<Multiaddr>,
+    pub public_addresses: MultiaddrList,
     /// Transport configuration
     pub transport: TransportConfig,
     /// Path to the LMDB data files.
@@ -132,7 +133,7 @@ impl Default for P2pConfig {
     fn default() -> Self {
         Self {
             override_from: None,
-            public_addresses: vec![],
+            public_addresses: MultiaddrList::default(),
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),

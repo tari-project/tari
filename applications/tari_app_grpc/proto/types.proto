@@ -93,6 +93,17 @@ enum OutputType {
     CODE_TEMPLATE_REGISTRATION = 4;
 }
 
+/// Range proof types
+enum RangeProofType {
+    BULLETPROOF_PLUS = 0;
+    REVEALED_VALUE = 1;
+}
+
+/// Range proof
+message RangeProof {
+    bytes proof_bytes = 1;
+}
+
 /// Consensus Constants response
 message ConsensusConstants {
     /// The min height maturity a coinbase utxo must have
@@ -157,4 +168,6 @@ message ConsensusConstants {
     uint64 validator_node_registration_min_deposit_amount = 31;
     uint64 validator_node_registration_min_lock_height = 32;
     uint64 validator_node_registration_shuffle_interval_epoch = 33;
+    /// An allowlist of range proof types
+    repeated RangeProofType permitted_range_proof_types = 34;
 }

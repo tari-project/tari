@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.49.0-rc.3"
+version = "0.50.0-rc.0"
 edition = "2021"
 
 [lib]
@@ -12,7 +12,7 @@ crate-type = ["lib", "cdylib"]
 
 # NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
-tari_crypto = "0.16.11"
+tari_crypto = {version = "0.16"}
 tari_utilities = "0.4.10"
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}

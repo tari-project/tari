@@ -665,7 +665,7 @@ where
         match self
             .resources
             .outbound_message_service
-            .send_direct(
+            .send_direct_unencrypted(
                 self.dest_address.public_key().clone(),
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
                 "transaction send".to_string(),

@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.49.0-rc.3"
+version = "0.50.0-rc.0"
 edition = "2018"
 
 [dependencies]
@@ -15,7 +15,7 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { version = "0.16.11"}
+tari_crypto = { version = "0.16"}
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
@@ -38,6 +38,7 @@ futures = { version = "^0.3.16", default-features = false, features = ["alloc"] 
 qrcode = { version = "0.12" }
 log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
+log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 nom = "7.1.0"
 rustyline = "9.0"
 rustyline-derive = "0.5"
@@ -58,4 +59,10 @@ safe = []
 libtor = ["tari_libtor"]
 
 [build-dependencies]
-tari_features = { version = "0.49.0-rc.1", path = "../../common/tari_features"}
+tari_features = { version = "0.50.0-rc.0", path = "../../common/tari_features"}
+
+[package.metadata.cargo-machete]
+ignored = [
+    # We need to specify extra features for log4rs even though it is not used directly in this crate
+    "log4rs"
+]

@@ -130,13 +130,16 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
+    #[cfg(all(unix, feature = "libtor"))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+    #[cfg(not(all(unix, feature = "libtor")))]
+    let config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
-        config.base_node.p2p.public_addresses.clone(),
+        config.base_node.p2p.public_addresses.clone().into_vec(),
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
     )?;

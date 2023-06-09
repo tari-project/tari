@@ -30,7 +30,7 @@ use tari_common::configuration::serializers;
 pub struct BaseNodeServiceConfig {
     /// The refresh interval
     #[serde(with = "serializers::seconds")]
-    pub base_node_monitor_refresh_interval: Duration,
+    pub base_node_monitor_max_refresh_interval: Duration,
     /// The RPC client pool size
     pub base_node_rpc_pool_size: usize,
     /// This is the size of the event channel used to communicate base node events to the wallet
@@ -40,7 +40,7 @@ pub struct BaseNodeServiceConfig {
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_monitor_refresh_interval: Duration::from_secs(3),
+            base_node_monitor_max_refresh_interval: Duration::from_secs(90),
             base_node_rpc_pool_size: 10,
             event_channel_size: 250,
         }

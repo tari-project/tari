@@ -22,6 +22,7 @@
 
 use std::{
     collections::{HashMap, VecDeque},
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -42,7 +43,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact};
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,
@@ -73,11 +74,12 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            tasks::{send_burn_transaction_task, send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
-        UiContact,
-        UiError,
+        ui_burnt_proof::UiBurntProof,
+        ui_contact::UiContact,
+        ui_error::UiError,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
@@ -159,6 +161,14 @@ impl AppState {
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_contacts_state().await?;
+        drop(inner);
+        self.update_cache().await;
+        Ok(())
+    }
+
+    pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_burnt_proofs_state().await?;
         drop(inner);
         self.update_cache().await;
         Ok(())
@@ -256,6 +266,22 @@ impl AppState {
         inner.refresh_contacts_state().await?;
         drop(inner);
         self.update_cache().await;
+        Ok(())
+    }
+
+    pub async fn delete_burnt_proof(&mut self, proof_id: u32) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+
+        inner
+            .wallet
+            .db
+            .delete_burnt_proof(proof_id)
+            .map_err(UiError::WalletStorageError)?;
+
+        inner.refresh_burnt_proofs_state().await?;
+        drop(inner);
+        self.update_cache().await;
+
         Ok(())
     }
 
@@ -360,6 +386,57 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn send_burn_transaction(
+        &mut self,
+        burn_proof_filepath: Option<String>,
+        claim_public_key: Option<String>,
+        amount: u64,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: u64,
+        message: String,
+        result_tx: watch::Sender<UiTransactionBurnStatus>,
+    ) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+
+        let burn_proof_filepath = match burn_proof_filepath {
+            None => None,
+            Some(path) => {
+                let path = PathBuf::from(path);
+
+                if path.exists() {
+                    return Err(UiError::BurntProofFileExists);
+                }
+
+                Some(path)
+            },
+        };
+
+        let fee_per_gram = fee_per_gram * uT;
+        let tx_service_handle = inner.wallet.transaction_service.clone();
+        let claim_public_key = match claim_public_key {
+            None => return Err(UiError::PublicKeyParseError),
+            Some(claim_public_key) => match PublicKey::from_hex(claim_public_key.as_str()) {
+                Ok(claim_public_key) => Some(claim_public_key),
+                Err(_) => return Err(UiError::PublicKeyParseError),
+            },
+        };
+
+        send_burn_transaction_task(
+            burn_proof_filepath,
+            claim_public_key,
+            MicroTari::from(amount),
+            selection_criteria,
+            message,
+            fee_per_gram,
+            tx_service_handle,
+            inner.wallet.db.clone(),
+            result_tx,
+        )
+        .await;
+
+        Ok(())
+    }
+
     pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let mut tx_service_handle = inner.wallet.transaction_service.clone();
@@ -385,6 +462,14 @@ impl AppState {
         &self.cached_data.my_identity
     }
 
+    pub fn get_burnt_proofs(&self) -> &[UiBurntProof] {
+        self.cached_data.burnt_proofs.as_slice()
+    }
+
+    pub fn get_burnt_proof_by_index(&self, idx: usize) -> Option<&UiBurntProof> {
+        self.cached_data.burnt_proofs.get(idx)
+    }
+
     pub fn get_contacts(&self) -> &[UiContact] {
         self.cached_data.contacts.as_slice()
     }
@@ -403,6 +488,14 @@ impl AppState {
         }
 
         &self.cached_data.contacts[start..end]
+    }
+
+    pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
+        if self.cached_data.burnt_proofs.is_empty() || start >= end {
+            return &[];
+        }
+
+        &self.cached_data.burnt_proofs[start..end]
     }
 
     pub fn get_pending_txs(&self) -> &Vec<CompletedTransactionInfo> {
@@ -779,6 +872,27 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
+        // let db_burnt_proofs = self.wallet.db.get_burnt_proofs()?;
+        let db_burnt_proofs = self.wallet.db.fetch_burnt_proofs()?;
+        let mut ui_proofs: Vec<UiBurntProof> = vec![];
+
+        for proof in db_burnt_proofs {
+            ui_proofs.push(UiBurntProof {
+                id: proof.0,
+                reciprocal_claim_public_key: proof.1,
+                payload: proof.2,
+                burned_at: proof.3,
+            });
+        }
+
+        ui_proofs.sort_by(|a, b| a.burned_at.cmp(&b.burned_at));
+
+        self.data.burnt_proofs = ui_proofs;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
@@ -1063,6 +1177,7 @@ struct AppStateData {
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
+    burnt_proofs: Vec<UiBurntProof>,
     connected_peers: Vec<Peer>,
     balance: Balance,
     base_node_state: BaseNodeState,
@@ -1085,7 +1200,7 @@ impl AppStateData {
     pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
         let eid = wallet_identity.address.to_emoji_string();
         let qr_link = format!(
-            "tari://{}/transactions/send?publicKey={}",
+            "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network,
             wallet_identity.address.to_hex()
         );
@@ -1141,6 +1256,7 @@ impl AppStateData {
             confirmations: HashMap::new(),
             my_identity: identity,
             contacts: Vec::new(),
+            burnt_proofs: vec![],
             connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
@@ -1175,6 +1291,13 @@ pub enum UiTransactionSendStatus {
     Error(String),
 }
 
+#[derive(Clone, Debug)]
+pub enum UiTransactionBurnStatus {
+    Initiated,
+    TransactionComplete((u32, String, String)),
+    Error(String),
+}
+
 bitflags! {
     pub struct TransactionFilter: u8 {
         const NONE = 0b0000_0000;
@@ -1190,7 +1313,7 @@ struct AppStateConfig {
 impl Default for AppStateConfig {
     fn default() -> Self {
         Self {
-            cache_update_cooldown: Duration::from_secs(2),
+            cache_update_cooldown: Duration::from_millis(100),
         }
     }
 }

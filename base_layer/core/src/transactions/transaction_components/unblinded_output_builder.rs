@@ -22,7 +22,7 @@
 
 use derivative::Derivative;
 use tari_common_types::types::{BlindingFactor, ComAndPubSignature, PrivateKey, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -30,14 +30,15 @@ use crate::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
         },
-        transaction_protocol::RewindData,
+        transaction_protocol::RecoveryData,
+        CryptoFactories,
     },
 };
 
@@ -57,8 +58,8 @@ pub struct UnblindedOutputBuilder {
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-    encrypted_value: EncryptedValue,
-    rewind_data: Option<RewindData>,
+    encrypted_data: EncryptedData,
+    recovery_data: Option<RecoveryData>,
     minimum_value_promise: MicroTari,
 }
 
@@ -76,8 +77,8 @@ impl UnblindedOutputBuilder {
             metadata_signature: None,
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
-            encrypted_value: EncryptedValue::default(),
-            rewind_data: None,
+            encrypted_data: EncryptedData::default(),
+            recovery_data: None,
             minimum_value_promise: MicroTari::zero(),
         }
     }
@@ -101,9 +102,19 @@ impl UnblindedOutputBuilder {
         self
     }
 
-    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
-        self.rewind_data = Some(rewind_data);
-        self
+    pub fn with_recovery_and_encrypted_data(mut self, recovery_data: RecoveryData) -> Result<Self, TransactionError> {
+        self.recovery_data = Some(recovery_data.clone());
+        let commitment = CryptoFactories::default()
+            .commitment
+            .commit_value(&self.spending_key, self.value.as_u64());
+        self.encrypted_data = EncryptedData::encrypt_data(
+            &recovery_data.encryption_key,
+            &commitment,
+            self.value,
+            &self.spending_key,
+        )
+        .map_err(|e| TransactionError::EncryptionError(format!("{}", e)))?;
+        Ok(self)
     }
 
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
@@ -143,7 +154,7 @@ impl UnblindedOutputBuilder {
             &self.features,
             sender_offset_private_key,
             &self.covenant,
-            &self.encrypted_value,
+            &self.encrypted_data,
             self.minimum_value_promise,
         )?;
         self.sender_offset_public_key = Some(PublicKey::from_secret_key(sender_offset_private_key));
@@ -180,7 +191,7 @@ impl UnblindedOutputBuilder {
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
             0,
             self.covenant,
-            self.encrypted_value,
+            self.encrypted_data,
             self.minimum_value_promise,
         );
         Ok(ub)

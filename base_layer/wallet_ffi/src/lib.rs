@@ -86,12 +86,12 @@ use log4rs::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_common::configuration::StringList;
+use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PublicKey, Signature},
+    types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -100,13 +100,13 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_contacts::contacts_service::storage::database::Contact;
+use tari_contacts::contacts_service::types::Contact;
 use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -136,6 +136,7 @@ use tari_utilities::{
     SafePassword,
 };
 use tari_wallet::{
+    base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -161,7 +162,7 @@ use tari_wallet::{
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
-    wallet::{derive_comms_secret_key, read_or_create_master_seed},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -202,7 +203,7 @@ pub type TariOutputFeatures = tari_core::transactions::transaction_components::O
 pub type TariCommsConfig = tari_p2p::P2pConfig;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
-pub type TariEncryptedValue = tari_core::transactions::transaction_components::EncryptedValue;
+pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedData;
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
@@ -210,7 +211,7 @@ pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
-pub type TariContact = tari_contacts::contacts_service::storage::database::Contact;
+pub type TariContact = tari_contacts::contacts_service::types::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
@@ -1432,7 +1433,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// `script_private_key` - Tari script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
-/// `encrypted_value` - Encrypted value.
+/// `encrypted_data` - Encrypted data.
 /// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -1456,7 +1457,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     sender_offset_public_key: *mut TariPublicKey,
     script_private_key: *mut TariPrivateKey,
     covenant: *mut TariCovenant,
-    encrypted_value: *mut TariEncryptedValue,
+    encrypted_data: *mut TariEncryptedOpenings,
     minimum_value_promise: c_ulonglong,
     script_lock_height: c_ulonglong,
     error_out: *mut c_int,
@@ -1550,10 +1551,10 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
         (*covenant).clone()
     };
 
-    let encrypted_value = if encrypted_value.is_null() {
-        TariEncryptedValue::default()
+    let encrypted_data = if encrypted_data.is_null() {
+        TariEncryptedOpenings::default()
     } else {
-        (*encrypted_value).clone()
+        *encrypted_data
     };
 
     let unblinded_output = UnblindedOutput::new_current_version(
@@ -1567,7 +1568,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
         (*metadata_signature).clone(),
         script_lock_height,
         covenant,
-        encrypted_value,
+        encrypted_data,
         minimum_value_promise.into(),
     );
 
@@ -1825,7 +1826,7 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
 /// `script_private_key` - Tari script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
-/// `encrypted_value` - Encrypted value.
+/// `encrypted_data` - Encrypted data.
 /// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -2147,81 +2148,81 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-/// --------------------------------------- EncryptedValue --------------------------------------------///
+/// --------------------------------------- EncryptedOpenings --------------------------------------------///
 
-/// Creates a TariEncryptedValue from a ByteVector containing the encrypted_value bytes
+/// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
 ///
 /// ## Arguments
-/// `encrypted_value_bytes` - The encrypted_value bytes as a ByteVector
+/// `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
 ///
 /// ## Returns
-/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+/// `TariEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
 /// null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// The ```encrypted_data_destroy``` function must be called when finished with a TariEncryptedOpenings to prevent a
 /// memory leak
 #[no_mangle]
-pub unsafe extern "C" fn encrypted_value_create_from_bytes(
-    encrypted_value_bytes: *const ByteVector,
+pub unsafe extern "C" fn encrypted_data_create_from_bytes(
+    encrypted_data_bytes: *const ByteVector,
     error_out: *mut c_int,
-) -> *mut TariEncryptedValue {
+) -> *mut TariEncryptedOpenings {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
-    if encrypted_value_bytes.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("encrypted_value_bytes".to_string())).code;
+    if encrypted_data_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_data_bytes".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let decoded_encrypted_value_bytes = (*encrypted_value_bytes).0.clone();
+    let decoded_encrypted_data_bytes = (*encrypted_data_bytes).0.clone();
 
-    match TariEncryptedValue::from_bytes(&decoded_encrypted_value_bytes) {
-        Ok(encrypted_value) => Box::into_raw(Box::new(encrypted_value)),
+    match TariEncryptedOpenings::from_bytes(&decoded_encrypted_data_bytes) {
+        Ok(encrypted_data) => Box::into_raw(Box::new(encrypted_data)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating an encrypted_value: {:?}", e);
-            error = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_value_bytes".to_string())).code;
+            error!(target: LOG_TARGET, "Error creating an encrypted_data: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_data_bytes".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
     }
 }
 
-/// Creates a ByteVector containing the encrypted_value bytes from a TariEncryptedValue
+/// Creates a ByteVector containing the encrypted_data bytes from a TariEncryptedOpenings
 ///
 /// ## Arguments
-/// `encrypted_value` - The encrypted_value as a TariEncryptedValue
+/// `encrypted_data` - The encrypted_data as a TariEncryptedOpenings
 ///
 /// ## Returns
-/// `ByteVector` - Returns a ByteVector containing the encrypted_value bytes. Note that it will be ptr::null_mut() if
+/// `ByteVector` - Returns a ByteVector containing the encrypted_data bytes. Note that it will be ptr::null_mut() if
 /// any argument is null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// The `encrypted_data_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
 /// memory leak
 #[no_mangle]
-pub unsafe extern "C" fn encrypted_value_as_bytes(
-    encrypted_value: *const TariEncryptedValue,
+pub unsafe extern "C" fn encrypted_data_as_bytes(
+    encrypted_data: *const TariEncryptedOpenings,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
-    if encrypted_value.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("encrypted_value".to_string())).code;
+    if encrypted_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
-    let encrypted_value_bytes = TariEncryptedValue::as_bytes(&(*encrypted_value)).to_vec();
-    let encrypted_byte_vector = ByteVector(encrypted_value_bytes);
+    let encrypted_data_bytes = TariEncryptedOpenings::to_byte_vec(&(*encrypted_data)).to_vec();
+    let encrypted_byte_vector = ByteVector(encrypted_data_bytes);
     Box::into_raw(Box::new(encrypted_byte_vector))
 }
 
-/// Frees memory for a TariEncryptedValue
+/// Frees memory for a TariEncryptedOpenings
 ///
 /// ## Arguments
-/// `encrypted_value` - The pointer to a TariEncryptedValue
+/// `encrypted_data` - The pointer to a TariEncryptedOpenings
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2229,10 +2230,10 @@ pub unsafe extern "C" fn encrypted_value_as_bytes(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncryptedValue) {
-    if !encrypted_value.is_null() {
-        // zeroize the data content of encrypted_value, as to prevent memory leaks
-        (*encrypted_value).zeroize();
+pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncryptedOpenings) {
+    if !encrypted_data.is_null() {
+        // zeroize the data content of encrypted_data, as to prevent memory leaks
+        (*encrypted_data).zeroize();
     }
 }
 
@@ -2246,6 +2247,7 @@ pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncry
 /// `output_type` - The encoded value of the output type as a byte
 /// `maturity` - The encoded value maturity as bytes
 /// `metadata` - The metadata componenet as a ByteVector. It cannot be null
+/// `encrypted_data` - The encrypted_data component as a ByteVector. It can be null  to model a None value.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2262,6 +2264,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     output_type: c_ushort,
     maturity: c_ulonglong,
     metadata: *const ByteVector,
+    range_proof_type: c_ushort,
     error_out: *mut c_int,
 ) -> *mut TariOutputFeatures {
     let mut error = 0;
@@ -2285,8 +2288,8 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
-    let output_type = match output_type.try_into().ok().and_then(OutputType::from_byte) {
-        Some(output_type) => output_type,
+    let decoded_output_type = match output_type.try_into().ok().and_then(OutputType::from_byte) {
+        Some(val) => val,
         None => {
             error!(target: LOG_TARGET, "output_type overflowed",);
             error = LibWalletError::from(InterfaceError::InvalidArgument("flag".to_string())).code;
@@ -2295,9 +2298,26 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
+    let decoded_range_proof_type = match range_proof_type.try_into().ok().and_then(RangeProofType::from_byte) {
+        Some(val) => val,
+        None => {
+            error!(target: LOG_TARGET, "range_proof_type overflowed",);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("flag".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
     let decoded_metadata = (*metadata).0.clone();
 
-    let output_features = TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None);
+    let output_features = TariOutputFeatures::new(
+        decoded_version,
+        decoded_output_type,
+        maturity,
+        decoded_metadata,
+        None,
+        decoded_range_proof_type,
+    );
     Box::into_raw(Box::new(output_features))
 }
 
@@ -4772,9 +4792,9 @@ pub unsafe extern "C" fn comms_config_create(
     match public_address {
         Ok(public_address) => {
             let addresses = if (*transport).transport_type == TransportType::Tor {
-                vec![]
+                MultiaddrList::default()
             } else {
-                vec![public_address]
+                MultiaddrList::from(vec![public_address])
             };
 
             let config = TariCommsConfig {
@@ -4960,6 +4980,7 @@ pub unsafe extern "C" fn public_keys_get_at(
 ///
 /// # Safety
 /// None
+#[allow(clippy::too_many_lines)]
 unsafe fn init_logging(
     log_path: *const c_char,
     num_rolling_log_files: c_uint,
@@ -5021,6 +5042,30 @@ unsafe fn init_logging(
                 .appender("logfile")
                 .additive(false)
                 .build("comms", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("comms::noise", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("tokio_util", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("tracing", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("wallet::transaction_service::callback_handler", LevelFilter::Warn),
         )
         .logger(
             Logger::builder()
@@ -5294,8 +5339,8 @@ pub unsafe extern "C" fn wallet_create(
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
         let node_addresses = if comms_config.public_addresses.is_empty() {
             match wallet_database.get_node_address()? {
-                Some(addr) => vec![addr],
-                None => vec![],
+                Some(addr) => MultiaddrList::from(vec![addr]),
+                None => MultiaddrList::default(),
             }
         } else {
             comms_config.public_addresses.clone()
@@ -5316,7 +5361,7 @@ pub unsafe extern "C" fn wallet_create(
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
             comms_secret_key,
-            node_addresses,
+            node_addresses.to_vec(),
             node_features,
             identity_sig,
         ));
@@ -5350,6 +5395,7 @@ pub unsafe extern "C" fn wallet_create(
             direct_send_timeout: (*config).dht.discovery_request_timeout,
             ..Default::default()
         },
+        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
         ..Default::default()
     };
@@ -5388,7 +5434,7 @@ pub unsafe extern "C" fn wallet_create(
     ));
 
     match w {
-        Ok(mut w) => {
+        Ok(w) => {
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = w.db.set_tor_identity(hs.tor_identity().clone()) {
@@ -5430,12 +5476,15 @@ pub unsafe extern "C" fn wallet_create(
 
             runtime.spawn(callback_handler.start());
 
-            if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not restart transaction negotiation protocols: {:?}", e
-                );
-            }
+            let mut ts = w.transaction_service.clone();
+            runtime.spawn(async move {
+                if let Err(e) = ts.restart_transaction_protocols().await {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not restart transaction negotiation protocols: {:?}", e
+                    );
+                }
+            });
 
             let tari_wallet = TariWallet {
                 wallet: w,
@@ -6163,7 +6212,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
                     let public_nonce = TariPublicKey::from_hex(key2);
                     match public_nonce {
                         Ok(pn) => {
-                            let sig = Signature::new(pn, p);
+                            let sig = SignatureWithDomain::<WalletMessageSigningDomain>::new(pn, p);
                             result = (*wallet).wallet.verify_message_signature(&*public_key, &sig, &message)
                         },
                         Err(e) => {
@@ -8509,7 +8558,7 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
+        transactions::test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
     };
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -9049,46 +9098,48 @@ mod test {
     }
 
     #[test]
-    fn test_encrypted_value_empty() {
+    fn test_encrypted_data_empty() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let encrypted_value_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
-            let encrypted_value_1 = encrypted_value_create_from_bytes(encrypted_value_bytes, error_ptr);
+            let encrypted_data_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let encrypted_data_1 = encrypted_data_create_from_bytes(encrypted_data_bytes, error_ptr);
 
             assert_ne!(error, 0);
 
-            encrypted_value_destroy(encrypted_value_1);
-            byte_vector_destroy(encrypted_value_bytes);
+            encrypted_data_destroy(encrypted_data_1);
+            byte_vector_destroy(encrypted_data_bytes);
         }
     }
 
     #[test]
-    fn test_encrypted_value_filled() {
+    fn test_encrypted_data_filled() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)));
+            let spending_key = PrivateKey::random(&mut OsRng);
+            let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroTari::from(123456);
-            let encrypted_value = TariEncryptedValue::encrypt_value(&encryption_key, &commitment, amount).unwrap();
-            let encrypted_value_bytes = encrypted_value.as_bytes();
+            let encrypted_data =
+                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
+            let encrypted_data_bytes = encrypted_data.to_byte_vec();
 
-            let encrypted_value_1 = Box::into_raw(Box::new(encrypted_value.clone()));
-            let encrypted_value_1_as_bytes = encrypted_value_as_bytes(encrypted_value_1, error_ptr);
+            let encrypted_data_1 = Box::into_raw(Box::new(encrypted_data));
+            let encrypted_data_1_as_bytes = encrypted_data_as_bytes(encrypted_data_1, error_ptr);
             assert_eq!(error, 0);
 
-            let encrypted_value_2 = encrypted_value_create_from_bytes(encrypted_value_1_as_bytes, error_ptr);
+            let encrypted_data_2 = encrypted_data_create_from_bytes(encrypted_data_1_as_bytes, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!(*encrypted_value_1, *encrypted_value_2);
+            assert_eq!(*encrypted_data_1, *encrypted_data_2);
 
-            assert_eq!((*encrypted_value_1_as_bytes).0, encrypted_value_bytes.to_vec());
+            assert_eq!((*encrypted_data_1_as_bytes).0, encrypted_data_bytes.to_vec());
 
-            encrypted_value_destroy(encrypted_value_2);
-            encrypted_value_destroy(encrypted_value_1);
-            byte_vector_destroy(encrypted_value_1_as_bytes);
+            encrypted_data_destroy(encrypted_data_2);
+            encrypted_data_destroy(encrypted_data_1);
+            byte_vector_destroy(encrypted_data_1_as_bytes);
         }
     }
 
@@ -9100,11 +9151,18 @@ mod test {
 
             let version: c_uchar = 0;
             let output_type: c_ushort = 0;
+            let range_proof_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
 
-            let output_features =
-                output_features_create_from_bytes(version, output_type, maturity, metadata, error_ptr);
+            let output_features = output_features_create_from_bytes(
+                version,
+                output_type,
+                maturity,
+                metadata,
+                range_proof_type,
+                error_ptr,
+            );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
             assert_eq!(
@@ -9127,18 +9185,29 @@ mod test {
 
             let version: c_uchar = OutputFeaturesVersion::V1.as_u8();
             let output_type = OutputType::Coinbase.as_byte();
+            let range_proof_type = RangeProofType::RevealedValue.as_byte();
             let maturity: c_ulonglong = 20;
 
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
-            let output_features =
-                output_features_create_from_bytes(version, c_ushort::from(output_type), maturity, metadata, error_ptr);
+            let output_features = output_features_create_from_bytes(
+                version,
+                c_ushort::from(output_type),
+                maturity,
+                metadata,
+                c_ushort::from(range_proof_type),
+                error_ptr,
+            );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
                 (*output_features).output_type,
                 OutputType::from_byte(output_type).unwrap()
+            );
+            assert_eq!(
+                (*output_features).range_proof_type,
+                RangeProofType::from_byte(range_proof_type).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).coinbase_extra, expected_metadata);
@@ -10634,12 +10703,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -10647,7 +10717,7 @@ mod test {
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value.clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
@@ -10662,7 +10732,7 @@ mod test {
                 sender_offset_public_key_ptr,
                 script_private_key_ptr,
                 covenant_ptr,
-                encrypted_value_ptr,
+                encrypted_data_ptr,
                 minimum_value_promise,
                 0,
                 error_ptr,
@@ -10754,7 +10824,7 @@ mod test {
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
             let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.first_public_address().to_string()).unwrap())
+                CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
                     as *const c_char;
             wallet_add_base_node_peer(
                 wallet_ptr,
@@ -10764,12 +10834,13 @@ mod test {
             );
 
             // Test the consistent features case
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -10778,7 +10849,7 @@ mod test {
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value.clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
@@ -10794,7 +10865,7 @@ mod test {
                 sender_offset_public_key_ptr,
                 script_private_key_ptr,
                 covenant_ptr,
-                encrypted_value_ptr,
+                encrypted_data_ptr,
                 minimum_value_promise,
                 0,
                 error_ptr,
@@ -10848,12 +10919,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let utxo_1 = create_unblinded_output(
+            let utxo_1 = create_non_recoverable_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(),
                 MicroTari(1234u64),
-            );
+            )
+            .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -10862,7 +10934,7 @@ mod test {
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value.clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
@@ -10878,7 +10950,7 @@ mod test {
                 sender_offset_public_key_ptr,
                 script_private_key_ptr,
                 covenant_ptr,
-                encrypted_value_ptr,
+                encrypted_data_ptr,
                 minimum_value_promise,
                 0,
                 error_ptr,

@@ -108,7 +108,7 @@ pub async fn send_finalized_transaction_message_direct(
     let mut store_and_forward_send_result = false;
     let mut direct_send_result = false;
     match outbound_message_service
-        .send_direct(
+        .send_direct_unencrypted(
             destination_public_key.clone(),
             OutboundDomainMessage::new(
                 &TariMessageType::TransactionFinalized,

@@ -22,7 +22,6 @@
 
 use std::{
     convert::TryFrom,
-    io::Write,
     sync::{Arc, RwLock},
 };
 
@@ -77,9 +76,9 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + C
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -203,7 +202,7 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + S
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, io::Write};
+    use std::convert::TryFrom;
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
@@ -228,9 +227,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()

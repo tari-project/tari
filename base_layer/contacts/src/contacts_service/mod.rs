@@ -22,15 +22,18 @@
 
 pub mod error;
 pub mod handle;
+pub mod proto;
 pub mod service;
 pub mod storage;
+pub mod types;
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures::future;
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
-use tari_p2p::services::liveness::LivenessHandle;
+use tari_comms_dht::Dht;
+use tari_p2p::{comms_connector::SubscriptionFactory, services::liveness::LivenessHandle};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -54,16 +57,23 @@ where T: ContactsBackend
     backend: Option<T>,
     contacts_auto_ping_interval: Duration,
     contacts_online_ping_window: usize,
+    subscription_factory: Arc<SubscriptionFactory>,
 }
 
 impl<T> ContactsServiceInitializer<T>
 where T: ContactsBackend
 {
-    pub fn new(backend: T, contacts_auto_ping_interval: Duration, online_ping_window: usize) -> Self {
+    pub fn new(
+        backend: T,
+        subscription_factory: Arc<SubscriptionFactory>,
+        contacts_auto_ping_interval: Duration,
+        online_ping_window: usize,
+    ) -> Self {
         Self {
             backend: Some(backend),
             contacts_auto_ping_interval,
             contacts_online_ping_window: online_ping_window,
+            subscription_factory,
         }
     }
 }
@@ -90,9 +100,11 @@ where T: ContactsBackend + 'static
 
         let contacts_auto_ping_interval = self.contacts_auto_ping_interval;
         let contacts_online_ping_window = self.contacts_online_ping_window;
+        let subscription_factory = self.subscription_factory.clone();
         context.spawn_when_ready(move |handles| async move {
             let liveness = handles.expect_handle::<LivenessHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
+            let dht = handles.expect_handle::<Dht>();
 
             let service = ContactsService::new(
                 ContactsDatabase::new(backend),
@@ -100,6 +112,8 @@ where T: ContactsBackend + 'static
                 handles.get_shutdown_signal(),
                 liveness,
                 connectivity,
+                dht,
+                subscription_factory,
                 publisher,
                 contacts_auto_ping_interval,
                 contacts_online_ping_window,

@@ -47,7 +47,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -60,7 +60,7 @@ use crate::{
             recipient::RecipientInfo,
             sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
-            RewindData,
+            RecoveryData,
             TransactionMetadata,
         },
     },
@@ -92,7 +92,7 @@ pub struct SenderTransactionInitializer {
     change_script_private_key: Option<PrivateKey>,
     change_sender_offset_private_key: Option<PrivateKey>,
     change_covenant: Covenant,
-    rewind_data: Option<RewindData>,
+    recovery_data: Option<RecoveryData>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
@@ -139,7 +139,7 @@ impl SenderTransactionInitializer {
             change_script_private_key: None,
             change_sender_offset_private_key: None,
             change_covenant: Covenant::default(),
-            rewind_data: None,
+            recovery_data: None,
             offset: None,
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
@@ -249,9 +249,9 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Provide the rewind data required for outputs (change and manually added sender outputs) to be rewindable.
-    pub fn with_rewindable_outputs(&mut self, rewind_data: RewindData) -> &mut Self {
-        self.rewind_data = Some(rewind_data);
+    /// Provide the recovery data required for outputs (change and manually added sender outputs) to be rewindable.
+    pub fn with_recoverable_outputs(&mut self, recovery_data: RecoveryData) -> &mut Self {
+        self.recovery_data = Some(recovery_data);
         self
     }
 
@@ -394,10 +394,12 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
 
-                        let encrypted_value = self
-                            .rewind_data
+                        let encrypted_data = self
+                            .recovery_data
                             .as_ref()
-                            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, v))
+                            .map(|rd| {
+                                EncryptedData::encrypt_data(&rd.encryption_key, &commitment, v, &change_key.clone())
+                            })
                             .transpose()
                             .map_err(|e| e.to_string())?
                             .unwrap_or_default();
@@ -412,7 +414,7 @@ impl SenderTransactionInitializer {
                             &output_features,
                             &change_sender_offset_private_key,
                             &self.change_covenant,
-                            &encrypted_value,
+                            &encrypted_data,
                             minimum_value_promise,
                         )
                         .map_err(|e| e.to_string())?;
@@ -434,7 +436,7 @@ impl SenderTransactionInitializer {
                             metadata_signature,
                             0,
                             self.change_covenant.clone(),
-                            encrypted_value,
+                            encrypted_data,
                             minimum_value_promise,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
@@ -534,13 +536,7 @@ impl SenderTransactionInitializer {
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
-            .map(|o| {
-                if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    o.as_rewindable_transaction_output(factories, rewind_data, None)
-                } else {
-                    o.as_transaction_output(factories)
-                }
-            })
+            .map(|o| o.as_transaction_output(factories))
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,
@@ -557,21 +553,11 @@ impl SenderTransactionInitializer {
 
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 
-            // If rewind data is present we produce a rewindable output, else a standard output
-            let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
-                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, None) {
-                    Ok(o) => o,
-                    Err(e) => {
-                        return self.build_err(e.to_string().as_str());
-                    },
-                }
-            } else {
-                match change_unblinded_output.as_transaction_output(factories) {
-                    Ok(o) => o,
-                    Err(e) => {
-                        return self.build_err(e.to_string().as_str());
-                    },
-                }
+            let change_output = match change_unblinded_output.as_transaction_output(factories) {
+                Ok(o) => o,
+                Err(e) => {
+                    return self.build_err(e.to_string().as_str());
+                },
             };
             self.sender_custom_outputs.push(change_unblinded_output);
             self.sender_offset_private_keys
@@ -706,7 +692,7 @@ mod test {
             crypto_factories::CryptoFactories,
             fee::Fee,
             tari_amount::*,
-            test_helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
+            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
@@ -739,7 +725,8 @@ mod test {
             .with_private_nonce(p.nonce.clone());
         builder
             .with_output(
-                create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100)),
+                create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100))
+                    .unwrap(),
                 PrivateKey::random(&mut OsRng),
             )
             .unwrap();
@@ -801,12 +788,13 @@ mod test {
             p.get_size_for_default_features_and_scripts(1),
         );
 
-        let output = create_unblinded_output(
+        let output = create_non_recoverable_unblinded_output(
             TariScript::default(),
             OutputFeatures::default(),
             &p,
             MicroTari(5000) - expected_fee,
-        );
+        )
+        .unwrap();
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
@@ -854,10 +842,12 @@ mod test {
             0,
             &factories.commitment,
         );
-        let output = p.create_unblinded_output(UtxoTestParams {
-            value: 2000 * uT,
-            ..Default::default()
-        });
+        let output = p
+            .create_unblinded_output_not_recoverable(UtxoTestParams {
+                value: 2000 * uT,
+                ..Default::default()
+            })
+            .unwrap();
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
@@ -890,7 +880,13 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
 
-        let output = create_unblinded_output(TariScript::default(), OutputFeatures::default(), &p, MicroTari(500));
+        let output = create_non_recoverable_unblinded_output(
+            TariScript::default(),
+            OutputFeatures::default(),
+            &p,
+            MicroTari(500),
+        )
+        .unwrap();
         let constants = create_consensus_constants(0);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -920,7 +916,9 @@ mod test {
             .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_features_and_scripts(1));
         let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500));
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -954,7 +952,9 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400));
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(0, &constants);
@@ -991,7 +991,9 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000));
+        let output =
+            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000))
+                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(2, &constants);
@@ -1052,12 +1054,13 @@ mod test {
             3,
             p.get_size_for_default_features_and_scripts(3),
         );
-        let output = create_unblinded_output(
+        let output = create_non_recoverable_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
             &p,
             MicroTari(1500) - expected_fee,
-        );
+        )
+        .unwrap();
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1, &constants);
         builder
@@ -1103,12 +1106,13 @@ mod test {
         let p = TestParams::new();
 
         let script = script!(Nop);
-        let output = create_unblinded_output(
+        let output = create_non_recoverable_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
             &p,
             (1u64.pow(32) + 1u64).into(),
-        );
+        )
+        .unwrap();
         // Start the builder
         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
         let fee_per_gram = MicroTari(6);

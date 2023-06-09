@@ -4,12 +4,14 @@
 @recovery
 Feature: Recovery
 
+    @broken
     Scenario Outline: Blockchain database recovery
         Given I have 2 seed nodes
         When I have a base node B connected to all seed nodes
         When I mine <NumBlocks> blocks on B
         Then all nodes are at height <NumBlocks>
         When I stop node B
+        # block chain recovery is not working atm in base node
         # And I run blockchain recovery on node B
         # And I start base node B
         # Then all nodes are at height <NumBlocks>

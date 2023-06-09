@@ -38,7 +38,7 @@ use tari_wallet::output_manager_service::{
 };
 use tokio::runtime::Runtime;
 
-use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
+use crate::support::{data::get_temp_sqlite_database_connection, utils::make_non_recoverable_input};
 
 #[allow(clippy::too_many_lines)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
@@ -50,7 +50,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for i in 0..5 {
-        let (_ti, uo) = runtime.block_on(make_input(
+        let (_ti, uo) = runtime.block_on(make_non_recoverable_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
@@ -98,7 +98,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             outputs_to_be_received: vec![],
         };
         for _ in 0..4 {
-            let (_ti, uo) = runtime.block_on(make_input(
+            let (_ti, uo) = runtime.block_on(make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
@@ -109,7 +109,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             pending_tx.outputs_to_be_spent.push(uo);
         }
         for _ in 0..2 {
-            let (_ti, uo) = runtime.block_on(make_input(
+            let (_ti, uo) = runtime.block_on(make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
@@ -245,7 +245,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
 
     // Add output to be received
-    let (_ti, uo) = runtime.block_on(make_input(
+    let (_ti, uo) = runtime.block_on(make_non_recoverable_input(
         &mut OsRng,
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
@@ -357,7 +357,7 @@ pub async fn test_short_term_encumberance() {
 
     let mut unspent_outputs = Vec::new();
     for i in 0..5 {
-        let (_ti, uo) = make_input(
+        let (_ti, uo) = make_non_recoverable_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
@@ -420,7 +420,7 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
+    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
 
     // add it to the database
@@ -460,7 +460,7 @@ pub async fn test_mark_as_unmined() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
+    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap();
 
     // add it to the database

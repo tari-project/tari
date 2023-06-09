@@ -26,7 +26,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chacha20::Nonce;
 use log::*;
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
@@ -136,7 +135,7 @@ impl OutboundServiceMockState {
             .map(|(p, mut b)| {
                 if p.encryption.is_encrypt() {
                     // Remove prefix data
-                    (p, b.split_off(mem::size_of::<u32>() + mem::size_of::<Nonce>()))
+                    (p, b.split_off(mem::size_of::<u32>()))
                 } else {
                     (p, b)
                 }
@@ -148,7 +147,7 @@ impl OutboundServiceMockState {
         self.calls.lock().await.pop().map(|(p, mut b)| {
             if p.encryption.is_encrypt() {
                 // Remove prefix data
-                (p, b.split_off(mem::size_of::<u32>() + mem::size_of::<Nonce>()))
+                (p, b.split_off(mem::size_of::<u32>()))
             } else {
                 (p, b)
             }
