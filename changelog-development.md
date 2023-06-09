@@ -4,27 +4,17 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## [0.50.0-pre.3](https://github.com/tari-project/tari/compare/v0.50.0-pre.2...v0.50.0-pre.3) (2023-06-09)
 
-
-### ⚠ BREAKING CHANGES
-
-* use mined at timestamp in fauxconfirmation (#5443) ([f3833c9f](https://github.com/tari-project/tari/commit/f3833c9fc46d77fddaa7a23ef1d53ba9d860182a), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* fix custom wallet startup logic for console wallet (#5429) ([0c1e5765](https://github.com/tari-project/tari/commit/0c1e5765676a9281b45fd66c8846b78ea4c76125), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* refactor configuration for chat so ffi can create and accept a config file (#5426) ([9d0d8b52](https://github.com/tari-project/tari/commit/9d0d8b5277bd26e79b7fe5506edcaf197ba63eb7), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **balanced_mp:**  removes some panics, adds some checks and new tests (#5432) ([602f416f](https://github.com/tari-project/tari/commit/602f416f674b5e1835a634f3c8ab123001af600e), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **comms:**  validate onion3 checksum (#5440) ([0dfdb3a4](https://github.com/tari-project/tari/commit/0dfdb3a4bef51952f0cecf6f6fcb00f6b2bfe302), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **wallet-ffi:**  don't block on start (#5437) ([27fe8d9d](https://github.com/tari-project/tari/commit/27fe8d9d2fc3ea6468605ef5edea56efdcc8248f), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-
 #### Features
 
-* refactor configuration for chat so ffi can create and accept a config file (#5426) ([9d0d8b52](https://github.com/tari-project/tari/commit/9d0d8b5277bd26e79b7fe5506edcaf197ba63eb7), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
+* refactor configuration for chat so ffi can create and accept a config file (#5426) ([9d0d8b52](https://github.com/tari-project/tari/commit/9d0d8b5277bd26e79b7fe5506edcaf197ba63eb7)
 
 #### Bug Fixes
 
-* use mined at timestamp in fauxconfirmation (#5443) ([f3833c9f](https://github.com/tari-project/tari/commit/f3833c9fc46d77fddaa7a23ef1d53ba9d860182a), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* fix custom wallet startup logic for console wallet (#5429) ([0c1e5765](https://github.com/tari-project/tari/commit/0c1e5765676a9281b45fd66c8846b78ea4c76125), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **balanced_mp:**  removes some panics, adds some checks and new tests (#5432) ([602f416f](https://github.com/tari-project/tari/commit/602f416f674b5e1835a634f3c8ab123001af600e), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **comms:**  validate onion3 checksum (#5440) ([0dfdb3a4](https://github.com/tari-project/tari/commit/0dfdb3a4bef51952f0cecf6f6fcb00f6b2bfe302), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-* **wallet-ffi:**  don't block on start (#5437) ([27fe8d9d](https://github.com/tari-project/tari/commit/27fe8d9d2fc3ea6468605ef5edea56efdcc8248f), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
+* use mined at timestamp in fauxconfirmation (#5443) ([f3833c9f](https://github.com/tari-project/tari/commit/f3833c9fc46d77fddaa7a23ef1d53ba9d860182a),
+* fix custom wallet startup logic for console wallet (#5429) ([0c1e5765](https://github.com/tari-project/tari/commit/0c1e5765676a9281b45fd66c8846b78ea4c76125)
+* **balanced_mp:**  removes some panics, adds some checks and new tests (#5432) ([602f416f](https://github.com/tari-project/tari/commit/602f416f674b5e1835a634f3c8ab123001af600e)
+* **comms:**  validate onion3 checksum (#5440) ([0dfdb3a4](https://github.com/tari-project/tari/commit/0dfdb3a4bef51952f0cecf6f6fcb00f6b2bfe302)
+* **wallet-ffi:**  don't block on start (#5437) ([27fe8d9d](https://github.com/tari-project/tari/commit/27fe8d9d2fc3ea6468605ef5edea56efdcc8248f)
 
 
 ## [0.50.0-pre.2](https://github.com/tari-project/tari/compare/v0.50.0-pre.1...v0.50.0-pre.2) (2023-05-29)
@@ -2136,7 +2126,7 @@ Base node users should delete their node databases and resync
 *   fix missing edge case in header sync (#3060) ([0f0fb856](https://github.com/tari-project/tari/commit/0f0fb856e9369d9c7e172fc59ee64d31dff4637f))
 *   remove unstable impl trait from Tari comms (#3056) ([08b019f0](https://github.com/tari-project/tari/commit/08b019f03793f7677b72452e01bead7db89ffa18))
 *   fix db update error (#3063) ([b95d558f](https://github.com/tari-project/tari/commit/b95d558f318d045da9e1172cb802555ae3eb5a47))
-*   remove unimplemented Blake pow algo variant (#3047) ([347973e3](https://github.com/tari-project/tari/commit/347973e3e8fdd39bb74d978d14ff414c04a39212), breaks [#](https://github.com/tari-project/tari/issues/))
+*   remove unimplemented Blake pow algo variant (#3047) ([347973e3](https://github.com/tari-project/tari/commit/347973e3e8fdd39bb74d978d14ff414c04a39212)
 *   fix small issues related to #3020 (#3026) ([da1d7579](https://github.com/tari-project/tari/commit/da1d75790fcb4eb9a71b7822c3ede3d9ba598241))
 *   update connectivity manager defaults (#3031) ([229830e5](https://github.com/tari-project/tari/commit/229830e595c6b3c97011547d18885e2c0a3e3f19))
 *   check minimum number of headers for calc-timing (#3009) ([b3522027](https://github.com/tari-project/tari/commit/b3522027b824dd8bb50a7183397adba082fdf28e))
