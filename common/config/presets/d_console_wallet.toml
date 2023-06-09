@@ -5,14 +5,6 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[dibbler.wallet]
-# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
-#network = "dibbler"
-
-[igor.wallet]
-# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
-#network = "igor"
-
 [wallet]
 # The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
 # (min value = 300, default value = 50000).
@@ -21,9 +13,6 @@
 # The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
 # accept - any rate attempting to exceed this limit will be throttled (min value = 5, default value = 1000).
 #buffer_rate_limit = 1000
-
-# Selected network (Note: Not implemented properly, please specify on the command line) (default = "mainnet")
-#network = "mainnet"
 
 # The relative path to store persistent data (default = "data/wallet")
 #data_dir = "data/wallet"
@@ -165,7 +154,7 @@ event_channel_size = 3500
 [wallet.base_node]
 # Configuration for the wallet's base node service
 # The refresh interval (default = 3 s)
-#base_node_monitor_refresh_interval = 3
+#base_node_monitor_max_refresh_interval = 3
 # The RPC client pool size  (default = 5)
 #base_node_rpc_pool_size = 5
 # This is the size of the event channel used to communicate base node events to the wallet. (default = 250).

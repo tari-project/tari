@@ -1,0 +1,18 @@
+// Copyright 2023 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+package tari.contacts.chat;
+
+message Message {
+  bytes body = 1;
+  bytes address = 2;
+  DirectionEnum direction = 3;
+  uint64 stored_at = 4;
+  bytes message_id = 5;
+}
+
+enum DirectionEnum {
+  Inbound = 0;
+  Outbound = 1;
+}

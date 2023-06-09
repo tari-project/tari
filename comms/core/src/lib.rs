@@ -61,7 +61,7 @@ pub mod traits;
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency
-    pub use ::multiaddr::{Error, Multiaddr, Protocol};
+    pub use ::multiaddr::{multiaddr, Error, Multiaddr, Protocol};
 }
 
 pub use async_trait::async_trait;

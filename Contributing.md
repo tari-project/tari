@@ -53,12 +53,12 @@ Post mainnet, there are 4 release branches in the Tari repo:
   will be tagged with a version number.
 * `development` - this is the cuttingest-of-edge branch. Almost all new code comes in via the `development` branch.
 * `nextnet` - the code on this branch will become the `mainnet` branch on the next release. Feature code from 
-  `dibbler` will be present here, but if they are not yet ready for release, they will be disabled behind a feature 
+  `Esmeralda` will be present here, but if they are not yet ready for release, they will be disabled behind a feature 
   gate.
-* `dibbler` - this branch contains experimental features that might not work, be rigorously tested, or even break 
+* `Esmeralda` - this branch contains experimental features that might not work, be rigorously tested, or even break 
   consensus if the code were to run on mainnet.
 
-Almost all new code enters the codebase via the `development` branch. Every release cycle, the `dibbler` branch is reset
+Almost all new code enters the codebase via the `development` branch. Every release cycle, the `Esmeralda` branch is reset
 to point to a recent `development` commit, along with the set of newly gated features that are ready for testing. This
 process is described in more detail below.
 
@@ -76,9 +76,9 @@ There will also be three testnets in addition to mainnet:
   the latest `mainnet` release. Network resets (i.e. a new genesis block) should be very rare.
 * `nextnet` - nodes on nextnet should be running code compiled from the `nextnet` branch. This is the last chance to
   battle-test new features before they hit mainnet. Network resets should be somewhat rare.
-* `dibbler` - The dibbler network is the most experimental of the testnets. Things can break here. We hope they 
-  won't, obviously, but the dibbler network is where we should be catching any and all major issues _before_ 
-  the feature heads to nextnet. Nodes should be running code built from the `dibbler` branch. Network resets could 
+* `Esmeralda` - The Esmeralda network is the most experimental of the testnets. Things can break here. We hope they 
+  won't, obviously, but the Esmeralda network is where we should be catching any and all major issues _before_ 
+  the feature heads to nextnet. Nodes should be running code built from the `Esmeralda` branch. Network resets could 
   occur fairly frequently, perhaps several times a year.
   * `localnet` - While not strictly a testnet, this is the default testnet used when compiling and running the `development` branch. 
 
@@ -89,8 +89,8 @@ flexibility that should a feature not be ready in the first 6-8 months of develo
 the `mainnet` branch), it will not be active on mainnet, since the feature will not be active.
 
 The name of the feature gate is assigned in the tracking issue of the RFC that describes the feature. New features 
-initially have a status of `New`. New features are only included in dibbler binaries. They are ignored in nextnet or 
-mainnet builds. A feature can be tested on the `dibbler` testnet for as long as necessary. 
+initially have a status of `New`. New features are only included in Esmeralda binaries. They are ignored in nextnet or 
+mainnet builds. A feature can be tested on the `Esmeralda` testnet for as long as necessary. 
 
 Once the feature is ready for final testing, it can be enabled in the next release of `nextnet`, by updating 
 the feature status to `Testing`. All `Testing` features will be included in nextnet builds.  
@@ -108,9 +108,9 @@ This maintains the record of the feature development history. The code marked by
 The release period is **TWO MONTHS**.
 
 At every release period, 
-* the HEAD of `development` becomes `dibbler`. New features that are ready for testing are created with a `New` status.
-* the HEAD of `dibbler`  becomes `nextnet`. Any features that are in the stabilisation cycle are updated to `Testing`.
-* Otherwise, all in-development features on `dibbler` remain behind feature gates. Features that are ready to go 
+* the HEAD of `development` becomes `Esmeralda`. New features that are ready for testing are created with a `New` status.
+* the HEAD of `Esmeralda`  becomes `nextnet`. Any features that are in the stabilisation cycle are updated to `Testing`.
+* Otherwise, all in-development features on `Esmeralda` remain behind feature gates. Features that are ready to go 
   live in the following release are updated to `Active`.
 * the HEAD of `nextnet` becomes `mainnet`. A new version is tagged and this becomes the next mainnet release.
 
@@ -165,7 +165,7 @@ A very rough outline of the flow goes as follows:
   place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature gate 
   name will be assigned to the feature at this stage.
 - Development for this feature happens behind the feature gate, and PRs are submitted against the `development` branch.
-- Once the implementation is complete and active on dibbler, the RFC status can then be changed to
+- Once the implementation is complete and active on Esmeralda, the RFC status can then be changed to
   ![testing status](./meta/img/status-testing.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
   feature is stabilised and is live on mainnet, the status can be updated to

@@ -1055,7 +1055,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","version","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_value","minimum_value_promise""##
+        r##""index","version","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
@@ -1085,7 +1085,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
             utxo.metadata_signature.u_a().to_hex(),
             utxo.metadata_signature.u_y().to_hex(),
             utxo.script_lock_height,
-            utxo.encrypted_value.to_hex(),
+            utxo.encrypted_data.to_byte_vec().to_hex(),
             utxo.minimum_value_promise.as_u64()
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;

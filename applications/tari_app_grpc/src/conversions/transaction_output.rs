@@ -26,7 +26,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
 };
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
@@ -47,6 +47,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
+        let range_proof = if let Some(proof) = output.range_proof {
+            Some(BulletRangeProof::from_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
+        } else {
+            None
+        };
+
         let script = TariScript::from_bytes(output.script.as_slice())
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
 
@@ -57,7 +63,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
         let mut covenant = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut covenant).map_err(|err| err.to_string())?;
-        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+        let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
         let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
         Ok(Self::new(
             TransactionOutputVersion::try_from(
@@ -65,12 +71,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             )?,
             features,
             commitment,
-            BulletRangeProof(output.range_proof),
+            range_proof,
             script,
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         ))
     }
@@ -83,11 +89,14 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
         let hash = output.hash().to_vec();
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        let range_proof = output.proof.map(|proof| grpc::RangeProof {
+            proof_bytes: proof.to_vec(),
+        });
         Ok(grpc::TransactionOutput {
             hash,
             features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
-            range_proof: Vec::from(output.proof.as_bytes()),
+            range_proof,
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(grpc::ComAndPubSignature {
@@ -99,7 +108,7 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
             }),
             covenant,
             version: output.version as u32,
-            encrypted_value: output.encrypted_value.to_vec(),
+            encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }

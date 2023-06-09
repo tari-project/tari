@@ -22,36 +22,33 @@
 
 use std::{iter, mem::size_of};
 
-use chacha20::{
-    cipher::{NewCipher, StreamCipher},
-    ChaCha20,
-    Nonce,
-};
-use chacha20poly1305::{self, aead::Aead, ChaCha20Poly1305, KeyInit};
+use chacha20poly1305::{aead::AeadInPlace, ChaCha20Poly1305, KeyInit, Nonce, Tag};
 use digest::{generic_array::GenericArray, Digest, FixedOutput};
 use prost::bytes::BytesMut;
-use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     message::MessageExt,
-    types::{CommsDHKE, CommsPublicKey},
+    types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     BufMut,
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
-use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
+use tari_utilities::{hidden_type, safe_array::SafeArray, ByteArrayError, Hidden};
 use zeroize::Zeroize;
 
 use crate::{
     comms_dht_hash_domain_challenge,
+    comms_dht_hash_domain_key_mask,
     comms_dht_hash_domain_key_message,
-    comms_dht_hash_domain_key_signature,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     error::DhtEncryptError,
     version::DhtProtocolVersion,
 };
 
-// Keys used for messages
+// `ChaCha20` key used to encrypt messages
 hidden_type!(CommsMessageKey, SafeArray<u8, { size_of::<chacha20::Key>() }>);
-hidden_type!(CommsSignatureKey, SafeArray<u8, { size_of::<chacha20poly1305::Key>() }>);
+
+// Mask used (as a secret key) for sender key offset; we fix it to 32 bytes for compatibility
+// This isn't fully generic, but will work for 32-byte hashers and byte-to-scalar functionality
+hidden_type!(CommsKeyMask, SafeArray<u8, 32>);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
 
@@ -135,71 +132,71 @@ pub fn generate_key_message(data: &CommsDHKE) -> CommsMessageKey {
     comms_message_key
 }
 
-/// Generate the key for a signature
-pub fn generate_key_signature(data: &CommsDHKE) -> CommsSignatureKey {
-    let mut comms_signature_key = CommsSignatureKey::from(SafeArray::default());
-    comms_dht_hash_domain_key_signature()
+/// Generate the mask used to protect a sender public key
+pub fn generate_key_mask(data: &CommsDHKE) -> Result<CommsSecretKey, ByteArrayError> {
+    let mut comms_key_mask = CommsKeyMask::from(SafeArray::default());
+    comms_dht_hash_domain_key_mask()
         .chain(data.as_bytes())
-        .finalize_into(GenericArray::from_mut_slice(comms_signature_key.reveal_mut()));
+        .finalize_into(GenericArray::from_mut_slice(comms_key_mask.reveal_mut()));
 
-    comms_signature_key
+    // This is infallible since we require 32 bytes of hash output
+    CommsSecretKey::from_bytes(comms_key_mask.reveal())
 }
 
-/// Decrypt a message using the `ChaCha20` stream cipher
-pub fn decrypt_message(message_key: &CommsMessageKey, cipher_text: &mut BytesMut) -> Result<(), DhtEncryptError> {
-    if cipher_text.len() < size_of::<Nonce>() {
-        return Err(DhtEncryptError::InvalidDecryptionNonceNotIncluded);
+/// Decrypt a message using the `ChaCha20Poly1305` authenticated stream cipher
+/// Note that we use a fixed zero nonce here because of the use of an ephemeral key
+pub fn decrypt_message(
+    message_key: &CommsMessageKey,
+    buffer: &mut BytesMut,
+    associated_data: &[u8],
+) -> Result<(), DhtEncryptError> {
+    // Assert we have a tag
+    if buffer.len() < size_of::<Tag>() {
+        return Err(DhtEncryptError::InvalidAuthenticatedDecryption);
     }
 
-    let nonce = cipher_text.split_to(size_of::<Nonce>());
-    let nonce = Nonce::from_slice(&nonce);
+    // We use a fixed zero nonce since the key is ephemeral
+    // This is _not_ safe in general!
+    let nonce = Nonce::from_slice(&[0u8; size_of::<Nonce>()]);
 
-    let mut cipher = ChaCha20::new(GenericArray::from_slice(message_key.reveal()), nonce);
-    cipher.apply_keystream(cipher_text);
+    // Split off the tag
+    let tag = buffer.split_off(buffer.len() - size_of::<Tag>()).freeze();
 
-    // get original message, from decrypted padded cipher text
-    get_original_message_from_padded_text(cipher_text)?;
+    // Decrypt with authentication
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(message_key.reveal()));
+    cipher
+        .decrypt_in_place_detached(nonce, associated_data, buffer, GenericArray::from_slice(&tag))
+        .map_err(|_| DhtEncryptError::InvalidAuthenticatedDecryption)?;
+
+    // Unpad the message
+    get_original_message_from_padded_text(buffer)?;
     Ok(())
 }
 
-/// Decrypt a signature using the `ChaCha20-Poly1305` authenticated stream cipher
-pub fn decrypt_signature(
-    signature_key: &CommsSignatureKey,
-    cipher_signature: &[u8],
-) -> Result<Vec<u8>, DhtEncryptError> {
-    let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
-
-    let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
-
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(signature_key.reveal()));
-    let decrypted_signature = cipher
-        .decrypt(nonce_ga, cipher_signature)
-        .map_err(|_| DhtEncryptError::InvalidAuthenticatedDecryption)?;
-
-    Ok(decrypted_signature)
-}
-
-/// Encrypt a message using the `ChaCha20` stream cipher
+/// Encrypt a message using the `ChaCha20-Poly1305` authenticated stream cipher
 /// The message is assumed to have a 32-bit length prepended to it
-pub fn encrypt_message(message_key: &CommsMessageKey, plain_text: &mut BytesMut) -> Result<(), DhtEncryptError> {
-    if plain_text.len() < size_of::<Nonce>() {
-        return Err(DhtEncryptError::PaddingError(
-            "Message is not long enough to include a nonce".to_string(),
-        ));
-    }
-    // add nonce
-    let mut nonce = [0u8; size_of::<Nonce>()];
-    OsRng.fill_bytes(&mut nonce);
-    let nonce = Nonce::from(nonce);
-    plain_text[..size_of::<Nonce>()].copy_from_slice(&nonce[..]);
+/// Note that we use a fixed zero nonce here because of the use of an ephemeral key
+pub fn encrypt_message(
+    message_key: &CommsMessageKey,
+    buffer: &mut BytesMut,
+    associated_data: &[u8],
+) -> Result<(), DhtEncryptError> {
+    // Pad the message to mitigate leaking its length
+    pad_message_to_base_length_multiple(buffer, 0)?;
 
-    // pad plain_text to avoid message length leaks
-    // Excludes the nonce in the padded message length - this is mostly for backwards compatibility
-    pad_message_to_base_length_multiple(plain_text, size_of::<Nonce>())?;
+    // We use a fixed zero nonce since the key is ephemeral
+    // This is _not_ safe in general!
+    let nonce = Nonce::from_slice(&[0u8; size_of::<Nonce>()]);
 
-    let mut cipher = ChaCha20::new(GenericArray::from_slice(message_key.reveal()), &nonce);
+    // Encrypt with authentication
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(message_key.reveal()));
+    let tag = cipher
+        .encrypt_in_place_detached(nonce, associated_data, buffer)
+        .map_err(|e| DhtEncryptError::CipherError(e.to_string()))?;
 
-    cipher.apply_keystream(&mut plain_text[size_of::<Nonce>()..]);
+    // Append the tag to the buffer
+    buffer.extend_from_slice(&tag);
+
     Ok(())
 }
 
@@ -218,27 +215,10 @@ fn encode_with_prepended_length<T: prost::Message>(msg: &T, additional_prefix_sp
 
 pub fn prepare_message<T: prost::Message>(is_encrypted: bool, message: &T) -> BytesMut {
     if is_encrypted {
-        encode_with_prepended_length(message, size_of::<Nonce>())
+        encode_with_prepended_length(message, 0)
     } else {
         message.encode_into_bytes_mut()
     }
-}
-
-/// Encrypt a signature using the `ChaCha20-Poly1305` authenticated stream cipher
-/// Note that in this particular case, key uniqueness means we use a fixed zero nonce
-/// This is _not_ safe in general!
-pub fn encrypt_signature(signature_key: &CommsSignatureKey, signature: &[u8]) -> Result<Vec<u8>, DhtEncryptError> {
-    let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
-
-    let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(signature_key.reveal()));
-
-    // length of encrypted equals signature.len() + 16 (the latter being the tag size for ChaCha20-poly1305)
-    let encrypted = cipher
-        .encrypt(nonce_ga, signature)
-        .map_err(|_| DhtEncryptError::CipherError(String::from("Authenticated encryption failed")))?;
-
-    Ok(encrypted)
 }
 
 /// Generates a 32-byte hashed challenge that commits to the message header and body
@@ -294,122 +274,87 @@ pub fn create_message_domain_separated_hash_parts(
 #[cfg(test)]
 mod test {
     use prost::Message;
+    use rand::rngs::OsRng;
     use tari_comms::message::MessageExt;
     use tari_crypto::keys::PublicKey;
-    use tari_utilities::hex::from_hex;
 
     use super::*;
 
     #[test]
-    fn encrypt_decrypt() {
+    fn encrypt_decrypt_message() {
         let key = CommsMessageKey::from(SafeArray::default());
-        let plain_text = "Last enemy position 0830h AJ 9863".to_string();
-        let mut msg = prepare_message(true, &plain_text);
-        encrypt_message(&key, &mut msg).unwrap();
-        decrypt_message(&key, &mut msg).unwrap();
-        assert_eq!(String::decode(&msg[..]).unwrap(), plain_text);
+        let message = "Last enemy position 0830h AJ 9863".to_string();
+        let associated_data = b"Associated data";
+        let mut buffer = prepare_message(true, &message);
+
+        encrypt_message(&key, &mut buffer, associated_data).unwrap();
+        decrypt_message(&key, &mut buffer, associated_data).unwrap();
+        assert_eq!(String::decode(&buffer[..]).unwrap(), message);
     }
 
     #[test]
-    fn decrypt_fn() {
+    fn decryption_fails_on_evil_tag() {
         let key = CommsMessageKey::from(SafeArray::default());
-        let cipher_text = from_hex(
-            "6063cd49c7b871c0fc9785e9b959fda553fadbb10bcaaced0958e88eb6858e05fe310b4401a78d03b52a81be49db2bffcce13765e1a64460063d33289b1a3527af3df8e292c79abca71aa9a87baa1a0a6c23532a3297dda9e0c22d4b60606db1ed02a75e7a7d21fafe1214cbf8a3a66ec319a6aafeeb0e7b06375370c52b2abe63170ce50552a697f1ff87dc03ae1df574ed8e7abf915aec6959808ec526d6da78f08f2bed24268028baeba3ebd52d0fde34b145267ced68a08c4d480c213d0ab8b9c55a1630e956ed9531d6db600537f3997d612bec5905bd3ce72f5eace475e9793e6e316349f9cbd49022e401870af357605a1c7d279d5f414a5cae13e378711f345eabf46eb7fabc9465376f027a8d2d69448243cf2d70223c2430f6ce1ff55b8c2f54e27ccf77040f70c9eb84c9da9f8176a867ebcf8cbb9dfbb9256d688a76ec02af3afe3fa8221a4876462a754bc65a15c584b8c132a48dd955821961e47d5fdce62668b8f11a42b9127d5d98414bbd026eed0b5511628b96eb8435880f38d28bad6573f90611397b7f0df46d371e29a1de3591a3aa221623a540693941d6fc22d4fa57bc612282868f024613c2f69224141ad623eb49cb2b151ff79b36ec30f9a2842c696fd94f3092989ba3f8f5136850ed1f970a559e3fe19c24b84f650da4d46a5abc3514a242e3088cae15b6012e2a3cd878a7b988cc6183e81a27fc263d3be1ef07403262b22972b4f78a38d930f3e4ec1f5c9f1a1639cd138f24c665fc39b808dfbed81f8888e8e23aac1cdd980dcd0f7d95dc71fb02abcf532be17208b8d86a5fd501c18f2b18234956617797ea78523907c46a7b558cde76d1d034d6ab36ca33c4c17ea617929e3e40af011417f9b3983912fd0ed60685261532bcca5f3b3863d92cf2e4eb33a97613d9ca55112d1bd63df9d591042f972e2da3bde7b5a572f9f4cd2633330fdb3250430f27d3a40a30a996d5a41d61dafc3fe96a1fb63e2cab5c3ec0f1084e778f303da498fc970fe3117b8513166a6c8798e00a82a6c96a61b419e12717fac57dd1c989d3a10b3ab798ee0c15a5cd04dbe83667523ad4b7587ff331513b63f15c72f1844d67c7830f723fa754969d3f4254895e71d7087617ded071a797ee5791b7a95abcb360ef504bdaa85191b09b2345c0d0096fafa85b10d1675f0c4a1fe45231fd88c715c32c38d9697cebfb712e1ce57645c8faa08b4983ab8f537b017c9898b7907c06b25c01ea0f9d736d573ec7e3b14efa84d84258131ddc11a9696e12234ab65fb4e653d8dcdf4c6ce51e0104aedf2b8089593c4b5d665ed885c2d798843cf80041657ba9d800bbb9eee7076c212cfdc56df1d63e3eb4de5c6f132376c39b0272fc35e4729988eeaf9f7748142b68b10a72a948f6db24baebe3323c11002edfbe878972f02920a9ca536ff917c37a20eb0d984ee230885950fb271e56a8640d5fff75cef501cc82a46244eca5bfed4ab180b4c4d61abb209f38dabddcb4a82581bf4990631e11cc670507f8ce88c10a7fcc06ed824d7a1aab0b4dc4a2b984f45c7447b077262dc6b90f04516a5598193e95a40e982f092a2b61fcf5203379e6b042715792915adfd0edc66a69bb7fbacf64b9c86f3b15da66f8d8eecfc373204ad10f2c666181f0facd972be208c620bb0539e396c6254f2efcc2934ae6265fdc0b8172577435758e7da46df6f175f2867e6bd734fe70416b70b643b9e4b0e0e844ccfa019c699f85313f94cc6a1bb371bb14fd65a1599355ec8cdd71a555d98a900b8cbd2b1de3378f42a137eb95b473d62be3559ed687583d6963b6857d3be5f7acc12f5f5b04b26b5c582ce6dd8d1bee6322b02c2c1dc29fcba20899d529df4fd6c1edbfd1081d6cf10b20b9451ad935da2c4cef66c160550b180ba1b668029ed15448cd288427aca7f6e6505fdfc69b8111a2a071601d78484e857705a4bc7f9423800ded4eba46e0f22ee85c48fc9e8a191355edc0868df350d627a7f1120d79ba4aa1dde1ec97f8daeb0a07be914d5f6d2e74270666d03e4ca92845957b85982761dc1ee6f7603e31681dd323a045c0ac3b06b515d7bd485bfe7f6abe31e35aac7d8536b3f9c572121fcdd44c505ccfffe514e498732cab4e70524a5281b0942f5ae861b535764f056df6a1951b3c1c261f21b3b5f0a276ed05e32879ede428683b34ac8e7ebc88c9c767bf5e7cfb0cf444c1f9fd5be9041f69f6ae9772b0e035c6a2a7d9c1c614858a506a4a4bc00cee0577561b96e98c973edfa43d52471db9c716699e52260a20150aa99f8adea872c999b66fb4395d5b8c717a2c97eb7638a1d92da2ef8b2ec80db3afa3ce83445aaccae09f38c0b84c85a8983ba4c3b9a13fed4c65fd8899333da4dbca549cd2a487eb58841881f3571dfa4821bc522b56993d657bce51dfb41caf6c2cb78e8b6beceddc44febdea144da13ae9ccd9465b3ac96b06dfe79baced35ad51763d05090dc7620c89f448134507f41828be8703fd2ab1f53370e75e55366eba1e903311313707279d5965e3343476c0a8aeef2001ad88d5e452d648dd2029a6f549809c4177d1871c88abcd1404d52ebee2dd97dc52ad1a9c018428a1a64fda6773a6ea967d4124a6cf98c7e6dc4c4d9c051a376d3e3fe2e17f6cd044dd60ee32e9d6bdbdfdcbdecc4e7306092186a7ad8ab87328f9fedb6ee8ab9417968fbaa0e582205a660fa55e1ba3c5b0c84b67017f250338125894d162c400be8d563c9f0416dc5641d31bad577543cba8c6c9a7c04064e412597d47c6272d8e087bc11397533cb1bd7feebea9feee44e1b6a5f49b937594da3b719e1982a90594277f43798a39e419c204f18a6920e5ac1a751eddeaef9392a6f84d68d73aabc6ba68750d47ad4da8bd842662226225a764661ea11ff9f13d328e0242a0b513aa5ad9fbe9d484b3d28a41890e4fc62820ef2342a90c0837b30c831eb78213e7e2cd6dfbda26a7e6103ab8b4219462ca70ca57c79638b2c49f0469ea6f68335071294257c5337ccf452ca1bfedf81610f353e7576f02a2b32aba64a4252946fda330de11990f51207817860e0d8b7c9cb58a5858155db61376a01c02aaedb7017fd3c36adf4f3c07f29f352330c6d78ab6bbb7d4aabf3725833e86523b755094273465ba57545162623036a7786f426d0a63e13bebf2205a6b488bd6da3c93469a4df4b3811e9c63d62c61e0cdd263df821adc0d1b751c1314be9fd93761b447931e425db7e09baac9083aed472de5fe6172c8e8f729ade8faa96d131e86204462e14e0411b4b7629de25a0c5dbf848c9ca8c42376f5d54bff34bf36074136bbe98228745dbc9d411d891553f0af00240e1729ce7757fba2775fa5b700e95460910008584a833fb9edc073cd4d8333643631e193040d850f87cd50d9ca2e2e5c3943787dc4a4677ac7e130c2d6739945fd3b059ebe040abb38a20d73a7669516cf8503f40642217c8580a27b127f1f33eaa7adff44c922afac813c870795563fac79d139d5b5233a26728328f88f1f9daaaea1c4e1ee64ded0b006ce46015d512e8c4a411ab788a5383563949c95846202250c5b9e0baab0bc8620327ed2aacd36e1bdc9d3a4d6b4e22627d75bd088cdd47ca204f1ce44357d1b471b37581c820f6bbdfe3da1f4f90dc353833731703b7b9bb87ff2d0cae1e2f0321994759d1a21b2075a620b58b814cd65812092891261dd7e879b65843480382f59e20d6b6c67b2fb750ff0cfce897891f976b0fae7ac31e02384b251bcbecce6ff98819cf0cd6d41fdab9ba6907742394732ed5e74bcd13aad1a188855c020f09e62540be9b2992a397b30107ad730ebe183504226b303f30032f4c0a683812d05be57961430504866bd2ee6993423ebe34ba4d2d022ce6d5b2345bbed34d6807aec473ad0701b9b8fe2db1cef57748dfcb29ddb3b253a865dd7383d04253cd70c350d02ccd2371cecfd74aae820fa91eddd89d27925c33183e03d44c7f88f8068c64d223d2d5f4ab18fae6d209e1e267395576f4f48ae056da7d6e91f94991659b4c07f44aa1c45aaf75b7274b7668753f968d5e6635f4abf238e5d44ffc38e68cad8237f7e7a25d5fc0dcd5afc2bedbac6b42e8bc8064118c9042d1159f70dfac73d65c8a9782c264445af11c878591d49d49ad46f4e6d086d55232afd234c3bceab2eef0e22e5c2875670c5125e8a172f5f2168e59fe0cb5e9e1a81bf645a2c45d115b9a3efe9fe2d1799f12b0c11f50ae5540ff4e90e6220eb62451e10ce1418929e03c751d9019d47b87847595333feb6ab4af40662d04c3ece4f93b4c2c2f2ee2078724090336f16a4f33801095036a31b557960b5d8d2552f0aadfa3dc9dcfe8f1dd6a61631b6a69ee6ce8433153f8b1ea99a9a5ac688026d6ef408f2aa958ada8baf0193b3989f359c7a913fcb9eec230568584bcda3a759c824884c9febff518c7cf312360d2c1ffd2bbdd0b2e9346cbe1bf383446bd2fec431475ec509474ef9eb06817f53d3c4ca74fba08c3b434eabf3ae9fcc2287c588fc5574bff37066705ca9a39d088cd5cbb83b385b5cf647ced0c23885295d2b24f37e4098be82edccc23e1c973b1855e2009de63408c78e570b3cec65c6d236d81adb1bc298436a1e125b99bb995a5c6df5b2a4e70b8cf1db5de38120134527ce349c32f8e35fa43837aa38cdb1d5695a34d12d27bd5ee4536d9a20e62b55e59cdc7ecca1f4398dac7a4b756d9e131a7d2c8bde32c20ef0424154c88c8276fdf3c75f08f3cd423bd648ff3520680a1f1dd956451881f6d31238c11c99a20e1d9170410c8d8eb88ce90e179fc80e23e36a28b1810383a4d0d1ef0f2db94206aa1fb25498b425e5ad1f0f0bd3eed22ca5545ef541880f37f8fea82fecd59d8c94765d3a454e81775844701412e3c01a6dcdbf277428969a7f08d67313cdd2ce3b531addee28733552ee1bf4124ad8b3e40e04b94599e04cce60f5676307b0605ad7dc73b03cc26227eab60196d37c312a01858f5ad6a901e0f1c796c52cb9690da5c712a2d36c74e65ec9a60ea41387b8a0f79697cdfd93e40ab569d6a55361be97fb7ac8d80b5a5482908d44af94df2fb09a777978f4d911008d528ff44aef960cfd25fb56e26c341850721f020f9fd112cd52fc28dd129ffc2f9a12a829dcb69b54a894d4b3d1ac3b63bc9bcd39e30a00e419c8f4d2b630c224880a7d3af9c19c8a79262818b368589e7ad03b722021306fbcbcf7bc87ad418a3eb6616e7d4ce286264554be6040e8e4cd0c5a9bbdd2367e47d1fe0a9c3eeaf2455c4f6f779bab3d5bea5284a244fc3e804fb6d0e50fec91f85b71c6ba91f43a240fa48900229e5f3038b0806f70a1cb72fdea58b664f06c04bf688183a4f22255d6976f2102aafb669ee117fa1e44ae325ad52001469fed9d26e4f8592f56e42bf5e7195f521c0beaf891e47a703075fa1948ee07add55a765346b94ae498fa96145ad8460f23248222e329398fec6ad7f323c448ce82bb706b24e07adc0681901a63d5d1c7b871a9df8009ed7bb10be4e39a987c1bf039554a016ac8693284a7248fb8a9aa440dde213c2414447727c1556d25f1fbce057652044e2350b9ef5627584d403a934dd33e8c26e20799f1dbf915705b70d66256d31ca7c407307fa18e163917635d67f742828deba4b942b5f0d916b5e737b5811d3c3b4ac386c7ebaad1a6c465ce9fb229bc6ce7ae62f8efd8632e5312db8ba213d28d19843ac7fbae105a1433921b34c216c3c2ab247080a629c7ac5507129b27ce0d38ddde06722a5a0a979894d6140c31a82bfc517adf0b57c761f75bc14d65d8701e0dea92a06584f2d877dc5fb0b32496754e6b0115e99a9623ad631ea0a76b4e7893bf0982151e1c5ed6d64a305393f6f715de333653ace204c2f03de8f36c463c937f7f23326a88337624fc606317d7c0ea2badf69e40602c2ff1e2dcc9cfca1ccef566381712af157c5e458335c8a283733a617a75fd7cef52c515c754443c8e9e1930994805e6f0b2a9a2ccbd848f6580896317dd9dbfda17d00e80d35bc58a704fbe7d6d6d45752811130f682ea9471903c9af9b5c95d074ec87b32c86dc5b29a186a60a7a03e630c7a5cd38e6ab1a2f561642d5662658fc20239233505727575e75dbbc5be630f9ebc9485f03bbf0569554a87bfb5cfd397daf5d8d92a38fc4b24b1a433edad26a12c4e29506362dec83fb9b1f31158e834cde319d40bd283f0a1f3995b3ade08bcc01c794d656583b928300a6f2be57e5bf1586a123cf28ac8e2287e0b7ab67419dc4f527f714fdee8c47088cc1857a39825524dc3f5a3777c1f906cf496dac43e3f8304ebe5d5696da5b7e5d79f176a391736ba46bc718356e1713a00ea754a52b5899ba7eb71b10bbd211cead7d1890f2d8bb981a2549e2cd53bf895f96f628c4d00061275c87f4dcbadcb5944f912d27aaa4124cadd0e2a1d82ee4d3a8b977bd1a03fc6f79caf4c306addea0bd72b754c113350655324dec3dcbb1f1de66e3e7a9f06ba0e04de0cae7af7d6e31298bf5be706038e0d8477a79ea5f8e21decdf6f5ff71090d8cb2dabb9d1a87ee526b0ec84be81ad9585b09f165cfff7a4a63e30ac7341a3a42e3e02bfc34486a2a5492a39dd31dc233c74f454584e5bd2524382a08357ba2d3ef46833551ed3fa6f672d5ba0ec75258430738c16989840b6ae6909f10340d1845bd975cf2933047a1c22c332606f76681dae8727921d4f1345f0457700b8622ea72a50c17cda201f7019d4af9dc0b67bd95317d98c2fe38ab8e12dbefe236b463014caf9c3cdd390dfcff034e90e4f51e1233bb8b341bba6f922d1b0629e261844018f39d054b26cb82592e33466354f552a14f9e6175d418cb9724fa045e723b5ab9ece5aa45800f1202b3d174fe4e129e7320a9063039f8bdea8601762ff45933503e0bd10944893e565d641a39289da67e5269dc7cfc22dc3d5f5011b66b25340cea4055bd66a7752c69e624bfc12e5cc68cd0b5cab3242860b7f40541303e228e666a6500e1e739b0b6d853b5715cf3a668facc135d133d4eefa035f36c16838f25ab4a0d2f20d18f05c0fae1a705370162cfe6f7fcf1c69654c2ce73e3820b48568c25a6d9d036c2386dee6ef14e5fc967ffccde38bf263c8c0f924bcfcdf54669dcf872724280cc4f81bb2aa993998f6312d0c6084ed823e5e6bff0ed25cc4e82b749dc11f4cf55290344d9c307d634793e81b9d3d457765dc6f81b66f1a6aaaa1079558a4892edfc342fe24856200b5dcc65c9e7809b655d3cc7bb26bcda91933f590bc61099fd0b83e04bad2174150645afd7c3ccac5417234e30da4e7574af953f8d9b7a5029417d439f1d13c4390bed2bc05d73821ff2355c33da5f95623c73abd826614572841e4777a9a0b538cef4a2c6327c75116977322a8c488f466178cdcaf3f0e10df86dbd1827ba2cc4c8fba90a1d64ad783a77704c5b1262cd11cb010f09ab04377d6e5ebed4d5dfe8eaa0cc2535a0be69bdf5e1987167b8135428ef84287aa4424c35c7a7bc94cabd553df4840121403b2ba3479e1a7f86085cce49c245af944a2ed78b77784309d05d5f5587a6e589baa6e7d279b0ab43afb5497b6d5954b3a8f66dd547d3b72565437ead511c9d5342406aace95e5cc31f2c6d618a24c219d0298f980a571ce29b999d20b3ed94a60e286ed7ddc647c439e3d421814da6d91c8b7d5b3fa70ec6a3c261ab9ee4ac779545edcc7db6df3345db26b91c5a997dac5e62b75dc05358821bab4fe65a049fe9ce8e537ae81a10dfcca0ef97c6cb95e3ff1573e5461f7b505e1678fbe97a41ab696b53f6ea09038ecda09eed34247251424b766306c0c64fd836274cf85fe0e0c19638127c2210b580c9194fe0cccac7ac80e3dde38e9cccd6a194ee923f4e73800bec0c77f60553f9c7c8413ea87d20c114d7b415fdd87fc55f273b1b3a9f9c71c4462d5b3f300daf0fc6c338278e5991e0c6de07a3c288d237df00325230be204f7b2bb7a127ac28b001e4225e910eeb9521f5af6cfeae1f18c08bf8ac9d1513c3794ba5b8ea9fb9a57825cb154fc1e9a9dddf809dd6bb11a207625b23b274344e7e0b7ca666e456735d5901f1341aca42e749183823b3debbd563aeebc68f9b15dce13d0fc1acef47d38d5967c2b6b3fe8ed69b180dbcbf17455ee6825641202ccd145c0a0a0f4091622338f48474e5838d8915f814eb87ad45e710b07f79f662c2120278ce05978d8a7aee20fc5661a08c072977ed878092e7183332b70c9c54db307c705e527f6fd2076e39c216b0490f552d52a109652958c62fc6bf7f913818dbdf5d92550779aae541d54d059d5844658422c17a24e374fa6f92e5a9fda87eee249747b9cd292043c9731d2c1d08d06eab030fb49e779cb58bf4f776d6aa0185db860007d8b2d0f7205dacb9201ac9538d2c37062f736b6b44e971e11500",
-        )
-        .unwrap();
+        let message = "Last enemy position 0830h AJ 9863".to_string();
+        let associated_data = b"Associated data";
+        let mut buffer = prepare_message(true, &message);
 
-        let mut text = BytesMut::from(&cipher_text[..]);
-        decrypt_message(&key, &mut text).unwrap();
-        let secret_msg = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
-        assert_eq!(text, secret_msg);
+        encrypt_message(&key, &mut buffer, associated_data).unwrap();
+
+        // Manipulate the tag, which is appended to the buffer
+        let malleated_index = buffer.len() - 1;
+        buffer[malleated_index] = !buffer[malleated_index];
+
+        assert!(decrypt_message(&key, &mut buffer, associated_data).is_err());
     }
 
     #[test]
-    fn sanity_check() {
-        let mut key = CommsSignatureKey::from(SafeArray::default());
-        comms_dht_hash_domain_key_signature()
-            .chain([10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
-            .finalize_into(GenericArray::from_mut_slice(key.reveal_mut()));
+    fn decryption_fails_on_evil_message() {
+        let key = CommsMessageKey::from(SafeArray::default());
+        let message = "Last enemy position 0830h AJ 9863".to_string();
+        let associated_data = b"Associated data";
+        let mut buffer = prepare_message(true, &message);
 
-        let signature = b"Top secret message, handle with care".as_slice();
-        let n = signature.len();
-        let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
+        encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
-        let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
-        let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(key.reveal()));
+        // Manipulate the message
+        buffer[0] = !buffer[0];
 
-        let encrypted = cipher
-            .encrypt(nonce_ga, signature)
-            .map_err(|_| DhtEncryptError::CipherError(String::from("Authenticated encryption failed")))
-            .unwrap();
-
-        assert_eq!(encrypted.len(), n + 16);
+        assert!(decrypt_message(&key, &mut buffer, associated_data).is_err());
     }
 
     #[test]
-    fn decryption_fails_in_case_tag_is_manipulated() {
+    fn decryption_fails_on_evil_associated_data() {
+        let key = CommsMessageKey::from(SafeArray::default());
+        let message = "Last enemy position 0830h AJ 9863".to_string();
+        let associated_data = b"Associated data";
+        let evil_associated_data = b"Evil associated data";
+        let mut buffer = prepare_message(true, &message);
+
+        encrypt_message(&key, &mut buffer, associated_data).unwrap();
+
+        // Decrypt using evil associated data
+        assert!(decrypt_message(&key, &mut buffer, evil_associated_data).is_err());
+    }
+
+    #[test]
+    // This isn't guaranteed in general by AEAD properties, but should hold on random evil keys
+    // In the context of the message protocol, this is sufficient
+    fn decryption_fails_on_evil_key() {
+        // Generate two distinct keys
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let key_data = CommsDHKE::new(&sk, &pk);
-        let key = generate_key_signature(&key_data);
+        let (evil_sk, evil_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let key = generate_key_message(&CommsDHKE::new(&sk, &pk));
+        let evil_key = generate_key_message(&CommsDHKE::new(&evil_sk, &evil_pk));
 
-        let signature = b"Top secret message, handle with care".as_slice();
+        let message = "Last enemy position 0830h AJ 9863".to_string();
+        let associated_data = b"Associated data";
+        let mut buffer = prepare_message(true, &message);
 
-        let mut encrypted = encrypt_signature(&key, signature).unwrap();
+        encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
-        // sanity check to validate that encrypted.len() = signature.len() + 16
-        assert_eq!(encrypted.len(), signature.len() + 16);
-
-        // manipulate tag and check that decryption fails
-        let n = encrypted.len();
-        encrypted[n - 1] = !encrypted[n - 1];
-
-        // decryption should fail
-        assert!(decrypt_signature(&key, encrypted.as_slice())
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid authenticated decryption"));
-    }
-
-    #[test]
-    fn decryption_fails_in_case_body_message_is_manipulated() {
-        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let key_data = CommsDHKE::new(&sk, &pk);
-        let key = generate_key_signature(&key_data);
-
-        let signature = b"Top secret message, handle with care".as_slice();
-
-        let mut encrypted = encrypt_signature(&key, signature).unwrap();
-
-        // manipulate encrypted message body and check that decryption fails
-        encrypted[0] = !encrypted[0];
-
-        // decryption should fail
-        assert!(decrypt_signature(&key, encrypted.as_slice())
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid authenticated decryption"));
-    }
-
-    #[test]
-    fn decryption_fails_if_message_send_to_incorrect_node() {
-        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let (other_sk, other_pk) = CommsPublicKey::random_keypair(&mut OsRng);
-
-        let key_data = CommsDHKE::new(&sk, &pk);
-        let other_key_data = CommsDHKE::new(&other_sk, &other_pk);
-
-        let key = generate_key_signature(&key_data);
-        let other_key = generate_key_signature(&other_key_data);
-
-        let signature = b"Top secret message, handle with care".as_slice();
-
-        let encrypted = encrypt_signature(&key, signature).unwrap();
-
-        // decryption should fail
-        assert!(decrypt_signature(&other_key, encrypted.as_slice())
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid authenticated decryption"));
+        // Decrypt using evil key
+        assert!(decrypt_message(&evil_key, &mut buffer, associated_data).is_err());
     }
 
     #[test]
@@ -568,36 +513,5 @@ mod test {
             .unwrap_err()
             .to_string()
             .contains("Claimed unpadded message length is too large"));
-    }
-
-    #[test]
-    fn check_decryption_succeeds_if_pad_message_padding_is_modified() {
-        // this should not be problematic as any changes in the content of the encrypted padding, should not affect
-        // in any way the value of the decrypted content, by applying a cipher stream
-        let key = CommsMessageKey::from(SafeArray::default());
-        let message = "My secret message, keep it secret !".to_string();
-        let mut msg = encode_with_prepended_length(&message, size_of::<Nonce>());
-        encrypt_message(&key, &mut msg).unwrap();
-
-        let n = msg.len();
-        msg[n - 1] += 1;
-
-        decrypt_message(&key, &mut msg).unwrap();
-        assert_eq!(String::decode(&msg[..]).unwrap(), message);
-    }
-
-    #[test]
-    fn decryption_fails_if_message_body_is_modified() {
-        let key = CommsMessageKey::from(SafeArray::default());
-        let message = "My secret message, keep it secret !".to_string();
-        let mut msg = encode_with_prepended_length(&message, size_of::<Nonce>());
-        encrypt_message(&key, &mut msg).unwrap();
-
-        let index = size_of::<u32>() + size_of::<Nonce>() + 1;
-        msg[index] = !msg[index];
-
-        decrypt_message(&key, &mut msg).unwrap();
-        eprintln!("msg = {:?}", msg);
-        assert_ne!(msg, message);
     }
 }

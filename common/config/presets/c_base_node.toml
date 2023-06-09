@@ -30,9 +30,6 @@ identity_file = "config/base_node_id_stagenet.json"
 identity_file = "config/base_node_id_nextnet.json"
 
 [base_node]
-# Selected network (Note: Not implemented properly, please specify on the command line) (default = "emseralda")
-#network = "stagenet"
-
 # Set to false to disable the base node GRPC server (default = true)
 #grpc_enabled = true
 
@@ -223,8 +220,10 @@ listener_liveness_check_interval = 15
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
 # better privacy
 #tor.proxy_bypass_for_outbound_tcp = false
-# If set, instructs tor to forward traffic the the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
+# If set, instructs tor to forward traffic the the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =
+# If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
+#tor.listener_address_override =
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 # (use: type = "socks5")

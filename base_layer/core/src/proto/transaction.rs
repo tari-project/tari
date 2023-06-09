@@ -39,11 +39,12 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
+            RangeProofType,
             SideChainFeature,
             Transaction,
             TransactionInput,
@@ -145,7 +146,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
-                EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
+                EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?,
                 input.minimum_value_promise.into(),
             ))
         } else {
@@ -213,10 +214,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 output_hash: Vec::new(),
                 covenant,
                 version: input.version as u32,
-                encrypted_value: input
-                    .encrypted_value()
+                encrypted_data: input
+                    .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
-                    .to_vec(),
+                    .to_byte_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
@@ -246,6 +247,12 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let sender_offset_public_key =
             PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+        let range_proof = if let Some(proof) = output.range_proof {
+            Some(BulletRangeProof::from_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
+        } else {
+            None
+        };
+
         let script = TariScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
 
         let metadata_signature = output
@@ -257,7 +264,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let mut buffer = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|e| e.to_string())?;
 
-        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+        let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
         let minimum_value_promise = output.minimum_value_promise.into();
 
@@ -267,12 +274,12 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             )?,
             features,
             commitment,
-            BulletRangeProof(output.range_proof),
+            range_proof,
             script,
             sender_offset_public_key,
             metadata_signature,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         ))
     }
@@ -284,16 +291,19 @@ impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
     fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+        let range_proof = output.proof.map(|proof| proto::types::RangeProof {
+            proof_bytes: proof.to_vec(),
+        });
         Ok(Self {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
-            range_proof: output.proof.to_vec(),
+            range_proof,
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
             covenant,
             version: output.version as u32,
-            encrypted_value: output.encrypted_value.to_vec(),
+            encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
     }
@@ -316,6 +326,11 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .try_into()
             .map_err(|_| "Invalid output type: overflowed")?;
 
+        let range_proof_type = features
+            .range_proof_type
+            .try_into()
+            .map_err(|_| "Invalid range proof type: overflowed")?;
+
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -324,6 +339,8 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
+            RangeProofType::from_byte(range_proof_type)
+                .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
     }
 }
@@ -336,6 +353,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             coinbase_extra: features.coinbase_extra,
             version: features.version as u32,
             sidechain_feature: features.sidechain_feature.map(Into::into),
+            range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }
 }

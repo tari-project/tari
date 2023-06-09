@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     test_helpers::blockchain::create_test_db,
     transactions::transaction_components::{
-        EncryptedValue,
+        EncryptedOpenings,
         KernelFeatures,
         OutputFeatures,
         TransactionKernel,
@@ -130,7 +130,7 @@ fn test_utxo_order() {
     let proof = RangeProof::default();
     let sig = ComAndPubSignature::default();
     let covenant = Covenant::default();
-    let encrypt = EncryptedValue::default();
+    let encrypt = EncryptedOpenings::default();
     for _i in 0..2000 {
         let pvt_key = PrivateKey::random(&mut OsRng);
         let pub_key = PublicKey::from_secret_key(&pvt_key);
@@ -139,12 +139,12 @@ fn test_utxo_order() {
             version,
             features.clone(),
             commitment,
-            proof.clone(),
+            Some(proof.clone()),
             script.clone(),
             pub_key,
             sig.clone(),
             covenant.clone(),
-            encrypt.clone(),
+            encrypt,
             0.into(),
         );
         utxos.push(utxo);

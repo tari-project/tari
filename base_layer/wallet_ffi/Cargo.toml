@@ -3,7 +3,7 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.49.0-rc.3"
+version = "0.50.0-rc.0"
 edition = "2018"
 
 [dependencies]
@@ -12,7 +12,7 @@ tari_common = { path="../../common" }
 tari_common_types = { path="../common_types" }
 tari_comms = {  path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = {  path = "../../comms/dht", default-features = false }
-tari_crypto = { version="0.16.11"}
+tari_crypto = { version = "0.16"}
 tari_key_manager = {  path = "../key_manager" }
 tari_p2p = {  path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }

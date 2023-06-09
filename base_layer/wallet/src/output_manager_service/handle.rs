@@ -37,7 +37,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
+        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -63,12 +63,7 @@ use crate::output_manager_service::{
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
-    // ToDo: This API request could probably be removed by expanding test utils if only needed for testing
-    AddRewindableOutput((Box<UnblindedOutput>, Option<SpendingPriority>, Option<RewindData>)),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
-    AddRewindableOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>, Option<RewindData>)),
-    // ToDo: This API request could probably be removed by expanding test utils if only needed for testing
-    ConvertToRewindableTransactionOutput(Box<UnblindedOutput>),
     AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
@@ -142,7 +137,7 @@ pub enum OutputManagerRequest {
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
     GetNextSpendAndScriptKeys,
-    GetRewindData,
+    GetRecoveryData,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -152,10 +147,7 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             GetBalance => write!(f, "GetBalance"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
-            AddRewindableOutput((v, _, _)) => write!(f, "AddRewindableOutput ({})", v.value),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
-            AddRewindableOutputWithTxId((t, v, _, _)) => write!(f, "AddRewindableOutputWithTxId ({}: {})", t, v.value),
-            ConvertToRewindableTransactionOutput(v) => write!(f, "GetUnblindedOutputAsRewindableOutput ({})", v.value),
             AddUnvalidatedOutput((t, v, _)) => {
                 write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
             },
@@ -236,7 +228,7 @@ impl fmt::Display for OutputManagerRequest {
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
             GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
-            GetRewindData => write!(f, "GetRewindData"),
+            GetRecoveryData => write!(f, "GetRecoveryData"),
         }
     }
 }
@@ -284,7 +276,7 @@ pub enum OutputManagerResponse {
         spend_key: PrivateKey,
         script_key: PrivateKey,
     },
-    RewindData(RewindData),
+    RecoveryData(RecoveryData),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -365,27 +357,6 @@ impl OutputManagerHandle {
         }
     }
 
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn add_rewindable_output(
-        &mut self,
-        output: UnblindedOutput,
-        spend_priority: Option<SpendingPriority>,
-        custom_rewind_data: Option<RewindData>,
-    ) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::AddRewindableOutput((
-                Box::new(output),
-                spend_priority,
-                custom_rewind_data,
-            )))
-            .await??
-        {
-            OutputManagerResponse::OutputAdded => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn add_output_with_tx_id(
         &mut self,
         tx_id: TxId,
@@ -402,45 +373,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn add_rewindable_output_with_tx_id(
-        &mut self,
-        tx_id: TxId,
-        output: UnblindedOutput,
-        spend_priority: Option<SpendingPriority>,
-        custom_rewind_data: Option<RewindData>,
-    ) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::AddRewindableOutputWithTxId((
-                tx_id,
-                Box::new(output),
-                spend_priority,
-                custom_rewind_data,
-            )))
-            .await??
-        {
-            OutputManagerResponse::OutputAdded => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn convert_to_rewindable_transaction_output(
-        &mut self,
-        output: UnblindedOutput,
-    ) -> Result<TransactionOutput, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ConvertToRewindableTransactionOutput(Box::new(
-                output,
-            )))
-            .await??
-        {
-            OutputManagerResponse::ConvertedToTransactionOutput(val) => Ok(*val),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -924,9 +856,9 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_rewind_data(&mut self) -> Result<RewindData, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetRewindData).await?? {
-            OutputManagerResponse::RewindData(rewind_data) => Ok(rewind_data),
+    pub async fn get_recovery_data(&mut self) -> Result<RecoveryData, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetRecoveryData).await?? {
+            OutputManagerResponse::RecoveryData(recovery_data) => Ok(recovery_data),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

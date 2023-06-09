@@ -508,6 +508,7 @@ mod test {
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
+        // Don't encrypt
         let dht_envelope = make_dht_envelope(
             &node_identity,
             &msg,
@@ -540,10 +541,11 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _out_rx) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()
+            .local_test()
             .with_outbound_sender(out_tx)
             .build(
                 Arc::clone(&node_identity),
@@ -619,7 +621,7 @@ mod test {
         let ecdh_key = CommsDHKE::new(node_identity2.secret_key(), node_identity2.public_key());
         let key_message = crypt::generate_key_message(&ecdh_key);
         let mut encrypted_bytes = msg.encode_into_bytes_mut();
-        crypt::encrypt_message(&key_message, &mut encrypted_bytes).unwrap();
+        crypt::encrypt_message(&key_message, &mut encrypted_bytes, b"test associated data").unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             &encrypted_bytes.to_vec(),

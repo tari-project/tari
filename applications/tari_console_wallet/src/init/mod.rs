@@ -31,6 +31,7 @@ use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     configuration::{
         bootstrap::{grpc_default_port, prompt, ApplicationType},
+        MultiaddrList,
         Network,
     },
     exit_codes::{ExitCode, ExitError},
@@ -70,6 +71,9 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
+// Maxmimum number of times we prompt for confirmation of a new passphrase, to avoid driving the user insane with an
+// infinite loop
+const PASSPHRASE_SANITY_LIMIT: u8 = 3;
 
 #[derive(Clone, Copy)]
 pub enum WalletBoot {
@@ -97,11 +101,25 @@ pub enum WalletBoot {
 fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitError> {
     // We may need to prompt for a passphrase multiple times
     loop {
-        // Prompt the user for a passphrase and confirm it
-        let passphrase = prompt_password(prompt)?;
-        let confirmed = prompt_password(confirm)?;
-        if passphrase.reveal() != confirmed.reveal() {
-            return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
+        // Prompt the user for a passphrase and confirm it, up to the defined limit
+        // This ensures an unlucky user doesn't get stuck
+        let mut tries = 0;
+        let mut passphrase = SafePassword::from(""); // initial value for scope
+        loop {
+            passphrase = prompt_password(prompt)?;
+            let confirmed = prompt_password(confirm)?;
+
+            // If they match, continue the process
+            if passphrase.reveal() == confirmed.reveal() {
+                break;
+            }
+
+            // If they don't match, keep prompting until we hit the sanity limit
+            tries += 1;
+            if tries == PASSPHRASE_SANITY_LIMIT {
+                return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
+            }
+            println!("Passphrases don't match! Try again.");
         }
 
         // Score the passphrase and provide feedback
@@ -256,15 +274,23 @@ pub async fn get_base_node_peer_config(
     wallet: &mut WalletSqlite,
     non_interactive_mode: bool,
 ) -> Result<PeerConfig, ExitError> {
+    let mut use_custom_base_node_peer = false;
     let mut selected_base_node = match config.wallet.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
             .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
-        None => get_custom_base_node_peer_from_db(wallet),
+        None => {
+            if let Some(custom_base_node_peer) = get_custom_base_node_peer_from_db(wallet) {
+                use_custom_base_node_peer = true;
+                Some(custom_base_node_peer)
+            } else {
+                None
+            }
+        },
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.wallet.custom_base_node.is_none() {
+    if !non_interactive_mode && config.wallet.custom_base_node.is_none() && !use_custom_base_node_peer {
         if let Some(detected_node) = detect_local_base_node(config.wallet.network).await {
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
@@ -378,8 +404,8 @@ pub async fn init_wallet(
 
     let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
         match wallet_db.get_node_address()? {
-            Some(addr) => vec![addr],
-            None => vec![],
+            Some(addr) => MultiaddrList::from(vec![addr]),
+            None => MultiaddrList::default(),
         }
     } else {
         config.wallet.p2p.public_addresses.clone()
@@ -394,9 +420,14 @@ pub async fn init_wallet(
                 "Node identity overridden by file {}",
                 identity_file.to_string_lossy()
             );
-            setup_node_identity(identity_file, node_addresses, true, PeerFeatures::COMMUNICATION_CLIENT)?
+            setup_node_identity(
+                identity_file,
+                node_addresses.to_vec(),
+                true,
+                PeerFeatures::COMMUNICATION_CLIENT,
+            )?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses)?,
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?,
     };
 
     let mut wallet_config = config.wallet.clone();

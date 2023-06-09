@@ -85,6 +85,8 @@ pub struct Cli {
     pub grpc_address: Option<String>,
     #[clap(subcommand)]
     pub command2: Option<CliCommands>,
+    #[clap(long, alias = "profile")]
+    pub profile_with_tokio_console: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

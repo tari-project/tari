@@ -382,6 +382,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
             .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+        trace!(
+            target: LOG_TARGET,
+            "UTXO hashes queried from wallet: {:?}",
+            hashes.iter().map(|h| h.to_hex()).collect::<Vec<String>>()
+        );
+
         let mined_info_resp = db
             .fetch_utxos_and_mined_info(hashes)
             .await

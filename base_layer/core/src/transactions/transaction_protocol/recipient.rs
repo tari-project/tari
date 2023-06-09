@@ -30,11 +30,10 @@ use tari_common_types::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::TransactionOutput,
+    transaction_components::{EncryptedData, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
-        RewindData,
         TransactionMetadata,
         TransactionProtocolError,
     },
@@ -117,26 +116,25 @@ impl ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, None)
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, &EncryptedData::default())
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
     }
 
-    /// This function creates a new Receiver Transaction Protocol where the resulting receiver output range proof is
-    /// rewindable
-    pub fn new_with_rewindable_output(
+    /// This function creates a new Receiver Transaction Protocol where the resulting receiver output can be recovered
+    pub fn new_with_recoverable_output(
         info: TransactionSenderMessage,
         nonce: PrivateKey,
         spending_key: PrivateKey,
         factories: &CryptoFactories,
-        rewind_data: &RewindData,
+        encrypted_data: &EncryptedData,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, Some(rewind_data))
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, encrypted_data)
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -175,9 +173,9 @@ impl ReceiverTransactionProtocol {
         key: PrivateKey,
         data: &SD,
         factories: &CryptoFactories,
-        rewind_data: Option<&RewindData>,
+        encrypted_data: &EncryptedData,
     ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, rewind_data);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, encrypted_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -217,10 +215,10 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction_components::{EncryptedValue, OutputFeatures, TransactionKernel, TransactionKernelVersion},
+            transaction_components::{EncryptedData, OutputFeatures, TransactionKernel, TransactionKernelVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
-                RewindData,
+                RecoveryData,
                 TransactionMetadata,
             },
             ReceiverTransactionProtocol,
@@ -274,13 +272,11 @@ mod test {
     }
 
     #[test]
-    fn single_round_recipient_with_rewinding_bulletproofs() {
+    fn single_round_recipient_with_recovery() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Rewind params
-        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
+        let recovery_data = RecoveryData {
             encryption_key: PrivateKey::random(&mut OsRng),
         };
         let amount = MicroTari(500);
@@ -302,25 +298,32 @@ mod test {
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };
+        let encrypted_data = EncryptedData::encrypt_data(
+            &recovery_data.encryption_key,
+            &factories.commitment.commit_value(&p.spend_key, amount.into()),
+            amount,
+            &p.spend_key,
+        )
+        .unwrap();
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
-        let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let receiver = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
             &factories,
-            &rewind_data,
+            &encrypted_data,
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
 
         let output = &data.output;
-        let committed_value =
-            EncryptedValue::decrypt_value(&rewind_data.encryption_key, &output.commitment, &output.encrypted_value)
-                .unwrap();
+        let (committed_value, blinding_factor) = EncryptedData::decrypt_data(
+            &recovery_data.encryption_key,
+            &output.commitment,
+            &output.encrypted_data,
+        )
+        .unwrap();
         assert_eq!(committed_value, amount);
-        let blinding_factor = output
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
     }
 }

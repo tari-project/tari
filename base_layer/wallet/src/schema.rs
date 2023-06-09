@@ -106,7 +106,7 @@ diesel::table! {
         spending_priority -> Integer,
         covenant -> Binary,
         mined_timestamp -> Nullable<Timestamp>,
-        encrypted_value -> Binary,
+        encrypted_data -> Binary,
         minimum_value_promise -> BigInt,
         source -> Integer,
         last_validation_timestamp -> Nullable<Timestamp>,
@@ -130,6 +130,15 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    burnt_proofs (id) {
+        id -> Integer,
+        reciprocal_claim_public_key -> Text,
+        payload -> Text,
+        burned_at -> Timestamp,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
@@ -139,4 +148,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     outputs,
     scanned_blocks,
     wallet_settings,
+    burnt_proofs,
 );
