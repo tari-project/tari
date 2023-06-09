@@ -488,9 +488,7 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Change script", &self.private_nonce, &mut message);
-        Self::check_value("Change input data", &self.private_nonce, &mut message);
-        Self::check_value("Change script private key", &self.private_nonce, &mut message);
+        Self::check_value("Missing private nonce", &self.private_nonce, &mut message);
 
         if !message.is_empty() {
             return self.build_err(&message.join(","));
@@ -731,8 +729,7 @@ mod test {
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
-             private key"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing private nonce"
         );
 
         let mut builder = err.builder;

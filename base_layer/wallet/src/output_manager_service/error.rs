@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
@@ -29,7 +30,10 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_key_manager::{
+    error::{KeyManagerError, MnemonicError},
+    key_manager_service::KeyManagerServiceError,
+};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -38,7 +42,6 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
-    key_manager_service::KeyManagerServiceError,
     output_manager_service::UtxoSelectionCriteria,
 };
 
@@ -191,6 +194,8 @@ pub enum OutputManagerStorageError {
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
+    #[error("Error: `{0}`")]
+    SqliteStorageError(#[from] SqliteStorageError),
 }
 
 impl From<OutputManagerError> for ExitError {

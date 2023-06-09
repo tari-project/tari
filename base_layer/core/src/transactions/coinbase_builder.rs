@@ -49,6 +49,7 @@ use crate::{
             Transaction,
             TransactionBuilder,
             TransactionKernel,
+            TransactionKernelVersion,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -214,8 +215,12 @@ impl CoinbaseBuilder {
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
-        let challenge =
-            TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, excess.as_public_key(), &metadata);
+        let challenge = TransactionKernel::build_kernel_challenge_from_tx_meta(
+            &TransactionKernelVersion::get_current_version(),
+            &public_nonce,
+            excess.as_public_key(),
+            &metadata,
+        );
         let sig = Signature::sign_raw(&spending_key, nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
@@ -523,6 +528,8 @@ mod test {
     }
     use tari_crypto::keys::PublicKey;
 
+    use crate::transactions::transaction_components::TransactionKernelVersion;
+
     #[test]
     #[allow(clippy::identity_op)]
     fn invalid_coinbase_amount() {
@@ -556,7 +563,8 @@ mod test {
         coinbase_kernel2.features = KernelFeatures::empty();
         // fix signature
         let p2 = TestParams::new();
-        let challenge = TransactionKernel::build_kernel_challenge(
+        let challenge = TransactionKernel::build_kernel_signature_challenge(
+            &TransactionKernelVersion::get_current_version(),
             &p2.public_nonce,
             &PublicKey::from_secret_key(&output.spending_key),
             coinbase_kernel2.fee,

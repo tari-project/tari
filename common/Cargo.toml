@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2018"
 
 [features]
@@ -14,7 +14,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+tari_crypto = { version = "0.16.11"}
 
 anyhow = "1.0.53"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
@@ -38,3 +38,6 @@ blake2 = "0.9.1"
 [dev-dependencies]
 tari_test_utils = {  path = "../infrastructure/test_utils"}
 toml = "0.5.8"
+
+[build-dependencies]
+tari_features = { version = "0.49.0-rc.1", path = "./tari_features"}

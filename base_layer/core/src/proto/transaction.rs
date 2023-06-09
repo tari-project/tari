@@ -259,7 +259,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
-        let minimum_value_promise = MicroTari::zero();
+        let minimum_value_promise = output.minimum_value_promise.into();
 
         Ok(Self::new(
             TransactionOutputVersion::try_from(

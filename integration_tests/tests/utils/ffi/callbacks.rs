@@ -44,6 +44,7 @@ pub struct Callbacks {
     tx_validation_result: Mutex<u64>,
     transaction_saf_message_received: Mutex<u64>,
     contacts_liveness_data_updated: Mutex<u64>,
+    basenode_state_updated: Mutex<u64>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
 
@@ -295,6 +296,15 @@ impl Callbacks {
         );
     }
 
+    pub fn on_basenode_state_update(&mut self, state: *mut c_void) {
+        *self.basenode_state_updated.lock().unwrap() += 1;
+        println!(
+            "{} Base node state changed to {:#?}.",
+            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            state
+        );
+    }
+
     pub fn reset(&mut self, wallet: Arc<Mutex<Wallet>>) {
         *self.transaction_received.lock().unwrap() = 0;
         *self.transaction_reply_received.lock().unwrap() = 0;
@@ -311,6 +321,7 @@ impl Callbacks {
         *self.tx_validation_result.lock().unwrap() = 0;
         *self.transaction_saf_message_received.lock().unwrap() = 0;
         *self.contacts_liveness_data_updated.lock().unwrap() = 0;
+        *self.basenode_state_updated.lock().unwrap() = 0;
         self.wallet = Some(wallet);
         println!("wallet {:?}", self.wallet);
     }

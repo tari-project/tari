@@ -77,6 +77,8 @@ pub enum DbKey {
     SecondaryKeyVersion, // the parameter version for the secondary derivation key
     SecondaryKeyHash,    // a hash commitment to the secondary derivation key
     WalletBirthday,
+    LastAccessedNetwork,
+    LastAccessedVersion,
 }
 
 impl DbKey {
@@ -94,6 +96,8 @@ impl DbKey {
             DbKey::SecondaryKeyHash => "SecondaryKeyHash".to_string(),
             DbKey::WalletBirthday => "WalletBirthday".to_string(),
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
+            DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
+            DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
         }
     }
 }
@@ -112,6 +116,8 @@ pub enum DbValue {
     SecondaryKeyVersion(String),
     SecondaryKeyHash(String),
     WalletBirthday(String),
+    LastAccessedNetwork(String),
+    LastAccessedVersion(String),
 }
 
 #[derive(Clone)]
@@ -123,6 +129,7 @@ pub enum DbKeyValuePair {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
+    NetworkAndVersion((String, String)),
 }
 
 pub enum WriteOperation {
@@ -255,6 +262,14 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    pub fn set_last_network_and_version(&self, network: String, version: String) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::NetworkAndVersion((
+                network, version,
+            ))))?;
+        Ok(())
+    }
+
     pub fn get_client_key_value(&self, key: String) -> Result<Option<String>, WalletStorageError> {
         let c = match self.db.fetch(&DbKey::ClientKey(key.clone())) {
             Ok(None) => Ok(None),
@@ -354,6 +369,8 @@ impl Display for DbValue {
             DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
             DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
+            DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
+            DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
         }
     }
 }

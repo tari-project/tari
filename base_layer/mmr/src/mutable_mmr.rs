@@ -125,9 +125,18 @@ where
         // virtue of the fact that the underlying MMRs could be different, but all elements are marked as deleted in
         // both sets.
         let mmr_root = self.mmr.get_merkle_root()?;
+
+        // To avoid requiring mutability, we compress a clone of the bitmap
+        let mut bitmap = self.deleted.clone();
+        bitmap.run_optimize();
+        let bitmap_ser = bitmap.serialize();
+
+        // Include the compressed bitmap in the root hash
         let mut hasher = D::new();
         hasher.update(&mmr_root);
-        Ok(self.hash_deleted(hasher).finalize().to_vec())
+        hasher.update(&bitmap_ser);
+
+        Ok(hasher.finalize().to_vec())
     }
 
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
@@ -195,13 +204,6 @@ where
     /// `MutableMmr` and links it to actual data should be able to do this though.
     pub fn validate(&self) -> Result<(), MerkleMountainRangeError> {
         self.mmr.validate()
-    }
-
-    /// Hash the roaring bitmap of nodes that are marked for deletion
-    fn hash_deleted(&self, mut hasher: D) -> D {
-        let bitmap_ser = self.deleted.serialize();
-        hasher.update(&bitmap_ser);
-        hasher
     }
 
     // Returns a bitmap with only the deleted nodes for the specified region in the MMR.

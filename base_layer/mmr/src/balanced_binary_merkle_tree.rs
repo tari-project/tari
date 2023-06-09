@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
+use std::{convert::TryFrom, marker::PhantomData};
 
 use digest::Digest;
 use tari_common::DomainDigest;
@@ -28,10 +28,16 @@ use thiserror::Error;
 
 use crate::{common::hash_together, ArrayLike, Hash};
 
+pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleTreeError> {
+    u32::try_from(value).map_err(|_| BalancedBinaryMerkleTreeError::MathOverFlow)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum BalancedBinaryMerkleTreeError {
     #[error("There is no leaf with the hash provided.")]
     LeafNotFound,
+    #[error("Math overflow")]
+    MathOverFlow,
 }
 
 // The hashes are perfectly balanced binary tree, so parent at index `i` (0-based) has children at positions `2*i+1` and
@@ -92,7 +98,7 @@ where D: Digest + DomainDigest
         leaf_index + (self.hashes.len() >> 1)
     }
 
-    pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<usize, BalancedBinaryMerkleTreeError> {
+    pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<u32, BalancedBinaryMerkleTreeError> {
         let pos = self
             .hashes
             .position(hash)
@@ -102,7 +108,7 @@ where D: Digest + DomainDigest
             // The hash provided was not for leaf, but for node.
             Err(BalancedBinaryMerkleTreeError::LeafNotFound)
         } else {
-            Ok(pos - (self.hashes.len() >> 1))
+            Ok(cast_to_u32(pos - (self.hashes.len() >> 1))?)
         }
     }
 }

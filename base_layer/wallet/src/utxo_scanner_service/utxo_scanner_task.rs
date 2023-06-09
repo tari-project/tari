@@ -405,7 +405,7 @@ where
         }
 
         if let Some(sb) = found_scanned_block {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Last scanned block found at height {} (Header Hash: {})",
                 sb.height,
@@ -428,6 +428,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn scan_utxos(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
@@ -457,6 +458,7 @@ where
 
         let mut utxo_next_await_profiling = Vec::new();
         let mut scan_for_outputs_profiling = Vec::new();
+        let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = {
             let start = Instant::now();
             let utxo_stream_next = utxo_stream.next().await;
@@ -478,42 +480,57 @@ where
                 .into_iter()
                 .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
                 .collect::<Result<Vec<_>, _>>()?;
-
             total_scanned += outputs.len();
 
             let start = Instant::now();
             let found_outputs = self.scan_for_outputs(outputs).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
-            let (count, amount) = self
+            let (mut count, mut amount) = self
                 .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
                 .await?;
             let block_hash = current_header_hash.try_into()?;
-            self.resources.db.save_scanned_block(ScannedBlock {
+            if let Some(scanned_block) = prev_scanned_block {
+                if block_hash == scanned_block.header_hash {
+                    count += scanned_block.num_outputs.unwrap_or(0);
+                    amount += scanned_block.amount.unwrap_or_else(|| 0.into())
+                } else {
+                    self.resources.db.save_scanned_block(scanned_block)?;
+                    self.resources.db.clear_scanned_blocks_before_height(
+                        current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                        true,
+                    )?;
+
+                    if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                        );
+                        self.publish_event(UtxoScannerEvent::Progress {
+                            current_height,
+                            tip_height,
+                        });
+                    }
+
+                    num_recovered = num_recovered.saturating_add(count);
+                    total_amount += amount;
+                }
+            }
+            prev_scanned_block = Some(ScannedBlock {
                 header_hash: block_hash,
                 height: current_height,
                 num_outputs: Some(count),
                 amount: Some(amount),
                 timestamp: Utc::now().naive_utc(),
-            })?;
-
-            self.resources
-                .db
-                .clear_scanned_blocks_before_height(current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE), true)?;
-
-            if current_height % PROGRESS_REPORT_INTERVAL == 0 {
-                debug!(
-                    target: LOG_TARGET,
-                    "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
-                );
-                self.publish_event(UtxoScannerEvent::Progress {
-                    current_height,
-                    tip_height,
-                });
-            }
-
-            num_recovered = num_recovered.saturating_add(count);
-            total_amount += amount;
+            });
+        }
+        // We need to update the last one
+        if let Some(scanned_block) = prev_scanned_block {
+            self.resources.db.clear_scanned_blocks_before_height(
+                scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                true,
+            )?;
+            self.resources.db.save_scanned_block(scanned_block)?;
         }
         trace!(
             target: LOG_TARGET,

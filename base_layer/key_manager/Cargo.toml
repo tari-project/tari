@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2021"
 
 [lib]
@@ -12,10 +12,20 @@ crate-type = ["lib", "cdylib"]
 
 # NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
-tari_common_types = {  path = "../../base_layer/common_types", optional = true }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
+tari_crypto = "0.16.11"
+tari_utilities = "0.4.10"
+tari_common_sqlite = { path = "../../common_sqlite" }
+tari_common_types = {  path = "../../base_layer/common_types"}
+tari_service_framework = {  path = "../service_framework" }
 
+async-trait = {version = "0.1.50"}
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+chacha20poly1305 = "0.10.1"
+tokio = { version = "1.23", features = ["sync", "macros"]}
+futures = { version = "^0.3.1", features = ["compat", "std"] }
+log = {version = "0.4.6"}
+diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"]}
+diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
@@ -36,8 +46,11 @@ subtle = "2.4.1"
 [dev-dependencies]
 sha2 = "0.9.8"
 wasm-bindgen-test = "0.3.28"
+tempfile = "3.1.0"
 
 [features]
+default = []
+key_manager_service = []
 avx2 = ["tari_crypto/simd_backend"]
 js = [ "js-sys"]
-wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "tari_common_types", "console_error_panic_hook"]
+wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "console_error_panic_hook"]

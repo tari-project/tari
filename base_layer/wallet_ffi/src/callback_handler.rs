@@ -38,12 +38,16 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
+use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    base_node_service::{
+        handle::{BaseNodeEvent, BaseNodeEventReceiver},
+        service::BaseNodeState,
+    },
     connectivity_service::OnlineStatus,
-    contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -57,6 +61,8 @@ use tari_wallet::{
     },
 };
 use tokio::sync::{broadcast, watch};
+
+use crate::ffi_basenode_state::TariBaseNodeState;
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -79,7 +85,9 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
+    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     db: TransactionDatabase<TBackend>,
+    base_node_service_event_stream: BaseNodeEventReceiver,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
     output_manager_service: OutputManagerHandle,
@@ -97,6 +105,7 @@ where TBackend: TransactionBackend + 'static
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: TransactionDatabase<TBackend>,
+        base_node_service_event_stream: BaseNodeEventReceiver,
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
         output_manager_service: OutputManagerHandle,
@@ -121,6 +130,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
+        callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     ) -> Self {
         info!(
             target: LOG_TARGET,
@@ -204,7 +214,9 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_validation_complete,
             callback_saf_messages_received,
             callback_connectivity_status,
+            callback_base_node_state,
             db,
+            base_node_service_event_stream,
             transaction_service_event_stream,
             output_manager_service_event_stream,
             output_manager_service,
@@ -295,6 +307,7 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
+
                 result = self.output_manager_service_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
@@ -318,6 +331,7 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
+
                 result = self.dht_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
@@ -329,11 +343,32 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
                     }
                 }
+
                 Ok(_) = self.connectivity_status_watch.changed() => {
                     let status  = *self.connectivity_status_watch.borrow();
                     trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
                     self.connectivity_status_changed(status);
                 },
+
+                event = self.base_node_service_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Base Node Service Callback Handler event {:?}", msg);
+                            match (*msg).clone() {
+                                BaseNodeEvent::BaseNodeStateChanged(state) => {
+                                    trace!("base node state changed: {:#?}", state);
+                                    self.base_node_state_changed(state);
+                                },
+
+                                BaseNodeEvent::NewBlockDetected(_new_block_number) => {
+                                    //
+                                },
+                            }
+                        },
+                        Err(_e) => error!(target: LOG_TARGET, "failed to receive base node state event"),
+                    }
+                },
+
                 event = self.contacts_liveness_events.recv() => {
                     match event {
                         Ok(liveness_event) => {
@@ -611,6 +646,40 @@ where TBackend: TransactionBackend + 'static
         );
         unsafe {
             (self.callback_connectivity_status)(status as u64);
+        }
+    }
+
+    fn base_node_state_changed(&mut self, state: BaseNodeState) {
+        debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
+
+        let state = match state.chain_metadata {
+            None => TariBaseNodeState {
+                node_id: state.node_id,
+                height_of_longest_chain: 0,
+                best_block: BlockHash::zero(),
+                best_block_timestamp: 0,
+                pruning_horizon: 0,
+                pruned_height: 0,
+                is_node_synced: false,
+                updated_at: 0,
+                latency: 0,
+            },
+
+            Some(chain_metadata) => TariBaseNodeState {
+                node_id: state.node_id,
+                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                best_block: *chain_metadata.best_block(),
+                best_block_timestamp: chain_metadata.timestamp(),
+                pruning_horizon: chain_metadata.pruning_horizon(),
+                pruned_height: chain_metadata.pruned_height(),
+                is_node_synced: state.is_synced.unwrap_or(false),
+                updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
+                latency: state.latency.map(|d| d.as_millis() as u64).unwrap_or(0),
+            },
+        };
+
+        unsafe {
+            (self.callback_base_node_state)(Box::into_raw(Box::new(state)));
         }
     }
 }

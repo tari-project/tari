@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod burnt_proof;
 pub mod chain_metadata;
 pub mod dammsum;
 pub mod emoji;
+pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
 pub mod tari_address;

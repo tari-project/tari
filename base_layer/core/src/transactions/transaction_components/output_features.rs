@@ -34,6 +34,7 @@ use super::OutputFeaturesVersion;
 use crate::transactions::transaction_components::{
     side_chain::SideChainFeature,
     CodeTemplateRegistration,
+    ConfidentialOutputData,
     OutputType,
     ValidatorNodeRegistration,
     ValidatorNodeSignature,
@@ -103,6 +104,17 @@ impl OutputFeatures {
     pub fn create_burn_output() -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
+            ..Default::default()
+        }
+    }
+
+    /// creates output features for a burned output with confidential output data
+    pub fn create_burn_confidential_output(claim_public_key: PublicKey) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::Burn,
+            sidechain_feature: Some(SideChainFeature::ConfidentialOutput(ConfidentialOutputData {
+                claim_public_key,
+            })),
             ..Default::default()
         }
     }

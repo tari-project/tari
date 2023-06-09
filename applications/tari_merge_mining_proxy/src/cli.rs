@@ -30,16 +30,14 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    /// Supply a network (overrides existing configuration)
-    #[clap(long, env = "TARI_NETWORK")]
-    pub network: Option<Network>,
 }
 
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.network.unwrap_or(default_network);
+        let network = self.common.network.unwrap_or(default_network);
         overrides.push(("merge_mining_proxy.override_from".to_string(), network.to_string()));
+        overrides.push(("merge_mining_proxy.network".to_string(), network.to_string()));
         overrides
     }
 }

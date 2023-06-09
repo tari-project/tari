@@ -3,12 +3,20 @@ name = "tari_common_sqlite"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-diesel = { version = "2.0.3", features = ["sqlite", "r2d2"] }
+tari_utilities = "0.4.10"
+
+diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = "2.0.0"
 log = "0.4.6"
+serde = "1.0.90"
 thiserror = "1.0.26"
+tokio = { version = "1.23", features = ["sync", "macros"] }
+
+[dev-dependencies]
+tari_test_utils = {  path = "../infrastructure/test_utils" }

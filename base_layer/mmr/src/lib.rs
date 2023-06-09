@@ -154,8 +154,8 @@ pub mod pruned_hashset;
 pub use backend::{ArrayLike, ArrayLikeExt};
 pub use balanced_binary_merkle_proof::{
     BalancedBinaryMerkleProof,
+    BalancedBinaryMerkleProofError,
     MergedBalancedBinaryMerkleProof,
-    MergedBalancedBinaryMerkleProofError,
 };
 pub use balanced_binary_merkle_tree::{BalancedBinaryMerkleTree, BalancedBinaryMerkleTreeError};
 /// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.

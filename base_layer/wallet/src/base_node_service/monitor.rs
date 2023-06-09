@@ -91,6 +91,7 @@ where
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                     warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
                     self.update_state(BaseNodeState {
+                        node_id: None,
                         chain_metadata: None,
                         is_synced: None,
                         updated: None,
@@ -169,6 +170,7 @@ where
             let height_of_longest_chain = chain_metadata.height_of_longest_chain();
 
             self.update_state(BaseNodeState {
+                node_id: Some(base_node_id.clone()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),

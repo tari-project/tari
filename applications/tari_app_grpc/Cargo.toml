@@ -4,16 +4,16 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2018"
 
 [dependencies]
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+tari_crypto = { version="0.16.11"}
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
+tari_utilities = { version = "0.4.10"}
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"

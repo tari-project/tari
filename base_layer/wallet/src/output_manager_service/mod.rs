@@ -39,6 +39,7 @@ use futures::future;
 use log::*;
 use tari_comms::NodeIdentity;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
+use tari_key_manager::key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -51,7 +52,6 @@ use tokio::sync::broadcast;
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::WalletConnectivityHandle,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,

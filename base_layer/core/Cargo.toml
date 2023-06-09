@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2018"
 
 [features]
@@ -24,7 +24,7 @@ tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6", features = ["borsh"] }
+tari_crypto = { version="0.16.11", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -33,7 +33,7 @@ tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.10", features = ["borsh"] }
+tari_utilities = { version="0.4.10", features = ["borsh"] }
 
 bincode = "1.1.4"
 bitflags = "1.0.4"
@@ -78,6 +78,7 @@ zeroize = "1"
 [dev-dependencies]
 tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
+curve25519-dalek = {package="tari-curve25519-dalek", version = "4.0.2", default-features = false, features = ["serde", "alloc"] }
 
 config = { version = "0.13.0" }
 env_logger = "0.7.0"

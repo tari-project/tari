@@ -49,6 +49,7 @@ use crate::{
             TransactionBuilder,
             TransactionInput,
             TransactionKernel,
+            TransactionKernelVersion,
             TransactionOutput,
             UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
@@ -556,6 +557,7 @@ impl SenderTransactionProtocol {
         match &mut self.state {
             SenderState::Finalizing(info) => {
                 let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+                    &TransactionKernelVersion::get_current_version(),
                     &info.public_nonce_sum,
                     &info.public_excess,
                     &info.metadata,

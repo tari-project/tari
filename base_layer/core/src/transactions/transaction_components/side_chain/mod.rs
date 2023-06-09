@@ -23,10 +23,12 @@
 mod sidechain_feature;
 pub use sidechain_feature::SideChainFeature;
 
+mod confidential_output;
 mod template_registration;
 mod validator_node_registration;
 mod validator_node_signature;
 
+pub use confidential_output::ConfidentialOutputData;
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
 pub use validator_node_registration::ValidatorNodeRegistration;

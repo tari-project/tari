@@ -28,6 +28,7 @@ use tari_core::{
     transactions::transaction_components::{
         BuildInfo,
         CodeTemplateRegistration,
+        ConfidentialOutputData,
         SideChainFeature,
         TemplateType,
         ValidatorNodeRegistration,
@@ -56,6 +57,9 @@ impl From<SideChainFeature> for grpc::side_chain_feature::SideChainFeature {
             SideChainFeature::TemplateRegistration(template_reg) => {
                 grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
+            SideChainFeature::ConfidentialOutput(output_data) => {
+                grpc::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data.into())
+            },
         }
     }
 }
@@ -70,6 +74,9 @@ impl TryFrom<grpc::side_chain_feature::SideChainFeature> for SideChainFeature {
             },
             grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
                 Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+            },
+            grpc::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data) => {
+                Ok(SideChainFeature::ConfidentialOutput(output_data.try_into()?))
             },
         }
     }
@@ -144,6 +151,25 @@ impl From<CodeTemplateRegistration> for grpc::TemplateRegistration {
     }
 }
 
+// -------------------------------- ConfidentialOutputData -------------------------------- //
+impl TryFrom<grpc::ConfidentialOutputData> for ConfidentialOutputData {
+    type Error = String;
+
+    fn try_from(value: grpc::ConfidentialOutputData) -> Result<Self, Self::Error> {
+        Ok(ConfidentialOutputData {
+            claim_public_key: PublicKey::from_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+        })
+    }
+}
+
+impl From<ConfidentialOutputData> for grpc::ConfidentialOutputData {
+    fn from(value: ConfidentialOutputData) -> Self {
+        Self {
+            claim_public_key: value.claim_public_key.to_vec(),
+        }
+    }
+}
+
 // -------------------------------- TemplateType -------------------------------- //
 impl TryFrom<grpc::TemplateType> for TemplateType {
     type Error = String;
@@ -154,6 +180,8 @@ impl TryFrom<grpc::TemplateType> for TemplateType {
             grpc::template_type::TemplateType::Wasm(wasm) => Ok(TemplateType::Wasm {
                 abi_version: wasm.abi_version.try_into().map_err(|_| "abi_version overflowed")?,
             }),
+            grpc::template_type::TemplateType::Flow(_flow) => Ok(TemplateType::Flow {}),
+            grpc::template_type::TemplateType::Manifest(_manifest) => Ok(TemplateType::Manifest {}),
         }
     }
 }
@@ -165,6 +193,12 @@ impl From<TemplateType> for grpc::TemplateType {
                 template_type: Some(grpc::template_type::TemplateType::Wasm(grpc::WasmInfo {
                     abi_version: abi_version.into(),
                 })),
+            },
+            TemplateType::Flow => Self {
+                template_type: Some(grpc::template_type::TemplateType::Flow(grpc::FlowInfo {})),
+            },
+            TemplateType::Manifest => Self {
+                template_type: Some(grpc::template_type::TemplateType::Manifest(grpc::ManifestInfo {})),
             },
         }
     }

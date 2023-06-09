@@ -42,6 +42,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_components::OutputFeatures,
@@ -52,7 +53,6 @@ use tari_utilities::hex::{from_hex, Hex};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
@@ -1084,7 +1084,11 @@ pub struct EventListItem {
 impl AppStateData {
     pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
         let eid = wallet_identity.address.to_emoji_string();
-        let qr_link = format!("tari_address://{}", wallet_identity.address.to_hex());
+        let qr_link = format!(
+            "tari://{}/transactions/send?publicKey={}",
+            wallet_identity.network,
+            wallet_identity.address.to_hex()
+        );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
             .render::<unicode::Dense1x2>()

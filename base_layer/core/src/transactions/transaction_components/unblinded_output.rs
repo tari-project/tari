@@ -169,7 +169,7 @@ impl UnblindedOutput {
         let ephemeral_commitment = factory.commit(&r_x, &r_a);
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
 
-        let challenge = TransactionInput::build_script_challenge(
+        let challenge = TransactionInput::build_script_signature_challenge(
             TransactionInputVersion::get_current_version(),
             &ephemeral_commitment,
             &ephemeral_pubkey,

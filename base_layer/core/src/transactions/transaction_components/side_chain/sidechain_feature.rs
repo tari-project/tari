@@ -23,12 +23,17 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::transactions::transaction_components::{CodeTemplateRegistration, ValidatorNodeRegistration};
+use crate::transactions::transaction_components::{
+    side_chain::confidential_output::ConfidentialOutputData,
+    CodeTemplateRegistration,
+    ValidatorNodeRegistration,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub enum SideChainFeature {
     ValidatorNodeRegistration(ValidatorNodeRegistration),
     TemplateRegistration(CodeTemplateRegistration),
+    ConfidentialOutput(ConfidentialOutputData),
 }
 
 impl SideChainFeature {
@@ -42,6 +47,13 @@ impl SideChainFeature {
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
         match self {
             Self::ValidatorNodeRegistration(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
+        match self {
+            Self::ConfidentialOutput(v) => Some(v),
             _ => None,
         }
     }
