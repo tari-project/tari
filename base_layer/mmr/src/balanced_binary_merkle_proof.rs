@@ -442,6 +442,6 @@ mod test {
             .collect::<Vec<_>>();
 
         let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
-        assert!(merged.verify_consume(&root, leaf_hashes.clone()).unwrap());
+        assert!(merged.verify_consume(&root, leaf_hashes).unwrap());
     }
 }
