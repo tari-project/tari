@@ -70,9 +70,9 @@ jobs:
         working-directory: libwallets
         run: |
           ls -alhtR
-          find . -name "*.sha256sums" -type f -print | xargs cat >> libwallets.txt.sha256sums-verify
-          cat libwallets.txt.sha256sums-verify
-          sha256sum -c libwallets.txt.sha256sums-verify
+          find . -name "*.sha256" -type f -print | xargs cat >> libwallets.txt.sha256-verify
+          cat libwallets.txt.sha256-verify
+          sha256sum -c libwallets.txt.sha256-verify
 
       - name: Sync to S3 on tag
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -98,18 +98,12 @@ jobs:
         with:
           path: libwallets
 
-#      - name: Setup changelog
-#        shell: bash
-#        working-directory: libwallets
-#        run: |
-#          find . -name changelog.md -type f -exec cp -vf {} "$GITHUB_WORKSPACE/" \;
-
-      - name: Update sha256sums for top level paths
+      - name: Update sha256 for top level paths
         shell: bash
         working-directory: libwallets
         run: |
           ls -alht
-          find . -name "libtari_wallet_ffi.*.sha256sums" -type f \
+          find . -name "libtari_wallet_ffi.*.sha256" -type f \
             -exec sed -i -e "s/libwallet-.*\///g" '{}' \;
           ls -alht
 
@@ -119,12 +113,11 @@ jobs:
         run: |
           ls -alht
           if [ -d libwallet-ios-xcframework ]; then
-            #zip -j libtari_wallet_ffi.ios-xcframework.zip libwallet-ios-xcframework/*
             7z a libtari_wallet_ffi.ios-xcframework.zip libwallet-ios-xcframework/*
             rm -fr libwallet-ios-xcframework/*
             shasum -a 256 \
               "libtari_wallet_ffi.ios-xcframework.zip" \
-              > "libtari_wallet_ffi.ios-xcframework.zip.sha256sums"
+              > "libtari_wallet_ffi.ios-xcframework.zip.sha256"
           fi
           ls -alht
 
@@ -133,7 +126,6 @@ jobs:
         with:
           artifacts: "libwallet*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
-          #bodyFile: "changelog.md"
           prerelease: true
           draft: true
           allowUpdates: true

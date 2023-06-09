@@ -223,6 +223,7 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     println!();
     println!("{} genesis block", network);
     println!();
+    println!("extra '{}'", extra);
     println!(
         "kernel excess_sig: public_nonce {} signature {}",
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),

@@ -39,6 +39,7 @@ use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
+    burnt_proof::BurntProof,
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
@@ -55,11 +56,11 @@ use tari_core::transactions::{
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_key_manager::key_manager_service::NextKeyResult;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    key_manager_service::NextKeyResult,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -134,7 +135,7 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroTari,
     message: String,
-) -> Result<TxId, CommandError> {
+) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
             amount,
@@ -145,7 +146,6 @@ pub async fn burn_tari(
         )
         .await
         .map_err(CommandError::TransactionServiceError)
-        .map(|res| res.0)
 }
 
 /// publishes a tari-SHA atomic swap HTLC transaction
@@ -444,7 +444,9 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone()).await,
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone())
+                            .await
+                            .map(|(tx_id, _)| tx_id),
                     };
                     let submit_time = Instant::now();
 
@@ -662,8 +664,16 @@ pub async fn command_runner(
                 )
                 .await
                 {
-                    Ok(tx_id) => {
+                    Ok((tx_id, proof)) => {
                         debug!(target: LOG_TARGET, "burn tari concluded with tx_id {}", tx_id);
+                        println!("Burnt {} Tari in tx_id: {}", args.amount, tx_id);
+                        println!("The following can be used to claim the burnt funds:");
+                        println!();
+                        // TODO: Define and use a standard format (e.g. json w/ base64)
+                        println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
+                        println!("commitment: {}", proof.commitment.as_public_key());
+                        println!("ownership_proof: {:?}", proof.ownership_proof);
+                        println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("BurnTari error! {}", e),

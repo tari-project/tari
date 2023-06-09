@@ -37,7 +37,9 @@ use diesel::{
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
+use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     transaction::TxId,
     types::{Commitment, FixedHash, PrivateKey},
 };
@@ -61,12 +63,7 @@ use crate::{
     },
     schema::{known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
 };
-
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
@@ -1387,7 +1384,7 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_common_types::types::CommitmentFactory;
+    use tari_common_types::{encryption::Encryptable, types::CommitmentFactory};
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
@@ -1399,13 +1396,10 @@ mod test {
     use tari_utilities::ByteArray;
     use tempfile::tempdir;
 
-    use crate::{
-        output_manager_service::storage::{
-            models::DbUnblindedOutput,
-            sqlite_db::{new_output_sql::NewOutputSql, output_sql::OutputSql, OutputStatus, UpdateOutput},
-            OutputSource,
-        },
-        util::encryption::Encryptable,
+    use crate::output_manager_service::storage::{
+        models::DbUnblindedOutput,
+        sqlite_db::{new_output_sql::NewOutputSql, output_sql::OutputSql, OutputStatus, UpdateOutput},
+        OutputSource,
     };
 
     pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {

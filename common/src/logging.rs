@@ -57,12 +57,13 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
     file.read_to_string(&mut contents)
         .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
 
-    let contents = contents.replace(
-        "{{log_dir}}",
-        base_path
-            .to_str()
-            .expect("Could not replace {{log_dir}} variable from the log4rs config"),
-    );
+    let replace_str = base_path
+        .to_str()
+        .expect("Could not replace {{log_dir}} variable from the log4rs config")
+        // log4rs requires the path to be in a unix format regardless of the system it's running on
+        .replace('\\', "/");
+
+    let contents = contents.replace("{{log_dir}}", &replace_str);
 
     let config: RawConfig =
         serde_yaml::from_str(&contents).expect("Could not parse the contents of the log file as yaml");

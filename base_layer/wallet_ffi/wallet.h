@@ -155,6 +155,8 @@ struct RistrettoSecretKey;
 
 struct TariAddress;
 
+struct TariBaseNodeState;
+
 struct TariCompletedTransactions;
 
 struct TariContacts;
@@ -2698,8 +2700,41 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  void (*callback_transaction_validation_complete)(uint64_t, uint64_t),
                                  void (*callback_saf_messages_received)(void),
                                  void (*callback_connectivity_status)(uint64_t),
+                                 void (*callback_base_node_state)(struct TariBaseNodeState*),
                                  bool *recovery_in_progress,
                                  int *error_out);
+
+/**
+ * Retrieves the version of an app that last accessed the wallet database
+ *
+ * ## Arguments
+ * `config` - The TariCommsConfig pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
+ */
+char *wallet_get_last_version(TariCommsConfig *config,
+                              int *error_out);
+
+/**
+ * Retrieves the network of an app that last accessed the wallet database
+ *
+ * ## Arguments
+ * `config` - The TariCommsConfig pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ * ## Returns
+ * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
+ */
+char *wallet_get_last_network(TariCommsConfig *config,
+                              int *error_out);
 
 /**
  * Retrieves the balance from a wallet
@@ -3884,6 +3919,166 @@ unsigned long long fee_per_gram_stat_get_max_fee_per_gram(TariFeePerGramStat *fe
  * None
  */
 void fee_per_gram_stat_destroy(TariFeePerGramStat *fee_per_gram_stat);
+
+/**
+ * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Returns a ByteVector or null if the NodeId is None.
+ *
+ * # Safety
+ * None
+ */
+struct ByteVector *basenode_state_get_node_id(struct TariBaseNodeState *ptr,
+                                              int *error_out);
+
+/**
+ * Extracts height of th elongest chain from the `TariBaseNodeState`
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a TariBaseNodeState
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - The current chain height, or the block number of the longest valid chain, or `None` if there is no
+ * chain
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_height_of_the_longest_chain(struct TariBaseNodeState *ptr,
+                                                                  int *error_out);
+
+/**
+ * Extracts a best block hash [`FixedHash`] represented as a vector of bytes wrapped into a `ByteVector`
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut ByteVector` - The block hash of the current tip of the longest valid chain. Returns a ByteVector or null if
+ * the NodeId is None.
+ *
+ * # Safety
+ * None
+ */
+struct ByteVector *basenode_state_get_best_block(struct TariBaseNodeState *ptr,
+                                                 int *error_out);
+
+/**
+ * Extracts a timestamp of the best block
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Timestamp of the tip block in the longest valid chain
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_best_block_timestamp(struct TariBaseNodeState *ptr,
+                                                           int *error_out);
+
+/**
+ * Extracts a pruning horizon
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - The configured number of blocks back from the tip that this database tracks. A value of 0 indicates
+ * that pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
+ * was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
+ * are preserved from genesis (i.e. the database is in full archival mode).
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_pruning_horizon(struct TariBaseNodeState *ptr,
+                                                      int *error_out);
+
+/**
+ * Extracts a pruned height
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - The height of the pruning horizon. This indicates from what height a full block can be provided
+ * (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+ * provided. Archival nodes wil always have an `pruned_height` of zero.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_pruned_height(struct TariBaseNodeState *ptr,
+                                                    int *error_out);
+
+/**
+ * Denotes whether a base node is fully synced or not.
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_ulonglong` - An array of the length of 2 `c_ulonglong`
+ *
+ * # Safety
+ * None
+ */
+bool basenode_state_get_is_node_synced(struct TariBaseNodeState *ptr,
+                                       int *error_out);
+
+/**
+ * Extracts the timestamp of when the base node was last updated.
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Timestamp.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_node_updated_at(struct TariBaseNodeState *ptr,
+                                                      int *error_out);
+
+/**
+ * Extracts the connection latency to the base node.
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a `TariBaseNodeState`
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Latency value measured in microseconds.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long basenode_state_get_latency(struct TariBaseNodeState *ptr,
+                                              int *error_out);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -24,7 +24,10 @@ use borsh::BorshSerialize;
 use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
-use tari_common_types::transaction::TxId;
+use tari_common_types::{
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    transaction::TxId,
+};
 use tari_utilities::{ByteArray, Hidden};
 
 use crate::{
@@ -33,7 +36,6 @@ use crate::{
         storage::{models::DbUnblindedOutput, OutputStatus},
     },
     schema::outputs,
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly

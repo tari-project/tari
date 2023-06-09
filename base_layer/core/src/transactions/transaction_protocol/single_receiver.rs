@@ -32,7 +32,13 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{EncryptedValue, TransactionKernel, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{
+        EncryptedValue,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+    },
     transaction_protocol::{
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
@@ -70,6 +76,7 @@ impl SingleReceiverTransactionProtocol {
         };
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+            &TransactionKernelVersion::get_current_version(),
             &(&sender_info.public_nonce + &public_nonce),
             &(&sender_info.public_excess + &public_spending_key),
             &tx_meta,
@@ -171,7 +178,7 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_components::{OutputFeatures, OutputType, TransactionKernel},
+        transaction_components::{OutputFeatures, OutputType, TransactionKernel, TransactionKernelVersion},
         transaction_protocol::{
             sender::SingleRoundSenderData,
             single_receiver::SingleReceiverTransactionProtocol,
@@ -179,6 +186,7 @@ mod test {
             TransactionProtocolError,
         },
     };
+
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);
         let k = PrivateKey::random(&mut OsRng);
@@ -232,7 +240,12 @@ mod test {
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
         let excess = &pub_xs + PublicKey::from_secret_key(&k);
-        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&(&pub_rs + &pubnonce), &excess, &m);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+            &TransactionKernelVersion::get_current_version(),
+            &(&pub_rs + &pubnonce),
+            &excess,
+            &m,
+        );
         assert!(
             prot.partial_signature.verify_challenge(&pubkey, &e),
             "Partial signature is incorrect"

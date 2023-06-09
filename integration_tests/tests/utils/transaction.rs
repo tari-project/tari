@@ -32,6 +32,7 @@ use tari_core::transactions::{
         TransactionBuilder,
         TransactionInput,
         TransactionKernel,
+        TransactionKernelVersion,
         TransactionOutput,
         UnblindedOutput,
         UnblindedOutputBuilder,
@@ -140,7 +141,12 @@ impl TestTransactionBuilder {
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, &excess, &tx_meta);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+            &TransactionKernelVersion::get_current_version(),
+            &public_nonce,
+            &excess,
+            &tx_meta,
+        );
         let k = offset_blinding_factor;
         let r = nonce;
         let s = Signature::sign_raw(&k, r, &e).unwrap();

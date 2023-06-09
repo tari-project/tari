@@ -51,6 +51,7 @@ use crate::{
             Transaction,
             TransactionInput,
             TransactionKernel,
+            TransactionKernelVersion,
             TransactionOutput,
             UnblindedOutput,
         },
@@ -278,6 +279,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, feature
     let r = PrivateKey::random(&mut OsRng);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+        &TransactionKernelVersion::get_current_version(),
         &PublicKey::from_secret_key(&r),
         &PublicKey::from_secret_key(&k),
         &tx_meta,
@@ -296,7 +298,12 @@ pub fn create_random_signature_from_s_key(
     let r = PrivateKey::random(&mut OsRng);
     let p = PK::from_secret_key(&s_key);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&PublicKey::from_secret_key(&r), &p, &tx_meta);
+    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+        &TransactionKernelVersion::get_current_version(),
+        &PublicKey::from_secret_key(&r),
+        &p,
+        &tx_meta,
+    );
     (p, Signature::sign_raw(&s_key, r, &e).unwrap())
 }
 
@@ -679,7 +686,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         let ephemeral_commitment = factories.commitment.commit(&r_x, &r_a);
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
 
-        let challenge = TransactionInput::build_script_challenge(
+        let challenge = TransactionInput::build_script_signature_challenge(
             version,
             &ephemeral_commitment,
             &ephemeral_pubkey,

@@ -54,7 +54,20 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{
+        storage::{
+            database::{KeyManagerBackend, KeyManagerDatabase},
+            sqlite_db::KeyManagerSqliteDatabase,
+        },
+        KeyManagerHandle,
+        KeyManagerInterface,
+        KeyManagerMock,
+    },
+    mnemonic::Mnemonic,
+    SeedWords,
+};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -65,15 +78,6 @@ use tari_wallet::{
         service::BaseNodeState,
     },
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    key_manager_service::{
-        storage::{
-            database::{KeyManagerBackend, KeyManagerDatabase},
-            sqlite_db::KeyManagerSqliteDatabase,
-        },
-        KeyManagerHandle,
-        KeyManagerInterface,
-        KeyManagerMock,
-    },
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -340,7 +344,7 @@ async fn fee_estimate() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let factories = CryptoFactories::default();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
@@ -757,7 +761,7 @@ async fn send_not_enough_funds() {
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
     let num_outputs = 20;
@@ -802,7 +806,7 @@ async fn send_no_change() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -880,7 +884,7 @@ async fn send_not_enough_for_change() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -947,7 +951,7 @@ async fn cancel_transaction() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -1004,7 +1008,7 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -1047,7 +1051,7 @@ async fn test_get_balance() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -1113,7 +1117,7 @@ async fn sending_transaction_persisted_while_offline() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
@@ -1204,7 +1208,7 @@ async fn coin_split_with_change() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let val1 = 6_000 * uT;
@@ -1250,7 +1254,7 @@ async fn coin_split_no_change() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
@@ -1296,7 +1300,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let reward1 = MicroTari::from(1000);
@@ -1376,7 +1380,7 @@ async fn test_txo_validation() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let oms_db = backend.clone();
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
@@ -1938,7 +1942,7 @@ async fn test_txo_revalidation() {
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -2110,7 +2114,7 @@ async fn test_get_status_by_tx_id() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
@@ -2151,7 +2155,7 @@ async fn scan_for_recovery_test() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
 
     const NUM_REWINDABLE: usize = 5;
@@ -2276,7 +2280,7 @@ async fn recovered_output_key_not_in_keychain() {
     let cipher = XChaCha20Poly1305::new(key_ga);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
-    let ks_backend = KeyManagerSqliteDatabase::new(connection, cipher).unwrap();
+    let ks_backend = KeyManagerSqliteDatabase::init(connection, cipher);
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
 
     let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000u64), &factories.commitment).await;

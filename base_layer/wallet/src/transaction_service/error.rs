@@ -23,6 +23,7 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_common_types::{
     tari_address::TariAddressError,
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
@@ -243,6 +244,8 @@ pub enum TransactionStorageError {
     TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
+    #[error("Db error: `{0}`")]
+    SqliteStorageError(#[from] SqliteStorageError),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

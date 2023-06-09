@@ -1,0 +1,9 @@
+[dan_wallet_daemon]
+# JSON-RPC listener address (default = "127.0.0.1:9000")
+# listen_addr = "127.0.0.1:9000"
+
+# Signaling server address (default = "127.0.0.1:9100")
+# signaling_server_addr = "127.0.0.1:9100"
+
+# Validator node endpoint url (default = "http://127.0.0.1:18200/json_rpc")
+# validator_node_endpoint = "http://127.0.0.1:18200/json_rpc"

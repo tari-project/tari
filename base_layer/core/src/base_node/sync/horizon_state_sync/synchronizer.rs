@@ -606,7 +606,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     // in the output MMR
                     let bitmap = self.full_bitmap_mut();
                     bitmap.or_inplace(&diff_bitmap);
-                    bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
                     let output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;

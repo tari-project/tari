@@ -1,8 +1,20 @@
+[target.x86_64-linux-android]
+image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
+
 [target.x86_64-linux-android.env]
-passthrough = ["CFLAGS"]
+passthrough = [
+  "CFLAGS",
+  "TARI_NETWORK",
+]
+
+[target.aarch64-linux-android]
+image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
 
 [target.aarch64-linux-android.env]
-passthrough = ["CFLAGS"]
+passthrough = [
+  "CFLAGS",
+  "TARI_NETWORK",
+]
 
 [target.aarch64-unknown-linux-gnu]
 image = "ubuntu:18.04"
@@ -49,4 +61,5 @@ passthrough = [
   "CARGO_BUILD_TARGET",
   "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc",
   "BINDGEN_EXTRA_CLANG_ARGS=--sysroot /usr/aarch64-linux-gnu/include/",
+  "TARI_NETWORK",
 ]

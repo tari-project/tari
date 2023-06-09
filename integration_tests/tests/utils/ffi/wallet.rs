@@ -54,7 +54,7 @@ use super::{
     PublicKeys,
     WalletAddress,
 };
-use crate::utils::ffi::callbacks;
+use crate::utils::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
 extern "C" fn callback_received_transaction(ptr: *mut TariPendingInboundTransaction) {
     let callbacks = Callbacks::instance();
@@ -136,6 +136,11 @@ extern "C" fn callback_connectivity_status(status: u64) {
     callbacks.on_connectivity_status(status);
     // println!("callback_connectivity_status");
 }
+extern "C" fn callback_base_node_state(state: *mut TariBaseNodeState) {
+    let callbacks = Callbacks::instance();
+    callbacks.on_basenode_state_update(state);
+    // println!("callback_base_node_state");
+}
 
 #[derive(Default, Debug)]
 struct CachedBalance {
@@ -188,6 +193,7 @@ impl Wallet {
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_base_node_state,
                 &mut recovery_in_progress,
                 &mut error,
             );

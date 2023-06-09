@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2018"
 
 [dependencies]
@@ -14,8 +14,8 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_app_grpc = { path = "../tari_app_grpc" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag="v0.4.10" }
+tari_crypto = { version = "0.16.11"}
+tari_utilities = "0.4.10"
 
 borsh = "0.9.3"
 crossterm = { version = "0.25.0" }

@@ -39,6 +39,11 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_contacts::contacts_service::{
+    handle::ContactsServiceHandle,
+    storage::database::ContactsBackend,
+    ContactsServiceInitializer,
+};
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
@@ -57,6 +62,7 @@ use tari_crypto::{
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerHandle, KeyManagerInitializer},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -77,9 +83,8 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
+    consts,
     error::{WalletError, WalletStorageError},
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -95,7 +100,6 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
-    types::KeyDigest,
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
@@ -273,6 +277,13 @@ where
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
             wallet_database.set_comms_identity_signature(identity_sig)?;
+        }
+
+        // storing current network and version
+        if let Err(e) = wallet_database
+            .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
+        {
+            warn!("failed to store network and version: {:#?}", e);
         }
 
         Ok(Self {

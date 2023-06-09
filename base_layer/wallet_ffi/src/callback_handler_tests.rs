@@ -7,7 +7,7 @@ mod test {
         mem::size_of,
         sync::{Arc, Mutex},
         thread,
-        time::Duration,
+        time::{Duration, SystemTime},
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -15,11 +15,18 @@ mod test {
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
+        chain_metadata::ChainMetadata,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
+    use tari_comms::peer_manager::NodeId;
     use tari_comms_dht::event::DhtEvent;
+    use tari_contacts::contacts_service::{
+        handle::{ContactsLivenessData, ContactsLivenessEvent},
+        service::{ContactMessageType, ContactOnlineStatus},
+        storage::database::Contact,
+    };
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
         transaction_components::Transaction,
@@ -30,12 +37,8 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
+        base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
         connectivity_service::OnlineStatus,
-        contacts_service::{
-            handle::{ContactsLivenessData, ContactsLivenessEvent},
-            service::{ContactMessageType, ContactOnlineStatus},
-            storage::database::Contact,
-        },
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,
@@ -56,7 +59,11 @@ mod test {
         time::Instant,
     };
 
-    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
+    use crate::{
+        callback_handler::CallbackHandler,
+        ffi_basenode_state::TariBaseNodeState,
+        output_manager_service_mock::MockOutputManagerService,
+    };
 
     #[derive(Debug)]
     #[allow(clippy::struct_excessive_bools)]
@@ -84,6 +91,7 @@ mod test {
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
         pub connectivity_status_callback_called: u64,
+        pub base_node_state_changed_callback_invoked: bool,
     }
 
     impl CallbackState {
@@ -112,6 +120,7 @@ mod test {
                 tx_cancellation_callback_called_outbound: false,
                 saf_messages_received: false,
                 connectivity_status_callback_called: 0,
+                base_node_state_changed_callback_invoked: false,
             }
         }
     }
@@ -243,6 +252,13 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.connectivity_status_callback_called += status + 1;
         drop(lock);
+    }
+
+    unsafe extern "C" fn base_node_state_changed_callback(state: *mut TariBaseNodeState) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.base_node_state_changed_callback_invoked = true;
+        drop(lock);
+        drop(Box::from_raw(state))
     }
 
     #[test]
@@ -408,6 +424,7 @@ mod test {
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 
+        let (base_node_event_sender, base_node_event_receiver) = broadcast::channel(20);
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
@@ -442,6 +459,7 @@ mod test {
 
         let callback_handler = CallbackHandler::new(
             db,
+            base_node_event_receiver,
             transaction_event_receiver,
             oms_event_receiver,
             oms_handle,
@@ -466,14 +484,49 @@ mod test {
             transaction_validation_complete_callback,
             saf_messages_received_callback,
             connectivity_status_callback,
+            base_node_state_changed_callback,
         );
 
         runtime.spawn(callback_handler.start());
-        let mut callback_balance_updated = 0;
+
+        let ts_now = NaiveDateTime::from_timestamp_millis(
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64,
+        )
+        .unwrap();
+
+        let chain_metadata = ChainMetadata::new(1, Default::default(), 0, 0, 123, ts_now.timestamp_millis() as u64);
+
+        base_node_event_sender
+            .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
+                node_id: Some(NodeId::new()),
+                chain_metadata: Some(chain_metadata),
+                is_synced: Some(true),
+                updated: Some(NaiveDateTime::from_timestamp_millis(
+                    ts_now.timestamp_millis() - (60 * 1000),
+                ))
+                .unwrap(),
+                latency: Some(Duration::from_micros(500)),
+            })))
+            .unwrap();
+
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            let lock = CALLBACK_STATE.lock().unwrap();
+
+            if lock.base_node_state_changed_callback_invoked {
+                break;
+            }
+        }
+        assert!(CALLBACK_STATE.lock().unwrap().base_node_state_changed_callback_invoked);
 
         // The balance updated callback is bundled with other callbacks and will only fire if the balance actually
         // changed from an initial zero balance.
         // Balance updated should be detected with following event, total = 1 times
+        let mut callback_balance_updated = 0;
+
         transaction_event_sender
             .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64.into())))
             .unwrap();

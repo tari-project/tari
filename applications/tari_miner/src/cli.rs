@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -36,4 +37,13 @@ pub struct Cli {
     pub miner_min_diff: Option<u64>,
     #[clap(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
+}
+
+impl ConfigOverrideProvider for Cli {
+    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(default_network);
+        let network = self.common.network.unwrap_or(default_network);
+        overrides.push(("miner.network".to_string(), network.to_string()));
+        overrides
+    }
 }

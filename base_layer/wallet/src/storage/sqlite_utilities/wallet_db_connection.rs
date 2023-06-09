@@ -26,9 +26,10 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-
-use crate::error::WalletStorageError;
+use tari_common_sqlite::{
+    error::SqliteStorageError,
+    sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
+};
 
 #[derive(Clone)]
 pub struct WalletDbConnection {
@@ -43,12 +44,13 @@ impl WalletDbConnection {
             _file_lock: Arc::new(file_lock),
         }
     }
+}
 
-    pub fn get_pooled_connection(
-        &self,
-    ) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, WalletStorageError> {
-        self.pool
-            .get_pooled_connection()
-            .map_err(WalletStorageError::DieselR2d2Error)
+impl PooledDbConnection for WalletDbConnection {
+    type Error = SqliteStorageError;
+
+    fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error> {
+        let conn = self.pool.get_pooled_connection()?;
+        Ok(conn)
     }
 }

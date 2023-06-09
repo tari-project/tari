@@ -40,13 +40,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
-use tari_common::{
-    configuration::{
-        bootstrap::{grpc_default_port, ApplicationType},
-        Network,
-    },
-    SubConfigPath,
-};
+use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 
@@ -54,9 +48,9 @@ use tari_comms::multiaddr::Multiaddr;
 #[serde(deny_unknown_fields)]
 pub struct MinerConfig {
     /// GRPC address of base node
-    pub base_node_grpc_address: Multiaddr,
+    pub base_node_grpc_address: Option<Multiaddr>,
     /// GRPC address of console wallet
-    pub wallet_grpc_address: Multiaddr,
+    pub wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
     pub wallet_grpc_authentication: GrpcAuthentication,
     /// Number of mining threads
@@ -79,6 +73,8 @@ pub struct MinerConfig {
     /// Note that this data is publicly readable, but it is suggested you populate it so that
     /// pool dominance can be seen before any one party has more than 51%.
     pub coinbase_extra: String,
+    /// Selected network
+    pub network: Network,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -95,13 +91,9 @@ impl SubConfigPath for MinerConfig {
 
 impl Default for MinerConfig {
     fn default() -> Self {
-        let default_base_node_port = grpc_default_port(ApplicationType::BaseNode, Network::default());
-        let default_wallet_port = grpc_default_port(ApplicationType::ConsoleWallet, Network::default());
         Self {
-            base_node_grpc_address: format!("/ip4/127.0.0.1/tcp/{}", default_base_node_port)
-                .parse()
-                .unwrap(),
-            wallet_grpc_address: format!("/ip4/127.0.0.1/tcp/{}", default_wallet_port).parse().unwrap(),
+            base_node_grpc_address: None,
+            wallet_grpc_address: None,
             wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
@@ -111,6 +103,7 @@ impl Default for MinerConfig {
             mining_wallet_address: String::new(),
             mining_worker_name: String::new(),
             coinbase_extra: "tari_miner".to_string(),
+            network: Default::default(),
         }
     }
 }
@@ -137,7 +130,10 @@ impl MinerConfig {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use tari_common::DefaultConfigLoader;
+    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MinerConfig;
 
@@ -157,8 +153,8 @@ mine_on_tip_only = false
         assert_eq!(config.num_mining_threads, 2);
         assert_eq!(config.wallet_grpc_address, MinerConfig::default().wallet_grpc_address);
         assert_eq!(
-            config.base_node_grpc_address.to_string(),
-            "/dns4/my_base_node/tcp/1234".to_string()
+            config.base_node_grpc_address,
+            Some(Multiaddr::from_str("/dns4/my_base_node/tcp/1234").unwrap())
         );
         assert!(!config.mine_on_tip_only);
     }
