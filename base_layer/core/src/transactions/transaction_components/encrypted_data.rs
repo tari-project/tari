@@ -105,7 +105,7 @@ impl EncryptedData {
         data[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK].clone_from_slice(bytes.as_slice());
         data[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..].clone_from_slice(&tag);
 
-        EncryptedData::from_bytes(data.as_slice())
+        Ok(Self { data })
     }
 
     /// Authenticate and decrypt the value and mask
@@ -173,7 +173,7 @@ impl EncryptedData {
             self.to_hex()
         } else {
             let encrypted_data_hex = self.to_hex();
-            if encrypted_data_hex.len() > DISPLAY_CUTOFF {
+            if encrypted_data_hex.len() > 2 * DISPLAY_CUTOFF {
                 format!(
                     "Some({}..{})",
                     &encrypted_data_hex[0..DISPLAY_CUTOFF],
