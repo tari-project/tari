@@ -1,0 +1,62 @@
+name: Test Results for CI
+
+on:
+  workflow_run:
+    workflows: ["CI", "Integration Tests"]
+    types:
+      - completed
+permissions: {}
+
+jobs:
+  test-results:
+    name: Test Results
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion != 'skipped'
+
+    permissions:
+      checks: write
+
+      # needed unless run with comment_mode: off
+      pull-requests: write
+
+      # required by download step to access artifacts API
+      actions: read
+
+    steps:
+      - name: Download and Extract Artifacts
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: |
+          mkdir -p artifacts && cd artifacts
+          
+          artifacts_url=${{ github.event.workflow_run.artifacts_url }}
+          
+          gh api --paginate "$artifacts_url" -q '.artifacts[] | [.name, .archive_download_url] | @tsv' | while read artifact
+          do
+            IFS=$'\t' read name url <<< "$artifact"
+            gh api $url > "$name.zip"
+            unzip -d "$name" "$name.zip"
+          done
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          commit: ${{ github.event.workflow_run.head_sha }}
+          event_file: artifacts/Event File/event.json
+          check_name: "Test Results (${{ github.event.workflow_run.name || github.event_name }})"
+          event_name: ${{ github.event.workflow_run.event }}
+          files: "artifacts/**/*.xml"
+
+      - name: Publish Test Report 2
+        uses: mikepenz/action-junit-report@v3
+        if: always()
+        with:
+          report_paths: "artifacts/**/*.xml"
+
+      - name: Publish Test Report 3
+        uses: dorny/test-reporter@v1
+        with:
+              artifact: test-results            # artifact name
+              name: JEST Tests                  # Name of the check run which will be created
+              path: "artifacts/**/*.xml"    # Path to test results
+              reporter: jest-junit        # Format of test results

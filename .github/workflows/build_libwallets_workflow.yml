@@ -15,6 +15,10 @@ name: Build libwallet - workflow_call/on-demand
         description: 'Rust toolchain'
         default: 'stable'
 
+env:
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  TARI_NETWORK_CHANGELOG: "development"
+
 jobs:
   android_build:
     name: Build Android
@@ -37,43 +41,30 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          tagnet=${{github.ref_name}}
-          echo $tagnet
-          # case match is not RegEx, but wildcards/globs
-          case "$tagnet" in
-            v*-pre.*) TARI_NETWORK=esme
-              ;;
-            v*-rc.*) TARI_NETWORK=nextnet
-              ;;
-            *) TARI_NETWORK=mainnet
-              ;;
-          esac
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
+          echo ${TARI_NETWORK_CHANGELOG}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo "TARI_NETWORK_CHANGELOG=${TARI_NETWORK_CHANGELOG}" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ inputs.toolchain }}
-          target: ${{ matrix.build }}
-          override: true
+          targets: ${{ matrix.build }}
 
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v2
 
       - name: Build libwallet libraries
-        uses: actions-rs/cargo@v1
         env:
           CFLAGS: "-DMDB_USE_ROBUST=0"
-        with:
-          use-cross: true
-          command: build
-          args: >
-            --lib
-            --release
-            --package tari_wallet_ffi
+        shell: bash
+        run: |
+          cargo install cross
+          cross build --lib --release \
+            --package tari_wallet_ffi \
             --target=${{ matrix.build }}
 
       - name: Prepare libwallet libraries
@@ -87,12 +78,16 @@ jobs:
           cd "${{ runner.temp }}/libwallet-android-${target_platform}"
           cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.android_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          cp -v "$GITHUB_WORKSPACE/changelog.md" .
+          if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
+            cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
+            TARI_NETWORK_CHANGELOG_FILE=libwallet-android-${target_platform}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md
+            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          fi
           cd ..
           shasum -a 256 \
             "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.a" \
-            "libwallet-android-${target_platform}/libtari_wallet_ffi.h" \
-              > "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.sha256sums"
+            "libwallet-android-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+              > "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-android-${target_platform}"
 
       - name: Upload artifacts
@@ -123,28 +118,18 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          tagnet=${{github.ref_name}}
-          echo $tagnet
-          # case match is not RegEx, but wildcards/globs
-          case "$tagnet" in
-            v*-pre.*) TARI_NETWORK=esme
-              ;;
-            v*-rc.*) TARI_NETWORK=nextnet
-              ;;
-            *) TARI_NETWORK=mainnet
-              ;;
-          esac
+          source buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
+          echo ${TARI_NETWORK_CHANGELOG}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo "TARI_NETWORK_CHANGELOG=${TARI_NETWORK_CHANGELOG}" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           components: rustfmt, clippy
           toolchain: ${{ inputs.toolchain }}
-          target: ${{ matrix.build }}
-          override: true
+          targets: ${{ matrix.build }}
 
       - name: Install macOS dependencies
         run: brew install cmake coreutils
@@ -153,14 +138,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build libwallet libraries
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: >
-            --lib
-            --release
-            --package tari_wallet_ffi
+        shell: bash
+        run: |
+          rustup target add ${{ matrix.build }}
+          cargo build --lib --release \
+            --package tari_wallet_ffi \
             --target=${{ matrix.build }}
 
       - name: Prepare libwallet libraries
@@ -174,12 +156,17 @@ jobs:
           cd "${{ runner.temp }}/libwallet-ios-${target_platform}"
           cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.ios_${target_platform}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          cp -v "$GITHUB_WORKSPACE/changelog.md" .
+          if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
+            cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
+            TARI_NETWORK_CHANGELOG_FILE=libwallet-ios-${target_platform}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md
+            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          fi
+
           cd ..
           shasum -a 256 \
             "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.a" \
-            "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" \
-              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256sums"
+            "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
 
       - name: Upload artifacts
@@ -192,6 +179,7 @@ jobs:
     name: Assemble iOS universal
     if: ${{ inputs.build_ios == 'true' }}
     needs: ios_build
+
     strategy:
       fail-fast: false
 
@@ -211,29 +199,45 @@ jobs:
         working-directory: libwallets
         run: |
           ls -alhtR
-          find . -name "*.sha256sums" -type f -print | xargs cat >> libwallets.txt.sha256sums-verify
-          cat libwallets.txt.sha256sums-verify
-          sha256sum -c libwallets.txt.sha256sums-verify
+          find . -name "*.sha256" -type f -print | xargs cat >> libwallets.txt.sha256-verify
+          cat libwallets.txt.sha256-verify
+          sha256sum -c libwallets.txt.sha256-verify
 
       - name: Assemble iOS universal libwallet
         shell: bash
         working-directory: libwallets
         run: |
-          ls -alht
+          ls -alhtR
           mkdir libwallet-ios-universal
           cp -v "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
             libwallet-ios-universal/
-          cp -v "libwallet-ios-x86_64/changelog.md" \
-            libwallet-ios-universal/
+          echo "Check for changelog"
+          if [ -f libwallet-ios-x86_64/changelog-*.md ]; then
+            echo "Changelog found"
+            envChangelogFull=$(ls libwallet-ios-x86_64/changelog-*.md)
+            echo ${envChangelogFull}
+            # Strip suffix
+            #envChangelog=${envChangelogFull::-3}
+            envChangelog=${envChangelogFull:0:${#envChangelogFull}-3}
+            echo ${envChangelog}
+            # Strip prefix
+            TARI_NETWORK_CHANGELOG=${envChangelog##*/changelog-}
+            echo ${TARI_NETWORK_CHANGELOG}
+            cp -v "libwallet-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" libwallet-ios-universal/
+            TARI_NETWORK_CHANGELOG_FILE=libwallet-ios-universal/changelog-${TARI_NETWORK_CHANGELOG}.md
+            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          else
+            echo "No changelog found"
+          fi
           lipo -create \
             "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
             "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
               -output "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a"
           shasum -a 256 \
             "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a" \
-            "libwallet-ios-universal/libtari_wallet_ffi.h" \
-              > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256sums"
-          ls -alht
+            "libwallet-ios-universal/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+              > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256"
+          ls -alhtR
 
       - name: Upload iOS universal libwallet artifacts
         uses: actions/upload-artifact@v3
@@ -245,15 +249,31 @@ jobs:
         shell: bash
         working-directory: libwallets
         run: |
-          ls -alht
+          ls -alhtR
           mkdir libwallet-ios-universal-sim
           lipo -create \
             "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
             "libwallet-ios-aarch64-sim/libtari_wallet_ffi.ios_aarch64-sim.a" \
               -output "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a"
           mkdir libwallet-ios-xcframework
-          cp -v "libwallet-ios-x86_64/changelog.md" \
-            libwallet-ios-xcframework/
+          echo "Check for changelog"
+          if [ -f libwallet-ios-x86_64/changelog-*.md ]; then
+            echo "Changelog found"
+            envChangelogFull=$(ls libwallet-ios-x86_64/changelog-*.md)
+            echo ${envChangelogFull}
+            # Strip suffix
+            #envChangelog=${envChangelogFull::-3}
+            envChangelog=${envChangelogFull:0:${#envChangelogFull}-3}
+            echo ${envChangelog}
+            # Strip prefix
+            TARI_NETWORK_CHANGELOG=${envChangelog##*/changelog-}
+            echo ${TARI_NETWORK_CHANGELOG}
+            cp -v "libwallet-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" libwallet-ios-xcframework/
+            TARI_NETWORK_CHANGELOG_FILE=libwallet-ios-xcframework/changelog-${TARI_NETWORK_CHANGELOG}.md
+            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          else
+            echo "No changelog found"
+          fi
           xcodebuild -create-xcframework \
             -library "libwallet-ios-universal-sim/libtari_wallet_ffi.ios_universal-sim.a" \
               -headers "libwallet-ios-x86_64/libtari_wallet_ffi.h" \
@@ -266,8 +286,9 @@ jobs:
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/libtari_wallet_ffi.ios_aarch64.a" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/libtari_wallet_ffi.ios_universal-sim.a" \
-              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256sums"
-          ls -alht
+            "${TARI_NETWORK_CHANGELOG_FILE}" \
+              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256"
+          ls -alhtR
 
       - name: Upload iOS xcframework libwallet artifacts
         uses: actions/upload-artifact@v3
