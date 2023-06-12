@@ -72,21 +72,22 @@ jobs:
         run: |
           target_temp=${{ matrix.build }}
           # Strip '-linux-android'
-          target_platform=$(echo "${target_temp/-linux-android*/}")
+          target_platform=${target_temp/-linux-android*/}
           echo "target_platform=${target_platform}" >> $GITHUB_ENV
+          echo "${target_platform}"
           mkdir -p "${{ runner.temp }}/libwallet-android-${target_platform}"
           cd "${{ runner.temp }}/libwallet-android-${target_platform}"
-          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.android_${target_platform}.a"
-          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
-            cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
-            TARI_NETWORK_CHANGELOG_FILE=libwallet-android-${target_platform}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md
-            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          cp -v "${GITHUB_WORKSPACE}/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.android_${target_platform}.a"
+          cp -v "${GITHUB_WORKSPACE}/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
+          ls -alht "${GITHUB_WORKSPACE}"
+          if [ -f ${GITHUB_WORKSPACE}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md ]; then
+            cp -v "${GITHUB_WORKSPACE}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
           fi
           cd ..
+          ls -alht "libwallet-android-${target_platform}"
+          # In a subfolder for releases
           shasum -a 256 \
-            "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.a" \
-            "libwallet-android-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+            "libwallet-android-${target_platform}"/* \
               > "libwallet-android-${target_platform}/libtari_wallet_ffi.android_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-android-${target_platform}"
 
@@ -150,22 +151,22 @@ jobs:
         run: |
           target_temp=${{ matrix.build }}
           # Strip '-apple-ios'
-          target_platform=$(echo "${target_temp/-apple-ios/}")
+          target_platform=${target_temp/-apple-ios/}
           echo "target_platform=${target_platform}" >> $GITHUB_ENV
+          echo "${target_platform}"
           mkdir -p "${{ runner.temp }}/libwallet-ios-${target_platform}"
           cd "${{ runner.temp }}/libwallet-ios-${target_platform}"
-          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.ios_${target_platform}.a"
-          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
-          if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
-            cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
-            TARI_NETWORK_CHANGELOG_FILE=libwallet-ios-${target_platform}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md
-            echo ${TARI_NETWORK_CHANGELOG_FILE}
+          cp -v "${GITHUB_WORKSPACE}/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.ios_${target_platform}.a"
+          cp -v "${GITHUB_WORKSPACE}/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
+          ls -alht "${GITHUB_WORKSPACE}"
+          if [ -f ${GITHUB_WORKSPACE}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md ]; then
+            cp -v "${GITHUB_WORKSPACE}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
           fi
-
           cd ..
+          ls -alht "libwallet-ios-${target_platform}"
+          # In a subfolder for releases
           shasum -a 256 \
-            "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.a" \
-            "libwallet-ios-${target_platform}/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+            "libwallet-ios-${target_platform}"/* \
               > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
 
@@ -224,8 +225,6 @@ jobs:
             TARI_NETWORK_CHANGELOG=${envChangelog##*/changelog-}
             echo ${TARI_NETWORK_CHANGELOG}
             cp -v "libwallet-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" libwallet-ios-universal/
-            TARI_NETWORK_CHANGELOG_FILE=libwallet-ios-universal/changelog-${TARI_NETWORK_CHANGELOG}.md
-            echo ${TARI_NETWORK_CHANGELOG_FILE}
           else
             echo "No changelog found"
           fi
@@ -233,9 +232,10 @@ jobs:
             "libwallet-ios-x86_64/libtari_wallet_ffi.ios_x86_64.a" \
             "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
               -output "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a"
+          ls -alhtR "libwallet-ios-universal"
+          # In a subfolder for releases
           shasum -a 256 \
-            "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.a" \
-            "libwallet-ios-universal/libtari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+            "libwallet-ios-universal"/* \
               > "libwallet-ios-universal/libtari_wallet_ffi.ios_universal.sha256"
           ls -alhtR
 
@@ -280,6 +280,8 @@ jobs:
             -library "libwallet-ios-aarch64/libtari_wallet_ffi.ios_aarch64.a" \
               -headers "libwallet-ios-aarch64/libtari_wallet_ffi.h" \
             -output libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework
+          ls -alhtR "libwallet-ios-xcframework"
+          # In a subfolder for releases
           shasum -a 256 \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/Info.plist" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64/Headers" \
@@ -287,7 +289,7 @@ jobs:
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
             "libwallet-ios-xcframework/libtari_wallet_ffi_ios.xcframework/ios-arm64_x86_64-simulator/libtari_wallet_ffi.ios_universal-sim.a" \
             "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256"
+              > "libwallet-ios-xcframework/libtari_wallet_ffi.ios_xcframework.sha256" || true
           ls -alhtR
 
       - name: Upload iOS xcframework libwallet artifacts
