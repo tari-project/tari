@@ -50,7 +50,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{WalletOutput, TransactionOutput},
+        transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
 };

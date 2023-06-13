@@ -46,7 +46,7 @@ use tari_core::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedData, WalletOutput, OutputFeatures, OutputType, TransactionOutput},
+        transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,

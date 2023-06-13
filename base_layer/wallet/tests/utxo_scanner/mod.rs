@@ -41,7 +41,7 @@ use tari_core::{
     test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{WalletOutput, OutputFeatures},
+        transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
     },
 };

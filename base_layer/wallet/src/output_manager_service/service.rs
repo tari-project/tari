@@ -44,13 +44,13 @@ use tari_core::{
         transaction_components::{
             EncryptedData,
             KernelFeatures,
-            WalletOutput,
-            WalletOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
+            WalletOutput,
+            WalletOutputBuilder,
         },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         CoinbaseBuilder,
@@ -671,7 +671,7 @@ where
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
-            .with_script_private_key(script_key_id))
+            .with_script_key(script_key_id))
     }
 
     fn get_balance(&self, current_tip_for_time_lock_calculation: Option<u64>) -> Result<Balance, OutputManagerError> {
@@ -1082,7 +1082,7 @@ where
                 .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
                 .await?;
             key_manager_output = key_manager_output
-                .sign_as_sender_and_receiver_using_key_id(&self.resources.key_manager, &sender_offset_key_id)
+                .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key_id)
                 .await?;
 
             let ub = key_manager_output.try_build()?;

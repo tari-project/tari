@@ -31,7 +31,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_components::{WalletOutput, TransactionOutput},
+        transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
 };
@@ -45,11 +45,7 @@ use crate::helpers::{
 
 /// Finds the UTXO in a block corresponding to the wallet output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
-async fn find_utxo(
-    output: &WalletOutput,
-    block: &Block,
-    key_manager: &TestKeyManager,
-) -> Option<TransactionOutput> {
+async fn find_utxo(output: &WalletOutput, block: &Block, key_manager: &TestKeyManager) -> Option<TransactionOutput> {
     let commitment = key_manager
         .get_commitment(&output.spending_key_id, &output.value.into())
         .await

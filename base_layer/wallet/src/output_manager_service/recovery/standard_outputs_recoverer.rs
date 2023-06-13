@@ -27,7 +27,7 @@ use tari_common_types::transaction::TxId;
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
     tari_amount::MicroTari,
-    transaction_components::{WalletOutput, TransactionOutput},
+    transaction_components::{TransactionOutput, WalletOutput},
 };
 use tari_script::{inputs, script, Opcode};
 use tari_utilities::hex::Hex;

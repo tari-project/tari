@@ -36,7 +36,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_components::{WalletOutput, Transaction},
+        transaction_components::{Transaction, WalletOutput},
     },
     txn_schema,
 };

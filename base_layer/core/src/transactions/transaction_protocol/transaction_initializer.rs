@@ -40,10 +40,10 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
-            WalletOutput,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
+            WalletOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
@@ -663,7 +663,7 @@ mod test {
             script!(Nop),
             Default::default(),
             change.script_key_id.clone(),
-            change.change_spend_key_id.clone(),
+            change.spend_key_id.clone(),
             Covenant::default(),
         );
         let result = builder.build().await.unwrap();
@@ -844,7 +844,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroTari(1))
@@ -892,7 +892,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroTari(1))
@@ -961,7 +961,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(fee_per_gram)

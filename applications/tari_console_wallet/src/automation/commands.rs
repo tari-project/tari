@@ -53,7 +53,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{WalletOutput, OutputFeatures, TransactionOutput},
+    transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};

@@ -1187,12 +1187,9 @@ where
             )))
             .with_covenant(covenant)
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_private_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_using_key_id(
-                &self.resources.core_key_manager_service,
-                &sender_offset_private_key,
-            )
+            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
             .await
             .unwrap()
             .try_build()
@@ -1372,12 +1369,9 @@ where
                 self.resources.wallet_identity.node_identity.secret_key()
             )))
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_private_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_using_key_id(
-                &self.resources.core_key_manager_service,
-                &sender_offset_private_key,
-            )
+            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
             .await?
             .try_build()?;
 
@@ -1605,7 +1599,7 @@ where
                     .sender_offset_public_key
                     .clone(),
             )
-            .with_script_private_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(
                 sender_message
                     .single()
@@ -1615,10 +1609,7 @@ where
                     ))?
                     .minimum_value_promise,
             )
-            .sign_as_sender_and_receiver_using_key_id(
-                &self.resources.core_key_manager_service,
-                &sender_offset_private_key,
-            )
+            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
             .await?
             .try_build()?;
 

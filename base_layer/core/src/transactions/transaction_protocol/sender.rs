@@ -41,13 +41,13 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             KernelBuilder,
-            WalletOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
+            WalletOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
@@ -856,10 +856,10 @@ mod test {
             test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
             transaction_components::{
                 EncryptedData,
-                WalletOutput,
                 OutputFeatures,
                 TransactionOutput,
                 TransactionOutputVersion,
+                WalletOutput,
             },
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
@@ -1032,7 +1032,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1209,7 +1209,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1317,7 +1317,7 @@ mod test {
                 script!(Nop),
                 inputs!(script_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1375,18 +1375,14 @@ mod test {
         let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_public_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1417,18 +1413,14 @@ mod test {
         let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_public_key),
                 change.script_key_id.clone(),
-                change.change_spend_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1465,18 +1457,14 @@ mod test {
 
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager_alice.clone());
         let change_params = TestParams::new(&key_manager_alice).await;
-        let script_key = key_manager_alice
-            .get_public_key_at_key_id(&change_params.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change_params.script_public_key),
                 change_params.script_key_id.clone(),
-                change_params.change_spend_key_id.clone(),
+                change_params.spend_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1555,12 +1543,12 @@ mod test {
             .try_commitment_key_recovery(&output_0.commitment, &output_0.encrypted_data, None)
             .await
         {
-            assert_eq!(key, change_params.change_spend_key_id);
+            assert_eq!(key, change_params.spend_key_id);
         } else if let Ok((key, _value)) = key_manager_alice
             .try_commitment_key_recovery(&output_1.commitment, &output_1.encrypted_data, None)
             .await
         {
-            assert_eq!(key, change_params.change_spend_key_id);
+            assert_eq!(key, change_params.spend_key_id);
         } else {
             panic!("Could not recover Alice's output");
         }

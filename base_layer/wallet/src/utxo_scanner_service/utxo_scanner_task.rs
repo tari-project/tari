@@ -46,7 +46,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{WalletOutput, TransactionOutput},
+        transaction_components::{TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;

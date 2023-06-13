@@ -38,7 +38,7 @@ use crate::{
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        transaction_components::{EncryptedData, WalletOutput, OutputFeatures, TransactionError},
+        transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
     },
 };
 

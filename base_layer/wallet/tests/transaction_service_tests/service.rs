@@ -107,10 +107,7 @@ use tari_crypto::{
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
-        storage::{
-            database::{KeyManagerBackend, KeyManagerDatabase},
-            sqlite_db::KeyManagerSqliteDatabase,
-        },
+        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
         KeyId,
         KeyManagerInterface,
     },
@@ -2500,7 +2497,8 @@ async fn test_transaction_cancellation() {
     .unwrap();
 
     let constants = create_consensus_constants(0);
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut builder = SenderTransactionProtocol::builder(constants, &key_manager);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -3309,7 +3307,8 @@ async fn test_restarting_transaction_protocols() {
     .await;
     let constants = create_consensus_constants(0);
     let fee_calc = Fee::new(*constants.transaction_weight());
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut builder = SenderTransactionProtocol::builder(constants, &key_manager);
     let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);
     let script_private_key = PrivateKey::random(&mut OsRng);
     builder
@@ -4655,7 +4654,8 @@ async fn test_resend_on_startup() {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut builder = SenderTransactionProtocol::builder(constants, &key_manager);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -5161,7 +5161,8 @@ async fn test_transaction_timeout_cancellation() {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut builder = SenderTransactionProtocol::builder(constants, &key_manager);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)

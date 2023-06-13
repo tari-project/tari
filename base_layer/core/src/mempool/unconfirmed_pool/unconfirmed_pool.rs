@@ -725,12 +725,12 @@ mod test {
         const INPUT_AMOUNT: MicroTari = MicroTari(5_000);
         let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1, &key_manager);
 
-        let test_params = TestParams::new(&key_manager).await;
-
         let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+
+        let change = TestParams::new(&key_manager).await;
         let script = script!(Nop);
         let script_key = key_manager
-            .get_public_key_at_key_id(&test_params.script_key_id)
+            .get_public_key_at_key_id(&change.script_key_id)
             .await
             .unwrap();
         let change_input_data = inputs!(script_key);
@@ -740,11 +740,12 @@ mod test {
             .with_change_data(
                 script,
                 change_input_data,
-                test_params.script_key_id.clone(),
-                test_params.change_spend_key_id.clone(),
+                change.script_key_id.clone(),
+                change.spend_key_id.clone(),
                 Covenant::default(),
             );
 
+        let test_params = TestParams::new(&key_manager).await;
         // Double spend the input from tx2 in tx3
         let double_spend_input = inputs.first().unwrap().clone();
 

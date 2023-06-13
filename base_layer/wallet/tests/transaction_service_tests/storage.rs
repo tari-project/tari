@@ -45,7 +45,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_script::{inputs, script, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -78,6 +78,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
     let amount = MicroTari::from(10_000);
     builder
@@ -99,9 +100,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let change = TestParams::new(&key_manager).await;
     builder.with_change_data(
         script!(Nop),
-        inputs!(script_key),
+        inputs!(change.script_public_key),
         change.script_key_id.clone(),
-        change.change_spend_key_id.clone(),
+        change.spend_key_id.clone(),
         Covenant::default(),
     );
 

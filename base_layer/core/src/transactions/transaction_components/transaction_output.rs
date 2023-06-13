@@ -61,12 +61,12 @@ use crate::{
         transaction_components,
         transaction_components::{
             EncryptedData,
-            WalletOutput,
             OutputFeatures,
             OutputType,
             RangeProofType,
             TransactionError,
             TransactionInput,
+            WalletOutput,
         },
         TransactionHashDomain,
     },

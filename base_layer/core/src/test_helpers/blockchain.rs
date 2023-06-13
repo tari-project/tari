@@ -80,7 +80,7 @@ use crate::{
         TestKeyManager,
     },
     transactions::{
-        transaction_components::{WalletOutput, TransactionInput, TransactionKernel},
+        transaction_components::{TransactionInput, TransactionKernel, WalletOutput},
         CryptoFactories,
     },
     validation::{

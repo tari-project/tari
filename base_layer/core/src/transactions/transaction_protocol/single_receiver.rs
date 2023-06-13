@@ -22,7 +22,7 @@
 
 use crate::transactions::{
     key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-    transaction_components::{WalletOutput, TransactionKernel, TransactionKernelVersion},
+    transaction_components::{TransactionKernel, TransactionKernelVersion, WalletOutput},
     transaction_protocol::{
         recipient::RecipientSignedMessage,
         sender::SingleRoundSenderData,
@@ -121,11 +121,11 @@ mod test {
             test_helpers::TestParams,
             transaction_components::{
                 EncryptedData,
-                WalletOutput,
                 OutputFeatures,
                 TransactionKernel,
                 TransactionKernelVersion,
                 TransactionOutput,
+                WalletOutput,
             },
             transaction_protocol::{
                 sender::SingleRoundSenderData,

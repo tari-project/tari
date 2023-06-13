@@ -31,11 +31,11 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
-            WalletOutput,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
+            WalletOutput,
         },
     },
 };
@@ -50,7 +50,7 @@ pub struct WalletOutputBuilder {
     script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
-    script_private_key_id: Option<TariKeyId>,
+    script_key_id: Option<TariKeyId>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
@@ -71,7 +71,7 @@ impl WalletOutputBuilder {
             script: None,
             covenant: Covenant::default(),
             input_data: None,
-            script_private_key_id: None,
+            script_key_id: None,
             sender_offset_public_key: None,
             metadata_signature: None,
             metadata_signed_by_receiver: false,
@@ -118,8 +118,8 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn with_script_private_key(mut self, script_private_key_id: TariKeyId) -> Self {
-        self.script_private_key_id = Some(script_private_key_id);
+    pub fn with_script_key(mut self, script_key_id: TariKeyId) -> Self {
+        self.script_key_id = Some(script_key_id);
         self
     }
 
@@ -149,7 +149,7 @@ impl WalletOutputBuilder {
         &self.covenant
     }
 
-    pub async fn sign_as_sender_and_receiver_using_key_id<KM: TransactionKeyManagerInterface>(
+    pub async fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -204,7 +204,7 @@ impl WalletOutputBuilder {
                 .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
             self.input_data
                 .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
-            self.script_private_key_id
+            self.script_key_id
                 .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
             self.sender_offset_public_key
                 .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
@@ -244,13 +244,13 @@ mod test {
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
         assert!(kmob.clone().try_build().is_err());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
-        let kmob = kmob.with_script_private_key(script_key_id);
+        let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver_using_key_id(&key_manager, &sender_offset_private_key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
             .await
             .unwrap();
         match kmob.clone().try_build() {
@@ -290,13 +290,13 @@ mod test {
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
-        let kmob = kmob.with_script_private_key(script_key_id);
+        let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver_using_key_id(&key_manager, &sender_offset_private_key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
             .await
             .unwrap();
         match kmob.clone().try_build() {

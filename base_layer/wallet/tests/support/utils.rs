@@ -27,7 +27,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-        transaction_components::{WalletOutput, OutputFeatures, TransactionInput},
+        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};

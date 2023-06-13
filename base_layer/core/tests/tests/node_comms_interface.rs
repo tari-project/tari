@@ -43,7 +43,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{WalletOutput, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput},
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},

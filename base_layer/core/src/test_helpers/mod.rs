@@ -48,7 +48,7 @@ use crate::{
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerWrapper},
-        transaction_components::{WalletOutput, Transaction},
+        transaction_components::{Transaction, WalletOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },

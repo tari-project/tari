@@ -37,7 +37,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedData, WalletOutput, OutputFeatures, OutputType},
+    transaction_components::{EncryptedData, OutputFeatures, OutputType, WalletOutput},
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;

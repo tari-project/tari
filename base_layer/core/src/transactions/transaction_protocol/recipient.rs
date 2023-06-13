@@ -30,7 +30,7 @@ use tari_common_types::{
 
 use crate::transactions::{
     key_manager::TransactionKeyManagerInterface,
-    transaction_components::{WalletOutput, TransactionOutput},
+    transaction_components::{TransactionOutput, WalletOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -207,39 +207,22 @@ mod test {
     async fn single_round_recipient() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
-        let receiver_test_params = TestParams::new(&key_manager).await;
         let sender_test_params = TestParams::new(&key_manager).await;
         let m = TransactionMetadata::new(MicroTari(125), 0);
         let script = TariScript::default();
         let amount = MicroTari(500);
-        let public_excess = key_manager
-            .get_public_key_at_key_id(&sender_test_params.spend_key_id)
-            .await
-            .unwrap();
-        let public_nonce = key_manager
-            .get_public_key_at_key_id(&sender_test_params.change_spend_key_id)
-            .await
-            .unwrap();
-        let sender_offset_public_key = key_manager
-            .get_public_key_at_key_id(&sender_test_params.sender_offset_key_id)
-            .await
-            .unwrap();
-        let ephemeral_public_nonce = key_manager
-            .get_public_key_at_key_id(&sender_test_params.ephemeral_public_nonce_key_id)
-            .await
-            .unwrap();
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
             amount,
-            public_excess: public_excess.clone(), // any random key will do
-            public_nonce,                         // any random key will do
+            public_excess: sender_test_params.spend_public_key, // any random key will do
+            public_nonce: sender_test_params.public_nonce_public_key, // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             features,
             script,
-            sender_offset_public_key,
-            ephemeral_public_nonce,
+            sender_offset_public_key: sender_test_params.sender_offset_public_key,
+            ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_public_key,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };
@@ -248,6 +231,7 @@ mod test {
             value: msg.amount,
             ..Default::default()
         };
+        let receiver_test_params = TestParams::new(&key_manager).await;
         let output = receiver_test_params.create_output(params, &key_manager).await.unwrap();
         let receiver = ReceiverTransactionProtocol::new(sender_info, output.clone(), &key_manager).await;
 

@@ -38,7 +38,6 @@ use crate::{
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
-            WalletOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
@@ -47,6 +46,7 @@ use crate::{
             TransactionKernelVersion,
             TransactionOutput,
             TransactionOutputVersion,
+            WalletOutput,
         },
         transaction_protocol::TransactionMetadata,
     },
