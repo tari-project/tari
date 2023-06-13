@@ -56,7 +56,7 @@ pub enum TxoStage {
 }
 
 #[derive(Clone, Copy, EnumIter)]
-pub enum CoreKeyManagerBranch {
+pub enum TransactionKeyManagerBranch {
     DataEncryption,
     Coinbase,
     CoinbaseScript,
@@ -65,23 +65,23 @@ pub enum CoreKeyManagerBranch {
     ScriptKey,
 }
 
-impl CoreKeyManagerBranch {
+impl TransactionKeyManagerBranch {
     /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
     /// recovery.
     pub fn get_branch_key(self) -> String {
         match self {
-            CoreKeyManagerBranch::DataEncryption => "core: data encryption".to_string(),
-            CoreKeyManagerBranch::Coinbase => "core: coinbase".to_string(),
-            CoreKeyManagerBranch::CoinbaseScript => "core: coinbase script".to_string(),
-            CoreKeyManagerBranch::CommitmentMask => "core: commitment mask".to_string(),
-            CoreKeyManagerBranch::Nonce => "core: nonce".to_string(),
-            CoreKeyManagerBranch::ScriptKey => "core: script key".to_string(),
+            TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
+            TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
+            TransactionKeyManagerBranch::CoinbaseScript => "coinbase script".to_string(),
+            TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
+            TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
+            TransactionKeyManagerBranch::ScriptKey => "script key".to_string(),
         }
     }
 }
 
 #[async_trait::async_trait]
-pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
+pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,

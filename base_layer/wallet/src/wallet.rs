@@ -47,8 +47,8 @@ use tari_contacts::contacts_service::{
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInitializer},
     transactions::{
+        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
@@ -140,7 +140,7 @@ where
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
@@ -193,7 +193,7 @@ where
                 config.network.into(),
                 wallet_identity.clone(),
             ))
-            .add_initializer(CoreKeyManagerInitializer::new(
+            .add_initializer(TransactionKeyManagerInitializer::new(
                 key_manager_backend,
                 master_seed,
                 factories.clone(),

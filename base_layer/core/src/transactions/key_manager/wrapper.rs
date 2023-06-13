@@ -44,27 +44,25 @@ use tari_key_manager::{
 };
 use tokio::sync::RwLock;
 
-use crate::{
-    transaction_key_manager::{
+use crate::transactions::{
+    key_manager::{
         interface::TxoStage,
-        BaseLayerKeyManagerInterface,
-        CoreKeyManagerBranch,
         TariKeyId,
+        TransactionKeyManagerBranch,
         TransactionKeyManagerInner,
+        TransactionKeyManagerInterface,
     },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{
-            EncryptedData,
-            KernelFeatures,
-            RangeProofType,
-            TransactionError,
-            TransactionInputVersion,
-            TransactionKernelVersion,
-            TransactionOutputVersion,
-        },
-        CryptoFactories,
+    tari_amount::MicroTari,
+    transaction_components::{
+        EncryptedData,
+        KernelFeatures,
+        RangeProofType,
+        TransactionError,
+        TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutputVersion,
     },
+    CryptoFactories,
 };
 
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
@@ -73,11 +71,11 @@ use crate::{
 ///
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
-pub struct TransactionKeyManager<TBackend> {
+pub struct TransactionKeyManagerWrapper<TBackend> {
     transaction_key_manager_inner: Arc<RwLock<TransactionKeyManagerInner<TBackend>>>,
 }
 
-impl<TBackend> TransactionKeyManager<TBackend>
+impl<TBackend> TransactionKeyManagerWrapper<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     /// Creates a new key manager.
@@ -88,7 +86,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
     ) -> Result<Self, KeyManagerServiceError> {
-        Ok(TransactionKeyManager {
+        Ok(TransactionKeyManagerWrapper {
             transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
                 master_seed,
                 db,
@@ -99,7 +97,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 }
 
 #[async_trait::async_trait]
-impl<TBackend> KeyManagerInterface<PublicKey> for TransactionKeyManager<TBackend>
+impl<TBackend> KeyManagerInterface<PublicKey> for TransactionKeyManagerWrapper<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
@@ -170,7 +168,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 }
 
 #[async_trait::async_trait]
-impl<TBackend> BaseLayerKeyManagerInterface for TransactionKeyManager<TBackend>
+impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     async fn get_commitment(
@@ -200,7 +198,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     async fn get_recovery_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.get_static_key(CoreKeyManagerBranch::DataEncryption.get_branch_key())
+        self.get_static_key(TransactionKeyManagerBranch::DataEncryption.get_branch_key())
             .await
     }
 

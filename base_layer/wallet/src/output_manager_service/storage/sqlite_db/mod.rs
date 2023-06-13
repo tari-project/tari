@@ -38,9 +38,9 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash},
 };
-use tari_core::{
-    transaction_key_manager::TariKeyId,
-    transactions::transaction_components::{OutputType, TransactionOutput},
+use tari_core::transactions::{
+    key_manager::TariKeyId,
+    transaction_components::{OutputType, TransactionOutput},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
@@ -1315,7 +1315,7 @@ mod test {
         transactions::{
             tari_amount::MicroTari,
             test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-            transaction_components::{KeyManagerOutput, OutputFeatures, TransactionInput},
+            transaction_components::{WalletOutput, OutputFeatures, TransactionInput},
         },
     };
     use tari_script::script;
@@ -1328,7 +1328,7 @@ mod test {
         OutputSource,
     };
 
-    pub async fn make_input(val: MicroTari, key_manager: &TestKeyManager) -> (TransactionInput, KeyManagerOutput) {
+    pub async fn make_input(val: MicroTari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParamsHelpers::new(key_manager).await;
 
         let key_manager_output = create_key_manager_output_with_data(

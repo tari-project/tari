@@ -39,8 +39,8 @@ use crate::{
         create_test_core_key_manager_with_memory_db,
         create_test_core_key_manager_with_memory_db_with_range_proof_size,
     },
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, TestParams, UtxoTestParams},

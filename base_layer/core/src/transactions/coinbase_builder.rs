@@ -32,13 +32,13 @@ use crate::{
         ConsensusConstants,
     },
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId, TxoStage},
     transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroTari},
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
@@ -96,7 +96,7 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
 }
 
 impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
-where TKeyManagerInterface: BaseLayerKeyManagerInterface
+where TKeyManagerInterface: TransactionKeyManagerInterface
 {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
@@ -169,7 +169,7 @@ where TKeyManagerInterface: BaseLayerKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
-    ) -> Result<(Transaction, KeyManagerOutput), CoinbaseBuildError> {
+    ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
         self.build_with_reward(constants, reward).await
@@ -187,7 +187,7 @@ where TKeyManagerInterface: BaseLayerKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         block_reward: MicroTari,
-    ) -> Result<(Transaction, KeyManagerOutput), CoinbaseBuildError> {
+    ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
@@ -209,7 +209,7 @@ where TKeyManagerInterface: BaseLayerKeyManagerInterface
         );
         let (public_nonce_id, public_nonce) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
 
         let public_spend_key = self.key_manager.get_public_key_at_key_id(&spending_key_id).await?;
@@ -253,7 +253,7 @@ where TKeyManagerInterface: BaseLayerKeyManagerInterface
         // replacement to calculate the script offset
         let (sender_offset_public_key_id, sender_offset_public_key) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
 
         let metadata_sig = self
@@ -268,7 +268,7 @@ where TKeyManagerInterface: BaseLayerKeyManagerInterface
             )
             .await?;
 
-        let key_manager_output = KeyManagerOutput::new(
+        let key_manager_output = WalletOutput::new(
             output_version,
             total_reward,
             spending_key_id,
@@ -524,8 +524,10 @@ mod test {
 
     use crate::{
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
-        transactions::transaction_components::TransactionKernelVersion,
+        transactions::{
+            key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+            transaction_components::TransactionKernelVersion,
+        },
     };
 
     #[tokio::test]
@@ -568,7 +570,7 @@ mod test {
         assert!(coinbase_kernel2.is_coinbase());
         coinbase_kernel2.features = KernelFeatures::empty();
         let (new_nonce, nonce) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(

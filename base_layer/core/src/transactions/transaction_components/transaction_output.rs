@@ -55,13 +55,13 @@ use crate::{
     borsh::SerializedSize,
     consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId},
     transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components,
         transaction_components::{
             EncryptedData,
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             OutputType,
             RangeProofType,
@@ -326,7 +326,7 @@ impl TransactionOutput {
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
-    pub async fn verify_mask_with_id<KM: BaseLayerKeyManagerInterface>(
+    pub async fn verify_mask_with_id<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
         prover: &RangeProofService,
@@ -420,7 +420,7 @@ impl TransactionOutput {
 
     /// Convenience function to get the entire metadata signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
-    pub fn metadata_signature_message(key_manager_output: &KeyManagerOutput) -> [u8; 32] {
+    pub fn metadata_signature_message(key_manager_output: &WalletOutput) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
             .chain(&key_manager_output.version)
             .chain(&key_manager_output.script)
@@ -443,7 +443,7 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
-        TransactionOutput::metadata_signature_message(&KeyManagerOutput {
+        TransactionOutput::metadata_signature_message(&WalletOutput {
             version: *version,
             script: script.clone(),
             features: features.clone(),
@@ -585,8 +585,8 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transaction_key_manager::BaseLayerKeyManagerInterface,
         transactions::{
+            key_manager::TransactionKeyManagerInterface,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, RangeProofType},

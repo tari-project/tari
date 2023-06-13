@@ -28,9 +28,9 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput},
 };
-use tari_core::{
-    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId},
-    transactions::transaction_components::KeyManagerOutput,
+use tari_core::transactions::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    transaction_components::WalletOutput,
 };
 use tari_script::{ExecutionStack, TariScript};
 
@@ -44,7 +44,7 @@ use crate::output_manager_service::{
 #[derive(Debug, Clone)]
 pub struct DbKeyManagerOutput {
     pub commitment: Commitment,
-    pub key_manager_output: KeyManagerOutput,
+    pub key_manager_output: WalletOutput,
     pub hash: HashOutput,
     pub status: OutputStatus,
     pub mined_height: Option<u64>,
@@ -60,8 +60,8 @@ pub struct DbKeyManagerOutput {
 }
 
 impl DbKeyManagerOutput {
-    pub async fn from_key_manager_output<KM: BaseLayerKeyManagerInterface>(
-        output: KeyManagerOutput,
+    pub async fn from_key_manager_output<KM: TransactionKeyManagerInterface>(
+        output: WalletOutput,
         key_manager: &KM,
         spend_priority: Option<SpendingPriority>,
         source: OutputSource,
@@ -87,8 +87,8 @@ impl DbKeyManagerOutput {
     }
 }
 
-impl From<DbKeyManagerOutput> for KeyManagerOutput {
-    fn from(value: DbKeyManagerOutput) -> KeyManagerOutput {
+impl From<DbKeyManagerOutput> for WalletOutput {
+    fn from(value: DbKeyManagerOutput) -> WalletOutput {
         value.key_manager_output
     }
 }

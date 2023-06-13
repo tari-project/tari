@@ -41,9 +41,9 @@ use tari_core::{
         blockchain::{create_store_with_consensus_and_validators, create_test_db},
         create_test_core_key_manager_with_memory_db,
     },
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
         aggregated_body::AggregateBody,
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, T},
         test_helpers::{
             create_key_manager_output_with_data,
@@ -781,6 +781,7 @@ async fn test_block_sync_body_validator() {
     let new_block = db.prepare_new_block(template).unwrap();
     let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
     let err = {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err()
     };
@@ -799,6 +800,7 @@ async fn test_block_sync_body_validator() {
     let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap();
     }
@@ -822,6 +824,7 @@ async fn test_block_sync_body_validator() {
         "If this is not more than 400, then the next line should fail"
     );
     let err = {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
         err
@@ -841,6 +844,7 @@ async fn test_block_sync_body_validator() {
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, None, &key_manager).await;
     let new_block = db.prepare_new_block(template).unwrap();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -852,6 +856,7 @@ async fn test_block_sync_body_validator() {
     template.body = AggregateBody::new(template.body.inputs().clone(), output, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -888,6 +893,7 @@ async fn test_block_sync_body_validator() {
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -901,6 +907,7 @@ async fn test_block_sync_body_validator() {
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -922,6 +929,7 @@ async fn test_block_sync_body_validator() {
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -943,6 +951,7 @@ async fn test_block_sync_body_validator() {
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -954,6 +963,7 @@ async fn test_block_sync_body_validator() {
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
@@ -963,6 +973,7 @@ async fn test_block_sync_body_validator() {
     let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.output_mr = FixedHash::zero();
     {
+        // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }

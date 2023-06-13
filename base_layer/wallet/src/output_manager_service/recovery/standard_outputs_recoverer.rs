@@ -24,12 +24,10 @@ use std::time::Instant;
 
 use log::*;
 use tari_common_types::transaction::TxId;
-use tari_core::{
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{KeyManagerOutput, TransactionOutput},
-    },
+use tari_core::transactions::{
+    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+    tari_amount::MicroTari,
+    transaction_components::{WalletOutput, TransactionOutput},
 };
 use tari_script::{inputs, script, Opcode};
 use tari_utilities::hex::Hex;
@@ -54,7 +52,7 @@ pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(master_key_manager: TKeyManagerInterface, db: OutputManagerDatabase<TBackend>) -> Self {
         Self { master_key_manager, db }
@@ -71,7 +69,7 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<KeyManagerOutput> = Vec::new();
+        let mut rewound_outputs: Vec<WalletOutput> = Vec::new();
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
@@ -91,11 +89,11 @@ where
             } else {
                 let (key, public_key) = self
                     .master_key_manager
-                    .get_next_key(CoreKeyManagerBranch::ScriptKey.get_branch_key())
+                    .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
                     .await?;
                 (inputs!(public_key), key)
             };
-            let uo = KeyManagerOutput::new(
+            let uo = WalletOutput::new(
                 output.version,
                 committed_value,
                 spending_key,
@@ -191,7 +189,7 @@ where
     /// seen so far.
     async fn update_outputs_script_private_key_and_update_key_manager_index(
         &mut self,
-        output: &mut KeyManagerOutput,
+        output: &mut WalletOutput,
     ) -> Result<(), OutputManagerError> {
         let public_key = self
             .master_key_manager
@@ -200,27 +198,36 @@ where
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(CoreKeyManagerBranch::Coinbase.get_branch_key(), &public_key)
+                .find_key_index(TransactionKeyManagerBranch::Coinbase.get_branch_key(), &public_key)
                 .await?;
             TariKeyId::Managed {
-                branch: CoreKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                branch: TransactionKeyManagerBranch::CoinbaseScript.get_branch_key(),
                 index: found_index,
             }
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
+                .find_key_index(
+                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    &public_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), found_index)
+                .update_current_key_index_if_higher(
+                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    found_index,
+                )
                 .await?;
             self.master_key_manager
-                .update_current_key_index_if_higher(CoreKeyManagerBranch::ScriptKey.get_branch_key(), found_index)
+                .update_current_key_index_if_higher(
+                    TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+                    found_index,
+                )
                 .await?;
 
             TariKeyId::Managed {
-                branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+                branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
                 index: found_index,
             }
         };

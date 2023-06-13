@@ -27,11 +27,11 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
     test_helpers::TestKeyManager,
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_components::{KeyManagerOutput, TransactionOutput},
+        transaction_components::{WalletOutput, TransactionOutput},
     },
     txn_schema,
 };
@@ -43,10 +43,10 @@ use crate::helpers::{
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 
-/// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
+/// Finds the UTXO in a block corresponding to the wallet output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
 async fn find_utxo(
-    output: &KeyManagerOutput,
+    output: &WalletOutput,
     block: &Block,
     key_manager: &TestKeyManager,
 ) -> Option<TransactionOutput> {

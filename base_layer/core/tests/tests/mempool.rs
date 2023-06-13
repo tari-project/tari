@@ -33,9 +33,9 @@ use tari_core::{
     proof_of_work::Difficulty,
     proto,
     test_helpers::create_test_core_key_manager_with_memory_db,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
     transactions::{
         fee::Fee,
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroTari, T},
         test_helpers::{
             create_key_manager_output_with_data,
@@ -1114,7 +1114,7 @@ async fn consensus_validation_large_tx() {
     let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
     let mut key_manager_outputs = Vec::with_capacity(output_count);
     let (input_kernel_nonce, mut pub_nonce) = key_manager
-        .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
         .await
         .unwrap();
     let mut pub_excess = PublicKey::default() -

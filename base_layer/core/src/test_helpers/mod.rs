@@ -46,9 +46,9 @@ use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
-    transaction_key_manager::{CoreKeyManagerBranch, TransactionKeyManager},
     transactions::{
-        transaction_components::{KeyManagerOutput, Transaction},
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerWrapper},
+        transaction_components::{WalletOutput, Transaction},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -57,7 +57,7 @@ use crate::{
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
-pub type TestKeyManager = TransactionKeyManager<KeyManagerSqliteDatabase<DbConnection>>;
+pub type TestKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
@@ -73,7 +73,7 @@ pub fn create_test_core_key_manager_with_memory_db_with_range_proof_size(size: u
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
 
-    TransactionKeyManager::<KeyManagerSqliteDatabase<DbConnection>>::new(
+    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
@@ -106,7 +106,7 @@ pub async fn create_block(
     prev_block: &Block,
     spec: BlockSpec,
     km: &TestKeyManager,
-) -> (Block, KeyManagerOutput) {
+) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
@@ -123,7 +123,7 @@ pub async fn create_block(
     });
 
     let spend_key_id = KeyId::Managed {
-        branch: CoreKeyManagerBranch::Coinbase.get_branch_key(),
+        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
         index: block_height,
     };
     let (coinbase, coinbase_output) = CoinbaseBuilder::new(km.clone())

@@ -26,12 +26,12 @@ use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId},
     transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
@@ -42,7 +42,7 @@ use crate::{
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
-pub struct KeyManagerOutputBuilder {
+pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
     value: MicroTari,
     spending_key_id: TariKeyId,
@@ -61,7 +61,7 @@ pub struct KeyManagerOutputBuilder {
 }
 
 #[allow(dead_code)]
-impl KeyManagerOutputBuilder {
+impl WalletOutputBuilder {
     pub fn new(value: MicroTari, spending_key_id: TariKeyId) -> Self {
         Self {
             version: TransactionOutputVersion::get_current_version(),
@@ -107,7 +107,7 @@ impl KeyManagerOutputBuilder {
         self
     }
 
-    pub async fn encrypt_data_for_recovery<KM: BaseLayerKeyManagerInterface>(
+    pub async fn encrypt_data_for_recovery<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         custom_recovery_key_id: Option<&TariKeyId>,
@@ -149,7 +149,7 @@ impl KeyManagerOutputBuilder {
         &self.covenant
     }
 
-    pub async fn sign_as_sender_and_receiver_using_key_id<KM: BaseLayerKeyManagerInterface>(
+    pub async fn sign_as_sender_and_receiver_using_key_id<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -184,7 +184,7 @@ impl KeyManagerOutputBuilder {
         Ok(self)
     }
 
-    pub fn try_build(self) -> Result<KeyManagerOutput, TransactionError> {
+    pub fn try_build(self) -> Result<WalletOutput, TransactionError> {
         if !self.metadata_signed_by_receiver {
             return Err(TransactionError::ValidationError(
                 "Cannot build output because it has not been signed by the receiver".to_string(),
@@ -195,7 +195,7 @@ impl KeyManagerOutputBuilder {
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
-        let ub = KeyManagerOutput::new(
+        let ub = WalletOutput::new(
             self.version,
             self.value,
             self.spending_key_id,
@@ -226,8 +226,7 @@ mod test {
     use super::*;
     use crate::{
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transaction_key_manager::CoreKeyManagerBranch,
-        transactions::CryptoFactories,
+        transactions::{key_manager::TransactionKeyManagerBranch, CryptoFactories},
     };
 
     #[tokio::test]
@@ -235,11 +234,11 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroTari(100);
-        let kmob = KeyManagerOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build().is_err());
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
@@ -283,10 +282,10 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroTari(100);
-        let kmob = KeyManagerOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
@@ -307,7 +306,7 @@ mod test {
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
                 let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
-                    .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
                     .await
                     .unwrap();
                 let metadata_message = TransactionOutput::metadata_signature_message(&key_manager_output);

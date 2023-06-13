@@ -45,7 +45,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
 use tari_core::{
     consensus::ConsensusManager,
-    core_key_manager::BaseLayerKeyManagerInterface,
+    core_key_manager::TransactionKeyManagerInterface,
     test_helpers::TestKeyManager,
     transactions::{transaction_components::UnblindedOutput, CoinbaseBuilder, CryptoFactories},
 };

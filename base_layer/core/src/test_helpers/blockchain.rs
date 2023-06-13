@@ -80,7 +80,7 @@ use crate::{
         TestKeyManager,
     },
     transactions::{
-        transaction_components::{KeyManagerOutput, TransactionInput, TransactionKernel},
+        transaction_components::{WalletOutput, TransactionInput, TransactionKernel},
         CryptoFactories,
     },
     validation::{
@@ -548,7 +548,7 @@ impl TestBlockchain {
     pub async fn append_chain(
         &mut self,
         block_specs: BlockSpecs,
-    ) -> Result<Vec<(Arc<ChainBlock>, KeyManagerOutput)>, ChainStorageError> {
+    ) -> Result<Vec<(Arc<ChainBlock>, WalletOutput)>, ChainStorageError> {
         let mut blocks = Vec::with_capacity(block_specs.len());
         for spec in block_specs {
             blocks.push(self.append(spec).await?);
@@ -556,7 +556,7 @@ impl TestBlockchain {
         Ok(blocks)
     }
 
-    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, KeyManagerOutput)> {
+    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, WalletOutput)> {
         let mut result = Vec::new();
         for spec in block_specs.into_iter() {
             result.push(self.create_chained_block(spec).await);
@@ -589,7 +589,7 @@ impl TestBlockchain {
     pub async fn add_block(
         &mut self,
         block_spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
         let name = block_spec.name;
         let (block, coinbase) = self.create_chained_block(block_spec).await;
         let result = self.append_block(name, block.clone())?;
@@ -600,7 +600,7 @@ impl TestBlockchain {
     pub async fn add_next_tip(
         &mut self,
         spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
         let name = spec.name;
         let (block, coinbase) = self.create_next_tip(spec).await;
         let result = self.append_block(name, block.clone())?;
@@ -626,7 +626,7 @@ impl TestBlockchain {
         self.chain.last().cloned().unwrap()
     }
 
-    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, KeyManagerOutput) {
+    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
         let parent = self
             .get_block_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
@@ -637,7 +637,7 @@ impl TestBlockchain {
         (block, coinbase)
     }
 
-    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, KeyManagerOutput) {
+    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, WalletOutput) {
         let parent = self
             .get_block_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
@@ -652,7 +652,7 @@ impl TestBlockchain {
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 
-    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, KeyManagerOutput) {
+    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
         let (name, _) = self.get_tip_block();
         self.create_chained_block(spec.with_parent_block(name)).await
     }
@@ -660,12 +660,12 @@ impl TestBlockchain {
     pub async fn append_to_tip(
         &mut self,
         spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
         let (tip, _) = self.get_tip_block();
         self.append(spec.with_parent_block(tip)).await
     }
 
-    pub async fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
+    pub async fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
         let name = spec.name;
         let (block, outputs) = self.create_chained_block(spec).await;
         self.append_block(name, block.clone())?;

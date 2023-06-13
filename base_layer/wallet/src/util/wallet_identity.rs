@@ -25,7 +25,7 @@ use std::{fmt, fmt::Display, sync::Arc};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeIdentity;
-use tari_core::transaction_key_manager::TariKeyId;
+use tari_core::transactions::key_manager::TariKeyId;
 
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {

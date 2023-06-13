@@ -31,8 +31,8 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            KeyManagerOutput,
-            KeyManagerOutputBuilder,
+            WalletOutput,
+            WalletOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -62,9 +62,9 @@ use crate::output_manager_service::{
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput((Box<KeyManagerOutput>, Option<SpendingPriority>)),
-    AddOutputWithTxId((TxId, Box<KeyManagerOutput>, Option<SpendingPriority>)),
-    AddUnvalidatedOutput((TxId, Box<KeyManagerOutput>, Option<SpendingPriority>)),
+    AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
+    AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
+    AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction {
@@ -96,7 +96,7 @@ pub enum OutputManagerRequest {
         lock_height: Option<u64>,
     },
     CreatePayToSelfWithOutputs {
-        outputs: Vec<KeyManagerOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
     },
@@ -246,8 +246,8 @@ pub enum OutputManagerResponse {
     TransactionCancelled,
     SpentOutputs(Vec<DbKeyManagerOutput>),
     UnspentOutputs(Vec<DbKeyManagerOutput>),
-    Outputs(Vec<KeyManagerOutput>),
-    InvalidOutputs(Vec<KeyManagerOutput>),
+    Outputs(Vec<WalletOutput>),
+    InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
@@ -257,7 +257,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<KeyManagerOutputBuilder> },
+    CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
@@ -305,7 +305,7 @@ pub struct PublicRewindKeys {
 #[derive(Debug, Clone)]
 pub struct RecoveredOutput {
     pub tx_id: TxId,
-    pub output: KeyManagerOutput,
+    pub output: WalletOutput,
 }
 
 #[derive(Clone)]
@@ -331,7 +331,7 @@ impl OutputManagerHandle {
 
     pub async fn add_output(
         &mut self,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -347,7 +347,7 @@ impl OutputManagerHandle {
     pub async fn add_output_with_tx_id(
         &mut self,
         tx_id: TxId,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -367,7 +367,7 @@ impl OutputManagerHandle {
     pub async fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -388,7 +388,7 @@ impl OutputManagerHandle {
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-    ) -> Result<KeyManagerOutputBuilder, OutputManagerError> {
+    ) -> Result<WalletOutputBuilder, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateOutputWithFeatures {
@@ -566,7 +566,7 @@ impl OutputManagerHandle {
     }
 
     // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<KeyManagerOutput>, OutputManagerError> {
+    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<WalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -749,7 +749,7 @@ impl OutputManagerHandle {
 
     pub async fn create_send_to_self_with_output(
         &mut self,
-        outputs: Vec<KeyManagerOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         input_selection: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {

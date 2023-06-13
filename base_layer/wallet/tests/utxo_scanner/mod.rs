@@ -41,7 +41,7 @@ use tari_core::{
     test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KeyManagerOutput, OutputFeatures},
+        transaction_components::{WalletOutput, OutputFeatures},
         CryptoFactories,
     },
 };
@@ -220,7 +220,7 @@ async fn setup(
 
 pub struct TestBlockData {
     block_headers: HashMap<u64, BlockHeader>,
-    key_manager_outputs: HashMap<u64, Vec<KeyManagerOutput>>,
+    key_manager_outputs: HashMap<u64, Vec<WalletOutput>>,
     utxos_by_block: Vec<UtxosByBlock>,
 }
 

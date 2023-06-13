@@ -37,15 +37,15 @@ use tari_core::{
     covenants::Covenant,
     one_sided::{shared_secret_to_output_encryption_key, stealth_address_script_spending_key},
     proto::base_node::FetchMatchingUtxos,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
     transactions::{
         fee::Fee,
+        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
-            KeyManagerOutput,
-            KeyManagerOutputBuilder,
+            WalletOutput,
+            WalletOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionError,
@@ -113,7 +113,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -594,7 +594,7 @@ where
     pub async fn add_output(
         &mut self,
         tx_id: Option<TxId>,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         debug!(
@@ -628,7 +628,7 @@ where
     pub async fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         debug!(
@@ -661,13 +661,13 @@ where
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-    ) -> Result<KeyManagerOutputBuilder, OutputManagerError> {
+    ) -> Result<WalletOutputBuilder, OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
         let input_data = inputs!(script_public_key);
         let script = script!(Nop);
 
-        Ok(KeyManagerOutputBuilder::new(value, spending_key_id)
+        Ok(WalletOutputBuilder::new(value, spending_key_id)
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
@@ -728,7 +728,7 @@ where
             )
             .await?;
 
-        let key_kanager_output = KeyManagerOutput::new_current_version(
+        let key_kanager_output = WalletOutput::new_current_version(
             single_round_sender_data.amount,
             spending_key_id.clone(),
             single_round_sender_data.features.clone(),
@@ -975,12 +975,12 @@ where
         let (coinbase_spending_key, _) = self
             .resources
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Coinbase.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
         let (coinbase_script_key, _) = self
             .resources
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::CoinbaseScript.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
 
         let (tx, key_manager_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
@@ -1021,7 +1021,7 @@ where
 
     async fn create_pay_to_self_containing_outputs(
         &mut self,
-        outputs: Vec<KeyManagerOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
@@ -1079,7 +1079,7 @@ where
             let (sender_offset_key_id, _) = self
                 .resources
                 .key_manager
-                .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+                .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
                 .await?;
             key_manager_output = key_manager_output
                 .sign_as_sender_and_receiver_using_key_id(&self.resources.key_manager, &sender_offset_key_id)
@@ -1876,7 +1876,7 @@ where
         let (sender_offset_key_id, sender_offset_public_key) = self
             .resources
             .key_manager
-            .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let metadata_signature = self
             .resources
@@ -1892,7 +1892,7 @@ where
             .await?;
 
         let output = DbKeyManagerOutput::from_key_manager_output(
-            KeyManagerOutput::new_current_version(
+            WalletOutput::new_current_version(
                 amount,
                 spending_key_id,
                 output_features,
@@ -2066,7 +2066,7 @@ where
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
-                let rewound_output = KeyManagerOutput::new(
+                let rewound_output = WalletOutput::new(
                     output.version,
                     amount,
                     spending_key_id,
@@ -2362,7 +2362,7 @@ where
                     committed_value.into(),
                 )? {
                     let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
-                    let rewound_output = KeyManagerOutput::new(
+                    let rewound_output = WalletOutput::new(
                         output.version,
                         committed_value,
                         spending_key_id,

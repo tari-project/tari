@@ -35,13 +35,13 @@ use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId, TxoStage},
     transactions::{
         fee::Fee,
+        key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::*,
         transaction_components::{
             KernelBuilder,
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
@@ -63,7 +63,7 @@ use crate::{
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct OutputPair {
-    pub output: KeyManagerOutput,
+    pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
 }
@@ -154,7 +154,7 @@ impl SenderTransactionProtocol {
 
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
-    pub fn builder<KM: BaseLayerKeyManagerInterface>(
+    pub fn builder<KM: TransactionKeyManagerInterface>(
         consensus_constants: ConsensusConstants,
         key_manager: KM,
     ) -> SenderTransactionInitializer<KM> {
@@ -285,7 +285,7 @@ impl SenderTransactionProtocol {
     }
 
     /// This function will return the change output
-    pub fn get_change_output(&self) -> Result<Option<KeyManagerOutput>, TPE> {
+    pub fn get_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -329,7 +329,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Build the sender's message for the single-round protocol (one recipient) and move to next State
-    pub async fn build_single_round_message<KM: BaseLayerKeyManagerInterface>(
+    pub async fn build_single_round_message<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
     ) -> Result<SingleRoundSenderData, TPE> {
@@ -355,7 +355,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Return the single round sender message
-    pub async fn get_single_round_message<KM: BaseLayerKeyManagerInterface>(
+    pub async fn get_single_round_message<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
     ) -> Result<SingleRoundSenderData, TPE> {
@@ -405,7 +405,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    async fn calculate_total_nonce_and_total_public_excess<KM: BaseLayerKeyManagerInterface>(
+    async fn calculate_total_nonce_and_total_public_excess<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
     ) -> Result<(PublicKey, PublicKey), TPE> {
@@ -439,7 +439,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Add the signed transaction from the recipient and move to the next state
-    pub async fn add_single_recipient_info<KM: BaseLayerKeyManagerInterface>(
+    pub async fn add_single_recipient_info<KM: TransactionKeyManagerInterface>(
         &mut self,
         rec: RecipientSignedMessage,
         key_manager: &KM,
@@ -518,7 +518,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Attempts to build the final transaction.
-    async fn build_transaction<KM: BaseLayerKeyManagerInterface>(
+    async fn build_transaction<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
     ) -> Result<Transaction, TPE> {
@@ -698,7 +698,7 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub async fn finalize<KM: BaseLayerKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
+    pub async fn finalize<KM: TransactionKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
         match &self.state {
             SenderState::Finalizing(info) => {
                 if let Err(e) = self.validate() {
@@ -849,14 +849,14 @@ mod test {
             create_test_core_key_manager_with_memory_db,
             create_test_core_key_manager_with_memory_db_with_range_proof_size,
         },
-        transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
         transactions::{
             crypto_factories::CryptoFactories,
+            key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
             transaction_components::{
                 EncryptedData,
-                KeyManagerOutput,
+                WalletOutput,
                 OutputFeatures,
                 TransactionOutput,
                 TransactionOutputVersion,
@@ -928,12 +928,12 @@ mod test {
 
         // Sender data
         let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let value = 1000u64;
         let (sender_offset_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let txo_version = TransactionOutputVersion::get_current_version();
@@ -1119,7 +1119,7 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         let bob_public_key = msg.sender_offset_public_key.clone();
-        let mut bob_output = KeyManagerOutput::new_current_version(
+        let mut bob_output = WalletOutput::new_current_version(
             MicroTari(1200) - fee - MicroTari(10),
             bob_key.spend_key_id,
             OutputFeatures::default(),
@@ -1238,7 +1238,7 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         let bob_public_key = msg.sender_offset_public_key.clone();
-        let mut bob_output = KeyManagerOutput::new_current_version(
+        let mut bob_output = WalletOutput::new_current_version(
             MicroTari(5000),
             bob_key.spend_key_id,
             OutputFeatures::default(),
@@ -1339,7 +1339,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_public_key = msg.sender_offset_public_key.clone();
-        let bob_output = KeyManagerOutput::new_current_version(
+        let bob_output = WalletOutput::new_current_version(
             (2u64.pow(32) + 1).into(),
             bob_key.spend_key_id,
             OutputFeatures::default(),
@@ -1510,7 +1510,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
 
         let bob_public_key = msg.sender_offset_public_key.clone();
-        let bob_output = KeyManagerOutput::new_current_version(
+        let bob_output = WalletOutput::new_current_version(
             MicroTari(5000),
             bob_test_params.spend_key_id,
             OutputFeatures::default(),

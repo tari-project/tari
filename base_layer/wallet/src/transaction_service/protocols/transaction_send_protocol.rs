@@ -36,8 +36,8 @@ use tari_comms_dht::{
 };
 use tari_core::{
     covenants::Covenant,
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         transaction_components::OutputFeatures,
         transaction_protocol::{
@@ -106,7 +106,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         id: TxId,

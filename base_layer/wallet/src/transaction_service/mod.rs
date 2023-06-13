@@ -28,8 +28,11 @@ use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
-    transaction_key_manager::BaseLayerKeyManagerInterface,
-    transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
+    transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        transaction_protocol::proto::protocol as proto,
+        CryptoFactories,
+    },
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -76,7 +79,7 @@ pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface>
 where
     T: TransactionBackend,
     W: WalletBackend,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
@@ -92,7 +95,7 @@ impl<T, W, TKeyManagerInterface> TransactionServiceInitializer<T, W, TKeyManager
 where
     T: TransactionBackend,
     W: WalletBackend,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -187,7 +190,7 @@ impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitia
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();

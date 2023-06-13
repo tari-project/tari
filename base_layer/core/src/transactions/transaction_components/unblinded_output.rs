@@ -35,10 +35,10 @@ use tari_script::{ExecutionStack, TariScript};
 use super::TransactionOutputVersion;
 use crate::{
     covenants::Covenant,
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        transaction_components::{EncryptedData, KeyManagerOutput, OutputFeatures, TransactionError},
+        transaction_components::{EncryptedData, WalletOutput, OutputFeatures, TransactionError},
     },
 };
 
@@ -130,13 +130,13 @@ impl UnblindedOutput {
         )
     }
 
-    pub async fn to_wallet_output<KM: BaseLayerKeyManagerInterface>(
+    pub async fn to_wallet_output<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
-    ) -> Result<KeyManagerOutput, TransactionError> {
+    ) -> Result<WalletOutput, TransactionError> {
         let spending_key_id = key_manager.import_key(self.spending_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;
-        let key_manager_output = KeyManagerOutput {
+        let key_manager_output = WalletOutput {
             version: self.version,
             value: self.value,
             spending_key_id,

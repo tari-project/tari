@@ -36,8 +36,8 @@ use super::TransactionOutputVersion;
 use crate::{
     borsh::SerializedSize,
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId},
     transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components,
         transaction_components::{
@@ -53,12 +53,12 @@ use crate::{
     },
 };
 
-/// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
+/// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
 // TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
 // #LOGGED
 #[derive(Clone, Serialize, Deserialize)]
-pub struct KeyManagerOutput {
+pub struct WalletOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroTari,
     pub spending_key_id: TariKeyId,
@@ -74,8 +74,8 @@ pub struct KeyManagerOutput {
     pub minimum_value_promise: MicroTari,
 }
 
-impl KeyManagerOutput {
-    /// Creates a new un-blinded output
+impl WalletOutput {
+    /// Creates a new wallet output
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -142,7 +142,7 @@ impl KeyManagerOutput {
     }
 
     /// Commits an KeyManagerOutput into a Transaction input
-    pub async fn as_transaction_input<KM: BaseLayerKeyManagerInterface>(
+    pub async fn as_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
@@ -177,7 +177,7 @@ impl KeyManagerOutput {
     }
 
     /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
-    pub async fn as_compact_transaction_input<KM: BaseLayerKeyManagerInterface>(
+    pub async fn as_compact_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
@@ -191,7 +191,7 @@ impl KeyManagerOutput {
         ))
     }
 
-    pub async fn as_transaction_output<KM: BaseLayerKeyManagerInterface>(
+    pub async fn as_transaction_output<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
@@ -239,7 +239,7 @@ impl KeyManagerOutput {
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
     // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
-    pub async fn hash<KM: BaseLayerKeyManagerInterface>(
+    pub async fn hash<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
@@ -255,7 +255,7 @@ impl KeyManagerOutput {
         ))
     }
 
-    pub async fn commitment<KM: BaseLayerKeyManagerInterface>(
+    pub async fn commitment<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<Commitment, TransactionError> {
@@ -271,27 +271,27 @@ impl KeyManagerOutput {
 }
 
 // These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
-impl Eq for KeyManagerOutput {}
+impl Eq for WalletOutput {}
 
-impl PartialEq for KeyManagerOutput {
-    fn eq(&self, other: &KeyManagerOutput) -> bool {
+impl PartialEq for WalletOutput {
+    fn eq(&self, other: &WalletOutput) -> bool {
         self.value == other.value
     }
 }
 
-impl PartialOrd<KeyManagerOutput> for KeyManagerOutput {
+impl PartialOrd<WalletOutput> for WalletOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.value.partial_cmp(&other.value)
     }
 }
 
-impl Ord for KeyManagerOutput {
+impl Ord for WalletOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.value.cmp(&other.value)
     }
 }
 
-impl Debug for KeyManagerOutput {
+impl Debug for WalletOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyManagerOutput")
             .field("version", &self.version)

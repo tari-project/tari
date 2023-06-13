@@ -34,8 +34,8 @@ use tari_core::transactions::{
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
-        UnblindedOutput,
-        UnblindedOutputBuilder,
+        WalletOutput,
+        WalletOutputBuilder,
     },
     transaction_protocol::TransactionMetadata,
     CryptoFactories,
@@ -56,10 +56,10 @@ struct TestTransactionBuilder {
     factories: CryptoFactories,
     fee: MicroTari,
     inputs_max_height: u64,
-    inputs: Vec<(TransactionInput, UnblindedOutput)>,
+    inputs: Vec<(TransactionInput, WalletOutput)>,
     keys: TestParams,
     lock_height: u64,
-    output: Option<(TransactionOutput, UnblindedOutput)>,
+    output: Option<(TransactionOutput, WalletOutput)>,
 }
 
 impl TestTransactionBuilder {
@@ -90,7 +90,7 @@ impl TestTransactionBuilder {
         self.amount += amount
     }
 
-    pub fn add_input(&mut self, u: UnblindedOutput) -> &mut Self {
+    pub fn add_input(&mut self, u: WalletOutput) -> &mut Self {
         self.update_amount(u.value);
 
         if u.features.maturity > self.inputs_max_height {
@@ -106,7 +106,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    pub fn build(mut self) -> (Transaction, UnblindedOutput) {
+    pub fn build(mut self) -> (Transaction, WalletOutput) {
         self.create_non_recoverable_utxo();
 
         let (script_offset_pvt, offset, kernel) = &self.build_kernel();
@@ -169,7 +169,7 @@ impl TestTransactionBuilder {
     fn create_non_recoverable_utxo(&mut self) {
         let input_data: RistrettoPublicKey = PublicKey::from_secret_key(&self.keys.script_private_key);
 
-        let mut builder = KeyManagerOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
+        let mut builder = WalletOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
             .with_features(Default::default())
             .with_script(script!(Nop))
             .with_script_private_key(self.keys.script_private_key.clone())
@@ -178,16 +178,16 @@ impl TestTransactionBuilder {
         builder
             .sign_as_sender_and_receiver(&self.keys.sender_offset_private_key.clone())
             .expect("sign as sender and receiver");
-        let unblinded = builder.try_build().expect("Get output from unblinded output");
-        let utxo = unblinded
+        let wallet_output = builder.try_build().expect("Get output from wallet output");
+        let utxo = wallet_output
             .as_transaction_output(&self.factories)
-            .expect("unblinded into output");
+            .expect("wallet into output");
 
-        self.output = Some((utxo, unblinded));
+        self.output = Some((utxo, wallet_output));
     }
 }
 
-pub fn build_transaction_with_output_and_fee(utxos: Vec<UnblindedOutput>, fee: u64) -> (Transaction, UnblindedOutput) {
+pub fn build_transaction_with_output_and_fee(utxos: Vec<WalletOutput>, fee: u64) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new();
     for unblinded_output in utxos {
         builder.add_input(unblinded_output);
@@ -198,9 +198,9 @@ pub fn build_transaction_with_output_and_fee(utxos: Vec<UnblindedOutput>, fee: u
 }
 
 pub fn build_transaction_with_output_and_lockheight(
-    utxos: Vec<UnblindedOutput>,
+    utxos: Vec<WalletOutput>,
     lockheight: u64,
-) -> (Transaction, UnblindedOutput) {
+) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new();
     for unblinded_output in utxos {
         builder.add_input(unblinded_output);
@@ -210,7 +210,7 @@ pub fn build_transaction_with_output_and_lockheight(
     builder.build()
 }
 
-pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transaction, UnblindedOutput) {
+pub fn build_transaction_with_output(utxos: Vec<WalletOutput>) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new();
     for unblinded_output in utxos {
         builder.add_input(unblinded_output);

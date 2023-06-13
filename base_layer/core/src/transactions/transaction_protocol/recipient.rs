@@ -28,16 +28,14 @@ use tari_common_types::{
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 
-use crate::{
-    transaction_key_manager::BaseLayerKeyManagerInterface,
-    transactions::{
-        transaction_components::{KeyManagerOutput, TransactionOutput},
-        transaction_protocol::{
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata,
-            TransactionProtocolError,
-        },
+use crate::transactions::{
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::{WalletOutput, TransactionOutput},
+    transaction_protocol::{
+        sender::{SingleRoundSenderData, TransactionSenderMessage},
+        single_receiver::SingleReceiverTransactionProtocol,
+        TransactionMetadata,
+        TransactionProtocolError,
     },
 };
 
@@ -110,9 +108,9 @@ pub struct ReceiverTransactionProtocol {
 /// The function returns the protocol in the relevant state. If this is a single-round protocol, the state will
 /// already be finalised, and the return message will be accessible from the `get_signed_data` method.
 impl ReceiverTransactionProtocol {
-    pub async fn new<KM: BaseLayerKeyManagerInterface>(
+    pub async fn new<KM: TransactionKeyManagerInterface>(
         info: TransactionSenderMessage,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         key_manager: &KM,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
@@ -152,8 +150,8 @@ impl ReceiverTransactionProtocol {
     }
 
     /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
-    async fn single_round<KM: BaseLayerKeyManagerInterface>(
-        output: KeyManagerOutput,
+    async fn single_round<KM: TransactionKeyManagerInterface>(
+        output: WalletOutput,
         data: &SingleRoundSenderData,
         key_manager: &KM,
     ) -> RecipientState {
@@ -191,9 +189,9 @@ mod test {
     use crate::{
         covenants::Covenant,
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
         transactions::{
             crypto_factories::CryptoFactories,
+            key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, TransactionKernel, TransactionKernelVersion},
@@ -273,13 +271,13 @@ mod test {
 
         let index = key_manager
             .find_key_index(
-                CoreKeyManagerBranch::Nonce.get_branch_key(),
+                TransactionKeyManagerBranch::Nonce.get_branch_key(),
                 data.partial_signature.get_public_nonce(),
             )
             .await
             .unwrap();
         let nonce_id = KeyId::Managed {
-            branch: CoreKeyManagerBranch::Nonce.get_branch_key(),
+            branch: TransactionKeyManagerBranch::Nonce.get_branch_key(),
             index,
         };
         let kernel_message = TransactionKernel::build_kernel_signature_message(

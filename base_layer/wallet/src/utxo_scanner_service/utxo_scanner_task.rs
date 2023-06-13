@@ -46,7 +46,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KeyManagerOutput, TransactionOutput},
+        transaction_components::{WalletOutput, TransactionOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
@@ -551,8 +551,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(KeyManagerOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(KeyManagerOutput, String, ImportStatus, TxId)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId)> = Vec::new();
         found_outputs.append(
             &mut self
                 .resources
@@ -593,7 +593,7 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(KeyManagerOutput, String, ImportStatus, TxId)>,
+        utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
@@ -668,7 +668,7 @@ where
     /// TxId of the generated transaction is returned.
     pub async fn import_key_manager_utxo_to_transaction_service(
         &mut self,
-        key_manager_output: KeyManagerOutput,
+        key_manager_output: WalletOutput,
         source_address: TariAddress,
         message: String,
         import_status: ImportStatus,

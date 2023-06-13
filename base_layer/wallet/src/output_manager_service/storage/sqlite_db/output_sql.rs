@@ -37,7 +37,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedData, KeyManagerOutput, OutputFeatures, OutputType},
+    transaction_components::{EncryptedData, WalletOutput, OutputFeatures, OutputType},
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;
@@ -651,7 +651,7 @@ impl OutputSql {
         })?;
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
-        let key_manager_output = KeyManagerOutput::new_current_version(
+        let key_manager_output = WalletOutput::new_current_version(
             MicroTari::from(self.value as u64),
             KeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(

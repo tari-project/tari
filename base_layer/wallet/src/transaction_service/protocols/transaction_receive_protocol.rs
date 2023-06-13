@@ -29,12 +29,10 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_core::{
-    transaction_key_manager::BaseLayerKeyManagerInterface,
-    transactions::{
-        transaction_components::Transaction,
-        transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
-    },
+use tari_core::transactions::{
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::Transaction,
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -79,7 +77,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         id: TxId,

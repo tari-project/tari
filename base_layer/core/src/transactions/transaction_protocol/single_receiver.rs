@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
-    transactions::{
-        transaction_components::{KeyManagerOutput, TransactionKernel, TransactionKernelVersion},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            sender::SingleRoundSenderData,
-            TransactionProtocolError as TPE,
-        },
+use crate::transactions::{
+    key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+    transaction_components::{WalletOutput, TransactionKernel, TransactionKernelVersion},
+    transaction_protocol::{
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
+        TransactionProtocolError as TPE,
     },
 };
 
@@ -41,9 +39,9 @@ use crate::{
 pub struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
-    pub async fn create<KM: BaseLayerKeyManagerInterface>(
+    pub async fn create<KM: TransactionKeyManagerInterface>(
         sender_info: &SingleRoundSenderData,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         key_manager: &KM,
     ) -> Result<RecipientSignedMessage, TPE> {
         // output.fill in metadata
@@ -51,7 +49,7 @@ impl SingleReceiverTransactionProtocol {
         let transaction_output = output.as_transaction_output(key_manager).await?;
 
         let (nonce_id, public_nonce) = key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let tx_meta = if output.is_burned() {
             let mut meta = sender_info.metadata.clone();
@@ -117,13 +115,13 @@ mod test {
     use crate::{
         covenants::Covenant,
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transaction_key_manager::BaseLayerKeyManagerInterface,
         transactions::{
+            key_manager::TransactionKeyManagerInterface,
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
                 EncryptedData,
-                KeyManagerOutput,
+                WalletOutput,
                 OutputFeatures,
                 TransactionKernel,
                 TransactionKernelVersion,
@@ -143,7 +141,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let test_params = TestParams::new(&key_manager).await;
         let info = SingleRoundSenderData::default();
-        let bob_output = KeyManagerOutput::new_current_version(
+        let bob_output = WalletOutput::new_current_version(
             MicroTari(5000),
             test_params.spend_key_id,
             OutputFeatures::default(),
@@ -207,7 +205,7 @@ mod test {
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)
             .await
             .unwrap();
-        let mut bob_output = KeyManagerOutput::new_current_version(
+        let mut bob_output = WalletOutput::new_current_version(
             MicroTari(1500),
             test_params2.spend_key_id.clone(),
             OutputFeatures::default(),

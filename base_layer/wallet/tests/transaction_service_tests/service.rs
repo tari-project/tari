@@ -79,9 +79,9 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInitializer},
     transactions::{
         fee::Fee,
+        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
         tari_amount::*,
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
         transaction_components::{KernelBuilder, OutputFeatures, Transaction},
@@ -240,7 +240,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             Network::LocalNet.into(),
             wallet_identity.clone(),
         ))
-        .add_initializer(CoreKeyManagerInitializer::<KeyManagerDatabase<_, _>>::new(
+        .add_initializer(TransactionKeyManagerInitializer::<KeyManagerDatabase<_, _>>::new(
             kms_backend,
             cipher,
             factories.clone(),

@@ -32,7 +32,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
     test_helpers::{blockchain::TempDatabase, TestKeyManager},
-    transactions::transaction_components::KeyManagerOutput,
+    transactions::transaction_components::WalletOutput,
 };
 
 use crate::helpers::{
@@ -49,7 +49,7 @@ pub struct TestBlockchain {
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<FixedHash, String>,
     consensus_manager: ConsensusManager,
-    outputs: Vec<Vec<KeyManagerOutput>>,
+    outputs: Vec<Vec<WalletOutput>>,
     pub key_manager: TestKeyManager,
 }
 
@@ -84,7 +84,7 @@ impl TestBlockchain {
         &self.consensus_manager
     }
 
-    pub async fn build_block(&self, block: TestBlockBuilderInner) -> (Block, KeyManagerOutput) {
+    pub async fn build_block(&self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
@@ -104,7 +104,7 @@ impl TestBlockchain {
         (new_block, output)
     }
 
-    pub async fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, KeyManagerOutput) {
+    pub async fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, WalletOutput) {
         let block_name = block.name.clone();
         let (block, output) = self.build_block(block).await;
         self.outputs.push(vec![output.clone()]);
@@ -125,7 +125,7 @@ impl TestBlockchain {
         Ok(res)
     }
 
-    pub fn outputs_at(&self, height: u64) -> &[KeyManagerOutput] {
+    pub fn outputs_at(&self, height: u64) -> &[WalletOutput] {
         #[allow(clippy::cast_possible_truncation)]
         self.outputs.get(height as usize).unwrap()
     }

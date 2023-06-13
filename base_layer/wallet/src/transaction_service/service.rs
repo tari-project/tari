@@ -52,13 +52,13 @@ use tari_core::{
         stealth_address_script_spending_key,
     },
     proto::base_node as base_node_proto,
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         transaction_components::{
             CodeTemplateRegistration,
             KernelFeatures,
-            KeyManagerOutputBuilder,
+            WalletOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -211,7 +211,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -1168,7 +1168,7 @@ where
         let spending_key_id = self.resources.core_key_manager_service.import_key(spending_key).await?;
 
         let minimum_value_promise = MicroTari::zero();
-        let output = KeyManagerOutputBuilder::new(amount, spending_key_id)
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
                     .single()
@@ -1354,7 +1354,7 @@ where
             .await?;
 
         let minimum_value_promise = MicroTari::zero();
-        let output = KeyManagerOutputBuilder::new(amount, spending_key_id)
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
                     .single()
@@ -1578,7 +1578,7 @@ where
                 tx_id,
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
-        let output = KeyManagerOutputBuilder::new(amount, spend_key_id.clone())
+        let output = WalletOutputBuilder::new(amount, spend_key_id.clone())
             .with_features(
                 sender_message
                     .single()

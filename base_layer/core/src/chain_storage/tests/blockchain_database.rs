@@ -36,7 +36,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_components::{KeyManagerOutput, Transaction},
+        transaction_components::{WalletOutput, Transaction},
     },
     txn_schema,
 };
@@ -50,7 +50,7 @@ async fn create_next_block(
     prev_block: &Block,
     transactions: Vec<Arc<Transaction>>,
     key_manager: &TestKeyManager,
-) -> (Arc<Block>, KeyManagerOutput) {
+) -> (Arc<Block>, WalletOutput) {
     let rules = db.rules();
     let (block, output) = create_block(
         rules,
@@ -81,7 +81,7 @@ async fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
     key_manager: &TestKeyManager,
-) -> (Vec<Arc<Block>>, Vec<KeyManagerOutput>) {
+) -> (Vec<Arc<Block>>, Vec<WalletOutput>) {
     let last_header = db.fetch_last_header().unwrap();
     let mut prev_block = db
         .fetch_block(last_header.height, true)

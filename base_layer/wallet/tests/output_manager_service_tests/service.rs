@@ -41,12 +41,12 @@ use tari_core::{
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
     transactions::{
         fee::Fee,
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedData, KeyManagerOutput, OutputFeatures, OutputType, TransactionOutput},
+        transaction_components::{EncryptedData, WalletOutput, OutputFeatures, OutputType, TransactionOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -2103,13 +2103,13 @@ async fn scan_for_recovery_test() {
     for i in 1..=NUM_RECOVERABLE {
         let (spending_key_result, _) = oms
             .key_manager_handle
-            .get_next_key(CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
         let (script_key, _) = oms
             .key_manager_handle
             .get_next_key(
-                CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+                TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
                 spending_key_result.index,
             )
             .await
@@ -2122,7 +2122,7 @@ async fn scan_for_recovery_test() {
             .await
             .unwrap();
 
-        let uo = KeyManagerOutput::new_current_version(
+        let uo = WalletOutput::new_current_version(
             MicroTari::from(amount),
             spending_key_result.key,
             features,

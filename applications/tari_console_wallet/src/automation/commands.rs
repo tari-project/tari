@@ -53,7 +53,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{KeyManagerOutput, OutputFeatures, TransactionOutput},
+    transaction_components::{WalletOutput, OutputFeatures, TransactionOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -780,7 +780,7 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(KeyManagerOutput, Commitment)> = utxos
+                    let utxos: Vec<(WalletOutput, Commitment)> = utxos
                         .into_iter()
                         .map(|v| (v.key_manager_output, v.commitment))
                         .collect();
@@ -802,7 +802,7 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(KeyManagerOutput, Commitment)> = utxos
+                    let utxos: Vec<(WalletOutput, Commitment)> = utxos
                         .into_iter()
                         .map(|v| (v.key_manager_output, v.commitment))
                         .collect();
@@ -824,7 +824,7 @@ pub async fn command_runner(
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<KeyManagerOutput> = utxos.into_iter().map(|v| v.key_manager_output).collect();
+                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.key_manager_output).collect();
                     let count = utxos.len();
                     let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                     let sum: MicroTari = values.iter().sum();
@@ -1054,7 +1054,7 @@ pub async fn command_runner(
     Ok(())
 }
 
-fn write_utxos_to_csv_file(utxos: Vec<(KeyManagerOutput, Commitment)>, file_path: PathBuf) -> Result<(), CommandError> {
+fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: PathBuf) -> Result<(), CommandError> {
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(

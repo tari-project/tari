@@ -75,11 +75,11 @@ const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 use crate::{
     common::ConfidentialOutputHasher,
-    transaction_key_manager::{
-        interface::{CoreKeyManagerBranch, TxoStage},
-        TariKeyId,
-    },
     transactions::{
+        key_manager::{
+            interface::{TransactionKeyManagerBranch, TxoStage},
+            TariKeyId,
+        },
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
@@ -124,7 +124,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
-        for branch in CoreKeyManagerBranch::iter() {
+        for branch in TransactionKeyManagerBranch::iter() {
             self.add_key_manager_branch(&branch.get_branch_key())?;
         }
         Ok(())
@@ -207,15 +207,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
     ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError> {
         let (spend_key_id, spend_public_key) = self
-            .get_next_key(&CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .get_next_key(&TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await?;
         let index = spend_key_id
             .managed_index()
             .ok_or(KeyManagerServiceError::KyeIdWithoutIndex)?;
         self.db
-            .set_key_index(&CoreKeyManagerBranch::ScriptKey.get_branch_key(), index)?;
+            .set_key_index(&TransactionKeyManagerBranch::ScriptKey.get_branch_key(), index)?;
         let script_key_id = KeyId::Managed {
-            branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+            branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
             index,
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
@@ -430,12 +430,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
         let index = self
             .find_key_index(
-                &CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                 public_spending_key,
             )
             .await?;
         let spending_key_id = KeyId::Managed {
-            branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             index,
         };
         Ok(spending_key_id)
@@ -599,8 +599,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
-        let (ephemeral_private_nonce_id, ephemeral_pubkey) =
-            self.get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key()).await?;
+        let (ephemeral_private_nonce_id, ephemeral_pubkey) = self
+            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
         let receiver_partial_metadata_signature = self
             .get_receiver_partial_metadata_signature(
                 spending_key_id,
@@ -638,8 +639,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let (ephemeral_commitment_nonce_id, _) =
-            self.get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key()).await?;
+        let (ephemeral_commitment_nonce_id, _) = self
+            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
         let (nonce_a, nonce_b) = self
             .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce_id, range_proof_type)
             .await?;
@@ -784,7 +786,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Note!: This method may not be made public
     async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         let recovery_id = KeyId::Managed {
-            branch: CoreKeyManagerBranch::DataEncryption.get_branch_key(),
+            branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
         self.get_private_key(&recovery_id).await
@@ -825,14 +827,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .verify_mask(commitment, &private_key, value.into())?;
         let public_key = PublicKey::from_secret_key(&private_key);
         let key = match self
-            .find_key_index(&CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
+            .find_key_index(
+                &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                &public_key,
+            )
             .await
         {
             Ok(index) => {
-                self.update_current_key_index_if_higher(&CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
-                    .await?;
+                self.update_current_key_index_if_higher(
+                    &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    index,
+                )
+                .await?;
                 KeyId::Managed {
-                    branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index,
                 }
             },

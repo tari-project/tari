@@ -39,8 +39,8 @@ use crate::{
         create_chain_header,
         create_test_core_key_manager_with_memory_db,
     },
-    transaction_key_manager::TxoStage,
     transactions::{
+        key_manager::TxoStage,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_random_signature_from_secret_key, create_utxo},
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},

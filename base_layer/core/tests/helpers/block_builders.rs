@@ -39,8 +39,8 @@ use tari_core::{
     covenants::Covenant,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
     transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroTari,
         test_helpers::{
             create_key_manager_output_with_data,
@@ -54,7 +54,7 @@ use tari_core::{
             transaction_output::batch_verify_range_proofs,
             KernelBuilder,
             KernelFeatures,
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             Transaction,
             TransactionKernel,
@@ -79,11 +79,11 @@ pub async fn create_coinbase(
     maturity_height: u64,
     extra: Option<Vec<u8>>,
     key_manager: &TestKeyManager,
-) -> (TransactionOutput, TransactionKernel, KeyManagerOutput) {
+) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
     let public_exess = key_manager.get_public_key_at_key_id(&p.spend_key_id).await.unwrap();
     let (nonce, public_nonce) = key_manager
-        .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
         .await
         .unwrap();
 
@@ -135,7 +135,7 @@ async fn genesis_template(
     coinbase_value: MicroTari,
     consensus_constants: &ConsensusConstants,
     key_manager: &TestKeyManager,
-) -> (NewBlockTemplate, KeyManagerOutput) {
+) -> (NewBlockTemplate, WalletOutput) {
     let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(
         coinbase_value,
@@ -320,7 +320,7 @@ async fn print_new_genesis_block(network: Network, extra: &str) {
 pub async fn create_genesis_block(
     consensus_constants: &ConsensusConstants,
     key_manager: &TestKeyManager,
-) -> (ChainBlock, KeyManagerOutput) {
+) -> (ChainBlock, WalletOutput) {
     create_genesis_block_with_coinbase_value(
         consensus_constants.emission_amounts().0,
         consensus_constants,
@@ -368,7 +368,7 @@ pub async fn create_genesis_block_with_coinbase_value(
     coinbase_value: MicroTari,
     consensus_constants: &ConsensusConstants,
     key_manager: &TestKeyManager,
-) -> (ChainBlock, KeyManagerOutput) {
+) -> (ChainBlock, WalletOutput) {
     let (template, output) = genesis_template(coinbase_value, consensus_constants, key_manager).await;
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
@@ -395,7 +395,7 @@ pub async fn create_genesis_block_with_utxos(
     values: &[MicroTari],
     consensus_constants: &ConsensusConstants,
     key_manager: &TestKeyManager,
-) -> (ChainBlock, Vec<KeyManagerOutput>) {
+) -> (ChainBlock, Vec<WalletOutput>) {
     let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
     let script = script!(Nop);
     let output_features = OutputFeatures::default();
@@ -498,7 +498,7 @@ pub async fn chain_block_with_new_coinbase(
     consensus_manager: &ConsensusManager,
     extra: Option<Vec<u8>>,
     key_manager: &TestKeyManager,
-) -> (NewBlockTemplate, KeyManagerOutput) {
+) -> (NewBlockTemplate, WalletOutput) {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += transactions
@@ -553,7 +553,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
     consensus_manager: &ConsensusManager,
     achieved_difficulty: Difficulty,
     key_manager: &TestKeyManager,
-) -> Result<(ChainBlock, KeyManagerOutput), ChainStorageError> {
+) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += txns.iter().fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
@@ -584,7 +584,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
 pub async fn generate_new_block<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<KeyManagerOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     consensus: &ConsensusManager,
     key_manager: &TestKeyManager,
@@ -597,7 +597,7 @@ pub async fn generate_new_block<B: BlockchainBackend>(
 pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<KeyManagerOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
     consensus: &ConsensusManager,
@@ -619,7 +619,7 @@ pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
 pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<KeyManagerOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroTari,
     consensus: &ConsensusManager,
@@ -658,7 +658,7 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 
 /// Generate a block and add it to the database using the transactions provided. The header will be updated with the
 /// correct MMR roots.
-/// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
+/// This function is not able to determine the wallet outputs of a transaction, so if you are mixing using this
 /// with [generate_new_block], you must update the unblinded UTXO vector yourself.
 #[allow(dead_code)]
 pub async fn generate_block<B: BlockchainBackend>(

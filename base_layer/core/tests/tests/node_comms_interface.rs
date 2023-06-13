@@ -39,11 +39,11 @@ use tari_core::{
         create_consensus_rules,
         create_test_core_key_manager_with_memory_db,
     },
-    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{KeyManagerOutput, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+        transaction_components::{WalletOutput, OutputFeatures, TransactionOutput, TransactionOutputVersion},
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
@@ -324,7 +324,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         .await
         .unwrap();
 
-    let key_manager_output = KeyManagerOutput::new_current_version(
+    let key_manager_output = WalletOutput::new_current_version(
         amount,
         spending_key_id.clone(),
         output_features,

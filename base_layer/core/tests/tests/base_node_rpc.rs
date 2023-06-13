@@ -50,7 +50,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{KeyManagerOutput, TransactionOutput},
+        transaction_components::{WalletOutput, TransactionOutput},
     },
     txn_schema,
 };
@@ -72,7 +72,7 @@ async fn setup() -> (
     RpcRequestMock,
     ConsensusManager,
     ChainBlock,
-    KeyManagerOutput,
+    WalletOutput,
     TempDir,
     TestKeyManager,
 ) {

@@ -2263,8 +2263,8 @@ mod test {
     };
     use tari_core::{
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transaction_key_manager::CoreKeyManagerBranch,
         transactions::{
+            key_manager::TransactionKeyManagerBranch,
             tari_amount::MicroTari,
             test_helpers::{create_key_manager_output_with_data, TestParams},
             transaction_components::{OutputFeatures, Transaction},
@@ -2345,11 +2345,11 @@ mod test {
         .unwrap();
         let amount = MicroTari::from(10_000);
         let change_script_key_id = key_manager
-            .get_next_key(CoreKeyManagerBranch::ScriptKey.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
             .await
             .unwrap();
         let change_spending_key_id = key_manager
-            .get_next_key(CoreKeyManagerBranch::CommitmentMask.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
         builder

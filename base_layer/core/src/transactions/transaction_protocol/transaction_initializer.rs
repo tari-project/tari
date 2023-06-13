@@ -35,12 +35,12 @@ use crate::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
     covenants::Covenant,
-    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
     transactions::{
         fee::Fee,
+        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
-            KeyManagerOutput,
+            WalletOutput,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -112,7 +112,7 @@ impl<KM> Debug for BuildError<KM> {
 }
 
 impl<KM> SenderTransactionInitializer<KM>
-where KM: BaseLayerKeyManagerInterface
+where KM: TransactionKeyManagerInterface
 {
     pub fn new(consensus_constants: &ConsensusConstants, key_manager: KM) -> Self {
         Self {
@@ -151,11 +151,11 @@ where KM: BaseLayerKeyManagerInterface
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (recipient_ephemeral_public_key_nonce, _) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let (recipient_sender_offset_key_id, _) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let recipient_details = RecipientDetails {
             recipient_output_features,
@@ -177,10 +177,10 @@ where KM: BaseLayerKeyManagerInterface
     }
 
     /// Adds an input to the transaction.
-    pub async fn with_input(&mut self, input: KeyManagerOutput) -> Result<&mut Self, KeyManagerServiceError> {
+    pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, KeyManagerServiceError> {
         let (nonce_id, _) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output: input,
@@ -194,12 +194,12 @@ where KM: BaseLayerKeyManagerInterface
     /// As the Sender adds an output to the transaction.
     pub async fn with_output(
         &mut self,
-        output: KeyManagerOutput,
+        output: WalletOutput,
         sender_offset_key_id: TariKeyId,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (nonce_id, _) = self
             .key_manager
-            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output,
@@ -297,7 +297,7 @@ where KM: BaseLayerKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     async fn add_change_if_required(
         &mut self,
-    ) -> Result<(MicroTari, MicroTari, Option<(KeyManagerOutput, TariKeyId)>), String> {
+    ) -> Result<(MicroTari, MicroTari, Option<(WalletOutput, TariKeyId)>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + usize::from(self.recipient.is_some());
         let num_inputs = self.inputs.len();
@@ -360,7 +360,7 @@ where KM: BaseLayerKeyManagerInterface
                         let change_key_id = change_data.change_spending_key_id.clone();
                         let (sender_offset_key_id, sender_offset_public_key) = self
                             .key_manager
-                            .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+                            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
                             .await
                             .map_err(|e| e.to_string())?;
                         let input_data = change_data.change_input_data.clone();
@@ -405,7 +405,7 @@ where KM: BaseLayerKeyManagerInterface
                             .await
                             .map_err(|e| e.to_string())?;
 
-                        let change_key_manager_output = KeyManagerOutput::new_current_version(
+                        let change_key_manager_output = WalletOutput::new_current_version(
                             v,
                             change_key_id.clone(),
                             output_features,
@@ -496,7 +496,7 @@ where KM: BaseLayerKeyManagerInterface
                 }
                 let (nonce_id, _) = match self
                     .key_manager
-                    .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
                     .await
                 {
                     Ok(key_id) => key_id,

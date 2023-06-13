@@ -27,7 +27,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-        transaction_components::{KeyManagerOutput, OutputFeatures, TransactionInput},
+        transaction_components::{WalletOutput, OutputFeatures, TransactionInput},
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
@@ -58,7 +58,7 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     val: MicroTari,
     features: &OutputFeatures,
     key_manager: &TestKeyManager,
-) -> (TransactionInput, KeyManagerOutput) {
+) -> (TransactionInput, WalletOutput) {
     let test_params = TestParamsHelpers::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
         .await
@@ -76,7 +76,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     value: MicroTari,
     features: OutputFeatures,
     key_manager: &TestKeyManager,
-) -> (TransactionInput, KeyManagerOutput) {
+) -> (TransactionInput, WalletOutput) {
     let test_params = TestParamsHelpers::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features, &test_params, value, key_manager)
         .await

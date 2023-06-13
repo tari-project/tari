@@ -49,9 +49,6 @@ pub mod mempool;
 #[cfg(feature = "transactions")]
 pub mod transactions;
 
-#[cfg(feature = "transactions")]
-pub mod transaction_key_manager;
-
 mod common;
 pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 

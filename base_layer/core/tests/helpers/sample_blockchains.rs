@@ -33,7 +33,7 @@ use tari_core::{
     },
     transactions::{
         tari_amount::{uT, T},
-        transaction_components::KeyManagerOutput,
+        transaction_components::WalletOutput,
     },
     txn_schema,
     validation::DifficultyCalculator,
@@ -85,7 +85,7 @@ static EMISSION: [u64; 2] = [10, 10];
 pub async fn create_blockchain_db_no_cut_through() -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
-    Vec<Vec<KeyManagerOutput>>,
+    Vec<Vec<WalletOutput>>,
     ConsensusManager,
     TestKeyManager,
 ) {
@@ -180,7 +180,7 @@ pub async fn create_new_blockchain(
 ) -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
-    Vec<Vec<KeyManagerOutput>>,
+    Vec<Vec<WalletOutput>>,
     ConsensusManager,
     TestKeyManager,
 ) {
@@ -211,7 +211,7 @@ pub async fn create_new_blockchain_with_constants(
 ) -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
-    Vec<Vec<KeyManagerOutput>>,
+    Vec<Vec<WalletOutput>>,
     ConsensusManager,
     TestKeyManager,
 ) {
@@ -239,7 +239,7 @@ pub async fn create_new_blockchain_lmdb(
 ) -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
-    Vec<Vec<KeyManagerOutput>>,
+    Vec<Vec<WalletOutput>>,
     ConsensusManager,
     TestKeyManager,
 ) {

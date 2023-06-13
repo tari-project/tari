@@ -32,9 +32,9 @@ use crate::{
     blocks::BlockValidationError,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
-    transaction_key_manager::CoreKeyManagerBranch,
     transactions::{
         aggregated_body::AggregateBody,
+        key_manager::TransactionKeyManagerBranch,
         tari_amount::T,
         test_helpers::schema_to_transaction,
         transaction_components::TransactionError,
@@ -109,7 +109,7 @@ async fn it_checks_exactly_one_coinbase() {
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
     let spend_key_id = KeyId::Managed {
-        branch: CoreKeyManagerBranch::Coinbase.get_branch_key(),
+        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
         index: 42,
     };
     let (_, coinbase_output) = CoinbaseBuilder::new(blockchain.km.clone())
@@ -128,11 +128,11 @@ async fn it_checks_exactly_one_coinbase() {
 
     let err = {
         // `MutexGuard` cannot be held across an `await` point
+        // `MutexGuard` cannot be held across an `await` point
         let txn = blockchain.db().db_read_access().unwrap();
         let err = validator.validate_body(&*txn, block.block()).unwrap_err();
         err
     };
-    drop(txn); // `MutexGuard` cannot be held across an `await` point
     assert!(matches!(
         err,
         ValidationError::BlockError(BlockValidationError::TransactionError(
