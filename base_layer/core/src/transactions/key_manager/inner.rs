@@ -275,7 +275,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     // Note!: This method may not be made public
-    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
                 let km = self

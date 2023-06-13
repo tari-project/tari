@@ -37,7 +37,7 @@ use crate::output_manager_service::{
     handle::RecoveredOutput,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbKeyManagerOutput,
+        models::DbWalletOutput,
         OutputSource,
     },
 };
@@ -130,7 +130,7 @@ where
                 _ => OutputSource::RecoveredButUnrecognized,
             };
 
-            let db_output = DbKeyManagerOutput::from_key_manager_output(
+            let db_output = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &self.master_key_manager,
                 None,

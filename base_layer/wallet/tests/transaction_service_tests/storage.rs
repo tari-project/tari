@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use core::default::Default;
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -35,9 +36,17 @@ use tari_core::{
     covenants::Covenant,
     test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
         test_helpers::{create_key_manager_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, Transaction},
+        transaction_components::{
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+        },
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -45,6 +54,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -65,6 +75,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -79,7 +90,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .unwrap();
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
+    let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -163,13 +174,51 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found outbound tx");
     }
+    let sender = stp.clone().build_single_round_message(&key_manager).await.unwrap();
+    let (spending_key_id, _) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
+        .await
+        .unwrap();
+    let (script_key_id, public_script_key) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+        .await
+        .unwrap();
+    let encrypted_data = key_manager
+        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
+        .await
+        .unwrap();
+    let mut output = WalletOutput {
+        version: TransactionOutputVersion::get_current_version(),
+        value: sender.amount,
+        spending_key_id: spending_key_id.clone(),
+        features: sender.features.clone(),
+        script: sender.script.clone(),
+        covenant: Covenant::default(),
+        input_data: inputs!(public_script_key),
+        script_key_id,
+        sender_offset_public_key: sender.sender_offset_public_key.clone(),
+        metadata_signature: Default::default(),
+        script_lock_height: 0,
+        encrypted_data,
+        minimum_value_promise: MicroTari::zero(),
+    };
+    let output_message = TransactionOutput::metadata_signature_message(&output);
+    output.metadata_signature = key_manager
+        .get_receiver_partial_metadata_signature(
+            &spending_key_id,
+            &sender.amount.into(),
+            &sender.sender_offset_public_key,
+            &sender.ephemeral_public_nonce,
+            &TransactionOutputVersion::get_current_version(),
+            &output_message,
+            RangeProofType::BulletProofPlus,
+        )
+        .await
+        .unwrap();
 
-    let rtp = ReceiverTransactionProtocol::new(
-        TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
-        PrivateKey::random(&mut OsRng),
-        PrivateKey::random(&mut OsRng),
-        &factories,
-    );
+    let rtp =
+        ReceiverTransactionProtocol::new(TransactionSenderMessage::Single(Box::new(sender)), output, &key_manager)
+            .await;
 
     let mut inbound_txs = Vec::new();
 

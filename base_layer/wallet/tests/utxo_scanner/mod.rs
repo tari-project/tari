@@ -53,7 +53,7 @@ use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::storage::{models::DbKeyManagerOutput, OutputSource},
+    output_manager_service::storage::{models::DbWalletOutput, OutputSource},
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -249,7 +249,7 @@ async fn generate_block_headers_and_utxos(
         let mut block_outputs = Vec::new();
 
         for _j in 0..=i + 1 {
-            let (_ti, uo) = make_non_recoverable_input(
+            let uo = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -261,12 +261,10 @@ async fn generate_block_headers_and_utxos(
                 break;
             }
         }
-
-        let transaction_outputs = block_outputs
-            .clone()
-            .iter()
-            .map(|uo| uo.as_transaction_output(&key_manager).unwrap())
-            .collect();
+        let mut transaction_outputs = Vec::new();
+        for output in &block_outputs {
+            transaction_outputs.push(output.as_transaction_output(&key_manager).await.unwrap())
+        }
         let utxos = UtxosByBlock {
             height: i,
             header_hash: block_header.hash().to_vec(),
@@ -325,7 +323,7 @@ async fn test_utxo_scanner_recovery() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbKeyManagerOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -338,7 +336,7 @@ async fn test_utxo_scanner_recovery() {
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.key_manager_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
             db_key_manager_outputs.push(dbo);
         }
@@ -426,7 +424,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbKeyManagerOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -439,7 +437,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.key_manager_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
             db_key_manager_outputs.push(dbo);
         }
@@ -591,7 +589,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     for outputs in key_manager_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbKeyManagerOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -669,7 +667,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbKeyManagerOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -682,7 +680,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= 4 {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.key_manager_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
             db_key_manager_outputs.push(dbo);
         }
@@ -883,7 +881,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbKeyManagerOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_key_manager_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -896,7 +894,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.key_manager_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
             db_key_manager_outputs.push(dbo);
         }
@@ -954,7 +952,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_non_recoverable_input(
+    let uo = make_non_recoverable_input(
         &mut OsRng,
         MicroTari::from(666000u64),
         &OutputFeatures::default(),
@@ -965,14 +963,14 @@ async fn test_utxo_scanner_one_sided_payments() {
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&key_manager).unwrap()],
+        utxos: vec![uo.as_transaction_output(&key_manager).await.unwrap()],
     };
 
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
     db_key_manager_outputs.push(
-        DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
             .await
             .unwrap(),
     );

@@ -229,3 +229,9 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
 }
+
+#[async_trait::async_trait]
+pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
+    /// Gets the pedersen commitment for the specified index
+    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+}

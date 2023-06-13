@@ -42,9 +42,9 @@ use crate::output_manager_service::{
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct DbKeyManagerOutput {
+pub struct DbWalletOutput {
     pub commitment: Commitment,
-    pub key_manager_output: WalletOutput,
+    pub wallet_output: WalletOutput,
     pub hash: HashOutput,
     pub status: OutputStatus,
     pub mined_height: Option<u64>,
@@ -59,7 +59,7 @@ pub struct DbKeyManagerOutput {
     pub spent_in_tx_id: Option<TxId>,
 }
 
-impl DbKeyManagerOutput {
+impl DbWalletOutput {
     pub async fn from_key_manager_output<KM: TransactionKeyManagerInterface>(
         output: WalletOutput,
         key_manager: &KM,
@@ -67,11 +67,11 @@ impl DbKeyManagerOutput {
         source: OutputSource,
         received_in_tx_id: Option<TxId>,
         spent_in_tx_id: Option<TxId>,
-    ) -> Result<DbKeyManagerOutput, OutputManagerStorageError> {
-        Ok(DbKeyManagerOutput {
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
+        Ok(DbWalletOutput {
             hash: output.hash(key_manager).await?,
             commitment: output.commitment(key_manager).await?,
-            key_manager_output: output,
+            wallet_output: output,
             status: OutputStatus::NotStored,
             mined_height: None,
             mined_in_block: None,
@@ -87,33 +87,31 @@ impl DbKeyManagerOutput {
     }
 }
 
-impl From<DbKeyManagerOutput> for WalletOutput {
-    fn from(value: DbKeyManagerOutput) -> WalletOutput {
-        value.key_manager_output
+impl From<DbWalletOutput> for WalletOutput {
+    fn from(value: DbWalletOutput) -> WalletOutput {
+        value.wallet_output
     }
 }
 
-impl PartialEq for DbKeyManagerOutput {
-    fn eq(&self, other: &DbKeyManagerOutput) -> bool {
-        self.key_manager_output.value == other.key_manager_output.value
+impl PartialEq for DbWalletOutput {
+    fn eq(&self, other: &DbWalletOutput) -> bool {
+        self.wallet_output.value == other.wallet_output.value
     }
 }
 
-impl PartialOrd<DbKeyManagerOutput> for DbKeyManagerOutput {
+impl PartialOrd<DbWalletOutput> for DbWalletOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.key_manager_output
-            .value
-            .partial_cmp(&other.key_manager_output.value)
+        self.wallet_output.value.partial_cmp(&other.wallet_output.value)
     }
 }
 
-impl Ord for DbKeyManagerOutput {
+impl Ord for DbWalletOutput {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.key_manager_output.value.cmp(&other.key_manager_output.value)
+        self.wallet_output.value.cmp(&other.wallet_output.value)
     }
 }
 
-impl Eq for DbKeyManagerOutput {}
+impl Eq for DbWalletOutput {}
 
 // ---------------------------------------------------------------------------
 

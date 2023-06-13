@@ -29,7 +29,7 @@ use tari_utilities::ByteArray;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{models::DbKeyManagerOutput, OutputStatus},
+        storage::{models::DbWalletOutput, OutputStatus},
     },
     schema::outputs,
 };
@@ -69,50 +69,46 @@ pub struct NewOutputSql {
 impl NewOutputSql {
     #[allow(clippy::cast_possible_wrap)]
     pub fn new(
-        output: DbKeyManagerOutput,
+        output: DbWalletOutput,
         status: OutputStatus,
         received_in_tx_id: Option<TxId>,
         coinbase_block_height: Option<u64>,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.key_manager_output.covenant, &mut covenant)?;
+        BorshSerialize::serialize(&output.wallet_output.covenant, &mut covenant)?;
 
         let output = Self {
             commitment: output.commitment.to_vec(),
-            spending_key: output.key_manager_output.spending_key_id.to_string(),
-            value: output.key_manager_output.value.as_u64() as i64,
-            output_type: i32::from(output.key_manager_output.features.output_type.as_byte()),
-            maturity: output.key_manager_output.features.maturity as i64,
+            spending_key: output.wallet_output.spending_key_id.to_string(),
+            value: output.wallet_output.value.as_u64() as i64,
+            output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
+            maturity: output.wallet_output.features.maturity as i64,
             status: status as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: output.hash.to_vec(),
-            script: output.key_manager_output.script.to_bytes(),
-            input_data: output.key_manager_output.input_data.to_bytes(),
-            script_private_key: output.key_manager_output.script_key_id.to_string(),
-            coinbase_extra: Some(output.key_manager_output.features.coinbase_extra.clone()),
-            sender_offset_public_key: output.key_manager_output.sender_offset_public_key.to_vec(),
+            script: output.wallet_output.script.to_bytes(),
+            input_data: output.wallet_output.input_data.to_bytes(),
+            script_private_key: output.wallet_output.script_key_id.to_string(),
+            coinbase_extra: Some(output.wallet_output.features.coinbase_extra.clone()),
+            sender_offset_public_key: output.wallet_output.sender_offset_public_key.to_vec(),
             metadata_signature_ephemeral_commitment: output
-                .key_manager_output
+                .wallet_output
                 .metadata_signature
                 .ephemeral_commitment()
                 .to_vec(),
-            metadata_signature_ephemeral_pubkey: output
-                .key_manager_output
-                .metadata_signature
-                .ephemeral_pubkey()
-                .to_vec(),
-            metadata_signature_u_a: output.key_manager_output.metadata_signature.u_a().to_vec(),
-            metadata_signature_u_x: output.key_manager_output.metadata_signature.u_x().to_vec(),
-            metadata_signature_u_y: output.key_manager_output.metadata_signature.u_y().to_vec(),
+            metadata_signature_ephemeral_pubkey: output.wallet_output.metadata_signature.ephemeral_pubkey().to_vec(),
+            metadata_signature_u_a: output.wallet_output.metadata_signature.u_a().to_vec(),
+            metadata_signature_u_x: output.wallet_output.metadata_signature.u_x().to_vec(),
+            metadata_signature_u_y: output.wallet_output.metadata_signature.u_y().to_vec(),
             coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
-            features_json: serde_json::to_string(&output.key_manager_output.features).map_err(|s| {
+            features_json: serde_json::to_string(&output.wallet_output.features).map_err(|s| {
                 OutputManagerStorageError::ConversionError {
                     reason: format!("Could not parse features from JSON:{}", s),
                 }
             })?,
             covenant,
-            encrypted_data: output.key_manager_output.encrypted_data.to_byte_vec(),
-            minimum_value_promise: output.key_manager_output.minimum_value_promise.as_u64() as i64,
+            encrypted_data: output.wallet_output.encrypted_data.to_byte_vec(),
+            minimum_value_promise: output.wallet_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
         };
 

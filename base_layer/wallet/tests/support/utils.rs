@@ -23,15 +23,25 @@
 use rand::{CryptoRng, Rng};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::{
+    covenants::Covenant,
     test_helpers::TestKeyManager,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
-        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
+        transaction_components::{
+            OutputFeatures,
+            RangeProofType,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+        },
+        transaction_protocol::sender::TransactionSenderMessage,
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_script::script;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_script::{inputs, script};
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
@@ -58,17 +68,57 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     val: MicroTari,
     features: &OutputFeatures,
     key_manager: &TestKeyManager,
-) -> (TransactionInput, WalletOutput) {
+) -> WalletOutput {
     let test_params = TestParamsHelpers::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
         .await
         .unwrap();
-    (
-        utxo.as_transaction_input(key_manager)
-            .await
-            .expect("Should be able to make transaction input"),
-        utxo,
-    )
+    utxo
+}
+
+pub async fn create_wallet_output_from_sender_data(
+    info: &TransactionSenderMessage,
+    key_manager: &TestKeyManager,
+) -> WalletOutput {
+    let test_params = TestParamsHelpers::new(key_manager).await;
+    let sender_data = info.single().unwrap();
+    let public_script_key = key_manager
+        .get_public_key_at_key_id(&test_params.script_key_id)
+        .await
+        .unwrap();
+    let encrypted_data = key_manager
+        .encrypt_data_for_recovery(&test_params.spend_key_id, None, sender_data.amount.as_u64())
+        .await
+        .unwrap();
+    let mut utxo = WalletOutput {
+        version: TransactionOutputVersion::get_current_version(),
+        value: sender_data.amount,
+        spending_key_id: test_params.spend_key_id.clone(),
+        features: sender_data.features.clone(),
+        script: sender_data.script.clone(),
+        covenant: Covenant::default(),
+        input_data: inputs!(public_script_key),
+        script_key_id: test_params.script_key_id.clone(),
+        sender_offset_public_key: sender_data.sender_offset_public_key.clone(),
+        metadata_signature: Default::default(),
+        script_lock_height: 0,
+        encrypted_data,
+        minimum_value_promise: MicroTari::zero(),
+    };
+    let output_message = TransactionOutput::metadata_signature_message(&utxo);
+    utxo.metadata_signature = key_manager
+        .get_receiver_partial_metadata_signature(
+            &test_params.spend_key_id,
+            &sender_data.amount.into(),
+            &sender_data.sender_offset_public_key,
+            &sender_data.ephemeral_public_nonce,
+            &TransactionOutputVersion::get_current_version(),
+            &output_message,
+            RangeProofType::BulletProofPlus,
+        )
+        .await
+        .unwrap();
+    utxo
 }
 
 pub async fn make_input_with_features<R: Rng + CryptoRng>(
@@ -76,17 +126,12 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     value: MicroTari,
     features: OutputFeatures,
     key_manager: &TestKeyManager,
-) -> (TransactionInput, WalletOutput) {
+) -> WalletOutput {
     let test_params = TestParamsHelpers::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features, &test_params, value, key_manager)
         .await
         .unwrap();
-    (
-        utxo.as_transaction_input(key_manager)
-            .await
-            .expect("Should be able to make transaction input"),
-        utxo,
-    )
+    utxo
 }
 
 /// This macro unlocks a Mutex or RwLock. If the lock is

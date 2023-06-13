@@ -24,7 +24,13 @@ mod wrapper;
 pub use wrapper::TransactionKeyManagerWrapper;
 
 mod interface;
-pub use interface::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage};
+pub use interface::{
+    SecretTransactionKeyManagerInterface,
+    TariKeyId,
+    TransactionKeyManagerBranch,
+    TransactionKeyManagerInterface,
+    TxoStage,
+};
 
 mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;

@@ -46,7 +46,7 @@ use tokio::sync::RwLock;
 
 use crate::transactions::{
     key_manager::{
-        interface::TxoStage,
+        interface::{SecretTransactionKeyManagerInterface, TxoStage},
         TariKeyId,
         TransactionKeyManagerBranch,
         TransactionKeyManagerInner,
@@ -466,6 +466,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
+            .await
+    }
+}
+
+#[async_trait::async_trait]
+impl<TBackend> SecretTransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
+where TBackend: KeyManagerBackend<PublicKey> + 'static
+{
+    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+        (*self.transaction_key_manager_inner)
+            .read()
+            .await
+            .get_private_key(key_id)
             .await
     }
 }

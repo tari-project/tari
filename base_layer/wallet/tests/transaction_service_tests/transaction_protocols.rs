@@ -198,7 +198,7 @@ pub async fn add_transaction_to_database(
 ) {
     let factories = CryptoFactories::default();
     let key_manager_handle = create_test_core_key_manager_with_memory_db();
-    let (_utxo, uo0) =
+    let uo0 =
         make_non_recoverable_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
     let (txs1, _uou1) =
         schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])], &key_manager_handle).await;

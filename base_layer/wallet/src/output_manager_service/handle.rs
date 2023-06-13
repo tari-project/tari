@@ -47,7 +47,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{DbKeyManagerOutput, KnownOneSidedPaymentScript, SpendingPriority},
+        models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -238,8 +238,8 @@ pub enum OutputManagerResponse {
     PayToSelfTransaction((MicroTari, Transaction)),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
-    SpentOutputs(Vec<DbKeyManagerOutput>),
-    UnspentOutputs(Vec<DbKeyManagerOutput>),
+    SpentOutputs(Vec<DbWalletOutput>),
+    UnspentOutputs(Vec<DbWalletOutput>),
     Outputs(Vec<WalletOutput>),
     InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
@@ -544,7 +544,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_spent_outputs(&mut self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub async fn get_spent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetSpentOutputs).await?? {
             OutputManagerResponse::SpentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -552,7 +552,7 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),

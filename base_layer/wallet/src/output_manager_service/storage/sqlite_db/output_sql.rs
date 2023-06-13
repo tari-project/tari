@@ -50,7 +50,7 @@ use crate::{
         service::Balance,
         storage::{
             database::{OutputBackendQuery, SortDirection},
-            models::DbKeyManagerOutput,
+            models::DbWalletOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputSource,
             OutputStatus,
@@ -634,7 +634,7 @@ impl OutputSql {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_db_key_manager_output(self) -> Result<DbKeyManagerOutput, OutputManagerStorageError> {
+    pub fn to_db_key_manager_output(self) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
@@ -761,9 +761,9 @@ impl OutputSql {
             },
             None => None,
         };
-        Ok(DbKeyManagerOutput {
+        Ok(DbWalletOutput {
             commitment,
-            key_manager_output,
+            wallet_output: key_manager_output,
             hash,
             status: self.status.try_into()?,
             mined_height: self.mined_height.map(|mh| mh as u64),

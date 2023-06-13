@@ -36,7 +36,7 @@ use super::TransactionOutputVersion;
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
     },
@@ -136,7 +136,7 @@ impl UnblindedOutput {
     ) -> Result<WalletOutput, TransactionError> {
         let spending_key_id = key_manager.import_key(self.spending_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;
-        let key_manager_output = WalletOutput {
+        let wallet_output = WalletOutput {
             version: self.version,
             value: self.value,
             spending_key_id,
@@ -150,6 +150,30 @@ impl UnblindedOutput {
             script_lock_height: self.script_lock_height,
             encrypted_data: self.encrypted_data,
             minimum_value_promise: self.minimum_value_promise,
+        };
+        Ok(wallet_output)
+    }
+
+    pub async fn from_wallet_output<KM: SecretTransactionKeyManagerInterface>(
+        output: WalletOutput,
+        key_manager: &KM,
+    ) -> Result<Self, TransactionError> {
+        let spending_key = key_manager.get_private_key(&output.spending_key_id).await?;
+        let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
+        let key_manager_output = UnblindedOutput {
+            version: output.version,
+            value: output.value,
+            spending_key,
+            features: output.features,
+            script: output.script,
+            covenant: output.covenant,
+            input_data: output.input_data,
+            script_private_key,
+            sender_offset_public_key: output.sender_offset_public_key,
+            metadata_signature: output.metadata_signature,
+            script_lock_height: output.script_lock_height,
+            encrypted_data: output.encrypted_data,
+            minimum_value_promise: output.minimum_value_promise,
         };
         Ok(key_manager_output)
     }

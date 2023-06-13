@@ -780,10 +780,8 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(WalletOutput, Commitment)> = utxos
-                        .into_iter()
-                        .map(|v| (v.key_manager_output, v.commitment))
-                        .collect();
+                    let utxos: Vec<(WalletOutput, Commitment)> =
+                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
                     let sum: MicroTari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
@@ -802,10 +800,8 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(WalletOutput, Commitment)> = utxos
-                        .into_iter()
-                        .map(|v| (v.key_manager_output, v.commitment))
-                        .collect();
+                    let utxos: Vec<(WalletOutput, Commitment)> =
+                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
                     let sum: MicroTari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
@@ -824,7 +820,7 @@ pub async fn command_runner(
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.key_manager_output).collect();
+                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
                     let count = utxos.len();
                     let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                     let sum: MicroTari = values.iter().sum();

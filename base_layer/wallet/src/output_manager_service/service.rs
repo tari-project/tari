@@ -84,7 +84,7 @@ use crate::{
         resources::OutputManagerResources,
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
-            models::{DbKeyManagerOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputSource,
             OutputStatus,
         },
@@ -602,7 +602,7 @@ where
             "Add output of value {} to Output Manager", output.value
         );
 
-        let output = DbKeyManagerOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_key_manager_output(
             output,
             &self.resources.key_manager,
             spend_priority,
@@ -635,7 +635,7 @@ where
             target: LOG_TARGET,
             "Add unvalidated output of value {} to Output Manager", output.value
         );
-        let output = DbKeyManagerOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_key_manager_output(
             output,
             &self.resources.key_manager,
             spend_priority,
@@ -744,7 +744,7 @@ where
             encrypted_data,
             minimum_value_promise,
         );
-        let output = DbKeyManagerOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_key_manager_output(
             key_kanager_output.clone(),
             &self.resources.key_manager,
             None,
@@ -897,7 +897,7 @@ where
             .with_tx_id(tx_id);
 
         for uo in input_selection.iter() {
-            builder.with_input(uo.key_manager_output.clone()).await?;
+            builder.with_input(uo.wallet_output.clone()).await?;
         }
         debug!(
             target: LOG_TARGET,
@@ -924,7 +924,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
-        let mut change_output = Vec::<DbKeyManagerOutput>::new();
+        let mut change_output = Vec::<DbWalletOutput>::new();
         if input_selection.requires_change_output() {
             let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
@@ -932,7 +932,7 @@ where
                 )
             })?;
             change_output.push(
-                DbKeyManagerOutput::from_key_manager_output(
+                DbWalletOutput::from_key_manager_output(
                     key_manager_output,
                     &self.resources.key_manager,
                     None,
@@ -993,7 +993,7 @@ where
             .build_with_reward(&self.resources.consensus_constants, reward)
             .await?;
 
-        let output = DbKeyManagerOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_key_manager_output(
             key_manager_output,
             &self.resources.key_manager,
             None,
@@ -1059,7 +1059,7 @@ where
             .with_kernel_features(KernelFeatures::empty());
 
         for uo in input_selection.iter() {
-            builder.with_input(uo.key_manager_output.clone()).await?;
+            builder.with_input(uo.wallet_output.clone()).await?;
         }
 
         if input_selection.requires_change_output() {
@@ -1091,7 +1091,7 @@ where
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
             db_outputs.push(
-                DbKeyManagerOutput::from_key_manager_output(
+                DbWalletOutput::from_key_manager_output(
                     ub,
                     &self.resources.key_manager,
                     None,
@@ -1110,7 +1110,7 @@ where
         let tx_id = stp.get_tx_id()?;
         if let Some(key_manager_output) = stp.get_change_output()? {
             db_outputs.push(
-                DbKeyManagerOutput::from_key_manager_output(
+                DbWalletOutput::from_key_manager_output(
                     key_manager_output,
                     &self.resources.key_manager,
                     None,
@@ -1173,13 +1173,13 @@ where
             .with_tx_id(tx_id);
 
         for kmo in input_selection.iter() {
-            builder.with_input(kmo.key_manager_output.clone()).await?;
+            builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
         let (output, sender_offset_key_id) = self.output_to_self(amount, &covenant, &script).await?;
 
         builder
-            .with_output(output.key_manager_output.clone(), sender_offset_key_id.clone())
+            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
             .await
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -1206,7 +1206,7 @@ where
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            let change_output = DbKeyManagerOutput::from_key_manager_output(
+            let change_output = DbWalletOutput::from_key_manager_output(
                 key_manager_output,
                 &self.resources.key_manager,
                 None,
@@ -1325,7 +1325,7 @@ where
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         for o in uo {
-            utxos_total_value += o.key_manager_output.value;
+            utxos_total_value += o.wallet_output.value;
 
             trace!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
             utxos.push(o);
@@ -1378,19 +1378,19 @@ where
         })
     }
 
-    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_spent_outputs()?)
     }
 
-    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
-    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_outputs_by(q)?)
     }
 
-    pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
+    pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
 
@@ -1421,7 +1421,7 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1466,7 +1466,7 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
         let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
@@ -1543,7 +1543,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn create_coin_split_even(
         &mut self,
-        src_outputs: Vec<DbKeyManagerOutput>,
+        src_outputs: Vec<DbWalletOutput>,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
@@ -1559,7 +1559,7 @@ where
         // accumulated value amount from given source outputs
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1596,7 +1596,7 @@ where
                 "adding transaction input: output_hash=: {:?}",
                 input.hash
             );
-            tx_builder.with_input(input.key_manager_output.clone()).await?;
+            tx_builder.with_input(input.wallet_output.clone()).await?;
         }
 
         for i in 1..=number_of_splits {
@@ -1612,7 +1612,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -1655,7 +1655,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn create_coin_split(
         &mut self,
-        src_outputs: Vec<DbKeyManagerOutput>,
+        src_outputs: Vec<DbWalletOutput>,
         amount_per_split: MicroTari,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
@@ -1679,7 +1679,7 @@ where
         // accumulated value amount from given source outputs
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         if total_split_amount >= accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
@@ -1753,7 +1753,7 @@ where
                 "adding transaction input: output_hash=: {:?}",
                 output.hash
             );
-            tx_builder.with_input(output.key_manager_output.clone()).await?;
+            tx_builder.with_input(output.wallet_output.clone()).await?;
         }
 
         // ----------------------------------------------------------------------------
@@ -1765,7 +1765,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -1813,7 +1813,7 @@ where
 
             // appending `change` output to the result
             dest_outputs.push(
-                DbKeyManagerOutput::from_key_manager_output(
+                DbWalletOutput::from_key_manager_output(
                     key_manager_output_for_change,
                     &self.resources.key_manager,
                     None,
@@ -1854,7 +1854,7 @@ where
         amount: MicroTari,
         covenant: &Covenant,
         script: &TariScript,
-    ) -> Result<(DbKeyManagerOutput, TariKeyId), OutputManagerError> {
+    ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
         let output_features = OutputFeatures::default();
@@ -1891,7 +1891,7 @@ where
             )
             .await?;
 
-        let output = DbKeyManagerOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_key_manager_output(
             WalletOutput::new_current_version(
                 amount,
                 spending_key_id,
@@ -1933,7 +1933,7 @@ where
 
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee =
             self.get_fee_calc()
@@ -1973,7 +1973,7 @@ where
                 "adding transaction input: output_hash=: {:?}",
                 input.hash
             );
-            tx_builder.with_input(input.key_manager_output.clone()).await?;
+            tx_builder.with_input(input.wallet_output.clone()).await?;
         }
 
         let (output, sender_offset_key_id) = self
@@ -1981,7 +1981,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+            .with_output(output.wallet_output.clone(), sender_offset_key_id)
             .await?;
 
         let mut stp = tx_builder
@@ -2124,7 +2124,7 @@ where
                         "There should be a change output metadata signature available".to_string(),
                     )
                 })?;
-                let change_output = DbKeyManagerOutput::from_key_manager_output(
+                let change_output = DbWalletOutput::from_key_manager_output(
                     key_manager_output,
                     &self.resources.key_manager,
                     None,
@@ -2163,7 +2163,7 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let output = self.resources.db.get_unspent_output(output_hash)?.key_manager_output;
+        let output = self.resources.db.get_unspent_output(output_hash)?.wallet_output;
 
         let amount = output.value;
 
@@ -2206,7 +2206,7 @@ where
             OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
         })?;
 
-        let change_output = DbKeyManagerOutput::from_key_manager_output(
+        let change_output = DbWalletOutput::from_key_manager_output(
             key_manager_output,
             &self.resources.key_manager,
             None,
@@ -2379,7 +2379,7 @@ where
                     );
 
                     let tx_id = TxId::new_random();
-                    let db_output = DbKeyManagerOutput::from_key_manager_output(
+                    let db_output = DbWalletOutput::from_key_manager_output(
                         rewound_output.clone(),
                         &self.resources.key_manager,
                         None,
@@ -2464,7 +2464,7 @@ impl fmt::Display for Balance {
 
 #[derive(Debug, Clone)]
 struct UtxoSelection {
-    utxos: Vec<DbKeyManagerOutput>,
+    utxos: Vec<DbWalletOutput>,
     requires_change_output: bool,
     total_value: MicroTari,
     fee_without_change: MicroTari,
@@ -2493,11 +2493,11 @@ impl UtxoSelection {
         self.utxos.len()
     }
 
-    pub fn into_selected(self) -> Vec<DbKeyManagerOutput> {
+    pub fn into_selected(self) -> Vec<DbWalletOutput> {
         self.utxos
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &DbKeyManagerOutput> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = &DbWalletOutput> + '_ {
         self.utxos.iter()
     }
 }

@@ -2716,6 +2716,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "serde",
  "serde-value",
+ "serde_json",
  "serde_yaml 0.8.26",
  "thiserror",
  "thread-id",
@@ -5694,8 +5695,13 @@ dependencies = [
 
 [[package]]
 <<<<<<< feature-key-manager
+<<<<<<< feature-key-manager
 name = "tari_wallet_ffi"
 version = "0.51.0-pre.1"
+=======
+name = "tari_wallet_ffi"
+version = "0.50.0-pre.2"
+>>>>>>> wip tests
 dependencies = [
  "borsh",
  "cbindgen 0.24.3",
@@ -5733,8 +5739,11 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< feature-key-manager
 =======
 >>>>>>> complete squash
+=======
+>>>>>>> wip tests
 name = "tari_wallet_grpc_client"
 version = "0.1.0"
 dependencies = [

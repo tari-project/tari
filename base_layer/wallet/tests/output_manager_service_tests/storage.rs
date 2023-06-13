@@ -22,7 +22,7 @@
 
 use std::mem::size_of;
 
-use chacha20poly1305::{Key, KeyInit};
+use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::{
@@ -34,7 +34,7 @@ use tari_wallet::output_manager_service::{
     service::Balance,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbKeyManagerOutput,
+        models::DbWalletOutput,
         sqlite_db::OutputManagerSqliteDatabase,
         OutputSource,
     },
@@ -50,7 +50,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut unspent_outputs = Vec::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in 0..5 {
-        let (_ti, uo) = make_non_recoverable_input(
+        let uo = make_non_recoverable_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
@@ -58,10 +58,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         )
         .await;
         let mut kmo =
-            DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
-        kmo.key_manager_output.features.maturity = i;
+        kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent_outputs.push(kmo);
     }
@@ -71,13 +71,13 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(unspent_outputs[4], time_locked_outputs[0]);
     let time_locked_outputs = db.get_timelocked_outputs(4).unwrap();
     assert_eq!(time_locked_outputs.len(), 0);
-    let time_locked_balance = unspent_outputs[4].key_manager_output.value;
+    let time_locked_balance = unspent_outputs[4].wallet_output.value;
 
     for i in 0..4usize {
         let balance = db.get_balance(Some(i as u64)).unwrap();
         let mut sum = MicroTari::from(0);
         for output in unspent_outputs.iter().take(5).skip(i + 1) {
-            sum += output.key_manager_output.value;
+            sum += output.wallet_output.value;
         }
         assert_eq!(balance.time_locked_balance.unwrap(), sum);
     }
@@ -90,8 +90,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Add some sent transactions with outputs to be spent and received
     struct PendingTransactionOutputs {
         tx_id: TxId,
-        outputs_to_be_spent: Vec<DbKeyManagerOutput>,
-        outputs_to_be_received: Vec<DbKeyManagerOutput>,
+        outputs_to_be_spent: Vec<DbWalletOutput>,
+        outputs_to_be_received: Vec<DbWalletOutput>,
     }
 
     let mut pending_txs = Vec::new();
@@ -102,7 +102,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             outputs_to_be_received: vec![],
         };
         for _ in 0..4 {
-            let (_ti, kmo) = make_non_recoverable_input(
+            let kmo = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -110,14 +110,14 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             )
             .await;
             let kmo =
-                DbKeyManagerOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+                DbWalletOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
                     .await
                     .unwrap();
             db.add_unspent_output(kmo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
         for _ in 0..2 {
-            let (_ti, uo) = make_non_recoverable_input(
+            let uo = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -125,7 +125,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             )
             .await;
             let kmo =
-                DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+                DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                     .await
                     .unwrap();
             pending_tx.outputs_to_be_received.push(kmo);
@@ -142,18 +142,18 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Test balance calc
     let available_balance = unspent_outputs
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     let mut pending_incoming_balance = MicroTari(0);
     let mut pending_outgoing_balance = MicroTari(0);
     for v in &pending_txs {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
         pending_incoming_balance += v
             .outputs_to_be_received
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     }
 
     let balance = db.get_balance(None).unwrap();
@@ -218,31 +218,31 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Balance with confirmed second pending tx
     let mut available_balance = unspent_outputs
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     let mut pending_incoming_balance = MicroTari(0);
     let mut pending_outgoing_balance = MicroTari(0);
 
     pending_outgoing_balance += pending_txs[0]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_outgoing_balance += pending_txs[2]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_incoming_balance += pending_txs[0]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_incoming_balance += pending_txs[2]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
 
     available_balance += pending_txs[1]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value);
 
     let balance = db.get_balance(None).unwrap();
     assert_eq!(
@@ -257,7 +257,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
 
     // Add output to be received
-    let (_ti, uo) = make_non_recoverable_input(
+    let uo = make_non_recoverable_input(
         &mut OsRng,
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
@@ -265,12 +265,12 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     )
     .await;
     let output_to_be_received =
-        DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
             .await
             .unwrap();
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
         .unwrap();
-    pending_incoming_balance += output_to_be_received.key_manager_output.value;
+    pending_incoming_balance += output_to_be_received.wallet_output.value;
 
     let balance = db.get_balance(None).unwrap();
     assert_eq!(
@@ -365,7 +365,7 @@ pub async fn test_short_term_encumberance() {
     let mut unspent_outputs = Vec::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in 0..5 {
-        let (_ti, kmo) = make_non_recoverable_input(
+        let kmo = make_non_recoverable_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
@@ -373,10 +373,10 @@ pub async fn test_short_term_encumberance() {
         )
         .await;
         let mut kmo =
-            DbKeyManagerOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+            DbWalletOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
-        kmo.key_manager_output.features.maturity = i;
+        kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent_outputs.push(kmo);
     }
@@ -389,7 +389,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value)
+            .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 
     db.clear_short_term_encumberances().unwrap();
@@ -399,7 +399,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value)
+            .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 
     db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
@@ -413,7 +413,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.key_manager_output.value)
+            .fold(MicroTari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 }
 
@@ -425,14 +425,14 @@ pub async fn test_no_duplicate_outputs() {
 
     // create an output
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_ti, uo) = make_non_recoverable_input(
+    let uo = make_non_recoverable_input(
         &mut OsRng,
         MicroTari::from(1000),
         &OutputFeatures::default(),
         &key_manager,
     )
     .await;
-    let kmo = DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
         .await
         .unwrap();
 
@@ -467,14 +467,14 @@ pub async fn test_mark_as_unmined() {
 
     // create an output
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_ti, uo) = make_non_recoverable_input(
+    let uo = make_non_recoverable_input(
         &mut OsRng,
         MicroTari::from(1000),
         &OutputFeatures::default(),
         &key_manager,
     )
     .await;
-    let kmo = DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
         .await
         .unwrap();
 

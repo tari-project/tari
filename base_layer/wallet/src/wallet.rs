@@ -48,7 +48,7 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
         tari_amount::MicroTari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
@@ -140,7 +140,7 @@ where
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
